@@ -296,23 +296,23 @@ function splitDisplay(display: string): { gt: string; system: string } | null {
   return { gt: display.slice(4, cut), system: display.slice(cut + 9) };
 }
 
-/** One side's value. A mismatched cell holds "GT: a | Algo: b"; any other
- * matched cell is the value both agree on. A Missing record has only ground
- * truth and an Extra one only algo output. */
+/** One side's value. A mismatched cell holds "GT: a | Algo: b", and so does a match
+ * written differently (credentials "MD" / "MD, PhD", a blank / junk page's Skipped);
+ * any other cell is the value both agree on. A Missing record has only ground truth
+ * and an Extra one only algo output. */
 function sideValue(row: ManualReviewRow, field: string, side: "gt" | "algo"): string {
   const display = row.values[field] ?? "";
   if (row.status === "MISSING") return side === "gt" ? display : "";
   if (row.status === "EXTRA") return side === "algo" ? display : "";
-  // A mismatch, or a match written differently (credentials "MD" / "MD, PhD").
   const sides = splitDisplay(display);
   if (!sides) return display;
-  // A one-row (Correct) record shows both sides in its one cell.
-  if (row.status === "CORRECT") {
-    if (sides.gt === sides.system) return sides.gt;
-    // Unlabelled in ground truth: only the algo value to show.
-    return sides.gt ? `${sides.gt} · Algo: ${sides.system}` : `Algo: ${sides.system}`;
-  }
   return side === "gt" ? sides.gt : sides.system;
+}
+
+/** A Correct record whose two sides read the same everywhere: one row. Otherwise the
+ * GT and Algo rows, so the algo values show as the chart view shows them (2026-10-29). */
+function oneRow(row: ManualReviewRow, fields: string[]): boolean {
+  return row.status === "CORRECT" && !fields.some((field) => splitDisplay(row.values[field] ?? ""));
 }
 
 function percent(value: number | null | undefined): string {
@@ -976,7 +976,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   {pageRows.map((row, index) => {
                     const key = `${row.pdfId}:${row.pageNumber}:${row.status}:${index}`;
                     // A record with nothing to tell apart is one row: every value agrees.
-                    const sides = row.status === "CORRECT" ? (["gt"] as const) : (["gt", "algo"] as const);
+                    const sides = oneRow(row, result.fields) ? (["gt"] as const) : (["gt", "algo"] as const);
                     const span = sides.length > 1 ? 2 : undefined;
                     return sides.map((side) => (
                       <tr
@@ -1027,7 +1027,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                           // A value both sides agree on is shown once, across both rows.
                           const agreed =
                             !mismatched &&
-                            row.status === "ERROR" &&
+                            span !== undefined &&
+                            (row.status === "ERROR" || row.status === "CORRECT") &&
                             !splitDisplay(row.values[field] ?? "");
                           if (agreed && side === "algo") return null;
                           return (

@@ -372,7 +372,7 @@ def _compare(ground_rows, system_rows):
     )
 
 
-def test_blank_blank_and_junk_junk_pages_are_excluded_not_evaluated():
+def test_blank_blank_and_junk_junk_pages_match_on_every_field():
     ground = [
         build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)", "Page Type": "Others"}),
         build_row("100", 2, **{"Is Blank or Junk?": "Junk"}),
@@ -385,18 +385,16 @@ def test_blank_blank_and_junk_junk_pages_are_excluded_not_evaluated():
     ]
     result = _compare(ground, system)
     statuses = {int(row["Page Number"]): row["Status"] for row in result["result_rows"]}
-    assert statuses == {1: "EXCLUDED", 2: "EXCLUDED", 3: "ERROR"}
-    assert result["excluded_blank_count"] == 1 and result["excluded_junk_count"] == 1
-    assert result["matched_count"] == 3 and result["evaluated_count"] == 1
-    assert result["evaluated_accuracy_rate"] == 0.0
-    # The field breakdown is over evaluated pages only.
+    # 2026-10-29 (user): included, and every field matches when Is Blank or Junk? does.
+    assert statuses == {1: "CORRECT", 2: "CORRECT", 3: "ERROR"}
+    assert result["excluded_count"] == 0
+    assert result["matched_count"] == 3 and result["evaluated_count"] == 3
+    # Page 2's DOS differs but the page is junk on both sides: not an error.
     dos = next(e for e in result["field_error_summary"] if e["field"] == "DOS From")
-    assert dos["error_count"] == 1 and dos["error_percentage"] == 100.0
-    metrics = set(result["summary_df"]["Metric"])
-    assert {"Excluded (Blank/Blank)", "Excluded (Junk/Junk)", "Evaluated Accuracy Rate"} <= metrics
+    assert dos["error_count"] == 1
 
 
-def test_blank_vs_junk_plain_yes_or_skipped_is_excluded_as_on_the_accuracy_tab():
+def test_blank_vs_junk_plain_yes_or_skipped_matches_on_every_field():
     # 2026-10-29 (user): junk things are Skipped, as in the UI; blank vs junk does not count.
     ground = [build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)"}),
               build_row("100", 2, **{"Is Blank or Junk?": "Yes"}),
@@ -409,7 +407,11 @@ def test_blank_vs_junk_plain_yes_or_skipped_is_excluded_as_on_the_accuracy_tab()
               build_row("100", 4, **{"Is Blank or Junk?": "Yes"})]
     result = _compare(ground, system)
     statuses = {int(row["Page Number"]): row["Status"] for row in result["result_rows"]}
-    assert statuses == {1: "EXCLUDED", 2: "EXCLUDED", 3: "EXCLUDED", 4: "ERROR"}
+    assert statuses == {1: "CORRECT", 2: "CORRECT", 3: "CORRECT", 4: "ERROR"}
+    third = next(row for row in result["result_rows"] if int(row["Page Number"]) == 3)
+    assert third["Reason"] == "Blank / Junk on both sides: every field matches."
+    # Both sides shown where they read differently.
+    assert third["Page Type"] == "GT: Junk | Algo: Others"
 
 
 def test_a_skipped_label_matches_only_an_algo_that_skipped_the_page():

@@ -19,10 +19,11 @@ def clean_text(value):
     return value
 
 
-_NO_DATE_VALUES = {"", "-", "--", "na", "n/a", "none", "null", "nil"}
+_NO_DATE_VALUES = {"", "-", "--", "na", "n/a", "none", "null", "nil", "not found", "skipped"}
 
-# What an extracted value reads when nothing was found.
-_NOTHING_FOUND = _NO_DATE_VALUES | {"not found"}
+# What an extracted value reads when nothing was found (the chart view's Not Found /
+# Skipped included).
+_NOTHING_FOUND = _NO_DATE_VALUES
 
 
 def has_value(value):
@@ -53,9 +54,10 @@ def clean_date(value):
 
 def display_date(value):
     """
-    A date as MM/DD/YYYY for the screen and the report, so the two
-    files' spellings (03/15/2024, 2024-03-15) read alike. Anything
-    that is not a date ("-", blank, free text) is shown as given.
+    A date as YYYY-MM-DD for the screen and the report, as the chart
+    view shows it (2026-10-29, user), so the two files' spellings
+    (03/15/2024, 2024-03-15) read alike. Anything that is not a date
+    ("-", blank, free text, "2222-02-22 (E: ...)") is shown as given.
     """
 
     if pd.isna(value):
@@ -71,7 +73,7 @@ def display_date(value):
     if pd.isna(parsed):
         return text
 
-    return parsed.strftime("%m/%d/%Y")
+    return parsed.strftime("%Y-%m-%d")
 
 
 # =============================================================

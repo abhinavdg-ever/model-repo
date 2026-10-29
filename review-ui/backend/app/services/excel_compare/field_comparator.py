@@ -301,11 +301,9 @@ def says_blank_or_junk(row):
 
 def mutual_blank_or_junk(gt_row, system_row):
     """
-    "blank" or "junk" when both sides call the page blank or junk: such a page is
-    excluded from field-level evaluation (2026-10-26, from the standalone
-    ExcelCompare). Blank against Junk counts as both junk-like, as on the Accuracy tab
-    (2026-10-29, user: "junk things should be Skipped, same as the UI"). Either side
-    neither is evaluated as usual.
+    "blank" or "junk" when both sides call the page blank or junk (Blank against Junk
+    included, as on the Accuracy tab): Is Blank or Junk? matches, so every field of the
+    page matches (2026-10-29, user). Either side neither is compared field by field.
     """
 
     if not (says_blank_or_junk(gt_row) and says_blank_or_junk(system_row)):
@@ -321,6 +319,9 @@ def _alternate(row, field_name):
 
 
 def _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized):
+    if not has_value(gt_raw) and not has_value(system_raw):
+        # "-" / N/A against the chart view's Not Found: none on both sides.
+        return True
     if field_name in CREDENTIAL_FIELDS:
         return credentials_match(gt_raw, system_raw)
     if field_name in TEXT_CLASSIFICATION_FIELDS:
@@ -353,6 +354,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
 
     field_results = {}
     system_skipped = says_blank_or_junk(system_row)
+    # Both sides blank / junk: the page agrees, every field with it (2026-10-29, user).
+    both_skipped = system_skipped and says_blank_or_junk(gt_row)
 
     for field_name in fields_to_compare:
 
@@ -363,7 +366,7 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         system_normalized = normalize_field_value(field_name, system_raw)
         presence = normalize_yes_no(gt_raw) if field_name in PRESENCE_FIELDS else ""
 
-        if not gt_raw:
+        if not gt_raw or both_skipped:
             # Not labelled: ground truth says nothing, so it is not an error.
             # ("-" or "N/A" is a label -- "none" -- and is compared.)
             is_match = True
@@ -398,7 +401,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         # an unlabelled field next to an algo value. A matching name is one
         # value: the ground truth's, normalized.
         differs = (
-            field_name in CREDENTIAL_FIELDS
+            both_skipped
+            or field_name in CREDENTIAL_FIELDS
             or field_name in NAME_FIELDS
             or field_name == "Member ID"
             or field_name in ALTERNATE_FIELDS
@@ -451,6 +455,9 @@ def build_reason(status, field_results):
 
     if status == "CORRECT":
         return "All fields match."
+
+    if status == "BLANK_JUNK":
+        return "Blank / Junk on both sides: every field matches."
 
     mismatched_fields = [
         field_name

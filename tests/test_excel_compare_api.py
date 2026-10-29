@@ -54,7 +54,7 @@ def test_compare_returns_rows_with_the_mismatched_fields(client):
     error = next(row for row in body["rows"] if row["status"] == "ERROR")
     assert error["pdfId"] == "100" and error["pageNumber"] == "2"
     assert error["mismatched"] == ["DOS From"]
-    assert error["values"]["DOS From"] == "GT: 03/16/2024 | Algo: 03/17/2024"
+    assert error["values"]["DOS From"] == "GT: 2024-03-16 | Algo: 2024-03-17"
 
 
 def test_report_is_an_xlsx_workbook(client):
@@ -169,8 +169,8 @@ def test_pipeline_output_as_the_system_csv():
     assert (first["Provider Credentials"], second["Provider Credentials"]) == ("MD", "")
     assert (first["Is Blank or Junk?"], first["Duplicate"]) == ("No", "No")
     assert second["Is Blank or Junk?"] == "Yes"
-    # A page with no DOS stays blank (no 2222-02-02 default).
-    assert (fourth["DOS From"], fourth["DOS To"]) == ("", "")
+    # A page with no DOS reads Not Found, as Page Details shows it (no 2222-02-02 default).
+    assert (fourth["DOS From"], fourth["DOS To"]) == ("Not Found", "Not Found")
 
 
 def test_no_system_output_for_the_pdf_ids_is_a_400(client, repo):
@@ -344,7 +344,7 @@ def test_unlabelled_and_presence_ground_truth():
 
     # A blank cell is "not labelled": not an error, both sides shown.
     blank = compare("DOS From", "", "2025-08-27")
-    assert (blank["match"], blank["display"]) == (True, "GT:  | Algo: 08/27/2025")
+    assert (blank["match"], blank["display"]) == (True, "GT:  | Algo: 2025-08-27")
     # "-" is a label ("no date") and is compared.
     assert compare("DOS From", "-", "2025-08-27")["match"] is False
     # Yes / No member labels are presence: is a value on the page?
@@ -389,8 +389,8 @@ def test_a_page_ground_truth_export_uploads_as_ground_truth(client):
     body = res.json()
     assert "Page Type" in body["fields"] and "Is Blank or Junk?" in body["fields"]
     # Page 1: encounter_type is blank -> Page Type unlabelled (page_type is ignored).
-    # Page 2: junk on both sides -> excluded, as on the Accuracy tab.
-    assert (body["correctCount"], body["errorCount"], body["excludedCount"]) == (1, 0, 1)
+    # Page 2: junk on both sides -> every field matches (2026-10-29, user).
+    assert (body["correctCount"], body["errorCount"], body["excludedCount"]) == (2, 0, 0)
 
 
 def test_offline_ground_truth_page_type_is_encounter_type_only():
@@ -465,3 +465,24 @@ def test_batched_database_rows_map_like_the_chart_view():
     signed = _page(row(provider="Kenneth Kummerfeld, MD", signed=True))  # version 1: split
     assert (signed.providerName, signed.providerCredentials, signed.providerSignature) == (
         "Kenneth Kummerfeld", "MD", "Yes")
+
+
+def test_pipeline_values_read_as_page_details_shows_them():
+    import csv
+
+    from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
+    from app.services.excel_compare.database_system import system_csv
+
+    pages = [
+        ImagingPageResult.model_construct(pageNumber=1, blankOrJunk="Yes (Junk)", isDuplicate=False,
+                                          memberName="Thomas Jonathan", dosFrom="2024-10-15"),
+        ImagingPageResult.model_construct(pageNumber=2, blankOrJunk="No", isDuplicate=False,
+                                          memberName=None, dosFrom="2024-10-15", dosTo="2024-10-15",
+                                          finalDosFrom="2222-02-22", finalDosTo="2222-02-22"),
+    ]
+    doc = ImagingDocumentResponse.model_construct(folder_id="100", pages=pages, verifications=[], verification=None)
+    junk, visit = csv.DictReader(io.StringIO(system_csv([("100", doc)]).decode()))
+    assert (junk["Extracted Name"], junk["DOS From"], junk["Actual Sequence"]) == ("Skipped", "Skipped", "Skipped")
+    assert visit["Extracted Name"] == "Not Found"
+    assert visit["DOS From"] == "2222-02-22 (E: 2024-10-15)"
+    assert visit["Extracted Value: DOS From"] == "2024-10-15"

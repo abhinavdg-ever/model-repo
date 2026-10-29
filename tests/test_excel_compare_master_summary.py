@@ -83,7 +83,7 @@ def test_qa_sheet_totals_breakdown_and_evidence():
     assert result["field_error_summary"][0] == {"field": "DOS To", "error_count": 1, "error_percentage": 33.33}
     assert result["mismatch_evidence"] == [{
         "pdf_id": "66944857_55295235", "page_number": 2, "field": "DOS To",
-        "ground_truth_value": "01/28/2025", "system_value": "01/29/2025",
+        "ground_truth_value": "2025-01-28", "system_value": "2025-01-29",
     }]
     assert (result["total_unique_ground_charts"], result["total_unique_system_charts"],
             result["total_unique_charts_compared"]) == (1, 1, 1)
@@ -148,7 +148,7 @@ def test_master_summary_pdf_reconciles_with_the_comparison():
     # No appendix listing every mismatch: the Excel report has them (2026-10-23, user).
     assert "Appendix" not in text
     assert "qa & review.csv" in text  # escaped, not parsed as markup
-    assert "01/29/2025" in text
+    assert "2025-01-29" in text
     # The QA sheet's ID columns are named as unread, so a misspelt header shows.
     assert "DocumentID, RecordID" in text
     assert "Page 1 of" in text
@@ -531,11 +531,11 @@ def test_local_mode_reads_duplicate_scores_from_blank_junk_json(tmp_path):
     assert index_duplicate_scores(tmp_path / "missing.json") == {}
 
 
-def test_master_summary_shows_excluded_and_evaluated_pages():
+def test_master_summary_counts_a_blank_page_on_both_sides_as_a_match():
     from app.services.excel_compare.master_summary import build_master_summary_pdf
 
     row = {"PDF ID": "100", "Page Number": 1, "Is Blank or Junk?": "Yes (Blank)"}
     result = compare_files(_upload(pd.DataFrame([row]), "qa.csv"), _upload(pd.DataFrame([row]), "algo.csv"))
     text = " ".join(_pdf_text(build_master_summary_pdf(result)).split())
-    assert "EXCLUDED (Blank/Blank) 1" in text and "Evaluated Accuracy Rate N/A" in text
+    assert result["excluded_count"] == 0 and result["exact_match_rate"] == 100.0
     assert "display placeholder" in text

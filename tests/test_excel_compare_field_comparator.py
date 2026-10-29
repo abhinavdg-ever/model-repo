@@ -47,7 +47,7 @@ def test_all_fields_match_gives_correct_status():
 
     for field_name in ACTIVE_COMPARISON_FIELDS:
         assert field_results[field_name]["match"] is True
-        expected = "07/25/2024" if field_name in DATE_FIELDS else gt_row[field_name]
+        expected = "2024-07-25" if field_name in DATE_FIELDS else gt_row[field_name]
         assert field_results[field_name]["display"] == expected
 
 

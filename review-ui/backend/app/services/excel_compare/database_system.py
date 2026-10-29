@@ -9,6 +9,10 @@ the 2222-02-02 default Download Results ships. Page Type and Page Subtype
 are the page classifier's, split back out of its ``Type (Sub-type)``
 display. The Extracted value rides beside the Final one (``Extracted Value: <field>``)
 and a ground truth matching either is a match, as on the Accuracy tab (2026-10-29).
+
+Values read as Page Details shows them (2026-10-29, user): a blank / junk page's member
+and DOS fields are Skipped, a value the stage did not find is Not Found, and a non-visit
+page's Final DOS is "2222-02-22 (E: <its own date>)".
 """
 
 from __future__ import annotations
@@ -43,6 +47,11 @@ COLUMNS = [
 
 # The continuity stage's Final DOS for a page with no date: no date.
 NO_DATE = "2222-02-02"
+# imaging_final's Final DOS for a non-visit document (Demographics, Problem List, ...).
+NON_VISIT_DATE = "2222-02-22"
+
+SKIPPED = "Skipped"
+NOT_FOUND = "Not Found"
 
 
 def _text(value: object) -> str:
@@ -52,6 +61,26 @@ def _text(value: object) -> str:
 def _date(value: object) -> str:
     text = _text(value)
     return "" if text.startswith(NO_DATE) else text
+
+
+def _shown(value: object, skipped: bool) -> str:
+    """As Page Details shows a stage's value: Skipped on a blank / junk page, else the
+    value, else Not Found."""
+    if skipped:
+        return SKIPPED
+    return _text(value) or NOT_FOUND
+
+
+def _final_date(final: str, own: str) -> str:
+    """A non-visit page's Final DOS with its own date beside it, as Page Details shows it."""
+    if final.startswith(NON_VISIT_DATE) and own and not own.startswith(NON_VISIT_DATE):
+        return f"{final} (E: {own})"
+    return final
+
+
+def _is_skipped(page: ImagingPageResult) -> bool:
+    """A blank / junk page, not a duplicate (a duplicate shows its original's values)."""
+    return page.isDuplicate is not True and _text(page.blankOrJunk).lower().startswith("y")
 
 
 def _yes_no(value: bool | None) -> str:
@@ -92,21 +121,24 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
     for chart_name, doc in docs:
         for page in sorted(doc.pages, key=lambda p: p.pageNumber):
             # Final first, then extracted, as accuracy.ts reads them.
-            dos_from = _date(page.finalDosFrom) or _date(page.dosFrom)
-            dos_to = _date(page.finalDosTo) or _date(page.finalDosFrom) or _date(page.dosTo)
+            skipped = _is_skipped(page)
+            own_from = _date(page.dosFrom)
+            own_to = _date(page.dosTo) or own_from
+            dos_from = _final_date(_date(page.finalDosFrom), own_from) or own_from
+            dos_to = _final_date(_date(page.finalDosTo) or _date(page.finalDosFrom), own_to) or own_to
             page_type, page_subtype = _page_type(page.finalPageType or page.pageType)
             own_type, own_subtype = _page_type(page.pageType)
             writer.writerow(
                 {
                     "PDF ID": chart_name,
                     "Page Number": page.pageNumber,
-                    "Extracted Name": _text(page.memberName),
-                    "Extracted DOB": _text(page.memberDob),
-                    "Member ID": _text(page.memberId),
+                    "Extracted Name": _shown(page.memberName, skipped),
+                    "Extracted DOB": _shown(page.memberDob, skipped),
+                    "Member ID": _shown(page.memberId, skipped),
                     # As the chart view's Type: document type, else printed / handwritten.
                     "Type (Printed/HW)": _text(page.documentType) or _text(page.handwrittenOrPrinted),
-                    "DOS From": dos_from,
-                    "DOS To": dos_to,
+                    "DOS From": _shown(dos_from, skipped),
+                    "DOS To": _shown(dos_to, skipped),
                     "Is Blank or Junk?": _blank_or_junk(page.blankOrJunk),
                     "Duplicate": _duplicate(page),
                     "Page Type": page_type,
@@ -114,9 +146,9 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "Codable / Non-Codable": _text(page.finalCodeable) or _text(page.isCodeable),
                     "Provider Credentials": _text(page.providerCredentials),
                     "Current Sequence": _text(page.currentSequence),
-                    "Actual Sequence": _text(page.actualSequence),
-                    ALTERNATE_PREFIX + "DOS From": _date(page.dosFrom),
-                    ALTERNATE_PREFIX + "DOS To": _date(page.dosTo) or _date(page.dosFrom),
+                    "Actual Sequence": SKIPPED if skipped else _text(page.actualSequence),
+                    ALTERNATE_PREFIX + "DOS From": own_from,
+                    ALTERNATE_PREFIX + "DOS To": own_to,
                     ALTERNATE_PREFIX + "Page Type": own_type,
                     ALTERNATE_PREFIX + "Page Subtype": own_subtype,
                     ALTERNATE_PREFIX + "Codable / Non-Codable": _text(page.isCodeable),

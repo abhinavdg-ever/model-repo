@@ -13,7 +13,6 @@ from .field_comparator import (
 
 from .result_builder import (
     build_associated_result,
-    build_excluded_result,
     build_missing_result,
     build_extra_result,
     build_summary,
@@ -199,17 +198,13 @@ def compare_frames(ground, system, fields_to_compare):
         gt_row = ground.loc[gt_index]
         system_row = system.loc[system_index]
 
-        # Both sides call the page Blank (or both Junk): matched, not evaluated.
-        kind = mutual_blank_or_junk(gt_row, system_row)
-        if kind:
-            row = build_excluded_result(gt_row, kind, fields_to_compare)
-            row["Mismatched"], row["Evidence"] = [], []
-            result_rows.append(row)
-            continue
-
         field_results = compare_fields(gt_row, system_row, fields_to_compare)
         status = determine_status(field_results)
-        reason = build_reason(status, field_results)
+        # Both sides blank / junk: every field matches (compare_fields), said so.
+        reason = build_reason(
+            "BLANK_JUNK" if status == "CORRECT" and mutual_blank_or_junk(gt_row, system_row) else status,
+            field_results,
+        )
 
         row = build_associated_result(
             gt_row.get("PDF ID", ""),
