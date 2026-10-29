@@ -22,6 +22,7 @@ import { readSession } from "./session";
 import {
   deleteFolder,
   errorDetail,
+  getGroundTruthUpdates,
   setChartReview,
   formatBatchLabel,
   formatRunLabel,
@@ -360,6 +361,20 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   // Mark Reviewed (freezes the chart's ground truth) / clear it, after a confirm.
   const [reviewTarget, setReviewTarget] = useState<FolderSummary | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // Marking: what the chart's review still lacks (null while it loads), warned about
+  // before the mark is saved (2026-10-29, user).
+  const [reviewMissing, setReviewMissing] = useState<string[] | null>(null);
+  useEffect(() => {
+    setReviewMissing(null);
+    if (!reviewTarget || reviewTarget.reviewed) return;
+    let live = true;
+    getGroundTruthUpdates(reviewTarget.id)
+      .then((updates) => live && setReviewMissing(updates.missing ?? []))
+      .catch(() => live && setReviewMissing([]));
+    return () => {
+      live = false;
+    };
+  }, [reviewTarget]);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   // The in-app "are you sure" for an admin's Delete, and the note after it.
@@ -1094,10 +1109,24 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
               ) : (
                 <>
                   <strong>{reviewTarget.name}</strong>: its ground truth (page labels, page sequence,
-                  encounters and the member decision) is frozen. To edit it again, reach out to an Admin to enable review.
+                  encounters and the member decision) is frozen. To edit it again, you or an Admin can clear the mark.
                 </>
               )}
             </p>
+            {!reviewTarget.reviewed && reviewMissing === null ? (
+              <p className="blob-auth-copy">Checking the review…</p>
+            ) : null}
+            {!reviewTarget.reviewed && reviewMissing && reviewMissing.length > 0 ? (
+              <div className="review-incomplete" role="alert">
+                <strong>You have incomplete reviews.</strong>
+                <ul>
+                  {reviewMissing.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+                <span>Mark Reviewed anyway?</span>
+              </div>
+            ) : null}
             {reviewError ? (
               <div className="error-banner" style={{ marginTop: "0.75rem" }}>
                 {reviewError}
@@ -1116,11 +1145,17 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                 type="button"
                 className="landing-file-viewer-btn landing-file-viewer-btn-primary"
                 onClick={() => void confirmReview()}
-                disabled={reviewBusy}
+                disabled={reviewBusy || (!reviewTarget.reviewed && reviewMissing === null)}
                 autoFocus
               >
                 <BadgeCheck size={15} aria-hidden="true" />
-                {reviewBusy ? "Saving…" : reviewTarget.reviewed ? "Clear mark" : "Mark Reviewed"}
+                {reviewBusy
+                  ? "Saving…"
+                  : reviewTarget.reviewed
+                    ? "Clear mark"
+                    : reviewMissing && reviewMissing.length > 0
+                      ? "Mark Reviewed anyway"
+                      : "Mark Reviewed"}
               </button>
             </div>
           </div>

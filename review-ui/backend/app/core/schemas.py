@@ -267,6 +267,9 @@ class ChartGroundTruthUpdates(BaseModel):
     encounter: GroundTruthUpdate = GroundTruthUpdate()
     sequencing: GroundTruthUpdate = GroundTruthUpdate()
     member: GroundTruthUpdate = GroundTruthUpdate()
+    # What the chart's review still lacks, one line each (2026-10-29, user): the warning
+    # before it is marked Reviewed. Empty when every tab has been filled in.
+    missing: list[str] = []
 
 
 class ChartGroundTruth(BaseModel):

@@ -4,6 +4,10 @@ Page Details and Sequencing read page_ground_truth_entry (a sequence-only save c
 Sequencing alone); Encounter reads encounter_review; Rejection Rules reads
 chart_ground_truth. A tab no one has saved by hand shows the chart's latest spreadsheet
 load: "Last Updated By Bulk Upload on X".
+
+``missing`` lists what the review still lacks (2026-10-29, user), warned about before the
+chart is marked Reviewed: pages with no Page Details labels, pages with no sequence, no
+encounters saved, no member decision.
 """
 
 from __future__ import annotations
@@ -59,6 +63,47 @@ def _chart_row(cur, chart: str, who: str, table: str) -> GroundTruthUpdate | Non
     return GroundTruthUpdate(by=row[0], at=_iso(row[1])) if row else None
 
 
+# The chart's pages, and of them those with Page Details labels and with a sequence.
+_PAGE_COUNTS = """
+SELECT (SELECT count(*) FROM page_list p JOIN chart_list c ON c.id = p.chart_id
+         WHERE c.chart_name = %(chart)s),
+       count(*) FILTER (WHERE COALESCE(NULLIF(btrim(member_name), ''), NULLIF(btrim(member_dob), ''),
+                                       NULLIF(btrim(dos_from), ''), NULLIF(btrim(blank_page), ''),
+                                       NULLIF(btrim(junk_page), ''), NULLIF(btrim(encounter_type), ''),
+                                       NULLIF(btrim(codeable), '')) IS NOT NULL),
+       count(*) FILTER (WHERE NULLIF(btrim(page_sequence), '') IS NOT NULL)
+  FROM (SELECT DISTINCT ON (page_number) *
+          FROM page_ground_truth WHERE chart_name = %(chart)s
+         ORDER BY page_number, updated_at DESC, id DESC) g
+"""
+
+
+def _has_rows(cur, table: str, chart: str, where: str = "TRUE") -> bool:
+    if not _table_exists(cur, table):
+        return False
+    cur.execute(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE chart_name = %s AND {where})", (chart,))
+    return bool(cur.fetchone()[0])
+
+
+def _missing(cur, chart: str) -> list[str]:
+    """One line per part of the review not yet filled in."""
+    cur.execute(_PAGE_COUNTS, {"chart": chart})
+    pages, labelled, sequenced = cur.fetchone()
+    out: list[str] = []
+    if pages and labelled < pages:
+        out.append(f"Page Details: {pages - labelled} of {pages} pages have no ground truth")
+    if pages and sequenced < pages:
+        out.append(
+            "Page Sequencing: not saved" if sequenced == 0
+            else f"Page Sequencing: {pages - sequenced} of {pages} pages have no sequence"
+        )
+    if not _has_rows(cur, "encounter_review", chart):
+        out.append("Encounter: no encounters saved")
+    if not _has_rows(cur, "chart_ground_truth", chart, "member_decision IS NOT NULL"):
+        out.append("Rejection Rules: no Accept / Reject decision")
+    return out
+
+
 def ground_truth_updates(
     database_url: str, folder_id: str, db_schema: str = "public"
 ) -> ChartGroundTruthUpdates:
@@ -74,4 +119,5 @@ def ground_truth_updates(
                 sequencing=_entry(cur, chart, who_e, _SEQUENCE) or bulk,
                 encounter=_chart_row(cur, chart, who_r, "encounter_review") or bulk,
                 member=_chart_row(cur, chart, who_r, "chart_ground_truth") or bulk,
+                missing=_missing(cur, chart),
             )

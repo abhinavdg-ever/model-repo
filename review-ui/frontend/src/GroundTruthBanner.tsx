@@ -14,7 +14,7 @@ import { formatIst, serverTime } from "./istTime";
 import { readSession } from "./session";
 
 /** The ground-truth tabs that carry the banner. */
-export type GroundTruthTab = keyof ChartGroundTruthUpdates;
+export type GroundTruthTab = Exclude<keyof ChartGroundTruthUpdates, "missing">;
 
 /** "Last Updated By Bulk Upload on X" / "Last Updated By User: Y on X". */
 export function lastUpdatedText(update: GroundTruthUpdate | undefined): string {

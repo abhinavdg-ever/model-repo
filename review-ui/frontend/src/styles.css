@@ -6787,3 +6787,18 @@ input {
 .gt-banner-error {
   color: var(--status-error-fg);
 }
+
+/* Mark Reviewed: what the chart's review still lacks (2026-10-29). */
+.review-incomplete {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+  border: 1px solid color-mix(in srgb, var(--status-warning-fg) 35%, transparent);
+  font-size: 0.85rem;
+}
+.review-incomplete ul {
+  margin: 0.35rem 0;
+  padding-left: 1.1rem;
+}

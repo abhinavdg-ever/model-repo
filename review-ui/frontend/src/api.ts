@@ -717,6 +717,8 @@ export type ChartGroundTruthUpdates = {
   encounter: GroundTruthUpdate;
   sequencing: GroundTruthUpdate;
   member: GroundTruthUpdate;
+  /** What the review still lacks, one line each; shown before marking Reviewed. */
+  missing?: string[];
 };
 
 export function getGroundTruthUpdates(folderId: string): Promise<ChartGroundTruthUpdates> {
