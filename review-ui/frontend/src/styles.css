@@ -6741,6 +6741,18 @@ input {
   gap: 0.5rem;
 }
 
+.gt-banner-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--brand-700);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .gt-banner-review {
   color: var(--brand-800);
   font-weight: 600;

@@ -184,6 +184,7 @@ class PageGroundTruth(BaseModel):
     # UI shows IST). Read only: a save ignores them.
     reviewedBy: str | None = None
     reviewedAt: str | None = None
+    bulkUploadedAt: str | None = None  # the page's last spreadsheet load (UTC ISO)
 
 
 class PageSequenceLabel(BaseModel):

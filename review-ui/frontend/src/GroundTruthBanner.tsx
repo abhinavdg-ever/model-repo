@@ -1,14 +1,16 @@
 import { useContext, useEffect, useState } from "react";
+import { Lock } from "lucide-react";
 import {
   GROUND_TRUTH_SAVED,
   getGroundTruthUpdates,
   setChartReview,
   type ChartGroundTruthUpdates,
   type GroundTruthUpdate,
+  type PageGroundTruth,
 } from "./api";
 import { ChartReviewContext, SetChartReviewContext } from "./chartFrozen";
 import { ClientViewContext } from "./clientView";
-import { formatIst } from "./istTime";
+import { formatIst, serverTime } from "./istTime";
 import { readSession } from "./session";
 
 /** The ground-truth tabs that carry the banner. */
@@ -21,11 +23,33 @@ export function lastUpdatedText(update: GroundTruthUpdate | undefined): string {
   return `Last Updated By User: ${update.by || "unknown"} on ${formatIst(update.at)}`;
 }
 
+/** One page's Last Updated: its last manual save, or its last spreadsheet load when that
+ * came later (or there is no save). */
+export function pageUpdate(gt: PageGroundTruth | null | undefined): GroundTruthUpdate {
+  const manual = serverTime(gt?.reviewedAt)?.getTime() ?? null;
+  const bulk = serverTime(gt?.bulkUploadedAt)?.getTime() ?? null;
+  if (manual != null && (bulk == null || manual >= bulk)) {
+    return { bulk: false, by: gt?.reviewedBy, at: gt?.reviewedAt };
+  }
+  if (bulk != null) return { bulk: true, at: gt?.bulkUploadedAt };
+  return { bulk: false };
+}
+
 /** The constant banner at the top of Page Details, Encounter, Sequencing and Rejection
- * Rules (2026-10-28, user): who last updated the tab's ground truth and when; for a chart
+ * Rules (2026-10-28, user): who last updated the tab's ground truth and when (Page Details:
+ * the page shown, ``update``; the other tabs: the chart); for a chart
  * marked Reviewed, who completed the review. An admin, or whoever marked it, can enable
  * review again from here. */
-export default function GroundTruthBanner({ folderId, tab }: { folderId: string; tab: GroundTruthTab }) {
+export default function GroundTruthBanner({
+  folderId,
+  tab,
+  update,
+}: {
+  folderId: string;
+  tab: GroundTruthTab;
+  /** Shown instead of the chart's: Page Details passes the page's own. */
+  update?: GroundTruthUpdate;
+}) {
   const review = useContext(ChartReviewContext);
   const onReviewChange = useContext(SetChartReviewContext);
   // Include Extracted: No (and the client's copy): as wide as the narrower Page Details.
@@ -78,7 +102,14 @@ export default function GroundTruthBanner({ folderId, tab }: { folderId: string;
 
   return (
     <div className={`gt-banner${reviewed ? " is-reviewed" : ""}${finalOnly ? " is-final-only" : ""}`} role="status">
-      <div className="gt-banner-line">{lastUpdatedText(updates?.[tab])}</div>
+      <div className="gt-banner-line">
+        {reviewed ? (
+          <span className="gt-banner-locked" title="Marked Reviewed: the ground truth cannot be edited">
+            <Lock size={12} aria-hidden="true" /> Locked
+          </span>
+        ) : null}
+        <span>{lastUpdatedText(update ?? updates?.[tab])}</span>
+      </div>
       {reviewed ? (
         <div className="gt-banner-line gt-banner-review">
           <span>

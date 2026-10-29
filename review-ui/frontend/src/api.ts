@@ -294,6 +294,8 @@ export type PageGroundTruth = {
   /** The page's last manual save: who, and when (GMT ISO; shown in IST). Read only. */
   reviewedBy?: string | null;
   reviewedAt?: string | null;
+  /** The page's last spreadsheet load (UTC ISO). */
+  bulkUploadedAt?: string | null;
 };
 
 export type ImagingManifestDetails = {

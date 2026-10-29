@@ -234,13 +234,32 @@ SELECT DISTINCT ON (g.page_number) g.page_number, {who}, e.created_at
 """
 
 
-def last_reviews(conn, database_url: str, chart: str, db_schema: str = "public") -> dict[int, tuple[str | None, str | None]]:
-    """Page number -> (who, when as UTC ISO) of the page's last manual save."""
+# Each page's newest spreadsheet load.
+_LAST_BULK = """
+SELECT g.page_number, max(e.created_at)
+  FROM page_ground_truth g
+  JOIN page_ground_truth_entry e
+    ON e.page_ground_truth_id = g.id AND e.entry_mode = 'bulk_upload'
+ WHERE g.chart_name = %s
+ GROUP BY g.page_number
+"""
+
+
+def last_reviews(
+    conn, database_url: str, chart: str, db_schema: str = "public"
+) -> dict[int, tuple[str | None, str | None, str | None]]:
+    """Page number -> (who, when) of the page's last manual save and when its last
+    spreadsheet load was, all UTC ISO: the page's Last Updated By."""
     ensure_entries(conn, database_url, db_schema)
     with conn.cursor() as cur:
         cur.execute(_LAST_MANUAL.format(who=_who(_has_users(cur), "e")), (chart,))
-        rows = cur.fetchall()
-    return {int(page): (by, _iso(at)) for page, by, at in rows}
+        manual = {int(page): (by, _iso(at)) for page, by, at in cur.fetchall()}
+        cur.execute(_LAST_BULK, (chart,))
+        bulk = {int(page): _iso(at) for page, at in cur.fetchall()}
+    return {
+        page: (*manual.get(page, (None, None)), bulk.get(page))
+        for page in manual.keys() | bulk.keys()
+    }
 
 
 # Every entry of every page the user (or anyone, for all users) saved by hand, oldest

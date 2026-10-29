@@ -1,7 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { formatIst } from "./istTime";
 import { frozenNote, useChartFrozen } from "./chartFrozen";
-import GroundTruthBanner from "./GroundTruthBanner";
+import GroundTruthBanner, { pageUpdate } from "./GroundTruthBanner";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   getChartGroundTruth,
@@ -1872,15 +1871,6 @@ function PageDetails({
 
   return (
     <div className="imaging-page-details">
-      {compact && frozen ? <p className="page-frozen-note">{frozenNote(frozen)}</p> : null}
-      {compact && (page.groundTruth?.reviewedBy || page.groundTruth?.reviewedAt) ? (
-        // The page's last manual save, in fullscreen only: the side pane has the Last
-        // Updated banner. The server keeps GMT, shown in IST.
-        <p className="page-last-review">
-          Last Reviewed By: <strong>{page.groundTruth.reviewedBy || "Unknown"}</strong>
-          {page.groundTruth.reviewedAt ? ` on ${formatIst(page.groundTruth.reviewedAt)}` : ""}
-        </p>
-      ) : null}
       {saveError ? <p className="imaging-gt-error">{saveError}</p> : null}
       <CompareSection
         {...sectionProps}
@@ -2817,7 +2807,7 @@ export default function ImagingPanel({
   return (
     <div className="imaging-panel-stack">
       {compact ? null : <ManifestDetails manifest={manifest} />}
-      {compact ? null : <GroundTruthBanner folderId={document.folder_id} tab="page" />}
+      <GroundTruthBanner folderId={document.folder_id} tab="page" update={pageUpdate(currentPage.groundTruth)} />
       <PageDetails
         folderId={document.folder_id}
         page={currentPage}

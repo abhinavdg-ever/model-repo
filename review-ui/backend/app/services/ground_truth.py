@@ -241,9 +241,9 @@ def ground_truth_by_page(
     return out
 
 
-def _last_reviews(conn, database_url: str, chart: str, db_schema: str) -> dict[int, tuple[str | None, str | None]]:
-    """Each page's last manual save (who, when); empty when it cannot be read, so the
-    labels still show."""
+def _last_reviews(conn, database_url: str, chart: str, db_schema: str) -> dict[int, tuple[str | None, str | None, str | None]]:
+    """Each page's last manual save (who, when) and last spreadsheet load (when); empty
+    when it cannot be read, so the labels still show."""
     from app.services.chart_review import last_reviews
 
     try:
@@ -254,11 +254,11 @@ def _last_reviews(conn, database_url: str, chart: str, db_schema: str) -> dict[i
         return {}
 
 
-def _with_review(truth: PageGroundTruth, reviews: dict[int, tuple[str | None, str | None]]) -> PageGroundTruth:
+def _with_review(truth: PageGroundTruth, reviews: dict[int, tuple[str | None, str | None, str | None]]) -> PageGroundTruth:
     hit = reviews.get(truth.pageNumber)
     if not hit:
         return truth
-    return truth.model_copy(update={"reviewedBy": hit[0], "reviewedAt": hit[1]})
+    return truth.model_copy(update={"reviewedBy": hit[0], "reviewedAt": hit[1], "bulkUploadedAt": hit[2]})
 
 
 def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
