@@ -1116,11 +1116,33 @@ def get_blank_junk_flags(
 
 
 @_dispatch
+def revise_blank_junk_final(
+    conn: Any,
+    page_id: int,
+    *,
+    blank_junk_flag: str,
+    duplicate_of_page_id: Optional[int],
+    reason: str,
+) -> None:
+    """Change a page's final blank / junk verdict in place: continuity's duplicate check
+    (stages/lib/continuity/duplicates.py) makes a partial duplicate a duplicate, or a
+    duplicate a Main page with duplicate content."""
+    conn.execute(
+        """
+        UPDATE blank_junk_classification
+           SET blank_junk_flag = %s, duplicate_of_page_id = %s, reason = %s, updated_at = now()
+         WHERE page_id = %s AND is_final
+        """,
+        (blank_junk_flag, duplicate_of_page_id, reason, page_id),
+    )
+
+
+@_dispatch
 def get_blank_junk_final(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
-    """Final blank/junk verdict per page: flag, junk_subtype, confidence."""
+    """Final blank/junk verdict per page: flag, junk_subtype, confidence, reason."""
     rows = conn.execute(
         """
-        SELECT page_id, blank_junk_flag, junk_subtype, confidence, duplicate_of_page_id
+        SELECT page_id, blank_junk_flag, junk_subtype, confidence, duplicate_of_page_id, reason
           FROM v_page_blank_junk_final
          WHERE chart_id = %s
         """,

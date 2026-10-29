@@ -29,15 +29,14 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   smaller page's distinct words found on the other.
 * Contained (canon ``duplicates.contained_at``, 100%), overlap **≥ 98%**, or fewer than
   ``duplicate_below_words`` (8) distinct words different, with lengths within 10%:
-  ``duplicate`` -- UI Duplicate "Duplicate (To Page N)", Blank / Junk "Yes (Junk)"
-  (2026-10-22, user). Overlap **[95%, 98%)** or fewer than ``partial_below_words``
+  ``duplicate`` -- UI Duplicate "Duplicate (To Page N)"; not junk: Blank / Junk "No"
+  (2026-10-29, user). Overlap **[95%, 98%)** or fewer than ``partial_below_words``
   (15) distinct words different: a partial duplicate -- the page stays Main with
   ``duplicate_of_page_id`` set; UI "Partial (To Page N)".
 * The similarity is stored as ``confidence`` on both kinds of row.
-* On a match the **later** page (order of appearance) is the duplicate (or partial
-  duplicate) -- except a contained pair whose larger page has more than
-  ``duplicates.larger_kept_above_words`` (10) distinct words the smaller lacks: the
-  larger page stays and the smaller is the duplicate (2026-10-22, user).
+* On a match the page with **less on it** (fewer distinct words, then less text) is the
+  duplicate (or partial duplicate); the later page when the two are level (2026-10-29,
+  user).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
 * A signature or ending page (kv_extract's Electronic Signature in pass 2, or
   ``duplicates.signature_terms`` on the page) is not a duplicate of a look-alike with a
@@ -49,6 +48,9 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   pass 2 only (2026-10-26, user).
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
+
+After continuity, a duplicate far from its original in a Progress Note / Discharge
+Summary is checked encounter against encounter (``stages/lib/continuity/duplicates.py``).
 
 Also: one final verdict per page (``mark_blank_junk_final``), and the junk CSV
 is fully rewritten from the database after each pass.
@@ -125,7 +127,7 @@ def _duplicate_rules() -> dict[str, float]:
     ``contained_at`` (share of the smaller page's distinct words that must be on the
     other), ``duplicate_below_words`` / ``partial_below_words`` (fewer distinct words
     different than this is a duplicate / partial whatever the overlap), and
-    ``larger_kept_above_words`` (a contained pair whose larger page has more distinct
+    ``larger_kept_above_words`` (no longer read, 2026-10-29; a contained pair whose larger page has more distinct
     words than this beyond the smaller keeps the larger page; otherwise the later page
     is the duplicate)."""
     cfg = method.canon().raw.get("duplicates", {})
@@ -436,12 +438,10 @@ def _classify(
                 kind = "partial"
             else:
                 continue
-            # 2026-10-22 (user): the later page, in order of appearance, is the duplicate
-            # -- unless one page is contained in the other and the larger adds more than
-            # larger_kept_above_words distinct words: the larger page stays.
-            if is_contained and words.different > rules["larger_kept_above_words"]:
-                larger_first = words.words_a > words.words_b
-                orig, dup = (pid, nid) if larger_first else (nid, pid)
+            # 2026-10-29 (user): the page with less on it is the duplicate -- fewer
+            # distinct words, then less text; the later page when the two are level.
+            if (words.words_a, len_a) < (words.words_b, len_b):
+                orig, dup = nid, pid
             else:
                 orig, dup = pid, nid
             if kind == "partial":

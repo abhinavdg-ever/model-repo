@@ -410,8 +410,8 @@ def test_blank_vs_junk_plain_yes_or_skipped_matches_on_every_field():
     assert statuses == {1: "CORRECT", 2: "CORRECT", 3: "CORRECT", 4: "ERROR"}
     third = next(row for row in result["result_rows"] if int(row["Page Number"]) == 3)
     assert third["Reason"] == "Blank / Junk on both sides: every field matches."
-    # Both sides shown where they read differently.
-    assert third["Page Type"] == "GT: Junk | Algo: Others"
+    # Shown as one value, Skipped, on every field (2026-10-29, user).
+    assert third["Page Type"] == third["DOS From"] == third["Extracted Name"] == "Skipped"
 
 
 def test_a_skipped_label_matches_only_an_algo_that_skipped_the_page():

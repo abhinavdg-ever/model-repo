@@ -35,7 +35,7 @@ SELECT c.chart_name,
        f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials',
        to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version',
        to_jsonb(q) ->> 'document_type', q.printed_or_handwritten,
-       b.duplicate_of_page_id IS NOT NULL
+       b.duplicate_of_page_id IS NOT NULL, b.reason
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -53,7 +53,7 @@ _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = AN
 
 
 def _page(row: tuple) -> ImagingPageResult:
-    from app.adapters.postgres.repository import _blank_junk_ui, _fmt_date
+    from app.adapters.postgres.repository import DUPLICATE_CONTENT_MARK, _blank_junk_ui, _fmt_date
     from app.services.accuracy_cache import _CODEABLE, _text
     from app.services.imaging_overlays import compose_page_type, page_type_fields, signer_fields
 
@@ -66,7 +66,7 @@ def _page(row: tuple) -> ImagingPageResult:
         sequenced, current_seq, actual_seq,
         provider, signed, credentials, signers, version,
         document_type, printed_or_handwritten,
-        names_original,
+        names_original, bj_reason,
     ) = row
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
@@ -91,8 +91,12 @@ def _page(row: tuple) -> ImagingPageResult:
         dosTo=_fmt_date(dos_to),
         blankOrJunk=blank,
         isDuplicate=duplicate,
-        # A Main or junk page naming the page it nearly copies: a partial (95-98%) duplicate.
-        isPartialDuplicate=_text(flag) in ("not_blank_junk", "junk") and bool(names_original),
+        # A Main or junk page naming the page it nearly copies: a partial (95-98%) duplicate,
+        # unless it is a copied page whose encounter is not a copy (2026-10-29).
+        isPartialDuplicate=_text(flag) in ("not_blank_junk", "junk") and bool(names_original)
+        and DUPLICATE_CONTENT_MARK not in (_text(bj_reason) or ""),
+        isDuplicateContent=_text(flag) in ("not_blank_junk", "junk") and bool(names_original)
+        and DUPLICATE_CONTENT_MARK in (_text(bj_reason) or ""),
         pageType=shown_type,
         isCodeable=codeable,
         currentSequence=int(current_seq) if sequenced and current_seq is not None else None,

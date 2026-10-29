@@ -343,13 +343,16 @@ class ImagingPageResult(BaseModel):
     encounterConfidence: float | None = None
     sequenceConfidence: float | None = None
     # None = classification not run → UI shows NA
-    # Values: "Yes (Blank)" | "Yes (Junk)" | "No" (a duplicate reads "Yes (Junk)")
+    # Values: "Yes (Blank)" | "Yes (Junk)" | "No" (a duplicate reads "No", 2026-10-29)
     blankOrJunk: str | None = None
     # None = not run → NA; True/False when classified. True: ≥ 98% alike (or
-    # contained) -- the page is a duplicate (Blank / Junk "Yes (Junk)").
+    # contained) -- the page is a duplicate (not junk: Blank / Junk "No").
     isDuplicate: bool | None = None
     # True: 95-98% alike -- a partial duplicate; the page keeps its own verdict (Main or junk).
     isPartialDuplicate: bool | None = None
+    # True: a copy of another page whose encounter is not a copy of that page's (the
+    # continuity stage's check, 2026-10-29): a Main page, "No (Duplicate Content, Page N)".
+    isDuplicateContent: bool | None = None
     # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
     duplicateOf: str | None = None
     # The page's highest duplicate similarity against its neighbors (0-1), whatever its

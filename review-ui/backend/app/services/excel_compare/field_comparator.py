@@ -132,6 +132,7 @@ BLANK_OR_JUNK_FIELD = "Is Blank or Junk?"
 # The chart view's ground truth for a blank / junk page: every field Skipped
 # (2026-10-29, user). A Skipped field agrees with an algo that skipped the page too.
 SKIPPED = "skipped"
+SKIPPED_LABEL = "Skipped"
 
 # Labels that say "nothing to score" for a page type: not scored, as on the Accuracy tab.
 _UNSCORED_TYPE_LABELS = {"", "-", "--", "—", "na", "n/a", "not available", "none"}
@@ -401,8 +402,7 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         # an unlabelled field next to an algo value. A matching name is one
         # value: the ground truth's, normalized.
         differs = (
-            both_skipped
-            or field_name in CREDENTIAL_FIELDS
+            field_name in CREDENTIAL_FIELDS
             or field_name in NAME_FIELDS
             or field_name == "Member ID"
             or field_name in ALTERNATE_FIELDS
@@ -410,7 +410,10 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             or not gt_raw
         ) and normalize_field_value(field_name, gt_raw) != normalize_field_value(field_name, system_raw)
 
-        if is_match and not differs:
+        if both_skipped:
+            # One value, Skipped, as the chart view shows a blank / junk page (2026-10-29, user).
+            display_value = SKIPPED_LABEL
+        elif is_match and not differs:
             display_value = gt_raw
         else:
             display_value = f"GT: {gt_raw} | Algo: {system_raw}"

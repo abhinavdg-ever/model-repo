@@ -280,23 +280,14 @@ function ConfidenceCell({ text }: { text: string }) {
   );
 }
 
-/** ``duplicate`` (the page itself) shows a duplicate (≥ 98%) that is not already blank or
- * junk as ``Yes (Junk)`` -- for a run stored before the backend sent it itself.
- * Display only: scoring reads the stored verdict. */
+/** The stored Blank / Junk verdict. A duplicate is not junk (2026-10-29, user): it
+ * reads as sent, "No" unless its original is blank or junk. */
 function fmtBlankOrJunk(
   value: string | boolean | null | undefined,
   processed = true,
-  duplicate?: Pick<ImagingPageResult, "isDuplicate" | "pageTypeConfidence">,
+  _duplicate?: Pick<ImagingPageResult, "isDuplicate" | "pageTypeConfidence">,
 ): string {
   if (!processed) return YET_TO_PROCESS;
-  const blankOrJunk = typeof value === "boolean" ? value : String(value ?? "").trim().toLowerCase().startsWith("yes");
-  if (
-    duplicate &&
-    !blankOrJunk &&
-    isCompleteDuplicate(duplicate.isDuplicate, duplicate.pageTypeConfidence)
-  ) {
-    return "Yes (Junk)";
-  }
   if (value === null || value === undefined || value === "") return NOT_FOUND;
   if (typeof value === "boolean") return value ? "Yes (Junk)" : "No";
   return String(value);
@@ -308,12 +299,14 @@ function fmtDuplicate(
   processed = true,
   duplicateOf?: string | null,
   isPartial?: boolean | null,
+  isContent?: boolean | null,
 ): string {
   return formatDuplicateLabel(isDuplicate, confidence, processed, {
     yetToProcess: YET_TO_PROCESS,
     notFound: NOT_FOUND,
     duplicateOf,
     isPartial,
+    isContent,
   });
 }
 
@@ -1972,7 +1965,7 @@ function PageDetails({
             // Scored on the stored verdict, as the accuracy report does.
             return { ...row, compare: blankJunkCompare(stored, stored) };
           })(),
-          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence), sections.junk), {
+          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
@@ -2593,7 +2586,7 @@ function DocSummary({
               </td>
               <td>
                 <ValueWithNote
-                  value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate)}
+                  value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate, p.isDuplicateContent)}
                 />
               </td>
               <td>

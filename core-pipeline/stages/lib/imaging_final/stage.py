@@ -22,7 +22,8 @@ Blank and junk pages belong to no document and keep their own values. A
 duplicate page is skipped by every stage after blank/junk, so it takes the
 content values of the page it duplicates (``COPIED_FROM_REFERENCE``):
 ``page_type_source`` / ``dos_source`` = duplicate and ``duplicate_of_page_id``
-names that page.
+names that page. A copied page continuity's duplicate check made a Main page again
+("duplicate content") fills the values it has none of from that page.
 """
 from __future__ import annotations
 
@@ -58,6 +59,10 @@ logger = logging.getLogger(__name__)
 STAGE = "imaging_final"
 
 DEFAULT_SPECIALTY = "General"  # 2026-10-25 (user): never Unknown
+
+# The reason continuity's duplicate check gives a copied page that is a Main page again
+# (stages/lib/continuity/duplicates.py CONTENT_MARK).
+CONTENT_MARK = "duplicate_content_of_page_id:"
 
 FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
 
@@ -393,6 +398,22 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # image values stay its own.
             own_values = {k: v for k, v in (row.get("confidences") or {}).items() if k in ("blank_junk", "handwriting")}
             row["confidences"] = {**(reference.get("confidences") or {}), **own_values}
+
+        # A copied page whose encounter is not a copy (continuity's duplicate check,
+        # 2026-10-29): a Main page in its own document, skipped by the stages after blank /
+        # junk as a duplicate, so the values it has none of are its original's.
+        for page_id, row in rows.items():
+            final = blank_junk.get(page_id) or {}
+            original = final.get("duplicate_of_page_id")
+            if row["blank_junk_flag"] == "duplicate" or original not in rows:
+                continue
+            if CONTENT_MARK not in str(final.get("reason") or ""):
+                continue
+            reference = rows[original]
+            for key in COPIED_FROM_REFERENCE:
+                if row.get(key) in (None, "", []) and key != "document_seq":
+                    row[key] = reference[key]
+            row["duplicate_of_page_id"] = original
 
         # Below the review line anywhere: the page needs review (2026-10-25, user).
         for row in rows.values():

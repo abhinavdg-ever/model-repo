@@ -241,7 +241,7 @@ const RESULTS_COLUMNS: ResultsColumn[] = [
     value: (p) =>
       p.isDuplicate == null
         ? "NA"
-        : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf, p.isPartialDuplicate),
+        : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf, p.isPartialDuplicate, p.isDuplicateContent),
   },
   {
     header: "pageType",

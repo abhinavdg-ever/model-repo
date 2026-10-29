@@ -28,7 +28,7 @@ calls either; they remain for the standalone script below.
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | Yes (Junk) | the original's | Main pages only: distinct-word overlap ≥ 98% with a page within 25 pages or 10% of the chart (whichever is more), or its words all on it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
+| **Duplicate** | No (not junk, 2026-10-29) | the original's | Main pages only: distinct-word overlap ≥ 98% with a page within 25 pages or 10% of the chart (whichever is more), or its words all on it; pages under 300 chars never compared; the page with less on it is the duplicate (the later when level). 95–98% is Partial: the page stays Main. A Progress Note / Discharge Summary copy more than 3 pages from its original, with a different (or no) DOS, stays a duplicate only when its whole encounter averages above 98% against the original's (continuity); else "No (Duplicate Content)" |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order

@@ -110,7 +110,7 @@ def document_rows(chart_name: str, doc: ImagingDocumentResponse) -> list[list[st
                 _cell(page.pageQualityTag),
                 _cell(page.pageQualityConfidence),
                 "NA" if blank is None or blank == "" else _cell(blank),
-                format_duplicate_label(dup, page.pageTypeConfidence, page.isPartialDuplicate),
+                format_duplicate_label(dup, page.pageTypeConfidence, page.isPartialDuplicate, page.isDuplicateContent),
                 page.pageType or "Not Available",
                 _cell(page.pageTypeConfidence),
                 _cell(page.docDosFrom or page.dosFrom),

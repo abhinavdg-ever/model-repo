@@ -88,16 +88,19 @@ def _yes_no(value: bool | None) -> str:
 
 
 def _duplicate(page: ImagingPageResult) -> str:
-    """Yes (≥ 98%) / Partial (95-98%) / No; not run stays blank."""
+    """Yes (≥ 98%) / Partial (95-98%) / No; not run stays blank. A copied page whose
+    encounter is not a copy reads "No (Duplicate Content)", a No."""
     if page.isDuplicate:
         return "Yes"
     if page.isPartialDuplicate:
         return "Partial"
+    if page.isDuplicateContent:
+        return "No (Duplicate Content)"
     return _yes_no(page.isDuplicate)
 
 
 def _blank_or_junk(value: str | None) -> str:
-    """"Yes (Blank)" / "Yes (Junk)" (a duplicate too) / "No" -> Yes / No; not run stays blank."""
+    """"Yes (Blank)" / "Yes (Junk)" / "No" (a duplicate too, 2026-10-29) -> Yes / No; not run stays blank."""
     text = _text(value)
     if not text:
         return ""

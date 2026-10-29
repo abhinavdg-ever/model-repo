@@ -1140,7 +1140,7 @@ export default function FolderViewer({
         p.blankOrJunk ?? "NA",
         p.isDuplicate == null
           ? "NA"
-          : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf, p.isPartialDuplicate),
+          : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf, p.isPartialDuplicate, p.isDuplicateContent),
         p.pageType ?? "Not Available",
         p.pageTypeConfidence,
         p.isCodeable ?? "",

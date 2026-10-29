@@ -292,18 +292,23 @@ def test_database_algo_row_carries_document_type():
         columns += char == "," and depth == 0
     row = [None] * columns
     row[0], row[1], row[2] = "100", 4, "4.png"
-    row[-3], row[-2] = "visual", "printed"
+    row[-4], row[-3] = "visual", "printed"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == ("Visual", "Printed")
-    row[-3], row[-2] = None, "handwritten"
+    row[-4], row[-3] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
-    # The last column: this Main page names the page it nearly copies (Partial).
-    row[8], row[-1] = "not_blank_junk", True
+    # The second-last column: this Main page names the page it nearly copies (Partial);
+    # with the duplicate-content reason it is a copy whose encounter is not (2026-10-29).
+    row[8], row[-2] = "not_blank_junk", True
     assert database_algo._page(tuple(row)).isPartialDuplicate is True
-    row[8], row[-1] = "duplicate", True
+    row[-1] = "duplicate_content_of_page_id:3 (...)"
+    content = database_algo._page(tuple(row))
+    assert (content.isPartialDuplicate, content.isDuplicateContent) == (False, True)
+    row[-1] = None
+    row[8], row[-2] = "duplicate", True
     page = database_algo._page(tuple(row))
-    assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "Yes (Junk)")
+    assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "No")
 
 
 def test_names_match_in_any_order_and_punctuation():
@@ -492,7 +497,7 @@ def test_local_mode_reads_duplicates_and_partials_from_the_junk_csv():
     ]
     by = index_junk_rows(rows, "c")
     assert (by["#2"]["blankOrJunk"], by["#2"]["isDuplicate"], by["#2"]["isPartialDuplicate"]) == (
-        "Yes (Junk)", True, False,
+        "No", True, False,  # a duplicate is not junk (2026-10-29)
     )
     assert (by["#3"]["blankOrJunk"], by["#3"]["isDuplicate"], by["#3"]["isPartialDuplicate"]) == (
         "No", False, True,

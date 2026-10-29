@@ -86,7 +86,8 @@ _OVERLAY_SQL: dict[str, str] = {
                             SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
                                    b.confidence, orig.page_name,
                                    -- NULL until changes_2026-10-22.sql has replaced the view.
-                                   to_jsonb(b) ->> 'duplicate_confidence'
+                                   to_jsonb(b) ->> 'duplicate_confidence',
+                                   b.reason
                             FROM v_page_blank_junk_final b
                             JOIN page_list p ON p.id = b.page_id
                             JOIN chart_list c ON c.id = b.chart_id
@@ -283,6 +284,11 @@ def _fmt_date(value: Any) -> str | None:
     return _fmt_dos_display(value)
 
 
+# The reason a copied page carries when its encounter is not a copy (core-pipeline's
+# stages/lib/continuity/duplicates.py writes it).
+DUPLICATE_CONTENT_MARK = "duplicate_content_of_page_id:"
+
+
 def _blank_junk_ui(flag: str | None, subtype: str | None) -> tuple[str | None, bool | None, str | None]:
     """Map DB blank_junk_flag → UI blankOrJunk / isDuplicate / pageType."""
     if not flag:
@@ -291,7 +297,8 @@ def _blank_junk_ui(flag: str | None, subtype: str | None) -> tuple[str | None, b
     if f == "blank":
         return "Yes (Blank)", False, "Not Available"
     if f == "duplicate":
-        return "Yes (Junk)", True, "Not Available"
+        # A duplicate is not junk (2026-10-29, user): Blank / Junk No, Duplicate Yes.
+        return "No", True, "Not Available"
     if f == "junk":
         return "Yes (Junk)", False, subtype or "Junk"
     if f == "not_blank_junk":
@@ -1120,15 +1127,17 @@ class PostgresFolderRepository(FolderRepository):
             with _skip_on_error("blank_junk", folder_id):
                 # Blank/junk — v7 stamps exactly one final row per page,
                 # so precedence is not re-derived here any more.
-                for page_name, flag, subtype, conf, duplicate_of, best in rows["blank_junk"] or []:
+                for page_name, flag, subtype, conf, duplicate_of, best, reason in rows["blank_junk"] or []:
                     fields = _ensure(str(page_name))
                     blank, dup, page_type = _blank_junk_ui(flag, subtype)
                     fields["blankOrJunk"] = blank
                     fields["isDuplicate"] = dup
-                    # A Main or junk page pointing at another is a partial (95-98%) duplicate.
-                    fields["isPartialDuplicate"] = (
-                        (flag or "").strip().lower() in ("not_blank_junk", "junk") and bool(duplicate_of)
-                    )
+                    pointing = (flag or "").strip().lower() in ("not_blank_junk", "junk") and bool(duplicate_of)
+                    # A copied page whose encounter is not a copy (continuity, 2026-10-29).
+                    content = pointing and DUPLICATE_CONTENT_MARK in (reason or "")
+                    fields["isDuplicateContent"] = content
+                    # Any other Main or junk page pointing at another is a partial (95-98%) duplicate.
+                    fields["isPartialDuplicate"] = pointing and not content
                     fields["pageType"] = page_type
                     if duplicate_of:
                         fields["duplicateOf"] = str(duplicate_of)

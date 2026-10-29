@@ -31,7 +31,7 @@
     "length_note": "A duplicate's shorter page is at least duplicate_min_length_ratio of the longer one's length (whitespace-stripped characters); otherwise the pair is a partial at most (2026-10-22, user: duplicates are about the same length).",
     "bands_note": "Distinct words different = distinct words on only one of the two pages, both sides added. Duplicate: contained, or overlap >= 98%, or fewer than duplicate_below_words different. Partial: overlap 95-98%, or fewer than partial_below_words different. Else neither (2026-10-22, user). The word counts apply only at overlap >= count_rule_min_overlap: two short unrelated pages also differ in few words.",
     "larger_kept_above_words": 10,
-    "which_page_note": "Which page is the duplicate (2026-10-22, user): the later page (order of appearance) -- unless one page is contained in the other and the larger has more than larger_kept_above_words distinct words the smaller lacks: then the larger page stays and the smaller is the duplicate.",
+    "which_page_note": "Which page is the duplicate (2026-10-29, user): the page with less on it -- fewer distinct words, then less text; the later page when level. larger_kept_above_words is no longer read.",
     "signature_terms": [
       "signature page",
       "electronically signed",

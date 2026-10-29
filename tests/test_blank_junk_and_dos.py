@@ -899,19 +899,23 @@ class TestWordOverlap:
         assert round(words.overlap, 4) == 0.9771 and words.contained == 1.0
         assert words.different == 4  # page 34 adds 4 distinct words
         rows = {r["page_id"]: r for r in _classify([page(22, 22), page(34, 34)], {22: p22, 34: p34}, {22, 34})}
-        # Contained with fewer than 10 words different: the later page is the duplicate.
-        assert (rows[34]["flag"], rows[34]["duplicate_of"]) == ("duplicate", 22)
-        assert rows[22]["flag"] == "not_blank_junk"
+        # 2026-10-29 (user): the page with less on it is the duplicate -- page 22.
+        assert (rows[22]["flag"], rows[22]["duplicate_of"]) == ("duplicate", 34)
+        assert rows[34]["flag"] == "not_blank_junk"
 
     def test_which_page_of_a_contained_pair_is_the_duplicate(self):
         inner = " ".join(_prose(55))
         few_more = inner + " reviewed signed today"  # < 10 distinct words added
         many_more = inner + " " + " ".join(f"extra{i}" for i in range(12))
         pages = [page(1, 1), page(2, 2)]
-        # Fewer than 10 words different: the later page, even though it is larger.
+        # 2026-10-29 (user): the page with less on it is the duplicate, whichever comes first.
         rows = {r["page_id"]: r for r in _classify(pages, {1: inner, 2: few_more}, {1, 2})}
+        assert (rows[1]["flag"], rows[1]["duplicate_of"]) == ("duplicate", 2)
+        rows = {r["page_id"]: r for r in _classify(pages, {1: few_more, 2: inner}, {1, 2})}
         assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
-        # 10 or more: the larger page stays, whichever comes first.
+        # Level: the later page.
+        rows = {r["page_id"]: r for r in _classify(pages, {1: inner, 2: inner}, {1, 2})}
+        assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
         rows = {r["page_id"]: r for r in _classify(pages, {1: many_more, 2: inner}, {1, 2})}
         assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
         rows = {r["page_id"]: r for r in _classify(pages, {1: inner, 2: many_more}, {1, 2})}
@@ -954,8 +958,8 @@ class TestWordOverlap:
         rows = _classify([page(1, 1), page(2, 2)], {1: inner, 2: outer}, {1, 2})
         assert all(r["flag"] != "duplicate" for r in rows)
 
-    def test_the_later_page_is_flagged_even_when_it_is_longer(self):
-        # 2026-10-22 (user): not contained, 98%+ alike -> the later page, whatever its length.
+    def test_the_page_with_less_on_it_is_flagged_even_when_it_is_earlier(self):
+        # 2026-10-29 (user): not contained, 98%+ alike -> the page with less on it.
         words = _prose(58)
         earlier = " ".join(words)
         later = _edited(words, 1) + " signed"  # a word replaced, one added: longer, not contained
@@ -963,8 +967,8 @@ class TestWordOverlap:
         assert pair.contained < 1.0 and pair.overlap >= 0.98
         assert classify.duplicate_char_count(later) > classify.duplicate_char_count(earlier)
         rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2)], {1: earlier, 2: later}, {1, 2})}
-        assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
-        assert rows[1]["flag"] == "not_blank_junk"
+        assert (rows[1]["flag"], rows[1]["duplicate_of"]) == ("duplicate", 2)
+        assert rows[2]["flag"] == "not_blank_junk"
 
 
 
@@ -1018,7 +1022,7 @@ class TestExactCopiesOnlyInPassOne:
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, exact_only=True)
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
-        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+        assert "duplicate" in {r["flag"] for r in rows}
 
 
 class TestDifferentDosIsNotADuplicate:
@@ -1048,14 +1052,14 @@ class TestDifferentDosIsNotADuplicate:
     def test_the_same_date_written_two_ways_still_duplicates(self):
         texts = {1: _words() + " seen 3/5/2024", 2: _words(swap="changed") + " seen 03/05/2024"}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
-        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+        assert "duplicate" in {r["flag"] for r in rows}
 
     def test_same_date_or_one_undated_still_duplicates(self):
         texts = {1: _words(), 2: _words(swap="changed")}
         for dos in ({1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15"})},
                     {1: frozenset({"2024-03-15"})}):
             rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
-            assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+            assert "duplicate" in {r["flag"] for r in rows}
 
 
 class TestSignedExactCopy:

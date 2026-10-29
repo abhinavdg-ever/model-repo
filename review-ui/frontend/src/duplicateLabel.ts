@@ -1,8 +1,10 @@
 /** Duplicate UI label + display confidence from the pipeline's duplicate verdict.
  *
  * 2026-10-22 (user): a duplicate — ``isDuplicate`` — reads "Duplicate (To Page N)" here
- * and "Yes (Junk)" under Blank / Junk; a partial duplicate — ``isPartialDuplicate`` —
- * reads "Partial (To Page N)" and stays a Main page. */
+ * and, since 2026-10-29, "No" under Blank / Junk (not junk); a partial duplicate —
+ * ``isPartialDuplicate`` — reads "Partial (To Page N)" and stays a Main page. A copied page
+ * whose encounter is not a copy — ``isDuplicateContent`` — reads "No (Duplicate Content,
+ * Page N)". */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
@@ -61,6 +63,7 @@ export function formatDuplicateLabel(
     notFound?: string;
     duplicateOf?: string | null;
     isPartial?: boolean | null;
+    isContent?: boolean | null;
   } = {},
 ): string {
   void confidence; // the pipeline's verdict decides; kept for callers' signature
@@ -72,11 +75,11 @@ export function formatDuplicateLabel(
   const withTarget = (state: string) => (target ? `${state} (To ${target})` : state);
   if (isDuplicate) return withTarget("Duplicate");
   if (labels.isPartial) return withTarget("Partial");
+  if (labels.isContent) return target ? `No (Duplicate Content, ${target})` : "No (Duplicate Content)";
   return "No";
 }
 
-/** A duplicate: the Blank / Junk column shows it as ``Yes (Junk)``,
- * and it has no sequence. A partial duplicate keeps its own verdict. */
+/** A duplicate: it has no sequence. A partial duplicate keeps its own verdict. */
 export function isCompleteDuplicate(
   isDuplicate: boolean | null | undefined,
   confidence?: number | null,
@@ -97,8 +100,9 @@ export function formatDuplicateDownload(
   confidence: number | null | undefined,
   duplicateOf?: string | null,
   isPartial?: boolean | null,
+  isContent?: boolean | null,
 ): string {
-  return formatDuplicateLabel(isDuplicate, confidence, true, { duplicateOf, isPartial });
+  return formatDuplicateLabel(isDuplicate, confidence, true, { duplicateOf, isPartial, isContent });
 }
 
 /** "4.png" → "Page 4". Empty when the original page was not recorded. */

@@ -329,7 +329,7 @@ def overlay_fields(
 
 def inherit_duplicate_blank_junk(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
     """A duplicate page shows its original's Blank/Junk tag when the original is
-    blank (or junk); otherwise it keeps its own "Yes (Junk)".
+    blank (or junk); otherwise it keeps its own "No" (a duplicate is not junk).
 
     Duplicates are found among Main pages, but the original can be junked later
     (pass 2), so the duplicate then reads as the page it copies.
@@ -986,24 +986,29 @@ def index_junk_rows(
         if is_blank:
             blank_or_junk = "Yes (Blank)"
         elif is_duplicate:
-            blank_or_junk = "Yes (Junk)"
+            # A duplicate is not junk (2026-10-29, user).
+            blank_or_junk = "No"
         elif is_typed_junk:
             blank_or_junk = "Yes (Junk)"
         else:
             blank_or_junk = "No"
-        # A Main or junk page that names the page it nearly copies: a partial (95-98%) duplicate.
-        is_partial = not is_duplicate and group in ("main", "junk") and bool(_duplicate_of_name(row))
+        pointing = not is_duplicate and group in ("main", "junk") and bool(_duplicate_of_name(row))
+        # A copied page whose encounter is not a copy (continuity, 2026-10-29); any other
+        # Main or junk page that names the page it nearly copies: a partial (95-98%) duplicate.
+        is_content = pointing and "duplicate_content_of_page_id:" in (row.get("reason") or "")
+        is_partial = pointing and not is_content
 
         if is_blank or is_duplicate or label_l in {"main", "none", ""}:
             page_type = "Not Available"
         else:
             page_type = page_type_labels.get(label_l, label if is_typed_junk else "Not Available")
 
-        duplicate_of = _duplicate_of_name(row) if is_duplicate or is_partial else ""
+        duplicate_of = _duplicate_of_name(row) if is_duplicate or is_partial or is_content else ""
         fields: dict[str, Any] = {
             "blankOrJunk": blank_or_junk,
             "isDuplicate": bool(is_duplicate),
             "isPartialDuplicate": is_partial,
+            "isDuplicateContent": is_content,
             "pageType": page_type,
             # The blank/junk verdict's own confidence (the stage writes it to this column);
             # the page type's comes from the codeable CSV.
@@ -1014,7 +1019,7 @@ def index_junk_rows(
         fields = {
             k: v
             for k, v in fields.items()
-            if v is not None or k in {"blankOrJunk", "isDuplicate", "isPartialDuplicate"}
+            if v is not None or k in {"blankOrJunk", "isDuplicate", "isPartialDuplicate", "isDuplicateContent"}
         }
         fields["isDuplicate"] = bool(is_duplicate)
         if duplicate_of:

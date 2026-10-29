@@ -38,6 +38,7 @@ from db import (
     get_page_classification_map,
     get_quality_map,
     page_type,
+    revise_blank_junk_final,
     upsert_continuity,
 )
 from config import staging_dir
@@ -51,6 +52,7 @@ from stages.lib.continuity.engine import (
     text_lines,
     trust_points,
 )
+from stages.lib.continuity import duplicates
 from stages.lib.continuity.layout import load_pages, page_layout
 from stages.lib.continuity.signature import has_signature_section, signed_page_names
 from stages.lib.extraction.dos.extract import TIER_RANK
@@ -332,7 +334,93 @@ def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str,
 
 def _kind(final: Optional[dict[str, Any]]) -> str:
     flag = (final or {}).get("blank_junk_flag") or "not_blank_junk"
+    if _content_copy(final):
+        return "duplicate"  # an earlier run's duplicate content: checked again
     return {"blank": "blank", "junk": "junk", "duplicate": "duplicate"}.get(flag, "main")
+
+
+def _content_copy(final: Optional[dict[str, Any]]) -> bool:
+    """A page an earlier run's duplicate check made a Main page with duplicate content."""
+    return bool((final or {}).get("duplicate_of_page_id")) and duplicates.CONTENT_MARK in str(
+        (final or {}).get("reason") or ""
+    )
+
+
+def _review_duplicates(
+    chart_id: int,
+    chart_name: str,
+    inputs: list[PageInput],
+    rows: list[dict[str, Any]],
+    texts: dict[int, str],
+    bj: dict[int, dict[str, Any]],
+    rules: Any,
+) -> list[dict[str, Any]]:
+    """The encounter check on duplicates (duplicates.py): revise the blank / junk
+    verdicts it changes, and assign the documents again when any changed."""
+    from stages.lib.blank_junk.stage import extracted_dos
+
+    by_name = {item.page_name: item.page_id for item in inputs}
+    dos = {by_name[name]: dates for name, dates in extracted_dos(chart_name).items() if name in by_name}
+    partial_of = {
+        item.page_id: int(bj[item.page_id]["duplicate_of_page_id"])
+        for item in inputs
+        if item.kind == "main" and (bj.get(item.page_id) or {}).get("duplicate_of_page_id")
+    }
+    result = duplicates.review(inputs, rows, texts, partial_of, dos)
+    restored = [
+        item for item in inputs
+        if _content_copy(bj.get(item.page_id)) and item.page_id not in result.demote
+    ]
+    if not (result.promote or result.demote or restored):
+        return rows
+    by_id = {item.page_id: item for item in inputs}
+    with connect() as conn:
+        for page_id, (original, average) in result.promote.items():
+            revise_blank_junk_final(
+                conn, page_id, blank_junk_flag="duplicate", duplicate_of_page_id=original,
+                reason=f"duplicate_of_page_id:{original} (its encounter averages {average:.4f} "
+                       f"against the original's: a duplicate encounter; was a partial duplicate)",
+            )
+            item = by_id[page_id]
+            item.kind, item.duplicate_of, item.text, item.dos_from, item.dos_to = "duplicate", original, "", "", ""
+        for page_id, (original, average) in result.demote.items():
+            revise_blank_junk_final(
+                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=original,
+                reason=f"{duplicates.CONTENT_MARK}{original} (its encounter averages {average:.4f} "
+                       f"against the original's, not above 0.98: duplicate content, not a duplicate encounter)",
+            )
+            # A Main page with its original's content values: the stages after blank /
+            # junk skipped it as a duplicate.
+            item, source = by_id[page_id], by_id.get(original)
+            item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
+            item.lines = item.lines or text_lines(item.text)
+            if source is not None:
+                item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
+                item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
+                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
+        for item in restored:
+            original = bj[item.page_id]["duplicate_of_page_id"]
+            revise_blank_junk_final(
+                conn, item.page_id, blank_junk_flag="duplicate", duplicate_of_page_id=original,
+                reason=f"duplicate_of_page_id:{original} (re-checked: a duplicate)",
+            )
+        _rewrite_junk_csv(conn, chart_id, chart_name)
+    logger.info(
+        "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content",
+        chart_name, len(result.promote), len(result.demote),
+    )
+    return assign(inputs, rules)
+
+
+def _rewrite_junk_csv(conn: Any, chart_id: int, chart_name: str) -> None:
+    """The junk CSV after the duplicate check changed verdicts (as the blank / junk stage
+    writes it)."""
+    try:
+        from stages.lib.blank_junk.stage import _rewrite_csv
+    except Exception:  # noqa: BLE001 - the CSV is a convenience; the database is the record
+        logger.warning("continuity chart=%s: junk CSV not rewritten after the duplicate check", chart_name)
+        return
+    _rewrite_csv(conn, chart_id, chart_name)
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -361,6 +449,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # Continuity is chart-global: every page is an input even on a resume.
         inputs: list[PageInput] = []
         sources: dict[Any, str] = {}
+        # Every page's own text, duplicates included, for the duplicate check.
+        own_texts: dict[int, str] = {}
         for page in ctx.pages:
             page_id = page["id"]
             name = page["page_name"]
@@ -368,12 +458,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             kind = _kind(final)
             staged = staging.page(name) if staging else None
             pass1_only = page_id in settled
-            text = "" if kind in ("blank", "duplicate") else best_page_text(
+            own_texts[page_id] = "" if kind == "blank" else best_page_text(
                 final2=None if pass1_only else final2.get(page_id),
                 final1=None if pass1_only else final1.get(page_id),
                 prelim=prelim.get(page_id),
                 quality_row=quality.get(page_id),
             )
+            text = "" if kind in ("blank", "duplicate") else own_texts[page_id]
             lines, headers, source = (
                 ([], [], "") if pass1_only else page_layout(json2.get(name), json1.get(name))
             )
@@ -417,6 +508,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
 
         rows = assign(inputs, rules)
+        # 2026-10-29 (user): a far copy in a Progress Note / Discharge Summary is a
+        # duplicate only when its whole encounter is a copy.
+        rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
 
         csv_rows: list[dict[str, Any]] = []

@@ -930,6 +930,7 @@ class MemoryStore:
                         "junk_subtype": row.get("junk_subtype"),
                         "confidence": row.get("confidence"),
                         "duplicate_of_page_id": row.get("duplicate_of_page_id"),
+                        "reason": row.get("reason"),
                     }
             if out:
                 return out
@@ -949,9 +950,28 @@ class MemoryStore:
                     "junk_subtype": r.get("junk_subtype"),
                     "confidence": r.get("confidence"),
                     "duplicate_of_page_id": r.get("duplicate_of_page_id"),
+                    "reason": r.get("reason"),
                 }
                 for pid, r in best.items()
             }
+
+    def revise_blank_junk_final(
+        self,
+        page_id: int,
+        *,
+        blank_junk_flag: str,
+        duplicate_of_page_id: Optional[int],
+        reason: str,
+    ) -> None:
+        with self._lock:
+            for row in self.blank_junk.values():
+                if int(row["page_id"]) == int(page_id) and row.get("is_final"):
+                    row.update(
+                        blank_junk_flag=blank_junk_flag,
+                        duplicate_of_page_id=duplicate_of_page_id,
+                        reason=reason,
+                        updated_at=_now(),
+                    )
 
     def list_blank_junk_for_csv(self, chart_id: int) -> list[dict[str, Any]]:
         chart = self.get_chart(chart_id) or {}

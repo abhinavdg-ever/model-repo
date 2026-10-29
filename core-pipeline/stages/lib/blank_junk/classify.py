@@ -62,7 +62,7 @@ _MIN_FINGERPRINT_CHARS = 50
 # 2026-10-22 (user): pages are compared on their distinct words, as read (word_overlap).
 # Overlap at or above this, or the smaller page's words all on the other page (canon
 # ``duplicates.contained_at``), is a duplicate: flag ``duplicate``, UI Duplicate "Yes",
-# Blank / Junk "Yes (Junk)", UI Duplicate "Duplicate (To Page N)".
+# Blank / Junk "No" (not junk, 2026-10-29), UI Duplicate "Duplicate (To Page N)".
 DUPLICATE_SIMILARITY_THRESHOLD = 0.98
 # [PARTIAL, THRESHOLD) is a partial duplicate: the page stays Main (not Yes
 # (Duplicate)) and records the page it nearly copies; UI Duplicate "Partial".
