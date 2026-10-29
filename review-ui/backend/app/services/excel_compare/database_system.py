@@ -7,7 +7,8 @@ where the run has one, else the page's own extracted value -- for DOS,
 codability and page type. A page with no date is left blank, not given
 the 2222-02-02 default Download Results ships. Page Type and Page Subtype
 are the page classifier's, split back out of its ``Type (Sub-type)``
-display.
+display. The Extracted value rides beside the Final one (``Extracted Value: <field>``)
+and a ground truth matching either is a match, as on the Accuracy tab (2026-10-29).
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import io
 from collections.abc import Iterable
 
 from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
+
+from .field_comparator import ALTERNATE_FIELDS, ALTERNATE_PREFIX
 
 COLUMNS = [
     "PDF ID",
@@ -35,11 +38,20 @@ COLUMNS = [
     "Provider Credentials",
     "Current Sequence",
     "Actual Sequence",
+    *(ALTERNATE_PREFIX + field for field in sorted(ALTERNATE_FIELDS)),
 ]
+
+# The continuity stage's Final DOS for a page with no date: no date.
+NO_DATE = "2222-02-02"
 
 
 def _text(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _date(value: object) -> str:
+    text = _text(value)
+    return "" if text.startswith(NO_DATE) else text
 
 
 def _yes_no(value: bool | None) -> str:
@@ -80,9 +92,10 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
     for chart_name, doc in docs:
         for page in sorted(doc.pages, key=lambda p: p.pageNumber):
             # Final first, then extracted, as accuracy.ts reads them.
-            dos_from = _text(page.finalDosFrom) or _text(page.dosFrom)
-            dos_to = _text(page.finalDosTo) or _text(page.finalDosFrom) or _text(page.dosTo)
+            dos_from = _date(page.finalDosFrom) or _date(page.dosFrom)
+            dos_to = _date(page.finalDosTo) or _date(page.finalDosFrom) or _date(page.dosTo)
             page_type, page_subtype = _page_type(page.finalPageType or page.pageType)
+            own_type, own_subtype = _page_type(page.pageType)
             writer.writerow(
                 {
                     "PDF ID": chart_name,
@@ -102,6 +115,11 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "Provider Credentials": _text(page.providerCredentials),
                     "Current Sequence": _text(page.currentSequence),
                     "Actual Sequence": _text(page.actualSequence),
+                    ALTERNATE_PREFIX + "DOS From": _date(page.dosFrom),
+                    ALTERNATE_PREFIX + "DOS To": _date(page.dosTo) or _date(page.dosFrom),
+                    ALTERNATE_PREFIX + "Page Type": own_type,
+                    ALTERNATE_PREFIX + "Page Subtype": own_subtype,
+                    ALTERNATE_PREFIX + "Codable / Non-Codable": _text(page.isCodeable),
                 }
             )
     return buffer.getvalue().encode("utf-8")

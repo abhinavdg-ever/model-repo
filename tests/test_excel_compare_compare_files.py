@@ -396,14 +396,50 @@ def test_blank_blank_and_junk_junk_pages_are_excluded_not_evaluated():
     assert {"Excluded (Blank/Blank)", "Excluded (Junk/Junk)", "Evaluated Accuracy Rate"} <= metrics
 
 
-def test_blank_vs_junk_or_plain_yes_is_still_evaluated():
+def test_blank_vs_junk_plain_yes_or_skipped_is_excluded_as_on_the_accuracy_tab():
+    # 2026-10-29 (user): junk things are Skipped, as in the UI; blank vs junk does not count.
     ground = [build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)"}),
-              build_row("100", 2, **{"Is Blank or Junk?": "Yes"})]
+              build_row("100", 2, **{"Is Blank or Junk?": "Yes"}),
+              build_row("100", 3, **{"Is Blank or Junk?": "Skipped", "Page Type": "Junk",
+                                     "DOS From": "Skipped", "Extracted Name": "Thomas Jonathan"}),
+              build_row("100", 4, **{"Is Blank or Junk?": "No"})]
     system = [build_row("100", 1, **{"Is Blank or Junk?": "Yes (Junk)"}),
-              build_row("100", 2, **{"Is Blank or Junk?": "Yes (Junk)"})]
+              build_row("100", 2, **{"Is Blank or Junk?": "Yes (Junk)"}),
+              build_row("100", 3, **{"Is Blank or Junk?": "Yes", "Page Type": "Others", "Extracted Name": ""}),
+              build_row("100", 4, **{"Is Blank or Junk?": "Yes"})]
     result = _compare(ground, system)
-    assert {row["Status"] for row in result["result_rows"]} <= {"CORRECT", "ERROR"}
-    assert result["excluded_count"] == 0
+    statuses = {int(row["Page Number"]): row["Status"] for row in result["result_rows"]}
+    assert statuses == {1: "EXCLUDED", 2: "EXCLUDED", 3: "EXCLUDED", 4: "ERROR"}
+
+
+def test_a_skipped_label_matches_only_an_algo_that_skipped_the_page():
+    from app.services.excel_compare.field_comparator import compare_fields
+
+    gt = {"Is Blank or Junk?": "No", "DOS From": "Skipped"}
+    assert compare_fields(gt, {"Is Blank or Junk?": "Yes", "DOS From": ""}, ["DOS From"])["DOS From"]["match"]
+    assert not compare_fields(gt, {"Is Blank or Junk?": "No", "DOS From": "2024-01-01"}, ["DOS From"])["DOS From"]["match"]
+
+
+def test_near_misses_match_as_in_the_chart_view():
+    from app.services.excel_compare.field_comparator import compare_fields
+
+    def same(field, gt, algo, **extra):
+        return compare_fields({field: gt}, {field: algo, **extra}, [field])[field]["match"]
+
+    # Names: any order, one letter of OCR error, an initial, a nickname.
+    assert same("Extracted Name", "Thomas Jonathan", "Jonathon Thomas")
+    assert same("Extracted Name", "Thomas Jonathan", "T Jonathan")
+    assert not same("Extracted Name", "Thomas Jonathan", "Thomas Rogers")
+    # Member ID with or without its label.
+    assert same("Member ID", "Acct# 24144", "24144") and same("Member ID", "ID: 11381", "11381")
+    assert not same("Member ID", "ID# 11381", "A9000689900")
+    # Page type "-" / NA is not scored.
+    assert same("Page Subtype", "-", "Lab and Imaging Results")
+    # The Extracted value beside the Final one.
+    assert same("DOS From", "2024-10-15", "2222-02-22", **{"Extracted Value: DOS From": "10/15/2024"})
+    assert not same("DOS From", "2024-10-15", "2222-02-22")
+    # Not Found: none on the page.
+    assert same("Extracted DOB", "Not Found", "") and not same("Extracted DOB", "Not Found", "05/09/1955")
 
 
 def test_page_type_plural_and_typo_match_but_unrelated_labels_do_not():

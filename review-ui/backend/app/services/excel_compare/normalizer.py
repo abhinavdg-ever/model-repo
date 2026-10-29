@@ -299,3 +299,103 @@ def clean_identifier(value):
         return text.split(".", 1)[0]
 
     return text
+
+
+# =============================================================
+# NEAR-MISS NAME AND ID MATCH
+#
+# As the chart view and the Accuracy tab match a member name
+# (memberMatch.ts, 2026-10-29, user): any order, titles dropped,
+# one letter of OCR error in a word of five letters or more,
+# first-name variants (Bill = William), and with three names two
+# are enough, with two one may be an initial. A different full
+# name beside a partial match is someone else.
+# =============================================================
+
+_NAME_TITLES = {"mr", "mrs", "ms", "miss", "dr", "jr", "sr", "ii", "iii", "iv", "md", "do", "np", "pa"}
+
+
+def _load_name_variants():
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "data" / "name_variants.json"
+    out = {}
+    try:
+        groups = json.loads(path.read_text(encoding="utf-8"))["groups"]
+    except (OSError, ValueError, KeyError):
+        return out
+    for group in groups:
+        for name in group:
+            out.setdefault(name, set()).update(group)
+    return out
+
+
+_NAME_VARIANTS = _load_name_variants()
+
+
+def _name_words(value):
+    if pd.isna(value):
+        return []
+    return [word for word in re.split(r"[^a-z]+", str(value).lower()) if word and word not in _NAME_TITLES]
+
+
+def _one_edit(a, b):
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) <= 1
+    shorter, longer = (a, b) if len(a) < len(b) else (b, a)
+    return any(longer[:i] + longer[i + 1:] == shorter for i in range(len(longer)))
+
+
+def _same_name(a, b):
+    if a == b or b in _NAME_VARIANTS.get(a, ()):
+        return True
+    return len(a) >= 5 and len(b) >= 5 and _one_edit(a, b)
+
+
+def names_match(expected, found):
+    """``found`` is the person ``expected`` names, as the chart view matches the member."""
+
+    wanted = list(dict.fromkeys(_name_words(expected)))
+    seen = _name_words(found)
+    if not wanted or not seen:
+        return False
+    full = [name for name in wanted if any(len(word) > 1 and _same_name(word, name) for word in seen)]
+    initials = [
+        name for name in wanted
+        if name not in full and any(len(word) == 1 and word == name[0] for word in seen)
+    ]
+    extra = [word for word in seen if len(word) > 1 and not any(_same_name(word, name) for name in wanted)]
+    if len(full) == len(wanted):
+        return True
+    if extra:
+        return False
+    if len(wanted) >= 3:
+        return len(full) >= 2
+    if len(wanted) == 2:
+        return len(full) == 1 and len(initials) == 1
+    return False
+
+
+_ID_TOKEN = re.compile(r"[A-Za-z0-9]+")
+
+
+def _identifier_core(value):
+    """The ID without a leading label ("Acct#", "Member ID:"), letters and digits only."""
+
+    tokens = _ID_TOKEN.findall(clean_identifier(value))
+    while tokens and not any(c.isdigit() for c in tokens[0]):
+        tokens.pop(0)
+    return "".join(tokens).upper()
+
+
+def identifiers_match(gt_value, system_value):
+    """The same ID with or without a label: "Acct# 24144" = "24144" = "ID: 24144".
+    "500-50" is still not "500-51"; an ID with no digit compares as text."""
+
+    gt_id, system_id = _identifier_core(gt_value), _identifier_core(system_value)
+    if not gt_id or not system_id:
+        return clean_text(gt_value) == clean_text(system_value)
+    return gt_id == system_id

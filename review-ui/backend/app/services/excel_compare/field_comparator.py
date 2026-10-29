@@ -10,6 +10,8 @@ from .normalizer import (
     display_date,
     display_name,
     has_value,
+    identifiers_match,
+    names_match,
     normalize_yes_no,
     normalize_codable,
     normalize_labelled_yes_no,
@@ -126,6 +128,24 @@ TEXT_CLASSIFICATION_FIELDS = {
 }
 
 BLANK_OR_JUNK_FIELD = "Is Blank or Junk?"
+
+# The chart view's ground truth for a blank / junk page: every field Skipped
+# (2026-10-29, user). A Skipped field agrees with an algo that skipped the page too.
+SKIPPED = "skipped"
+
+# Labels that say "nothing to score" for a page type: not scored, as on the Accuracy tab.
+_UNSCORED_TYPE_LABELS = {"", "-", "--", "—", "na", "n/a", "not available", "none"}
+
+# A second algo value a field also matches (the pipeline's Extracted value beside its
+# Final one), as the Accuracy tab takes either. Only the database Algo side has them.
+ALTERNATE_PREFIX = "Extracted Value: "
+ALTERNATE_FIELDS = {
+    "DOS From",
+    "DOS To",
+    "Page Type",
+    "Page Subtype",
+    "Codable / Non-Codable",
+}
 
 UNVALIDATED_REASON = (
     "No comparison fields were available for this record. PDF ID + "
@@ -267,16 +287,49 @@ def classify_blank_or_junk(row):
     return match.group(1) if match else None
 
 
+def says_blank_or_junk(row):
+    """The row calls the page blank or junk: Is Blank or Junk? is Yes (any note), Blank,
+    Junk or Skipped, or the Page Type is Blank / Junk."""
+
+    if classify_blank_or_junk(row) is not None:
+        return True
+    text = clean_text(_raw_value(row, BLANK_OR_JUNK_FIELD))
+    if text == SKIPPED or normalize_labelled_yes_no(text) == "yes":
+        return True
+    return clean_text(_raw_value(row, "Page Type")) in ("blank", "junk")
+
+
 def mutual_blank_or_junk(gt_row, system_row):
     """
-    "blank" or "junk" when both sides call the page the same one of them (2026-10-26,
-    from the standalone ExcelCompare): such a page is excluded from field-level
-    evaluation. Blank vs Junk, or either side neither, is evaluated as usual.
+    "blank" or "junk" when both sides call the page blank or junk: such a page is
+    excluded from field-level evaluation (2026-10-26, from the standalone
+    ExcelCompare). Blank against Junk counts as both junk-like, as on the Accuracy tab
+    (2026-10-29, user: "junk things should be Skipped, same as the UI"). Either side
+    neither is evaluated as usual.
     """
 
-    gt_class = classify_blank_or_junk(gt_row)
+    if not (says_blank_or_junk(gt_row) and says_blank_or_junk(system_row)):
+        return None
 
-    return gt_class if gt_class is not None and gt_class == classify_blank_or_junk(system_row) else None
+    return classify_blank_or_junk(gt_row) or classify_blank_or_junk(system_row) or "junk"
+
+
+def _alternate(row, field_name):
+    """The algo row's second value for a field ("" when none)."""
+
+    return _raw_value(row, ALTERNATE_PREFIX + field_name) if field_name in ALTERNATE_FIELDS else ""
+
+
+def _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized):
+    if field_name in CREDENTIAL_FIELDS:
+        return credentials_match(gt_raw, system_raw)
+    if field_name in TEXT_CLASSIFICATION_FIELDS:
+        return compare_text_classification(gt_raw, system_raw)
+    if field_name in NAME_FIELDS:
+        return gt_normalized == system_normalized or names_match(gt_raw, system_raw)
+    if field_name == "Member ID":
+        return identifiers_match(gt_raw, system_raw)
+    return gt_normalized == system_normalized
 
 
 def compare_fields(gt_row, system_row, fields_to_compare=None):
@@ -299,6 +352,7 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         fields_to_compare = ACTIVE_COMPARISON_FIELDS
 
     field_results = {}
+    system_skipped = says_blank_or_junk(system_row)
 
     for field_name in fields_to_compare:
 
@@ -313,16 +367,27 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             # Not labelled: ground truth says nothing, so it is not an error.
             # ("-" or "N/A" is a label -- "none" -- and is compared.)
             is_match = True
+        elif clean_text(gt_raw) == SKIPPED:
+            # The reviewer skipped the page as blank / junk: right when the algo did too.
+            is_match = system_skipped
+        elif field_name in TEXT_CLASSIFICATION_FIELDS and clean_text(gt_raw) in _UNSCORED_TYPE_LABELS:
+            # "-" / NA / Not Available page type: not scored, as on the Accuracy tab.
+            is_match = True
         elif presence in ("yes", "no"):
             # "Is a member ID on the page?" -- found or not, not the value.
             # An algo "-" or "N/A" is "none found", as a blank is.
             is_match = (presence == "yes") == has_value(system_raw)
-        elif field_name in CREDENTIAL_FIELDS:
-            is_match = credentials_match(gt_raw, system_raw)
-        elif field_name in TEXT_CLASSIFICATION_FIELDS:
-            is_match = compare_text_classification(gt_raw, system_raw)
+        elif field_name in PRESENCE_FIELDS and clean_text(gt_raw) == "not found":
+            # Not Found: none on the page.
+            is_match = not has_value(system_raw)
         else:
-            is_match = gt_normalized == system_normalized
+            is_match = _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized)
+            alternate = _alternate(system_row, field_name)
+            if not is_match and alternate:
+                # The pipeline's Extracted value is right: a match, as on the Accuracy tab.
+                is_match = _values_match(
+                    field_name, gt_raw, alternate, gt_normalized, normalize_field_value(field_name, alternate)
+                )
 
         if field_name in DATE_FIELDS:
             gt_raw = display_date(gt_raw)
@@ -334,9 +399,12 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         # value: the ground truth's, normalized.
         differs = (
             field_name in CREDENTIAL_FIELDS
+            or field_name in NAME_FIELDS
+            or field_name == "Member ID"
+            or field_name in ALTERNATE_FIELDS
             or presence in ("yes", "no")
             or not gt_raw
-        ) and clean_text(gt_raw) != clean_text(system_raw)
+        ) and normalize_field_value(field_name, gt_raw) != normalize_field_value(field_name, system_raw)
 
         if is_match and not differs:
             display_value = gt_raw

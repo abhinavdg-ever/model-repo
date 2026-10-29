@@ -389,8 +389,8 @@ def test_a_page_ground_truth_export_uploads_as_ground_truth(client):
     body = res.json()
     assert "Page Type" in body["fields"] and "Is Blank or Junk?" in body["fields"]
     # Page 1: encounter_type is blank -> Page Type unlabelled (page_type is ignored).
-    # Page 2: encounter_type "Inpatient" is the Page Type ground truth.
-    assert (body["correctCount"], body["errorCount"]) == (2, 0)
+    # Page 2: junk on both sides -> excluded, as on the Accuracy tab.
+    assert (body["correctCount"], body["errorCount"], body["excludedCount"]) == (1, 0, 1)
 
 
 def test_offline_ground_truth_page_type_is_encounter_type_only():

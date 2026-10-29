@@ -319,7 +319,10 @@ def test_names_match_in_any_order_and_punctuation():
     assert compare("Anderson Lisa", "Anderson Lisa")["display"] == "Anderson Lisa"
     # A mismatch shows both sides, each normalized the same way.
     assert compare("ANDERSON, LISA", "Laura, Anderson")["display"] == "GT: Anderson Lisa | Algo: Laura Anderson"
-    assert compare("Anderson Lisa", "Lisa M Anderson")["match"] is False
+    # A middle initial and an OCR letter are the same person, as in the chart view.
+    assert compare("Anderson Lisa", "Lisa M Anderson")["match"] is True
+    assert compare("Anderson Lisa", "Lisa Andersen")["match"] is True
+    assert compare("Anderson Lisa", "Lisa Jones")["match"] is False
     assert compare("Anderson Lisa", "Laura Anderson")["match"] is False
 
 
