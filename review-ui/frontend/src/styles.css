@@ -6753,13 +6753,12 @@ input {
   font-weight: 600;
 }
 
-.gt-banner-sep {
-  color: var(--neutral-400);
+.gt-banner-enable {
+  margin-left: auto;
 }
 
-.gt-banner-review {
-  color: var(--brand-800);
-  font-weight: 600;
+.gt-banner-sep {
+  color: var(--neutral-400);
 }
 
 .gt-banner-actions {
@@ -6783,11 +6782,6 @@ input {
 .gt-banner button:disabled {
   opacity: 0.6;
   cursor: default;
-}
-
-.gt-banner-hint {
-  font-weight: 400;
-  color: var(--neutral-600);
 }
 
 .gt-banner-error {

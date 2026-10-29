@@ -37,8 +37,8 @@ export function pageUpdate(gt: PageGroundTruth | null | undefined): GroundTruthU
 
 /** The constant banner at the top of Page Details, Encounter, Sequencing and Rejection
  * Rules (2026-10-28, user): who last updated the tab's ground truth and when (Page Details:
- * the page shown, ``update``; the other tabs: the chart); for a chart
- * marked Reviewed, who completed the review. An admin, or whoever marked it, can enable
+ * the page shown, ``update``; the other tabs: the chart), after "Chart Review Completed on
+ * <date>" for a chart marked Reviewed (one line, 2026-10-29, user). An admin, or whoever marked it, can enable
  * review again from here. */
 export default function GroundTruthBanner({
   folderId,
@@ -104,40 +104,37 @@ export default function GroundTruthBanner({
     <div className={`gt-banner${reviewed ? " is-reviewed" : ""}${finalOnly ? " is-final-only" : ""}`} role="status">
       <div className="gt-banner-line">
         {reviewed ? (
-          <span className="gt-banner-locked" title="Marked Reviewed: the ground truth cannot be edited">
-            <Lock size={12} aria-hidden="true" /> Locked on {formatIst(reviewed.reviewedAt)}
-          </span>
+          <>
+            <span
+              className="gt-banner-locked"
+              title={`Marked Reviewed by ${reviewed.reviewedBy || "a reviewer"}: the ground truth cannot be edited.${
+                canEnable ? "" : " Reach out to an Admin to enable review."
+              }`}
+            >
+              <Lock size={12} aria-hidden="true" /> Chart Review Completed on {formatIst(reviewed.reviewedAt)}
+            </span>
+            <span className="gt-banner-sep" aria-hidden="true">|</span>
+          </>
         ) : null}
-        {reviewed ? <span className="gt-banner-sep" aria-hidden="true">|</span> : null}
         <span>{lastUpdatedText(update ?? updates?.[tab])}</span>
-      </div>
-      {reviewed ? (
-        <div className="gt-banner-line gt-banner-review">
-          <span>
-            Chart Review Completed by User: {reviewed.reviewedBy || "a reviewer"} on{" "}
-            {formatIst(reviewed.reviewedAt)}
-          </span>
-          {canEnable ? (
-            confirming ? (
-              <span className="gt-banner-actions">
-                Enable review? Its ground truth can be edited again.
-                <button type="button" disabled={busy} onClick={() => void enableReview()}>
-                  {busy ? "Saving…" : "Enable"}
-                </button>
-                <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button type="button" onClick={() => setConfirming(true)}>
-                Enable review
+        {canEnable ? (
+          confirming ? (
+            <span className="gt-banner-actions">
+              Enable review? Its ground truth can be edited again.
+              <button type="button" disabled={busy} onClick={() => void enableReview()}>
+                {busy ? "Saving…" : "Enable"}
               </button>
-            )
+              <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </span>
           ) : (
-            <span className="gt-banner-hint">Reach out to an Admin to enable review.</span>
-          )}
-        </div>
-      ) : null}
+            <button type="button" className="gt-banner-enable" onClick={() => setConfirming(true)}>
+              Enable review
+            </button>
+          )
+        ) : null}
+      </div>
       {error ? <div className="gt-banner-line gt-banner-error">{error}</div> : null}
     </div>
   );
