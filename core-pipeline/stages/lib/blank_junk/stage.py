@@ -43,9 +43,9 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   Main page between them -- other notes, other DOSs (2026-10-26, user).
 * Two pages whose kv_extract DOS differ in any date are not duplicates or partials,
   however alike their words (2026-10-26, user).
-* Pass 1 marks only exact copies: the same distinct words, lengths within 10%. Every
-  other rule above (98%, contained, word counts, partials, DOS, signature pages) runs in
-  pass 2 only (2026-10-26, user).
+* Duplicates are found in pass 2 only (2026-10-29, user), on Final OCR text with
+  kv_extract's DOS: pass 1 removes blank and junk pages, never a copy, so every
+  duplicate has full OCR and an extracted DOS for continuity's encounter check.
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
 
@@ -276,7 +276,7 @@ def _classify(
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
     signed_ids: Optional[set[int]] = None,
     dos_by_id: Optional[dict[int, frozenset[str]]] = None,
-    exact_only: bool = False,
+    find_duplicates: bool = True,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -303,8 +303,8 @@ def _classify(
     a DOS that differ in any date are never duplicates or partials (2026-10-26, user), nor
     are two pages whose own text differs in any date (2026-10-27, user).
 
-    ``exact_only`` (pass 1): only exact copies -- the same distinct words, lengths within
-    10% -- are duplicates; no partials. The rest waits for pass 2 (2026-10-26, user).
+    ``find_duplicates`` is false in pass 1: duplicates are found in pass 2 only
+    (2026-10-29, user).
     """
     prior = set(prior_main_ids or ())
     by_id: dict[int, dict[str, Any]] = {}
@@ -380,7 +380,7 @@ def _classify(
 
     n = len(pages)
     window = duplicate_window(n)
-    comparable = [_comparable(page["id"]) for page in pages]
+    comparable = [find_duplicates and _comparable(page["id"]) for page in pages]
     length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
               for page, ok in zip(pages, comparable) if ok}
     for i, page in enumerate(pages):
@@ -422,11 +422,7 @@ def _classify(
             # inside a much longer one is a partial at most.
             len_a, len_b = length[pid], length[nid]
             similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
-            if exact_only:
-                if not (similar_length and words.different == 0):
-                    continue
-                kind = "duplicate"
-            elif similar_length and (
+            if similar_length and (
                 is_contained
                 or sim >= DUPLICATE_SIMILARITY_THRESHOLD
                 or (counts and words.different < rules["duplicate_below_words"])
@@ -984,7 +980,7 @@ def _run_pass(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
             signed_ids=signed_ids, dos_by_id=dos_by_id,
-            exact_only=pass_no == 1,
+            find_duplicates=pass_no == 2,
         )
 
         with connect() as conn:

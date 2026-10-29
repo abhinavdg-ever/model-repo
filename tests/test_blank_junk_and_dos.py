@@ -1010,18 +1010,17 @@ def _words(n: int = 100, *, swap: str = "") -> str:
     return " ".join(words)
 
 
-class TestExactCopiesOnlyInPassOne:
-    """2026-10-26 (user): pass 1 removes only 100% copies; 98% and partials wait for pass 2."""
+class TestDuplicatesInPassTwoOnly:
+    """2026-10-29 (user): pass 1 marks no duplicates, not even exact copies; pass 2 finds them."""
 
-    def test_exact_copy_is_a_duplicate(self):
-        rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2}, exact_only=True)
-        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
-
-    def test_near_copy_waits_for_pass_two(self):
-        texts = {1: _words(), 2: _words(swap="changed")}
-        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, exact_only=True)
+    def test_pass_one_finds_no_duplicates(self):
+        rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2}, find_duplicates=False)
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
-        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+
+    def test_pass_two_finds_exact_and_near_copies(self):
+        rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2})
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+        rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words(swap="changed")}, {1, 2})
         assert "duplicate" in {r["flag"] for r in rows}
 
 
@@ -1045,9 +1044,6 @@ class TestDifferentDosIsNotADuplicate:
         texts = {1: _words() + " seen 03/15/2024", 2: _words() + " seen 04/02/2024"}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
-        # pass 1 too
-        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, exact_only=True)
-        assert all(r["duplicate_of"] is None for r in rows)
 
     def test_the_same_date_written_two_ways_still_duplicates(self):
         texts = {1: _words() + " seen 3/5/2024", 2: _words(swap="changed") + " seen 03/05/2024"}

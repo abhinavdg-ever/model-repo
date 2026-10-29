@@ -85,7 +85,7 @@ document (described, not changed: this document changes no code).
 | # | Change | Where |
 |---|---|---|
 | a | **Date of service** written up (3A): the Extracted DOS per page (admit / discharge, key/value tier order by the page's L1, edge keyword, dictated date), the Final DOS per continuity document, and the two placeholders: **2222-02-02** = a page with no date, **2222-02-22** = a non-visit document (Demographics, Problem List ...), shown "2222-02-22 (E: own date)" with either date matching the ground truth | `dos/dos_logic.py`, `continuity/engine.document_finals`, `imaging_final.run` |
-| b | **Duplicate pages** written up (4A): pass 1 exact copies only; pass 2 the 98% / contained / word-count rules and partials; never across different dates or a signature page apart | `blank_junk/stage._classify` |
+| b | **Duplicate pages** written up (4A): found in pass 2 only (pass 1 marks none, exact copies included); the 98% / contained / word-count rules and partials; never across different dates or a signature page apart | `blank_junk/stage._classify` |
 | c | The page with **less content** is the duplicate (fewer distinct words, then less text; the later page when level). Was: the later page, unless a contained pair's larger page added more than 10 words | `blank_junk/stage._classify` |
 | d | A duplicate is **not junk**: Blank / Junk "No", Duplicate "Duplicate (To Page N)"; it takes its original's values in `imaging_final` | `blank_junk/classify.py`, review-ui `duplicateLabel.ts` |
 | e | **Continuity checks a far copy encounter against encounter** (Progress Note / Discharge Summary originals only): above 98% the encounter is a duplicate and its partials become duplicates; 98% or below the copies are Main pages again, "No (Duplicate Content, Page N)", filling empty values from the original | `continuity/duplicates.review`, `continuity/stage._review_duplicates`, `imaging_final.run` |
@@ -141,7 +141,7 @@ document is about are in bold:
 |---|---|---|---|
 | 10 | `ocr_quality` | page image | rotation, handwriting (`printed_or_handwritten`, `hw_confidence`), page tag (`document_type`) |
 | 20 | `ocr_prelim` | page image | Tesseract text |
-| 30 | `blank_junk` pass 1 | Tesseract text | printed blank / junk; duplicates: exact copies only (4A) |
+| 30 | `blank_junk` pass 1 | Tesseract text | printed blank / junk; no duplicates (pass 2 finds them, 4A) |
 | 40 | `ocr_final1` | page image | Docling / RapidOCR text + word polygons (`ocr/<chart>_final1.json`) |
 | 50 | `ocr_final2` | page image | Azure Document Intelligence text + line polygons (`ocr/<chart>_final2.json`) |
 | 55 | `section_headers` | Final 1 / Final 2 JSON | `section_headers`, `section_header_candidates` in those JSONs |
@@ -1259,7 +1259,7 @@ The 2026-10-25 design, unchanged, still not in `engine.SIGNALS`:
 
 A duplicate is a page whose content is already in the chart (the same fax page sent
 twice, a note printed again). It is found in three places: the blank / junk stage marks
-it on its words (pass 1 exact copies, pass 2 the rest), continuity checks a far copy
+it on its words (pass 2 only), continuity checks a far copy
 encounter against encounter, and `imaging_final` gives it its original's values. Code:
 `core-pipeline/stages/lib/blank_junk/stage.py: _classify` (rules in its module
 docstring), `blank_junk/classify.py: word_overlap`, settings
@@ -1268,7 +1268,7 @@ docstring), `blank_junk/classify.py: word_overlap`, settings
 `continuity/stage.py: _review_duplicates`.
 
 ```
- blank_junk pass 1 (Tesseract text) ─▶ exact copies only
+ blank_junk pass 1 (Tesseract text) ─▶ no duplicates (blank and junk only)
  blank_junk pass 2 (best text)       ─▶ duplicate · partial · neither      (on distinct words)
         │   a duplicate is not junk: Blank / Junk "No", Duplicate "Duplicate (To Page N)"
         ▼
@@ -1325,13 +1325,11 @@ confidence is built from it (50% at 95% alike, rising to 100% at 100%).
   **Exception**: an exact signed copy (the same distinct words, lengths within 10%) of
   **more than 100 words** on each page is still a duplicate (`SIGNED_COPY_MIN_WORDS`).
 
-**Pass 1** (Tesseract text) marks **exact copies only**: the same distinct words,
-lengths within 10%. No partials. The 98% / contained / word-count rules, partials and
-the kv_extract DOS rule wait for pass 2. The written-date rule and the signature rule
-(by its phrases; kv_extract's signatures are pass 2 only) already apply in pass 1, so an
-exact signed copy of 100 words or fewer with a Main page between is left to pass 2. The
-canon's `pass_note` says the signature rule is pass 2 only; the code applies its phrases
-in both passes.
+**Pass 1 marks no duplicates** (2026-10-29, user), not even exact copies: every
+duplicate is found in pass 2, on Final OCR text with kv_extract's DOS and signatures.
+So a copy is never settled before Final OCR 2: it gets the full OCR (one Azure page per
+copy), section headers and kv_extract, and continuity's encounter check (4A.4) always has
+its extracted DOS and its own text. Pass 2 still compares against the pages pass 1 kept.
 
 ### 4A.3 Which page is the duplicate
 
