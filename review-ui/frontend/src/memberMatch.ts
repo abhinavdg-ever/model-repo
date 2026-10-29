@@ -49,12 +49,30 @@ function sameName(a: string, b: string): boolean {
   return a.length >= 5 && b.length >= 5 && distance(a, b) <= 1;
 }
 
+/** Words side by side that are one name of ``against`` written as one: "Miller-Cook"
+ * (miller, cook) beside a manifest "MillerCook", or "Le Blanc" beside "LeBlanc". */
+function mergeCompounds(tokens: string[], against: string[]): string[] {
+  const out = [...tokens];
+  for (let i = 0; i < out.length; i += 1) {
+    for (const span of [3, 2]) {
+      if (i + span > out.length) continue;
+      const joined = out.slice(i, i + span).join("");
+      if (!against.includes(out[i]) && against.some((name) => sameName(joined, name))) {
+        out.splice(i, span, joined);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /** The manifest member in any order, as the member rules read it: every name (two of three
  * when the manifest has three), one of two may be an initial; a different full name beside
  * a partial match is someone else. */
 export function nameMatchesManifest(found: string | null | undefined, manifest: string | null | undefined): boolean {
-  const expected = [...new Set(words(manifest))];
-  const seen = words(found);
+  // A hyphenated or spaced name part matches it written as one, either way round.
+  const seen = mergeCompounds(words(found), words(manifest));
+  const expected = [...new Set(mergeCompounds(words(manifest), seen))];
   if (expected.length === 0 || seen.length === 0) return false;
   const full = expected.filter((name) => seen.some((word) => word.length > 1 && sameName(word, name)));
   const initials = expected.filter(

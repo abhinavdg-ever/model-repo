@@ -117,7 +117,9 @@ def is_full(token: str, name: str) -> bool:
 
 def merge_compound(span: list[str], *names: str) -> list[str]:
     """The words of a multi-word name part, side by side in the span, as one token: "Le",
-    "Blanc" -> "Le Blanc", so the rules see the part whole."""
+    "Blanc" -> "Le Blanc", so the rules see the part whole. Also a one-word name part
+    written as two or three words (2026-10-29, user): "Miller-Cook" (Miller, Cook) beside a
+    manifest "MillerCook" is "MillerCook"."""
     out = list(span)
     for name in names:
         words = [word.casefold() for word in tokenize(name or "")]
@@ -127,6 +129,17 @@ def merge_compound(span: list[str], *names: str) -> list[str]:
         while i + len(words) <= len(out):
             if [token.casefold() for token in out[i : i + len(words)]] == words:
                 out[i : i + len(words)] = [name]
+            i += 1
+    for name in names:
+        if len(tokenize(name or "")) != 1 or len(_compact(name)) < 4:
+            continue
+        i = 0
+        while i < len(out):
+            for width in (3, 2):
+                parts = out[i : i + width]
+                if len(parts) == width and _compact("".join(parts)) == _compact(name):
+                    out[i : i + width] = [name]
+                    break
             i += 1
     return out
 

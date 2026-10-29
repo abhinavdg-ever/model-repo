@@ -478,3 +478,14 @@ class TestTrimExtractedName:
             == "Abhinav Kumar Dasgupta"
         )
         assert trim_extracted_name("Abhinav Dasgupta", expected) == "Abhinav Dasgupta"
+
+
+def test_a_one_word_surname_matches_it_hyphenated_or_spaced():
+    # 2026-10-29 (user): "Miller-Cook Michael" on the page, "Michael MillerCook" in the
+    # manifest, came back as someone else.
+    from stages.lib.member.extractors.rule_based.name_common import name_matches
+
+    for found in ("Miller-Cook Michael", "Michael Miller Cook", "MillerCook Michael"):
+        assert name_matches(found, "Michael", "MillerCook", "", "2"), found
+    for found in ("Miller Michael", "Cook Michael", "Miller-Cook Patricia"):
+        assert not name_matches(found, "Michael", "MillerCook", "", "2"), found
