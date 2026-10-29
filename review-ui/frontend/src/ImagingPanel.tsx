@@ -1873,8 +1873,9 @@ function PageDetails({
   return (
     <div className="imaging-page-details">
       {compact && frozen ? <p className="page-frozen-note">{frozenNote(frozen)}</p> : null}
-      {page.groundTruth?.reviewedBy || page.groundTruth?.reviewedAt ? (
-        // The page's last manual save; the server keeps GMT, shown in IST.
+      {compact && (page.groundTruth?.reviewedBy || page.groundTruth?.reviewedAt) ? (
+        // The page's last manual save, in fullscreen only: the side pane has the Last
+        // Updated banner. The server keeps GMT, shown in IST.
         <p className="page-last-review">
           Last Reviewed By: <strong>{page.groundTruth.reviewedBy || "Unknown"}</strong>
           {page.groundTruth.reviewedAt ? ` on ${formatIst(page.groundTruth.reviewedAt)}` : ""}
