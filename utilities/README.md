@@ -59,6 +59,22 @@ python ../utilities/load_page_sequence.py /path/to/ground_truth.csv --dry-run   
 python ../utilities/load_page_sequence.py /path/to/ground_truth.csv             # write
 ```
 
+## Restore the sheet's Page Type (Accept / Unaccept)
+
+The client sheet's Page Type column holds Accept / Unaccept (its page type is in Encounter
+Type). Before 2026-10-29 a review-ui Page Details save overwrote it with the page type.
+`restore_sheet_page_type.py` puts back each such page's value from its latest spreadsheet
+load (page_ground_truth_entry). Only `page_type` is written; encounter_type, the history and
+the Review Log are untouched. Preview by default; safe to run again.
+
+```bash
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/restore_sheet_page_type.py                                  # preview
+python ../utilities/restore_sheet_page_type.py --apply                          # write
+python ../utilities/restore_sheet_page_type.py --database-url "$OTHER_DB_URL"   # another database
+python ../utilities/restore_sheet_page_type.py --sql > restore.sql              # for psql
+```
+
 ## Find chart folders under a blob prefix
 
 Two inputs: the blob location (`container/prefix`) and a local Excel file of
