@@ -193,6 +193,17 @@ BLOCKERS: dict[str, list[re.Pattern]] = {
         r"\bmedication\s*list\b",
         r"\bplan\s*of\s*care\b",
         r"\bprogress\s*note\b",
+        # 2026-10-31: the headings a short visit, telephone or medication note carries.
+        r"\ballerg(?:y|ies)\b",
+        r"\bmedications?\s*:",
+        r"\bcurrent\s*medications\b",
+        r"\bvitals?\b|\bvital\s*signs\b",
+        r"\bimpression\b",
+        r"(?:^|\n)\s*plan\s*:",
+        r"\bsubjective\b",
+        r"\bobjective\b",
+        r"\b(?:physical\s*)?exam(?:ination)?\s*:",
+        r"\bchief\s*concern\b",
     ),
 }
 

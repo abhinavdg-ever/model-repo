@@ -1089,7 +1089,7 @@ class TestCardRule:
         "PCP: $25 Specialist: $50 For Members: call 1-800-000-0000 TTY 711"
     )
 
-    def _decide(self, text, document_type="printed", pass_no=1):
+    def _decide(self, text, document_type="printed", pass_no=2):
         return method.decide(method.PageInputs(text=text, pass_no=pass_no, document_type=document_type))
 
     def test_a_card_on_a_printed_or_visual_page_is_junk_cards(self):
@@ -1103,6 +1103,19 @@ class TestCardRule:
         form = self.CARD + " Relationship to patient ____ Employer ____ Patient signature"
         verdict = self._decide(form)
         assert verdict.rule != "R3C" and verdict.votes.get("card_near_miss")
+
+    def test_pass_one_never_settles_a_card(self):
+        verdict = self._decide(self.CARD, pass_no=1)
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "P1")
+
+    def test_a_medium_card_is_flagged_not_junked(self):
+        medium = "Member ID: 912345678 Group Number: 70123"  # two groups only
+        verdict = self._decide(medium)
+        assert verdict.code != classify.CODE_CARDS and verdict.votes["review_required"]
+
+    def test_clinical_headings_block_a_card(self):
+        note = self.CARD + " Allergies: none. Plan: follow up"
+        assert self._decide(note).code != classify.CODE_CARDS
 
     def test_a_provider_name_does_not_keep_a_card(self):
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", provider=True)
