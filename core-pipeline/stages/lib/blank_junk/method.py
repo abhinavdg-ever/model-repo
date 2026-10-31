@@ -12,6 +12,9 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Blank
+  R3C card          page-tag printed or visual: an ID or insurance card by card_rules.detect
+                    (words of two card groups, no form / letter / clinical words, <= 300
+                    words) -> Junk / Cards (2026-10-31, user). Not undone by post_process
   R3 Visual         document_type 'visual': card evidence (an id_card term or pattern;
                     vendor / insurer / retrieval / invoice wording adds weight, total >= 4)
                     -> Junk / Others; else < 20 words -> Main; else on
@@ -48,8 +51,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from card_rules import detect as detect_card
 from classify import (
     CODE_BLANK,
+    CODE_CARDS,
     CODE_COVER_PAGE,
     CODE_INSTRUCTIONS,
     CODE_INVOICE,
@@ -71,7 +76,13 @@ SUBTYPE_CODE = {
     "Instructions": CODE_INSTRUCTIONS,
     "Letter/Fax": CODE_LETTER_FAX,
     "Others": CODE_OTHERS,
+    "Cards": CODE_CARDS,
 }
+
+# Page-tag types the card rule R3C reads (2026-10-31, user).
+CARD_DOCUMENT_TYPES = frozenset({"printed", "visual"})
+# R3C's confidence by card_rules' own strength.
+CARD_CONFIDENCE = {"strong": 0.95, "medium": 0.85}
 # DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
     "JUNK_INVOICE": "Invoice",
@@ -593,6 +604,18 @@ def decide(inputs: PageInputs) -> Verdict:
     # R2 placeholder: a page left blank on purpose is Blank, not junk.
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank")
+    # R3C card (2026-10-31, user): an ID or insurance card on a printed or visual page.
+    if inputs.document_type in CARD_DOCUMENT_TYPES:
+        card = detect_card(text)
+        if card.is_card:
+            votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
+            return ruled(
+                CODE_CARDS, "R3C",
+                f"R3C card: {card.card_type} ({card.confidence}; {'; '.join(card.matched)}) -> Junk / Cards",
+                CARD_CONFIDENCE.get(card.confidence, 0.85),
+            )
+        if card.blocked_by:
+            votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
     # R3 Visual. A visual page with card evidence (an insurance card, a driver's licence) is
     # junk, whatever its length; without a card a Visual page (< 20 words) is kept; a visual
     # page with more text goes on like any other.
@@ -684,6 +707,8 @@ def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
                                      ("provider details", inputs.provider)) if hit]
     if inputs.pass_no != 2 or not found or verdict.code in (CODE_MAIN, CODE_BLANK):
         return verdict
+    if verdict.rule == "R3C":
+        return verdict  # a card prints a PCP / provider name: still a card
     verdict.votes["content_kept"] = verdict.reason
     verdict.votes["rule"] = "CONTENT"
     bert = inputs.bert or {}

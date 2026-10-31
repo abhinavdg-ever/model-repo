@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * blank_junk_classification.junk_subtype (v1.sql, 2026-10-31): 'Cards' added to the
+--    CHECK, for ID / insurance cards found by the blank / junk rule R3C
+--    (changes_2026-10-31.sql).
 --  * chart_review_entry (v1.sql, 2026-10-28): every chart-level review action, append-only
 --    -- Reviewed marked and cleared, member decision, encounters -- for the Review Log
 --    (changes_2026-10-28.sql).

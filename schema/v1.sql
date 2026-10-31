@@ -641,7 +641,7 @@ CREATE TABLE blank_junk_classification (
     -- Constrained to the label set review-ui renders (imaging_overlays.py).
     junk_subtype      VARCHAR(50) CHECK (junk_subtype IS NULL OR junk_subtype IN (
                           'Invoice','Cover Page','Record Request/Transmittal',
-                          'Instructions','Letter/Fax','Others'
+                          'Instructions','Letter/Fax','Others','Cards'
                       )),
     duplicate_of_page_id BIGINT REFERENCES page_list(id) ON DELETE SET NULL,
     ocr_source        VARCHAR(30) NOT NULL DEFAULT 'tesseract'

@@ -12,6 +12,7 @@ from __future__ import annotations
 from stages.lib.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
 
 import classify  # noqa: E402  — on sys.path once the blank_junk stage is imported
+import method  # noqa: E402
 from stages.lib.dos.stage import _date_rows, _split_dates
 
 
@@ -1078,3 +1079,32 @@ class TestSignedExactCopy:
         texts = {1: signed, 2: " ".join(f"other{i}" for i in range(120)), 3: signed.replace("term5 ", "changed ")}
         rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2), page(3, 3)], texts, {1, 2, 3}, signed_ids={1, 3})}
         assert rows[3]["duplicate_of"] is None
+
+
+class TestCardRule:
+    """2026-10-31 (user): an ID or insurance card on a printed or visual page is Junk / Cards."""
+
+    CARD = (
+        "UnitedHealthcare Member ID: 912345678 Group Number: 70123 Rx BIN 610279 "
+        "PCP: $25 Specialist: $50 For Members: call 1-800-000-0000 TTY 711"
+    )
+
+    def _decide(self, text, document_type="printed", pass_no=1):
+        return method.decide(method.PageInputs(text=text, pass_no=pass_no, document_type=document_type))
+
+    def test_a_card_on_a_printed_or_visual_page_is_junk_cards(self):
+        for kind in ("printed", "visual"):
+            verdict = self._decide(self.CARD, kind)
+            assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3C")
+            assert classify.CLASSIFICATION_LABELS[verdict.code] == "Cards"
+
+    def test_other_page_tags_and_forms_are_not_cards(self):
+        assert self._decide(self.CARD, "handwritten").rule != "R3C"
+        form = self.CARD + " Relationship to patient ____ Employer ____ Patient signature"
+        verdict = self._decide(form)
+        assert verdict.rule != "R3C" and verdict.votes.get("card_near_miss")
+
+    def test_a_provider_name_does_not_keep_a_card(self):
+        inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", provider=True)
+        verdict = method.post_process(method.decide(inputs), inputs)
+        assert verdict.code == classify.CODE_CARDS

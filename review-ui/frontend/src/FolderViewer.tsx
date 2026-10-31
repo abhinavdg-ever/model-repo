@@ -149,46 +149,6 @@ function isBlankOrJunkTruth(page: ImagingPageResult | null): boolean {
   return (blankJunkTruth(page.groundTruth) ?? "").toLowerCase().startsWith("yes");
 }
 
-function isBlankPage(page: ImagingPageResult): boolean {
-  return (page.blankOrJunk || "").trim().toLowerCase() === "yes (blank)";
-}
-
-/** File names that have at least one canon-matched section header. */
-function clinicalHeaderNames(
-  headersByKind: Partial<Record<string, Record<string, OcrSectionHeader[]>>>,
-): Set<string> {
-  const names = new Set<string>();
-  for (const byFile of Object.values(headersByKind)) {
-    if (!byFile) continue;
-    for (const [name, headers] of Object.entries(byFile)) {
-      if (!headers.some((header) => header.text.trim())) continue;
-      names.add(name);
-      names.add(name.toLowerCase());
-    }
-  }
-  return names;
-}
-
-/**
- * A page marked Blank that still carries a recognized clinical header is not
- * blank. Show it as Junk and force the page type to Others.
- */
-function forcefitBlankClinical(
-  doc: ImagingDocumentResponse,
-  headerNames: Set<string>,
-): ImagingDocumentResponse {
-  if (headerNames.size === 0) return doc;
-  let changed = false;
-  const pages = doc.pages.map((page) => {
-    if (!isBlankPage(page)) return page;
-    const name = page.fileName || "";
-    if (!headerNames.has(name) && !headerNames.has(name.toLowerCase())) return page;
-    changed = true;
-    return { ...page, blankOrJunk: "Yes (Junk)", pageType: "Others" };
-  });
-  return changed ? { ...doc, pages } : doc;
-}
-
 /** Infer Final2 quality-skip from imaging when JSON has no skippedReason yet. */
 /** One page's extraction review from the chart-wide response: by file name, then
  * case-insensitively, then by stem (1.jpg ↔ 1.png). */
@@ -509,13 +469,9 @@ export default function FolderViewer({
   }
 
   const page = folder?.pages[pageIndex] ?? null;
-  const displayImagingDoc = useMemo(
-    () =>
-      imagingDoc
-        ? forcefitBlankClinical(imagingDoc, clinicalHeaderNames(headersByKind))
-        : null,
-    [imagingDoc, headersByKind],
-  );
+  // The stored Blank / Junk verdict, as every other view shows it (2026-10-31, user: a blank
+  // page read "Yes (Blank)" here until the section headers loaded, then "Yes (Junk)").
+  const displayImagingDoc = imagingDoc;
   const imagingPage = useMemo(
     () => findImagingPage(displayImagingDoc, page),
     [displayImagingDoc, page],

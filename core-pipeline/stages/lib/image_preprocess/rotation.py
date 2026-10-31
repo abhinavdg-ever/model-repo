@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -1064,12 +1065,18 @@ def _clamp_near_horizontal(angle: float) -> float | None:
     return None
 
 
+# OpenCV's Canny + HoughLinesP crashed the process ("double free or corruption") with
+# several page threads of two charts in them at once (2026-10-31, VM). One at a time.
+_HOUGH_LOCK = threading.Lock()
+
+
 def hough_tilt(ink: np.ndarray, gray: np.ndarray) -> tuple[float | None, float]:
     """
     Weighted median of near-horizontal Hough segments.
     Returns (angle_clockwise_deg or None, confidence).
     """
-    edges = cv2.Canny(gray, 50, 150)
+    with _HOUGH_LOCK:
+        edges = cv2.Canny(gray, 50, 150)
     # Suppress outer border influence.
     h, w = edges.shape
     m = max(3, int(0.03 * min(h, w)))
@@ -1079,10 +1086,11 @@ def hough_tilt(ink: np.ndarray, gray: np.ndarray) -> tuple[float | None, float]:
     edges[:, -m:] = 0
 
     min_len = max(30, w // 6)
-    lines = cv2.HoughLinesP(
-        edges, 1, np.pi / 180, threshold=80,
-        minLineLength=min_len, maxLineGap=10,
-    )
+    with _HOUGH_LOCK:
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 180, threshold=80,
+            minLineLength=min_len, maxLineGap=10,
+        )
     if lines is None:
         return None, 0.0
 

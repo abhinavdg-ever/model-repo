@@ -169,6 +169,7 @@ SUBTYPE_DB = {
     "letter": "Letter/Fax",
     "fax": "Letter/Fax",
     "letter/fax": "Letter/Fax",
+    "cards": "Cards",
     "letter_fax": "Letter/Fax",
     "others": "Others",
 }

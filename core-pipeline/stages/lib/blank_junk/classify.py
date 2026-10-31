@@ -28,6 +28,8 @@ CODE_OTHERS = 7
 CODE_LETTER_FAX = 8
 # Junk with no sub-type: a page the model called Blank that still has text.
 CODE_JUNK = 9
+# An ID or insurance card (card_rules.detect, rule R3C, 2026-10-31, user).
+CODE_CARDS = 10
 
 # Back-compat alias
 CODE_COVER = CODE_COVER_PAGE
@@ -43,6 +45,7 @@ CLASSIFICATION_LABELS = {
     CODE_OTHERS: "Others",
     CODE_LETTER_FAX: "Letter/Fax",
     CODE_JUNK: "Junk",
+    CODE_CARDS: "Cards",
 }
 
 JUNK_CODES = frozenset(
@@ -55,6 +58,7 @@ JUNK_CODES = frozenset(
         CODE_OTHERS,
         CODE_LETTER_FAX,
         CODE_JUNK,
+        CODE_CARDS,
     }
 )
 

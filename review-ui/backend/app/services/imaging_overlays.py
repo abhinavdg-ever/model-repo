@@ -950,6 +950,7 @@ def index_junk_rows(
         "letter/fax": "Letter/Fax",
         "letter": "Letter/Fax",
         "fax": "Letter/Fax",
+        "cards": "Cards",
     }
     junk_label_keys = set(page_type_labels.keys()) | {
         "cover_page",

@@ -26,6 +26,7 @@ SCHEMA_SUBTYPES = {
     "Instructions",
     "Letter/Fax",
     "Others",
+    "Cards",
 }
 
 

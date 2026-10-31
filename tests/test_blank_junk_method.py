@@ -263,7 +263,9 @@ class TestDistilBertLadder:
     def test_pass_1_still_takes_r1_and_r3_junk(self):
         assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "R1"
         card = "Member ID card, Group number 0042, Datavant " + FILLER
-        assert run(card, pass_no=1, document_type="visual", bert=bert(0.0)).rule == "R3"
+        # 2026-10-31: the card rule R3C comes first and calls it Junk / Cards.
+        verdict = run(card, pass_no=1, document_type="visual", bert=bert(0.0))
+        assert (verdict.rule, verdict.code) == ("R3C", classify.CODE_CARDS)
 
     def test_pass_2_junk_cut_offs(self):
         sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
