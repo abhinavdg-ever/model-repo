@@ -79,6 +79,19 @@ def is_large_chart(pages: int) -> bool:
     return pages > LARGE_CHART_MIN_PAGES
 
 
+def lane_sizes(workers: int, large: int, small: int) -> tuple[int, int]:
+    """(large lane, small lane) worker counts. Large charts run one at a time on their own
+    lane; small charts get the other workers, or all of them when there is no large chart.
+    One worker is one lane for both (small lane 0): a chart at a time, as BATCH_WORKERS=1
+    asks."""
+    workers = max(1, workers)
+    if not large:
+        return 0, workers
+    if not small or workers == 1:
+        return 1, 0
+    return 1, workers - 1
+
+
 def submission_order(
     sources: list[tuple[str, str, str]],
     page_estimates: list[int],
@@ -884,12 +897,22 @@ def _run_batch_inner(
         summary["charts_skipped_completed"] = skipped_completed
         return summary
 
-    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="batch") as pool:
+    # Two lanes (2026-10-31, user: charts over the large limit were not getting through):
+    # large charts run one at a time on a lane of their own, small charts share the other
+    # workers. A large chart no longer holds a worker slot while it waits for another.
+    large_lane, small_lane = lane_sizes(worker_count, large_count, small_count)
+    pools: dict[bool, Optional[ThreadPoolExecutor]] = {
+        True: ThreadPoolExecutor(max_workers=large_lane, thread_name_prefix="batch-large") if large_lane else None,
+        False: ThreadPoolExecutor(max_workers=small_lane, thread_name_prefix="batch") if small_lane else None,
+    }
+    if pools[False] is None:
+        pools[False] = pools[True]  # one worker: small charts share the one lane
+    try:
         futures = []
         index_by_future: dict[Any, int] = {}
         for _orig_index, source, name, mode, is_large, _pages in ordered_jobs:
-            # Submitted (and started) in run order; N/X is that position.
-            fut = pool.submit(
+            # Submitted (and started) in run order within each lane; N/X is that position.
+            fut = pools[is_large].submit(
                 _run_one_chart,
                 _orig_index,
                 total,
@@ -924,6 +947,9 @@ def _run_batch_inner(
         for fut in as_completed(futures):
             ordered[index_by_future[fut]] = fut.result()
         results = [r for r in ordered if r is not None]
+    finally:
+        for pool in {id(p): p for p in pools.values() if p is not None}.values():
+            pool.shutdown(wait=True)
 
     summary = _summarise(results, started)
     summary["workers"] = worker_count

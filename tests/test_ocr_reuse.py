@@ -203,3 +203,15 @@ def test_skip_ocr_refreshes_only_old_final1_on_high_quality_pages():
     }
     assert final1_names_to_refresh(final2, new_final1) == []
 
+
+
+def test_large_charts_get_their_own_lane():
+    """2026-10-31 (user): large charts run one at a time on their own lane; small charts
+    keep the other workers; one worker stays one chart at a time."""
+    from jobs.batch_intake import lane_sizes
+
+    assert lane_sizes(4, 3, 5) == (1, 3)
+    assert lane_sizes(2, 3, 5) == (1, 1)
+    assert lane_sizes(4, 0, 5) == (0, 4)
+    assert lane_sizes(4, 3, 0) == (1, 0)
+    assert lane_sizes(1, 3, 5) == (1, 0)
