@@ -67,6 +67,17 @@ SPECIALTY_FAMILIES = frozenset({
 })
 
 
+def _document_signature(page_ids, signatures: dict[int, dict[str, Any]]) -> dict[str, Any]:
+    """Every credential of a document's pages as one signature row (for only_non_codable)."""
+    credentials, signers = [], []
+    for pid in page_ids:
+        row = signatures.get(pid) or {}
+        if row.get("provider_credentials"):
+            credentials.append(str(row["provider_credentials"]))
+        signers.extend(s for s in row.get("signers") or [] if isinstance(s, dict))
+    return {"provider_credentials": ", ".join(credentials), "signers": signers}
+
+
 def has_specialty(page_type: Optional[str], page_subtype: Optional[str] = None) -> bool:
     """True when the Final page type's L1 is one that carries a specialty."""
     return path_of(page_type, page_subtype)[0] in SPECIALTY_FAMILIES
@@ -325,10 +336,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             dates = document or own[page_id]
             dos_origin = "document" if document else "page"
             with_specialty = has_specialty(verdict.page_type, verdict.page_subtype)
-            # 2026-11-01 (user): a Codable page whose every provider credential is a
-            # non-codable one (RN, LPN, MA, PharmD ...) is Non-Codable.
+            # 2026-11-01 (user): a Codable page is Non-Codable when every provider credential
+            # in its *document* is a non-codable one (RN, LPN, MA, PharmD ...): one nurse's
+            # line on a page of a physician's note does not change that page.
             codability = verdict.codability
-            downgraded = codability == "Codable" and only_non_codable(signature) is not None
+            downgraded = codability == "Codable" and only_non_codable(
+                _document_signature(document_of.get(page_id) or [page_id], signatures)
+            ) is not None
             if downgraded:
                 codability = "Non-Codable"
                 non_codable_pages += 1

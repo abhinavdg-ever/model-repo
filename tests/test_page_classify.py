@@ -183,6 +183,14 @@ class TestAgreedPageType:
         final = decide_final(doc[1], doc)
         assert (final.page_type, final.page_subtype) == (PN, "Summary")
 
+    def test_a_signature_first_page_does_not_set_the_family(self):
+        doc = [fp(1, PN, "Signature", family=PN, l2="Signature", names=("Signature", PN), seq=1),
+               fp(2, "Operative Note", "Surgery Report", family="Operative Note", l2="Surgery Report",
+                  seq=2, link="strong")]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [f.page_type for f in finals] == ["Operative Note"] * 2
+        assert finals[1].page_subtype == "Surgery Report"
+
     def test_every_progress_note_path_is_codeable(self):
         """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""
         space = taxonomy.label_space()

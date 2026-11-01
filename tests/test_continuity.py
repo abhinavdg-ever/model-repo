@@ -685,6 +685,28 @@ class TestSignatureAndSummaryBreaks:
         assert [r["relation"] for r in rows[1:]] == ["continue", "continue", "new_document"]
         assert "signature_break" not in str(gap(rows[1]))
 
+    def test_a_lone_signature_page_joins_the_next_document_with_its_date(self):
+        """2026-11-01 (user): a signature-only page is never a document of its own."""
+        pages = [
+            page(1, dos_from="2025-07-09", dos_trust=5, page_type="Medication Record", signed=True),
+            page(2, dos_from="2025-07-29", dos_trust=3, page_type="Progress Note", page_subtype="Signature",
+                 signed=True),
+            page(3, "chief complaint: pain", dos_from="2025-07-29", dos_trust=3, page_type="Operative Note"),
+            page(4, dos_from="2025-07-29", dos_trust=3, page_type="Operative Note"),
+        ]
+        rows = assign(pages)
+        assert [r["relation"] for r in rows] == ["new_document", "new_document", "continue", "continue"]
+
+    def test_a_lone_signature_page_closes_the_document_before_it(self):
+        pages = [
+            page(1, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note"),
+            page(2, "chief complaint: pain", dos_from="2025-07-29", dos_trust=5, page_type="Progress Note",
+                 page_subtype="Signature"),
+            page(3, dos_from="2025-08-02", dos_trust=5, page_type="Lab Report"),
+        ]
+        rows = assign(pages)
+        assert [r["relation"] for r in rows] == ["new_document", "continue", "new_document"]
+
     def test_the_switch_turns_it_off(self):
         rules = dataclasses.replace(RULES, signature_breaks=False)
         pages = [page(1, dos_from="2025-07-29", dos_trust=5, signed=True, printed=(1, 2)),

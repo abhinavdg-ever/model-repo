@@ -117,6 +117,11 @@ def _family(page: FinalPage) -> Optional[str]:
     return page.family or page.page_type
 
 
+def _signature_only(page: FinalPage) -> bool:
+    """A page classified as only a signature (Progress Note / Signature)."""
+    return any((n or "").casefold() == "signature" for n in (page.l2, page.page_subtype, *(page.names or ())))
+
+
 def _known(name: Optional[str]) -> bool:
     return name not in (None, "", UNKNOWN)
 
@@ -256,7 +261,9 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
     rule = _last_page_rules().get(last or "")
     if rule and len(document) <= int(rule["max_pages"]):
         return last, "last_page"
-    first = _family(document[0])
+    # A signature-only first page (it joined the note after it) does not set the family.
+    opener = next((p for p in document if not _signature_only(p)), document[0])
+    first = _family(opener)
     if _agreeable(first):
         return first, "first_page"
     weights: dict[str, float] = {}

@@ -403,7 +403,7 @@
     "apply": false
   },
   "final_pass": {
-    "comment": "After every document exists. A merge undoes only a weak break (confidence low or score <= weak_score), never a decisive one; up to max_passes passes. One split rule: a document holding two or more different dates read from a label (trust 5) splits at each date change. Last, progress_note_runs_on: a document opening on a progress_note_families page (L1) absorbs the documents after it until a new date read from a label (trust 5), a signature on its last page, a decisive break or a junk group.",
+    "comment": "After every document exists. A merge undoes only a weak break (confidence low or score <= weak_score), never a decisive one; up to max_passes passes. One split rule: a document holding two or more different dates read from a label (trust 5) splits at each date change. Last, progress_note_runs_on: a document opening on a progress_note_families page (L1) absorbs the documents after it until a new date read from a label (trust 5), a signature on its last page, a decisive break or a junk group. signature_page_joins (2026-11-01, user): a one-page document that is only a signature (L2 Signature) joins the document before it when that shares its date (or it has none), else the one after it with the same date.",
     "weak_score": 2,
     "max_passes": 3,
     "rules": {
@@ -413,7 +413,8 @@
       "continued_across": true,
       "junk_rejoin": true,
       "split_two_dates": true,
-      "progress_note_runs_on": true
+      "progress_note_runs_on": true,
+      "signature_page_joins": true
     },
     "progress_note_families": [
       "Progress Note"

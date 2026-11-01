@@ -129,6 +129,17 @@ class TestProviderRoleWords:
 class TestNonCodableCredentials:
     """2026-11-01 (user): a Codable page whose every credential is non-codable is Non-Codable in Final."""
 
+    def test_credentials_are_judged_per_document(self):
+        """2026-11-01 (user): a nurse's line on one page of a physician's note does not make
+        that page Non-Codable."""
+        from stages.lib.imaging_final.stage import _document_signature
+        from stages.lib.non_codable_credentials import only_non_codable
+
+        signatures = {1: {"provider_credentials": "MD"}, 2: {"provider_credentials": "RN"},
+                      3: {"provider_credentials": "RN"}}
+        assert only_non_codable(_document_signature([1, 2], signatures)) is None
+        assert only_non_codable(_document_signature([3], signatures)) == ["RN"]
+
     def test_only_non_codable_credentials(self):
         from stages.lib.non_codable_credentials import only_non_codable
 

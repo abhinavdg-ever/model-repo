@@ -904,7 +904,34 @@ def _final_pass(pages: Sequence[PageInput], segments: list[_Segment], gaps: dict
                 i += 1
                 continue
             merge(i, "progress_note_runs_on")
+
+    # A page that is only a signature (its L2 is Signature) is never a document of its
+    # own (2026-11-01, user): it joins the document before it when that one shares its
+    # date (or it has none), else the one after it with its date -- over a visit heading
+    # on the next page, never across a junk group or a different date.
+    if on.get("signature_page_joins", True):
+        i = 0
+        while i < len(segments):
+            seg = segments[i]
+            page = pages[seg.pages[0]]
+            if not (seg.kind == "main" and len(seg.pages) == 1 and is_signature_page(page)):
+                i += 1
+                continue
+            before = segments[i - 1] if i > 0 and segments[i - 1].kind == "main" else None
+            after = segments[i + 1] if i + 1 < len(segments) and segments[i + 1].kind == "main" else None
+            own = page.dos
+            if before is not None and (not own[0] or _doc_dos(pages, before)[0] in (own, ("", ""))):
+                merge(i - 1, "signature_page_joins")
+                continue
+            if after is not None and own[0] and _doc_dos(pages, after)[0] == own:
+                merge(i, "signature_page_joins")
+            i += 1
     return segments
+
+
+def is_signature_page(page: "PageInput") -> bool:
+    """A page classified as only a signature (Progress Note / Signature ...)."""
+    return any((name or "").casefold() == "signature" for name in (page.page_subtype, *page.names))
 
 
 def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[dict[str, Any]]:
