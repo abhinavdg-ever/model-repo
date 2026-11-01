@@ -252,6 +252,8 @@ def _best_span(
                 span_left = max(span_left, lo)
                 span_right = min(span_right, hi - 1)
                 span = tokens[span_left : span_right + 1]
+                if _broken_name(span, names):
+                    continue  # a date, number or label between the names: not one name
                 kind = classify(span)
                 score = scores.get(kind, 0)
                 if score <= 0:
@@ -259,8 +261,36 @@ def _best_span(
                 key = (score, -(span_right - span_left), -span_left)
                 if best_key is None or key > best_key:
                     best_key = key
-                    best_text = " ".join(span)
+                    best_text = _name_only(span, names)
     return best_text
+
+
+def _broken_name(span: list[str], names: tuple[str, ...]) -> bool:
+    """A token with a digit between the span's first and last word of the name."""
+    hits = [i for i, token in enumerate(span) if _touches(token, *names)]
+    if not hits:
+        return False
+    inside = span[hits[0] : hits[-1] + 1]
+    # A date or number, or a field label ("Name", "Phone"), between the name's words:
+    # two fields of a form, not one name (2026-11-01).
+    return any(any(c.isdigit() for c in token) or (is_label(token) and not _touches(token, *names))
+               for token in inside)
+
+
+def _name_only(span: list[str], names: tuple[str, ...]) -> str:
+    """The span from its first to its last word of the member's name (2026-11-01): the
+    widening to name-like neighbours must not keep 'Female' or a heading word after the
+    name. A name part written with a hyphen ("Parker-Hill") is shown as written."""
+    hits = [i for i, token in enumerate(span) if _touches(token, *names)]
+    if hits:
+        span = span[hits[0] : hits[-1] + 1]
+    text = " ".join(span)
+    for name in names:
+        words = tokenize(name or "")
+        if len(words) > 1 and name.strip() != " ".join(words):
+            text = re.sub(r"\b" + r"\s+".join(re.escape(w) for w in words) + r"\b", name.strip(), text,
+                          flags=re.IGNORECASE)
+    return text
 
 
 def find_two_word_name(ocr_text: str, first: str, last: str) -> str:

@@ -423,7 +423,14 @@ def overlay_staged_fields(
         ),
         None,
     )
-    if in_sentence is not None:
+    # 2026-11-01 (user): an accepted extraction name that is the member comes first: it is
+    # read off one key, where the rules' search can run across neighbouring fields.
+    staged_member = next((row for row in names if ours(row["value"])), None)
+    if staged_member is not None:
+        fields["Detected_Full_Name"] = trim_extracted_name(staged_member["value"].strip(), expected).strip()
+        fields["Detection_Source_Name"] = source(staged_member)
+        fields["ner_key_source_Name"] = staged_member.get("key") or ""
+    elif in_sentence is not None:
         found, row = in_sentence
         fields["Detected_Full_Name"] = trim_extracted_name(found, expected).strip()
         fields["Detection_Source_Name"] = "rule based"
