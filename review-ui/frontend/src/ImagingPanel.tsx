@@ -1657,10 +1657,13 @@ function PageDetails({
   groundTruthLeave,
   compact = false,
   manifest,
+  extraction = null,
 }: {
   folderId: string;
   page: ImagingPageResult;
   manifest?: ImagingManifestDetails | null;
+  /** Staged key/value extraction: the Member ID list (2026-11-01, user). */
+  extraction?: ExtractionReviewResponse | null;
   sections: ImagingSectionsProcessed;
   onSaved: (groundTruth: PageGroundTruth) => void;
   compact?: boolean;
@@ -1899,7 +1902,9 @@ function PageDetails({
             key: true,
             compare: memberMark(scoredPage.memberDob, page.memberDob),
           }),
-          sameValue(fmt(page.memberId, sections.member, skip), memberConf, {
+          // 2026-11-01 (user): every accepted, selected Member ID scored above 0.9 in
+          // extraction.json, "Key: Value" one per line; else the member stage's own.
+          sameValue(fmt(stagedField(extraction, "member_id")?.value ?? page.memberId, sections.member, skip), memberConf, {
             id: "member_id",
             label: "Member ID",
             presence: true,
@@ -2818,6 +2823,7 @@ export default function ImagingPanel({
         folderId={document.folder_id}
         page={currentPage}
         manifest={manifest}
+        extraction={extraction}
         sections={sections}
         compact={compact}
         groundTruthLeave={groundTruthLeave}

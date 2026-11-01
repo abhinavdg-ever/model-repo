@@ -114,6 +114,41 @@ def _hit_text(field_id: str, hit: dict) -> str:
     return start or end
 
 
+# 2026-11-01 (user): Member ID lists every accepted, selected ID scored above this, one
+# "Key: Value" per line. The model's score when it has one, else the rules' score.
+MEMBER_ID_MIN_SCORE = 0.9
+
+
+def _row_score(hit: dict) -> float:
+    for key in ("model_score", "score"):
+        value = _number(hit.get(key))
+        if value is not None:
+            return value
+    return 0.0
+
+
+def member_id_rows(rows: object) -> list[dict]:
+    """The Member IDs shown: accepted and selected, scored above MEMBER_ID_MIN_SCORE; when
+    none is, the best-scored selected one."""
+    chosen = [hit for hit in _chosen(rows) if str(hit.get("value") or "").strip()]
+    sure = [hit for hit in chosen if _row_score(hit) > MEMBER_ID_MIN_SCORE]
+    if sure:
+        return sure
+    return [max(chosen, key=_row_score)] if chosen else []
+
+
+def member_id_text(rows: list[dict]) -> str:
+    """"Key: Value", one per line, each pair once."""
+    lines: list[str] = []
+    for hit in rows:
+        key = str(hit.get("key") or "").strip()
+        value = str(hit.get("value") or "").strip()
+        line = f"{key}: {value}" if key else value
+        if line and line not in lines:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def _join(parts: list[str]) -> str:
     seen: list[str] = []
     for part in parts:
@@ -177,6 +212,9 @@ def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
         if field_id == "heading_heron":
             chosen = _kept_headings(fields.get(field_id))
         extracted = _join(_hit_text(field_id, hit) for hit in chosen)
+        if field_id == "member_id":
+            chosen = member_id_rows(fields.get(field_id))
+            extracted = member_id_text(chosen)
         if field_id in ("provider_name", "provider_credentials") and providers:
             # Both from the credential rows, one entry per provider, in the same order. A
             # page with no credential keeps the key/value provider name.
