@@ -61,7 +61,9 @@ STAGE = "imaging_final"
 DEFAULT_SPECIALTY = "General"  # 2026-10-25 (user): never Unknown
 # 2026-11-01 (user): a specialty is given only to a page whose Final L1 is one of these;
 # every other page has none.
-SPECIALTY_FAMILIES = frozenset({"Progress Note", "Lab Report", "Discharge Summary", "Operative Note"})
+SPECIALTY_FAMILIES = frozenset({
+    "Progress Note", "Lab Report", "Discharge Summary", "Operative Note", "Procedure Note",
+})
 
 
 def has_specialty(page_type: Optional[str], page_subtype: Optional[str] = None) -> bool:

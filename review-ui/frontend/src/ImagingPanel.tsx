@@ -363,7 +363,9 @@ function fmtQualityTag(value: string | null | undefined, processed = true): stri
 
 /** The L1s that carry a specialty (2026-11-01, user); every other page shows Not
  * Applicable. Mirrors SPECIALTY_FAMILIES in core-pipeline imaging_final. */
-const SPECIALTY_FAMILIES = new Set(["progress note", "lab report", "discharge summary", "operative note"]);
+const SPECIALTY_FAMILIES = new Set([
+  "progress note", "lab report", "discharge summary", "operative note", "procedure note",
+]);
 const NOT_APPLICABLE = "Not Applicable";
 
 function fmtSpecialty(value: string | null | undefined, family: string | null, processed = true): string {
