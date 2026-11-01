@@ -446,6 +446,11 @@
     "enabled": true,
     "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it. A signature on a document's first page does not count (2026-11-01, user): the signer is often printed in page 1's header."
   },
+  "section_continued": {
+    "enabled": true,
+    "top": 0.25,
+    "note": "2026-11-01 (user): an EHR print repeats the running section at the top of each page ('Problem List (continued)', 'Medications (continued)', '07/29/2025 - Procedure visit ... (continued)'). When a page's top (above 'top' of the page height; the first 8 lines without positions) says '<name> (continued)' and the page before has a line starting with that name, the two are one document: over a visit heading, a date change, the Demographics and summary boundaries and the two-dates split -- never over a signed page."
+  },
   "standalone_families": {
     "families": [
       "Clinical Summary"

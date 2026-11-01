@@ -707,6 +707,29 @@ class TestSignatureAndSummaryBreaks:
         rows = assign(pages)
         assert [r["relation"] for r in rows] == ["new_document", "continue", "new_document"]
 
+    def test_a_section_continued_at_the_top_joins_over_a_date_and_a_visit_heading(self):
+        """2026-11-01 (user): 'Medication List (continued)' at the top of a page whose
+        section the page before has: one document, whatever the dates; a signed page
+        still ends it."""
+        pages = [
+            page(1, "medication list\naspirin", dos_from="2019-04-26", dos_trust=5, page_type="Medication Record"),
+            page(2, "chief complaint: pain", head="medication list (continued)", dos_from="2023-12-01",
+                 dos_trust=5, page_type="Progress Note"),
+            page(3, "notes", head="medication list (continued)", dos_from="2025-04-16", dos_trust=5,
+                 page_type="Medication Record", signed=True),
+            page(4, head="medication list (continued)", dos_from="2025-04-16", dos_trust=5,
+                 page_type="Medication Record"),
+        ]
+        rows = assign(pages)
+        assert [r["relation"] for r in rows] == ["new_document", "continue", "continue", "new_document"]
+        assert "section_continued" in str(gap(rows[1]))
+
+    def test_a_continued_name_the_page_before_lacks_does_not_join(self):
+        pages = [page(1, "allergies", dos_from="2019-04-26", dos_trust=5, page_type="Medication Record"),
+                 page(2, head="problem list (continued)", dos_from="2023-12-01", dos_trust=5,
+                      page_type="Problem List")]
+        assert assign(pages)[1]["relation"] == "new_document"
+
     def test_the_switch_turns_it_off(self):
         rules = dataclasses.replace(RULES, signature_breaks=False)
         pages = [page(1, dos_from="2025-07-29", dos_trust=5, signed=True, printed=(1, 2)),

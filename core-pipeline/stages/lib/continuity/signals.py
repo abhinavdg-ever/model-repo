@@ -227,3 +227,30 @@ def section_forward(prev: list[int], cur: list[int], steps: int) -> float:
 
 def clip(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+# "<Section> (continued)" / "(contd)" at the top of a page (2026-11-01, user): an EHR print
+# repeats the running section's name on each new page ("Problem List (continued)",
+# "Medications (continued)", "Labs (continued)").
+_SECTION_CONTINUED = re.compile(r"([a-z][a-z /&,'-]{1,60}?)\s*\(\s*(?:continued|cont'?d\.?|cont\.)\s*\)", re.I)
+_LEADING_DATE = re.compile(r"^[\d/.\-\s]*(?:-\s*)?")
+
+
+def continued_names(lines: Sequence[str]) -> list[str]:
+    """The names a page's top lines say carry on: 'problem list', 'patient',
+    'procedure visit in clinic' (lower-cased, digits and dates dropped)."""
+    out: list[str] = []
+    for line in lines:
+        for found in _SECTION_CONTINUED.finditer(line or ""):
+            name = _LEADING_DATE.sub("", found.group(1)).strip(" -,").lower()
+            name = re.sub(r"\s+", " ", name)
+            if len(re.sub(r"[^a-z]", "", name)) >= 3 and name not in out:
+                out.append(name)
+    return out
+
+
+def names_a_section(lines: Sequence[str], name: str) -> bool:
+    """A line of the page starts with ``name`` (the section's heading or its own
+    '(continued)' line)."""
+    key = (name or "").lower()
+    return bool(key) and any((line or "").strip().lower().lstrip("0123456789/.- ").startswith(key) for line in lines)

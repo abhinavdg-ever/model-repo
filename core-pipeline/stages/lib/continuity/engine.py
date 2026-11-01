@@ -48,6 +48,8 @@ from .signals import (
     normalized_line,
     repeated_line,
     says_continued,
+    continued_names,
+    names_a_section,
     section_forward,
     section_ranks,
     start_value,
@@ -176,6 +178,10 @@ class Rules:
     # date or the printed page numbers say); pages of these families stand apart from
     # pages of any other family (a summary pulls unrelated things together).
     signature_breaks: bool = True
+    # 2026-11-01 (user): "<Section> (continued)" at the top of a page whose section the
+    # page before names joins the two, over any break but a signed page.
+    section_continued: bool = True
+    section_continued_top: float = 0.25
     standalone_families: frozenset[str] = frozenset()
 
     def pts(self, name: str) -> float:
@@ -259,6 +265,8 @@ def _build(data: dict[str, Any]) -> Rules:
             t.casefold() for t in (data.get("demographics_break") or {}).get("page_types") or ()
         ),
         signature_breaks=bool((data.get("signature_break") or {}).get("enabled", True)),
+        section_continued=bool((data.get("section_continued") or {}).get("enabled", True)),
+        section_continued_top=float((data.get("section_continued") or {}).get("top", 0.25)),
         standalone_families=frozenset(
             t.casefold() for t in (data.get("standalone_families") or {}).get("families") or ()
         ),
@@ -609,7 +617,34 @@ def score_gap(
         gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["visual_join"] = "Visual page joins the page before it"
         gap.flags.append("Visual page: always joins the previous page")
+    # "<Section> (continued)" at the top of b, and a names that section (its heading, or
+    # its own "(continued)" line): the print runs on (2026-11-01, user). Over a visit
+    # heading, a date change, a Demographics or summary boundary -- never over a signed
+    # page, which ends its document.
+    carried = continued_section(a, b, rules) if a.kind == "main" and b.kind == "main" else None
+    if carried and "signature_break" not in gap.evidence:
+        gap.is_break, gap.decided_by, gap.level = False, "decisive", "high"
+        gap.confidence = _ruled_confidence(gap, rules)
+        gap.evidence["section_continued"] = f"'{carried} (continued)' at the top; the page before has it"
+        gap.flags.append("section continued: always joins the previous page")
     return gap
+
+
+def _top_lines(page: "PageInput", top: float) -> list[str]:
+    located = [line for line in page.lines if line.top is not None]
+    return [line.text for line in located if line.top < top] if located else [line.text for line in page.lines[:8]]
+
+
+def continued_section(a: "PageInput", b: "PageInput", rules: Rules) -> Optional[str]:
+    """The section b's top says carries on ("Problem List (continued)") when a names it."""
+    if not rules.section_continued:
+        return None
+    a_lines = [line.text for line in a.lines]
+    a_carried = set(continued_names(a_lines))
+    for name in continued_names(_top_lines(b, rules.section_continued_top)):
+        if name in a_carried or names_a_section(a_lines, name):
+            return name
+    return None
 
 
 def is_demographics(page: "PageInput", rules: Rules) -> bool:
@@ -810,7 +845,7 @@ def _final_pass(pages: Sequence[PageInput], segments: list[_Segment], gaps: dict
                     continue
                 if not current:
                     current = page.dos_from
-                elif page.dos_from != current and k > start:
+                elif page.dos_from != current and k > start and "section_continued" not in gaps[(seg.pages[k - 1], i)].evidence:
                     gap = gaps[(seg.pages[k - 1], i)]
                     if not gap.is_break:
                         gap.confidence = _overturned(gap)

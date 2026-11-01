@@ -264,6 +264,15 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
     # A signature-only first page (it joined the note after it) does not set the family.
     opener = next((p for p in document if not _signature_only(p)), document[0])
     first = _family(opener)
+    # A Demographics page that runs on over pages of other kinds (an EHR patient-summary
+    # print joined by "(continued)") makes the document a Clinical Summary (2026-11-01, user).
+    summary = _ARBITRATION.get().get("demographics_summary") or {}
+    if (
+        first in set(summary.get("opens") or ())
+        and any(_family(p) != first for p in document)
+        and summary.get("becomes")
+    ):
+        return str(summary["becomes"]), "demographics_summary"
     if _agreeable(first):
         return first, "first_page"
     weights: dict[str, float] = {}

@@ -191,6 +191,17 @@ class TestAgreedPageType:
         assert [f.page_type for f in finals] == ["Operative Note"] * 2
         assert finals[1].page_subtype == "Surgery Report"
 
+    def test_a_demographics_page_running_on_makes_a_clinical_summary(self):
+        doc = [fp(1, "Demographics", "Patient Information", family="Demographics", l2="Patient Information", seq=1),
+               fp(2, PN, "Assessment and Plan", family=PN, l2="Assessment and Plan", seq=2, link="strong"),
+               fp(3, "Medication Record", "Medication List", family="Medication Record", l2="Medication List",
+                  seq=3, link="strong")]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [(f.page_type, f.page_subtype) for f in finals] == [("Clinical Summary", "Summary")] * 3
+        alone = [fp(1, "Demographics", "Patient Information", family="Demographics", seq=1),
+                 fp(2, "Demographics", "Insurance", family="Demographics", seq=2, link="strong")]
+        assert decide_final(alone[1], alone).page_type == "Demographics"
+
     def test_every_progress_note_path_is_codeable(self):
         """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""
         space = taxonomy.label_space()
