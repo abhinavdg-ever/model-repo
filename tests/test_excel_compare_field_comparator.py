@@ -196,3 +196,15 @@ def test_always_exempt_fields_are_not_in_active_comparison_fields():
 
     for field_name in ALWAYS_EXEMPT_FIELDS:
         assert field_name not in ACTIVE_COMPARISON_FIELDS
+
+
+# 2026-11-01 (user): any one match is a match.
+def test_any_one_value_of_several_matches():
+    from app.services.excel_compare.field_comparator import _values_match, normalize_field_value
+
+    def match(field, gt, algo):
+        return _values_match(field, gt, algo, normalize_field_value(field, gt), normalize_field_value(field, algo))
+
+    assert match("Member ID", "A9000689900", "Policy/Group #: G06330 (No)\nInsurance #: A9000689900 (Yes)")
+    assert match("Member ID", "G06330 | A9000689900", "A9000689900")
+    assert not match("Member ID", "A9000689900", "Policy/Group #: G06330\nFIN #: 71")

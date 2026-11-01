@@ -319,7 +319,39 @@ def _alternate(row, field_name):
     return _raw_value(row, ALTERNATE_PREFIX + field_name) if field_name in ALTERNATE_FIELDS else ""
 
 
+# Several values in one cell: "a | b", one per line, or "a; b".
+_MANY = re.compile(r"\s*(?:\||\n|;)\s*")
+# A listed value's own marks: the Member ID list's "(Yes)" / "(No)".
+_LIST_MARK = re.compile(r"\s*\((?:yes|no)\)\s*$", re.IGNORECASE)
+
+
+def _parts(value):
+    """The values in one cell, marks dropped; the cell itself when it holds one."""
+    parts = [_LIST_MARK.sub("", part).strip() for part in _MANY.split(str(value or ""))]
+    parts = [part for part in parts if part]
+    return parts or [str(value or "")]
+
+
 def _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized):
+    """Any one match is a match (2026-11-01, user): a cell with several values (names,
+    IDs, dates ...) matches when one of its values matches one on the other side.
+    Credentials and page types keep their own rules."""
+    if field_name in CREDENTIAL_FIELDS or field_name in TEXT_CLASSIFICATION_FIELDS:
+        return _one_value_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized)
+    gt_parts, system_parts = _parts(gt_raw), _parts(system_raw)
+    if len(gt_parts) == 1 and len(system_parts) == 1:
+        return _one_value_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized)
+    return any(
+        _one_value_match(
+            field_name, gt, found,
+            normalize_field_value(field_name, gt), normalize_field_value(field_name, found),
+        )
+        for gt in gt_parts
+        for found in system_parts
+    )
+
+
+def _one_value_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized):
     if not has_value(gt_raw) and not has_value(system_raw):
         # "-" / N/A against the chart view's Not Found: none on both sides.
         return True
