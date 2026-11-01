@@ -443,7 +443,7 @@
   },
   "signature_break": {
     "enabled": true,
-    "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it."
+    "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it. A signature on a document's first page does not count (2026-11-01, user): the signer is often printed in page 1's header."
   },
   "standalone_families": {
     "families": [

@@ -672,6 +672,19 @@ class TestSignatureAndSummaryBreaks:
         assert rows[2]["relation"] == "new_document"
         assert "signature_break" in str(gap(rows[2]))
 
+    def test_a_signature_on_the_documents_first_page_does_not_count(self):
+        pages = [
+            page(1, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(1, 3),
+                 signed=True),
+            page(2, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(2, 3)),
+            page(3, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(3, 3),
+                 signed=True),
+            page(4, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Lab Report", printed=(1, 1)),
+        ]
+        rows = assign(pages)
+        assert [r["relation"] for r in rows[1:]] == ["continue", "continue", "new_document"]
+        assert "signature_break" not in str(gap(rows[1]))
+
     def test_the_switch_turns_it_off(self):
         rules = dataclasses.replace(RULES, signature_breaks=False)
         pages = [page(1, dos_from="2025-07-29", dos_trust=5, signed=True, printed=(1, 2)),

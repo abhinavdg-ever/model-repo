@@ -453,6 +453,7 @@ def score_gap(
     open_trust: Optional[int],
     blanks: int,
     ctx: _Context,
+    a_opens: bool = False,
 ) -> Gap:
     rules = ctx.rules
     a, b = pages[a_index], pages[b_index]
@@ -575,8 +576,10 @@ def score_gap(
         gap.flags.append("Demographics boundary: always a break")
     # A signed page ends its document (2026-11-01, user): the note is finished; what comes
     # after (lab results, orders, attachments printed with the visit) is its own, whatever
-    # the sticky visit header, the date or the printed page numbers say.
-    if rules.signature_breaks and a.kind == "main" and b.kind == "main" and a.signed:
+    # the sticky visit header, the date or the printed page numbers say. A signature on a
+    # document's first page does not count (2026-11-01, user): many notes print the signer
+    # in the header of page 1, and the note runs on.
+    if rules.signature_breaks and a.kind == "main" and b.kind == "main" and a.signed and not a_opens:
         gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
         gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["signature_break"] = "the earlier page is signed: its document ends there"
@@ -926,7 +929,10 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
         else:
             prev = scored[k - 1]
             blanks = sum(1 for j in range(prev + 1, i) if pages[j].kind == "blank")
-            gap = score_gap(pages, prev, i, open_dos=open_dos, open_trust=open_trust, blanks=blanks, ctx=ctx)
+            # prev is its document's first page (no main page before it in the open segment).
+            a_opens = not any(pages[j].kind == "main" for j in segments[-1].pages if j != prev)
+            gap = score_gap(pages, prev, i, open_dos=open_dos, open_trust=open_trust, blanks=blanks, ctx=ctx,
+                            a_opens=a_opens)
             gaps[(prev, i)] = gap
             if gap.is_break:
                 segments.append(_Segment(kind, [i]))
