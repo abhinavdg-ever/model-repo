@@ -2254,6 +2254,193 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
   );
 }
 
+type RejectionTab = "member" | "quality" | "service";
+
+/** Rejection Rules (2026-11-01, user): Member Verification, Image Quality, Service Date. */
+function RejectionRules({
+  member,
+  pages,
+  manifest,
+  sections,
+}: {
+  member: ReactNode;
+  pages: ImagingPageResult[];
+  manifest?: ImagingManifestDetails | null;
+  sections: ImagingSectionsProcessed;
+}) {
+  const [tab, setTab] = useState<RejectionTab>("member");
+  const quality = imageQualityRows(pages);
+  const service = serviceDateReview(pages, manifest);
+  const tabs: [RejectionTab, string][] = [
+    ["member", "Member Verification"],
+    ["quality", `Image Quality (${quality.length})`],
+    ["service", `Service Date${service.verdict === "in" ? "" : " ⚠"}`],
+  ];
+  return (
+    <div className="rejection-rules">
+      <div className="rejection-subtabs" role="tablist">
+        {tabs.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id}
+            className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "member" ? member : null}
+      {tab === "quality" ? <ImageQualityTable rows={quality} processed={Boolean(sections.quality ?? sections.hw)} /> : null}
+      {tab === "service" ? <ServiceDateTable review={service} processed={Boolean(sections.dos)} /> : null}
+    </div>
+  );
+}
+
+/** The quality grade the algorithm measured (score >= 0.70 High, >= 0.40 Medium, else
+ * Low), before any downgrade (handwritten High -> Medium, OCR overlap). */
+export function algorithmQuality(score: number | null | undefined): string | null {
+  if (score == null || Number.isNaN(score)) return null;
+  const s = score > 1 ? score / 100 : score;
+  return s >= 0.7 ? "High" : s >= 0.4 ? "Medium" : "Low";
+}
+
+type QualityRow = { page: ImagingPageResult; quality: string | null; reasons: string[] };
+
+/** Pages the page-tag model calls not visible, or the algorithm grades Low. */
+export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
+  const out: QualityRow[] = [];
+  for (const page of pages) {
+    const quality = algorithmQuality(page.pageQualityConfidence);
+    const reasons: string[] = [];
+    if (page.isVisible === false) reasons.push("Not visible");
+    if (quality === "Low") reasons.push("Low quality");
+    if (reasons.length) out.push({ page, quality, reasons });
+  }
+  return out;
+}
+
+function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed: boolean }) {
+  if (!processed) return <div className="ocr-empty">{YET_TO_PROCESS}</div>;
+  if (rows.length === 0) {
+    return <div className="ocr-empty">No page is not visible or low quality (the algorithm's own grade, before any downgrade).</div>;
+  }
+  return (
+    <div className="member-rejection">
+      <p className="rejection-note">
+        Pages the page-tag model calls not visible, or the algorithm grades Low (score under 40%, before the
+        handwritten / OCR downgrades): <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
+      </p>
+      <table className="imaging-summary-table imaging-rejection-table">
+        <thead>
+          <tr>
+            <th scope="col">Page</th>
+            <th scope="col">Printed / HW</th>
+            <th scope="col">Quality</th>
+            <th scope="col">Visible</th>
+            <th scope="col">Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ page, quality, reasons }) => (
+            <tr key={`${page.pageNumber}-${page.fileName}`}>
+              <td>{page.pageNumber}</td>
+              <td>{page.handwrittenOrPrinted || page.documentType || NOT_FOUND}</td>
+              <td>{quality ? `${quality} (${fmtConfidence(page.pageQualityConfidence)})` : NOT_FOUND}</td>
+              <td>{page.isVisible == null ? NOT_FOUND : page.isVisible ? "Yes" : "No"}</td>
+              <td>{reasons.join(", ")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** A pipeline date as YYYY-MM-DD ("" for none or a 2222 placeholder). */
+function isoOf(value: string | null | undefined): string {
+  const t = String(value ?? "").trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  const iso = m ? `${m[1]}-${m[2]}-${m[3]}` : (m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(t))
+    ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : "";
+  return iso.startsWith("2222") ? "" : iso;
+}
+
+type ServicePage = { page: ImagingPageResult; from: string; to: string; status: "in" | "out" | "none" };
+type ServiceReview = {
+  from: string | null;
+  to: string | null;
+  words: string | null;
+  measure: string | null;
+  rows: ServicePage[];
+  verdict: "in" | "out_of_time_frame" | "requested_dos_missing" | "no_window";
+};
+
+/** Service Date (2026-11-01, user): each Main page's Final DOS (else its Extracted DOS)
+ * against the requested window the service note gives. Out of Time Frame: pages are dated
+ * but none inside the window. Requested DOS Missing: no page has a date. */
+export function serviceDateReview(pages: ImagingPageResult[], manifest?: ImagingManifestDetails | null): ServiceReview {
+  const from = manifest?.serviceFrom ?? null;
+  const to = manifest?.serviceTo ?? null;
+  const rows: ServicePage[] = [];
+  for (const page of pages) {
+    if (isBlankJunkPage(page) || page.isDuplicate === true) continue;
+    const start = isoOf(page.finalDosFrom) || isoOf(page.dosFrom);
+    const end = isoOf(page.finalDosTo) || isoOf(page.dosTo) || start;
+    if (!start) {
+      rows.push({ page, from: "", to: "", status: "none" });
+      continue;
+    }
+    const inside = Boolean(from && to) && end >= (from as string) && start <= (to as string);
+    rows.push({ page, from: start, to: end, status: inside ? "in" : "out" });
+  }
+  const dated = rows.filter((r) => r.status !== "none");
+  const verdict: ServiceReview["verdict"] = !from || !to ? "no_window"
+    : dated.length === 0 ? "requested_dos_missing"
+    : dated.some((r) => r.status === "in") ? "in" : "out_of_time_frame";
+  return { from, to, words: manifest?.serviceWindowText ?? null, measure: manifest?.measure ?? null, rows, verdict };
+}
+
+const SERVICE_VERDICT: Record<ServiceReview["verdict"], string> = {
+  in: "In time frame",
+  out_of_time_frame: "Reject: Missing Service Note/DOS — Out of Time Frame",
+  requested_dos_missing: "Reject: Missing Service Note/DOS — Requested DOS Missing",
+  no_window: "The service note gives no requested DOS window",
+};
+
+function ServiceDateTable({ review, processed }: { review: ServiceReview; processed: boolean }) {
+  if (!processed) return <div className="ocr-empty">{YET_TO_PROCESS}</div>;
+  const outside = review.rows.filter((r) => r.status === "out");
+  const inside = review.rows.filter((r) => r.status === "in");
+  return (
+    <div className="member-rejection">
+      <p className="rejection-note">
+        Requested DOS{review.measure ? ` (${review.measure})` : ""}:{" "}
+        <strong>{review.from && review.to ? `${displayIsoDates(review.from)} – ${displayIsoDates(review.to)}` : "not given"}</strong>
+        {review.words ? <span className="member-rejection-role"> from “{review.words}”</span> : null}
+      </p>
+      <p className={`member-rejection-verdict${review.verdict === "in" || review.verdict === "no_window" ? "" : " reject"}`}>
+        <strong>{SERVICE_VERDICT[review.verdict]}</strong>
+        {review.verdict !== "no_window" ? ` — ${inside.length} page(s) inside, ${outside.length} outside, ${review.rows.length - inside.length - outside.length} without a date.` : ""}
+      </p>
+      <table className="imaging-summary-table imaging-rejection-table">
+        <thead>
+          <tr>
+            <th scope="col">Page</th>
+            <th scope="col">DOS</th>
+            <th scope="col">Service window</th>
+          </tr>
+        </thead>
+        <tbody>
+          {review.rows.map(({ page, from, to, status }) => (
+            <tr key={`${page.pageNumber}-${page.fileName}`} className={status === "out" ? "row-reject" : undefined}>
+              <td>{page.pageNumber}</td>
+              <td>{from ? (to && to !== from ? `${displayIsoDates(from)} – ${displayIsoDates(to)}` : displayIsoDates(from)) : NOT_FOUND}</td>
+              <td>{status === "in" ? "Inside" : status === "out" ? "Out of Time Frame" : "No DOS"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function MemberVerificationTable({
   rows,
   pages,
@@ -2811,13 +2998,22 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
-        <GroundTruthBanner folderId={document.folder_id} tab="member" />
-        <MemberVerificationTable
-          rows={verifications}
+        <RejectionRules
+          member={
+            <>
+              <GroundTruthBanner folderId={document.folder_id} tab="member" />
+              <MemberVerificationTable
+                rows={verifications}
+                pages={document.pages}
+                manifest={manifest}
+                verificationProcessed={sections.verification}
+                folderId={document.folder_id}
+              />
+            </>
+          }
           pages={document.pages}
           manifest={manifest}
-          verificationProcessed={sections.verification}
-          folderId={document.folder_id}
+          sections={sections}
         />
       </div>
     );

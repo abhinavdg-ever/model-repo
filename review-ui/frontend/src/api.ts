@@ -305,6 +305,12 @@ export type ImagingManifestDetails = {
   member: string | null;
   dob: string | null;
   memberId: string | null;
+  /** The chart's measure and service note; the requested DOS window read from the note. */
+  measure?: string | null;
+  serviceNote?: string | null;
+  serviceFrom?: string | null;
+  serviceTo?: string | null;
+  serviceWindowText?: string | null;
 };
 
 export type ImagingVerificationDetails = {

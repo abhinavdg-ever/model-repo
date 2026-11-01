@@ -6802,3 +6802,33 @@ input {
   margin: 0.35rem 0;
   padding-left: 1.1rem;
 }
+
+/* Rejection Rules sub-tabs (2026-11-01): Member Verification, Image Quality, Service Date. */
+.rejection-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+.rejection-subtabs button {
+  border: 1px solid var(--border, #cfd6e0);
+  background: var(--surface, transparent);
+  color: inherit;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.rejection-subtabs button.active {
+  background: var(--accent-bg, #e9eef5);
+  font-weight: 600;
+}
+.rejection-note {
+  margin: 4px 0 8px;
+}
+.member-rejection-verdict.reject {
+  color: var(--status-error-fg, #b42318);
+}
+.imaging-rejection-table tr.row-reject td {
+  color: var(--status-error-fg, #b42318);
+}

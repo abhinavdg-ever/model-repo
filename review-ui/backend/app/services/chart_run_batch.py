@@ -129,8 +129,9 @@ def fetch_manifest_for_record(
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT member_name, member_dob, external_member_id
-                      FROM manifest_member_list
+                    SELECT member_name, member_dob, external_member_id,
+                           to_jsonb(m) ->> 'measure', to_jsonb(m) ->> 'service_note'
+                      FROM manifest_member_list m
                      WHERE record_id = %s
                      ORDER BY id
                      LIMIT 1
@@ -143,13 +144,13 @@ def fetch_manifest_for_record(
         return None
     if not row:
         return None
-    name, dob, member_id = row
+    name, dob, member_id, measure, service_note = row
     member = str(name).strip() if name else None
     mid = str(member_id).strip() if member_id else None
     dob_s = _fmt_manifest_dob(dob)
     if not member and not dob_s and not mid:
         return None
-    return {"member": member, "dob": dob_s, "memberId": mid}
+    return {"member": member, "dob": dob_s, "memberId": mid, "measure": measure, "serviceNote": service_note}
 
 
 def prefer_db_manifest(
@@ -163,4 +164,6 @@ def prefer_db_manifest(
         "member": db.get("member") or csv.get("member"),
         "dob": db.get("dob") or csv.get("dob"),
         "memberId": db.get("memberId") or csv.get("memberId"),
+        "measure": db.get("measure") or csv.get("measure"),
+        "serviceNote": db.get("serviceNote") or csv.get("serviceNote"),
     }

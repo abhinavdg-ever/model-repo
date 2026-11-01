@@ -21,6 +21,7 @@ from app.core.schemas import (
     FolderSummary,
     ImagingDocumentResponse,
     ImagingManifestDetails,
+    with_service_window,
     ImagingPageResult,
     ImagingSectionsProcessed,
     OcrKind,
@@ -1209,11 +1210,13 @@ class LocalFolderRepository(FolderRepository):
         merged = prefer_db_manifest(db, csv_fields)
         if not (merged.get("member") or merged.get("dob") or merged.get("memberId")):
             return self._dummy_manifest()
-        return ImagingManifestDetails(
+        return with_service_window(ImagingManifestDetails(
             member=merged.get("member"),
             dob=merged.get("dob"),
             memberId=merged.get("memberId"),
-        )
+            measure=merged.get("measure"),
+            serviceNote=merged.get("serviceNote"),
+        ))
 
     def _empty_imaging_pages(
         self, folder_dir: Path, pages: list[tuple[int, Path]]

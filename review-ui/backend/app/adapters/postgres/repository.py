@@ -27,6 +27,7 @@ from app.core.schemas import (
     FolderSummary,
     ImagingDocumentResponse,
     ImagingManifestDetails,
+    with_service_window,
     ImagingPageResult,
     ImagingSectionsProcessed,
     ImagingVerificationDetails,
@@ -991,7 +992,8 @@ class PostgresFolderRepository(FolderRepository):
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT m.member_name, m.member_dob, m.external_member_id
+                        SELECT m.member_name, m.member_dob, m.external_member_id,
+                               to_jsonb(m) ->> 'measure', to_jsonb(m) ->> 'service_note'
                         FROM manifest_member_list m
                         WHERE m.record_id = %s
                         ORDER BY m.id
@@ -1008,12 +1010,14 @@ class PostgresFolderRepository(FolderRepository):
 
         if not row:
             return None
-        name, dob, member_id = row
-        return ImagingManifestDetails(
+        name, dob, member_id, measure, service_note = row
+        return with_service_window(ImagingManifestDetails(
             member=name,
             dob=_fmt_date(dob),
             memberId=member_id,
-        )
+            measure=measure,
+            serviceNote=service_note,
+        ))
 
     def _verification_from_db(self, folder_id: str) -> ImagingVerificationDetails | None:
         try:

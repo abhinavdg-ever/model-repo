@@ -1328,7 +1328,7 @@ class TestManifestLookup:
         assert prefer_db_manifest(
             {"member": "From DB", "dob": None, "memberId": "M9"},
             {"member": "From CSV", "dob": "01/01/1950", "memberId": "M1"},
-        ) == {"member": "From DB", "dob": "01/01/1950", "memberId": "M9"}
+        ) == {"member": "From DB", "dob": "01/01/1950", "memberId": "M9", "measure": None, "serviceNote": None}
 
     def test_local_mode_prefers_db_manifest_over_metadata(self, tmp_path, monkeypatch):
         from app.adapters.local import repository as local_repo

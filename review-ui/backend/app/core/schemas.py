@@ -99,6 +99,20 @@ class ImagingManifestDetails(BaseModel):
     member: str | None = None
     dob: str | None = None
     memberId: str | None = None
+    # 2026-11-01 (user): the chart's measure and service note, and the requested DOS
+    # window read from the note (services/service_window.py) for the Service Date tab.
+    measure: str | None = None
+    serviceNote: str | None = None
+    serviceFrom: str | None = None
+    serviceTo: str | None = None
+    serviceWindowText: str | None = None
+
+
+def with_service_window(details: "ImagingManifestDetails") -> "ImagingManifestDetails":
+    from app.services.service_window import service_window
+
+    start, end, words = service_window(details.serviceNote, details.measure)
+    return details.model_copy(update={"serviceFrom": start, "serviceTo": end, "serviceWindowText": words or None})
 
 
 class FolderDetail(BaseModel):
