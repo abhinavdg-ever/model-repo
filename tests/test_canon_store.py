@@ -63,7 +63,7 @@ def test_every_config_lives_in_the_canon_folder():
     from stages.lib.canon_store import CANON_DIR
 
     expected = {
-        "junk_keywords_canon.json",
+        "blank_junk_context_canon.json",
         "dos_canon.json",
         "member_keywords_canon.json",
         "section_header_canon.json",
@@ -73,29 +73,3 @@ def test_every_config_lives_in_the_canon_folder():
         "provider_credentials_canon.json",
     }
     assert expected <= {p.name for p in CANON_DIR.glob("*_canon.json")}
-
-
-def test_junk_detectors_follow_a_keyword_edit(tmp_path, monkeypatch, instant_checks):
-    """End to end: a new invoice phrase in the JSON changes classify_text."""
-    import sys
-
-    from conftest import LIB
-
-    junk = str(LIB / "blank_junk")
-    if junk not in sys.path:
-        sys.path.insert(0, junk)
-    import kw
-    from invoice import detect_invoice_page
-
-    data = json.loads(kw.CANON_PATH.read_text(encoding="utf-8"))
-    local = tmp_path / "junk_keywords_canon.json"
-    _write(local, data)
-    canon = instant_checks.CanonFile(local, kw._build)
-    monkeypatch.setattr(kw, "_CANON", canon)
-
-    # Two non-strong phrases are needed for an invoice verdict.
-    text = "zzqx alpha and zzqx beta"
-    assert detect_invoice_page(text) is False
-    data["invoice"] = [*data["invoice"], "zzqx alpha", "zzqx beta"]
-    _write(local, data, bump_ns=1_000_000)
-    assert detect_invoice_page(text) is True

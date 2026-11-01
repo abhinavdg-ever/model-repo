@@ -95,7 +95,7 @@ document (described, not changed: this document changes no code).
 | # | Change | Where |
 |---|---|---|
 | a | **Blank and junk pages** written up (2A): the rule ladder R1–R6, pass 1 and pass 2, `post_process` | `blank_junk/method.py` |
-| b | **One card rule R3**: a strong ID or insurance card on a printed / visual page is Junk / Cards in **pass 1 and pass 2**; a medium card is flagged for review and goes on to DistilBERT. The old R3 Visual rule (card wording → Junk / Others, a visual page under 20 words → Main) is removed | `blank_junk/card_rules.py`, `method.decide` |
+| b | **One card rule R3**: a strong ID or insurance card on a printed / visual page is Junk / Cards in **pass 1 and pass 2**; a medium card is flagged for review and goes on to DistilBERT. The old Visual card-wording rule is removed; a visual page under 20 words that is not a card stays Main (R3V) | `blank_junk/card_rules.py`, `method.decide` |
 | c | **Short page contained in a nearby page** → Junk / Others (2A.3): under 20% of the median page, every word on a longer page within 3 pages or in the same Progress Note | `continuity/short_pages.py` |
 | d | **Specialty only for Progress Note, Lab Report, Discharge Summary, Operative Note and Procedure Note** (5.7); every other page has none (review-ui: Not Applicable) | `imaging_final.has_specialty`, review-ui `ImagingPanel.tsx` |
 | e | **Member name, DOB and member ID** written up (2B). Name from the extraction's **name rows only**: a row that is the member (as written), else the shortest matching phrase in the name rows' sentences, else the accepted name; the phrase rule returns the name only (no "Female", nothing across a date or a label) | `member/engine.overlay_staged_fields`, `rule_based/name_common._best_span` |
@@ -287,6 +287,7 @@ anything else Others).
 | **R2** placeholder | 1, 2 | "intentionally left blank" on a page of ≤ 25 words | Blank | 0.99 |
 | **R3** card | 1, 2 | page tag printed or visual, and `card_rules.detect` finds a **strong** ID or insurance card: 3+ card groups (member ID, group number, payer, Rx BIN / PCN, plan words, licence fields ...), ≤ 300 words, and **no** form / letter / clinical words (allergies, medications, vitals, impression, Plan:, subjective, objective, exam, chief concern ...). The one card rule since 2026-11-01 (the old Visual rule is gone) | Junk / **Cards** | 0.95 |
 | R3 medium card | 1, 2 | a 2-group card | not junked: the ladder goes on to DistilBERT, the page is flagged for review | — |
+| **R3V** visual | 1, 2 | page tag `visual`, under 20 words, not a strong card: a picture (an ECG strip, an X-ray print) DistilBERT cannot read | Main | 0.90 |
 | *pass 1 stops here* | 1 | DistilBERT p(keep) > 0.95 → Main, **final** (pass 2 skipped); p(junk) > 0.95 and the page ≤ 30% handwritten → Junk (its subtype), **final** (no Final OCR 2); otherwise Main for now | | DistilBERT's |
 | **R4** signature | 2 | kv_extract found an Electronic Signature, unless p(junk) > 0.95 (a signed records-request letter is still junk) | Main | 0.95 backed |
 | **R6** short page | 2 | the content ends in the top **15%** of the page (footer band and stamps left out) and the band below has < 0.5% ink; not when p(keep) > 0.90 or the word boxes cannot be read | Junk / Others | 0.95 backed |

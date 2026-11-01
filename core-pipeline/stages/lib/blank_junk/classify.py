@@ -1,4 +1,6 @@
-"""Junk classification codes + text rules."""
+"""Blank / junk codes and labels, and the duplicate-page helpers (word overlap, window,
+fingerprint). The verdict itself is method.decide; the old keyword classifier
+(classify_text and its detector modules) was removed 2026-11-01 (unused)."""
 
 from __future__ import annotations
 
@@ -8,14 +10,6 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from blank import detect_blank_page, is_declared_blank_page
-from cover import detect_cover_page
-from instructions import detect_instructions_page
-from invoice import detect_invoice_page
-from letter_fax import detect_letter_fax_page
-from others import detect_others_page, others_reason
-from record_request import detect_record_request_page
-from text_utils import looks_like_clinical_content
 
 CODE_MAIN = 0
 CODE_BLANK = 1
@@ -85,58 +79,6 @@ def duplicate_window(page_count: int) -> int:
     """Pages ahead of each page that it is compared with."""
     wanted = max(DUPLICATE_NEIGHBOR_MIN, math.ceil(DUPLICATE_NEIGHBOR_SHARE * page_count))
     return max(0, min(wanted, page_count - 1))
-
-
-DEFAULT_SETTINGS = {
-    "blank_detection": True,
-    "invoice_detection": True,
-    "cover_page_detection": True,
-    "record_request_detection": True,
-    "instructions_detection": True,
-    "others_detection": True,
-    "letter_fax_detection": True,
-    "duplicate_detection": True,
-    "declared_blank_detection": True,
-}
-
-
-def classify_text(
-    full_text: str,
-    *,
-    settings: dict | None = None,
-) -> tuple[int, str]:
-    """Return (code, reason).
-
-    Priority:
-      blank → cover page → letter/fax → invoice → record request →
-      instructions → others → main
-
-    Substantive clinical notes (progress note / HPI / meds / …) short-circuit
-    to Main so footer "confidentiality notice" or a stray billing phrase cannot
-    mark a real chart page as junk.
-    """
-    cfg = {**DEFAULT_SETTINGS, **(settings or {})}
-
-    if cfg.get("blank_detection") and detect_blank_page(full_text):
-        return CODE_BLANK, "blank_ocr"
-    if cfg.get("declared_blank_detection") and is_declared_blank_page(text=full_text):
-        return CODE_BLANK, "declared_blank"
-    # Cover is length-gated (<20 words); still allow it before the clinical guard.
-    if cfg.get("cover_page_detection") and detect_cover_page(full_text):
-        return CODE_COVER_PAGE, "cover_page"
-    if looks_like_clinical_content(full_text):
-        return CODE_MAIN, "clinical_content"
-    if cfg.get("letter_fax_detection") and detect_letter_fax_page(full_text):
-        return CODE_LETTER_FAX, "letter_fax"
-    if cfg.get("invoice_detection") and detect_invoice_page(full_text):
-        return CODE_INVOICE, "invoice"
-    if cfg.get("record_request_detection") and detect_record_request_page(full_text):
-        return CODE_RECORD_REQUEST, "record_request"
-    if cfg.get("instructions_detection") and detect_instructions_page(full_text):
-        return CODE_INSTRUCTIONS, "instructions"
-    if cfg.get("others_detection") and detect_others_page(full_text):
-        return CODE_OTHERS, others_reason(full_text)
-    return CODE_MAIN, ""
 
 
 def fingerprint(text: str) -> str | None:

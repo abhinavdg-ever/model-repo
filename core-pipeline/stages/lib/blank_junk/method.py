@@ -15,8 +15,10 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   R3 card           pass 1 and pass 2, page-tag printed or visual: a STRONG ID or
                     insurance card by card_rules.detect (3+ card groups, no form / letter /
                     clinical words, <= 300 words) -> Junk / Cards (2026-11-01, user: the one
-                    card rule; the old Visual rule is gone). Not undone by post_process. A
+                    card rule). Not undone by post_process. A
                     medium card goes on down the ladder, flagged for review
+  R3V visual        a visual page under 20 words that is not a strong card (a picture: an
+                    ECG strip, an X-ray print) -> Main, either pass (2026-11-01, user)
   pass 1 (Tesseract text) stops here:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
     R5 junk         DistilBERT p(junk) > 0.95 -> Junk (DistilBERT's subtype), final: pass 2
@@ -619,6 +621,10 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["card_review"] = f"{card.card_type} card ({card.confidence}): not junked, review"
     elif card is not None and card.blocked_by:
         votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
+    # R3V visual (2026-11-01, user: back): a visual page under 20 words that is not a card
+    # is a picture (an ECG strip, an X-ray print) DistilBERT cannot read: Main, either pass.
+    if visual:
+        return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
     if not pass2:
         # Pass 1 settles only what DistilBERT is sure of: a keep, or a junk page (which
         # pass 2's R4 / R6 / R5 would junk too, as R4 is overruled at the same p(junk)).

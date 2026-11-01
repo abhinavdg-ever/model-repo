@@ -98,9 +98,12 @@ class TestRules:
         assert verdict.rule == "R5" and verdict.code != classify.CODE_MAIN
 
 
-    def test_a_visual_page_is_judged_like_any_other(self):
-        # 2026-11-01 (user): no Visual rule; only the card rule reads the page tag.
-        verdict = run(FILLER, document_type="visual", bert=bert(0.8))
+    def test_a_visual_page_under_20_words_is_kept_unless_a_card(self):
+        # 2026-11-01 (user): R3V back; the card rule comes first.
+        verdict = run("ECG tracing lead II", document_type="visual", bert=bert(0.99))
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R3V")
+        assert run(" ".join(["word"] * 19), pass_no=1, document_type="visual", bert=bert(0.99)).rule == "R3V"
+        verdict = run(" ".join(["word"] * 20), document_type="visual", bert=bert(0.8))
         assert verdict.rule == "R5" and verdict.code != classify.CODE_MAIN
         assert method.text_is_visual("visual", "a b c") and not method.text_is_visual("printed", "a")
 

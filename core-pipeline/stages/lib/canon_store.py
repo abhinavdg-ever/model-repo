@@ -4,7 +4,6 @@ Every editable keyword / catalog JSON lives in ``stages/lib/keyword-canon/`` and
 is read through a :class:`CanonFile`, so editing one takes effect on the next
 page processed — no pipeline restart, no re-OCR:
 
-    junk_keywords_canon.json     blank/junk detector phrases + patterns
     dos_canon.json               date-of-service scoring weights, labels, cues + settings
     member_keywords_canon.json   member key groups / ignore / label words
     section_header_canon.json    section-header catalog (stage 6)

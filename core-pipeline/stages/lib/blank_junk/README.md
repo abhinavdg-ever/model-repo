@@ -1,63 +1,31 @@
 # Blank / junk / duplicate
 
-**The pipeline decides with `method.py`** (stage 3 and 7, `stage.py`): rules R1–R8, then
-DistilBERT and the keyword canon vote (R9). Words, weights, thresholds and the
-short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. The method, with
-worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
+The stage (`stage.py`, pass 1 at seq 30 and pass 2 at seq 60) decides each page with
+`method.decide`, a rule ladder, then DistilBERT:
 
-Duplicates: Main pages only (never blank or junk), against the pages after it, up to 25 pages or 10% of the chart, whichever is more (each pair once).
-Pages are compared on their distinct
-words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 8 distinct
-words different); partial: overlap 95–98% or < 15 different; the later page is the
-duplicate, unless a contained pair's larger page adds more than 10 distinct words (then the
-larger stays; docs/BLANK_JUNK_LOGIC.md §4). Pages under 300 characters never compared.
+| Rule | Pass | Verdict |
+|---|---|---|
+| R1 blank / tiny | 1, 2 | no ink or no text → Blank; under 15 characters → Junk / Cover Page or Others |
+| R2 placeholder | 1, 2 | "intentionally left blank" on ≤ 25 words → Blank |
+| R3 card | 1, 2 | a strong ID / insurance card (`card_rules.detect`) on a printed or visual page → Junk / Cards |
+| R3V visual | 1, 2 | a visual page under 20 words that is not a card → Main |
+| pass 1 | 1 | DistilBERT p(keep) > 0.95 → Main, final; p(junk) > 0.95 → Junk, final; else Main for now |
+| R4 signature | 2 | an Electronic Signature (kv_extract) → Main, unless p(junk) > 0.95 |
+| R6 short page | 2 | content in the top 15%, nothing below → Junk / Others |
+| R5 DistilBERT | 2 | p(junk) ≥ 0.85 → Junk; 0.50–0.85 → Junk for review; else Main |
 
-The rest of this file describes the older regex classifier (`classify_junk.py` and the
-detector modules) and the former post-model rules (`postprocess.py`). The stage no longer
-calls either; they remain for the standalone script below.
+After the ladder (`post_process`): a signature or provider details keep a junked page Main
+(not a card). Duplicates are found in pass 2 (`stage._classify`, `classify.word_overlap`).
+Continuity later junks a short page whose words are all on a nearby page
+(`continuity/short_pages.py`).
 
-## Categories
+Settings: `../keyword-canon/blank_junk_context_canon.json`. The full logic with examples:
+`docs/APPROACH.md` section 2A (duplicates: 4A).
 
-| Classification | Blank or Junk | Page Type | What matches |
-|----------------|---------------|-----------|--------------|
-| **Blank** | Yes (Blank) | Not Available | Empty OCR or &lt; 5 alphanumeric chars; “intentionally blank” |
-| **Cover Page** | Yes (Junk) | Cover Page | Accept / Unaccept / Cover page(s) / Discharge Summary with **&lt; 20 words** |
-| **Main (clinical)** | No | Not Available | Progress note / HPI / meds / vitals / … — **short-circuits before junk rules** so a fax confidentiality footer cannot flip them |
-| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language. |
-| **Invoice** | Yes (Junk) | Invoice | invoice, amount due, unit price, superbill, remittance, **revenue reconciliation**, … (not bare “price”; weak phrases need ≥2 hits) |
-| **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
-| **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
-| **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | No (not junk, 2026-10-29) | the original's | Main pages only: distinct-word overlap ≥ 98% with a page within 25 pages or 10% of the chart (whichever is more), or its words all on it; pages under 300 chars never compared; the page with less on it is the duplicate (the later when level). 95–98% is Partial: the page stays Main. A Progress Note / Discharge Summary copy more than 3 pages from its original, with a different (or no) DOS, stays a duplicate only when its whole encounter averages above 98% against the original's (continuity); else "No (Duplicate Content)" |
-| **Main** | No | Not Available | Everything else |
-
-### Priority order
-Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record Request → Instructions → Others → Main  
-(then Duplicate is applied across the chart)
-
-## Former post-model rules (no longer run by the stage)
-
-`postprocess.py`, formerly after the model or the regex fallback, both passes, in order:
-(1) model Blank/Junk with ≥ 2 clinical section headings → Main; (2) model Blank
-with text and no word "blank" → Junk (no sub-type); (3) pass 2 only: < 20 words,
-not signed, not a clinical note → Junk / Others; (4) Provider Signature = Yes, or
-< 20 words with the word "signature" → Main; (5) forced: fax (letter_fax plus
-the word "fax") or record request ≥ 3 times → Junk of that sub-type; only
-Provider Signature = Yes overrules it, and no other category forces junk; (6) absolute, last: Optum +
-Datavant ≥ 3 times in all → Junk / Record Request, no override. Then, at the end
-of pass 2 across the chart: (7) a Visual page (page-tag model) ruled Blank or Junk
-with the previous or next page kept → Main, unless (5) or (6) applies.
-The regex fallback has no short-page rule of its own: short pages are judged by
-(3) only, so pass 1 never junks a page for being short.
-Settings in `../keyword-canon/junk_keywords_canon.json`.
-
-## Run
-
-```bash
-cd 02-imaging-pipeline/junk-classification
-python classify_junk.py
-```
-
-```bash
-cp output/junk_classification.csv ../../05-imaging-ui/data/pipeline/
-```
+| File | Role |
+|---|---|
+| `stage.py` | the two passes, duplicates, the CSV and staging JSON |
+| `method.py` | the rule ladder and `post_process` |
+| `card_rules.py` | ID / insurance card detection |
+| `classify.py` | codes, labels, duplicate helpers (word overlap, window, fingerprint) |
+| `model_bridge.py`, `model/src/` | DistilBERT's probabilities |
