@@ -51,7 +51,7 @@ from stages._support import mark_completed, stage_run
 from stages.lib import confidence as conf
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
-from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets
+from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets, path_of
 from stages.lib.page_classify.taxonomy import CATEGORY
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,14 @@ logger = logging.getLogger(__name__)
 STAGE = "imaging_final"
 
 DEFAULT_SPECIALTY = "General"  # 2026-10-25 (user): never Unknown
+# 2026-11-01 (user): a specialty is given only to a page whose Final L1 is one of these;
+# every other page has none.
+SPECIALTY_FAMILIES = frozenset({"Progress Note", "Lab Report", "Discharge Summary", "Operative Note"})
+
+
+def has_specialty(page_type: Optional[str], page_subtype: Optional[str] = None) -> bool:
+    """True when the Final page type's L1 is one that carries a specialty."""
+    return path_of(page_type, page_subtype)[0] in SPECIALTY_FAMILIES
 
 # The reason continuity's duplicate check gives a copied page that is a Main page again
 # (stages/lib/continuity/duplicates.py CONTENT_MARK).
@@ -311,6 +319,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             document = carried.get(page_id)
             dates = document or own[page_id]
             dos_origin = "document" if document else "page"
+            with_specialty = has_specialty(verdict.page_type, verdict.page_subtype)
             row = {
                 "member_name": member.get("extracted_name") or None,
                 "member_dob": _iso(member.get("extracted_dob")),
@@ -354,8 +363,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # The page's own, like the sub-type; not carried across the document.
                 # Unknown on a classified page the axes gave no specialty.
                 "specialty": (
-                    specialty_of.get(page_id) if page_id in specialty_of else axes.stored(kind).get("specialty")
-                ) or (DEFAULT_SPECIALTY if kind else None),
+                    (specialty_of.get(page_id) if page_id in specialty_of else axes.stored(kind).get("specialty"))
+                    or (DEFAULT_SPECIALTY if kind else None)
+                ) if with_specialty else None,
             }
             in_document = document_of.get(page_id) or [page_id]
             type_pages = type_document_of.get(page_id) or [page_id]
@@ -369,7 +379,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 page_type=verdict.page_type,
                 decider=page_id if verdict.source == "page" else type_pages[0],
                 type_pages=type_pages,
-                specialty_page=in_document[0] if kind else None,
+                specialty_page=in_document[0] if kind and with_specialty else None,
                 dos_page=dated,
                 encounter_page=in_document[0],
                 classification=classification,

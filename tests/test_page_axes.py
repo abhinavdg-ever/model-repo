@@ -664,6 +664,15 @@ class TestEncounterSpecialty:
         out = encounter_specialties({1: [1, 2], 2: [3]}, self._rows(None, "Cardiology", "Unknown"))
         assert out == {1: "General", 2: "General", 3: "General"}
 
+    def test_only_four_l1s_carry_a_specialty(self):
+        from stages.lib.imaging_final.stage import has_specialty
+
+        for l1 in ("Progress Note", "Lab Report", "Discharge Summary", "Operative Note"):
+            assert has_specialty(l1)
+        assert has_specialty("Progress Note (Office Visit)", "SOAP Note")
+        for l1 in ("Administrative", "Medication Record", "Procedure Note", "Others", None, ""):
+            assert not has_specialty(l1)
+
 
 class TestKeywordCandidates:
     """keyword_candidates: phrases mined from labelled pages, added to the canon only when approved."""

@@ -361,6 +361,17 @@ function fmtQualityTag(value: string | null | undefined, processed = true): stri
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
+/** The L1s that carry a specialty (2026-11-01, user); every other page shows Not
+ * Applicable. Mirrors SPECIALTY_FAMILIES in core-pipeline imaging_final. */
+const SPECIALTY_FAMILIES = new Set(["progress note", "lab report", "discharge summary", "operative note"]);
+const NOT_APPLICABLE = "Not Applicable";
+
+function fmtSpecialty(value: string | null | undefined, family: string | null, processed = true): string {
+  if (!processed) return YET_TO_PROCESS;
+  if (!family || !SPECIALTY_FAMILIES.has(family.trim().toLowerCase())) return NOT_APPLICABLE;
+  return fmt(value, processed);
+}
+
 /** ``Family (Page Type)`` from the classifier. No parenthesis means the two names match. */
 export function splitPageType(value: string | null | undefined): {
   family: string | null;
@@ -2004,13 +2015,13 @@ function PageDetails({
             l2Of: "page_type",
           },
           {
-            ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown), {
+            ...sameValue(fmtSpecialty(page.specialty, pageParts.family, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown && SPECIALTY_FAMILIES.has((finalParts.family ?? "").trim().toLowerCase())), {
               id: "specialty",
               label: "Specialty",
               choices: SPECIALTY_CHOICES,
               noMark: true,
             }),
-            processed: fmt(page.finalSpecialty ?? page.specialty, pageTypeKnown),
+            processed: fmtSpecialty(page.finalSpecialty ?? page.specialty, finalParts.family, pageTypeKnown),
           },
           {
             ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(finalOr(page, "codability", null), Boolean(sections.codeable)), {
