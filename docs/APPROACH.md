@@ -4,8 +4,8 @@ Taxonomy **v29.2** (the version lives inside the files, as `version` /
 `taxonomy_version`; no file or folder name carries a version). Written 2026-10-28;
 replaces the 2026-10-25 version of this document. Updated 2026-10-29: date of service
 (section 3A) and duplicate pages (section 4A) added; sections 1, 5, 6 and 8 brought in
-line with them. Updated 2026-11-01: blank and junk pages (section 2A) added, specialty
-limited to five L1s (5.7). The new sections carry letters so every existing section
+line with them. Updated 2026-11-01: blank and junk pages (section 2A) and member name, DOB
+and ID with Manual Review matching (section 2B) added, specialty limited to five L1s (5.7). The new sections carry letters so every existing section
 number and cross-reference stays as it was.
 
 This is the one document for how a chart's pages get their page type (L1 / L2 / L3),
@@ -42,6 +42,9 @@ document (described, not changed: this document changes no code).
 * [2A. Blank and junk pages](#2a-blank-and-junk-pages)
   * 2A.1 The ladder (R1–R6, cards) · 2A.2 After the ladder · 2A.3 Short page contained
     in a nearby page · 2A.4 What is written · 2A.5 Worked example
+* [2B. Member name, DOB and member ID](#2b-member-name-dob-and-member-id)
+  * 2B.1 Key/value rows · 2B.2 Member name · 2B.3 DOB and member ID · 2B.4 Page and
+    chart verdict · 2B.5 What review-ui shows · 2B.6 Manual Review: any one match
 * [3. L1 / L2 / L3: the Extracted page type, page alone](#3-l1-l2-l3-the-extracted-page-type-page-alone)
   * 3.1 Inputs · 3.2 Keyword matching · 3.3 Keyword weights · 3.4 The vote ·
     3.5 Page rules · 3.6 L3 · 3.7 Alternatives kept (`under_l1`, `paths`) ·
@@ -92,6 +95,11 @@ document (described, not changed: this document changes no code).
 | b | **Cards** (R3C, 2026-10-31): a strong ID or insurance card on a printed / visual page is Junk / Cards, pass 2 only; a medium card is flagged for review | `blank_junk/card_rules.py`, `method.decide` |
 | c | **Short page contained in a nearby page** → Junk / Others (2A.3): under 20% of the median page, every word on a longer page within 3 pages or in the same Progress Note | `continuity/short_pages.py` |
 | d | **Specialty only for Progress Note, Lab Report, Discharge Summary, Operative Note and Procedure Note** (5.7); every other page has none (review-ui: Not Applicable) | `imaging_final.has_specialty`, review-ui `ImagingPanel.tsx` |
+| e | **Member name, DOB and member ID** written up (2B). Name from the extraction's **name rows only**: a row that is the member (as written), else the shortest matching phrase in the name rows' sentences, else the accepted name; the phrase rule returns the name only (no "Female", nothing across a date or a label) | `member/engine.overlay_staged_fields`, `rule_based/name_common._best_span` |
+| f | DOB and member ID search **their own rows' sentences only** (was every field's) | `member/engine.overlay_staged_fields` |
+| g | review-ui **Member ID**: every accepted, selected ID above 0.9 as `Key: Value` lines; the manifest's ID first with (Yes), the rest (No) | review-ui `extraction_review.member_id_rows`, `ImagingPanel.memberIdList` |
+| h | **Manual Review: any one match is a match** for cells with several values | `excel_compare/field_comparator._values_match` |
+| i | Stability: every OpenCV call in stage 1 one at a time and OpenCV's own thread pool off; shared models (blank / junk BERT, GLiNER, RapidOCR fallback) one call at a time (VM "double free or corruption" aborts) | `image_preprocess/_cv2.py`, `model_bridge`, `extraction/util/model`, `member/.../model` |
 
 **2026-10-29.** Two sections added and the rest checked against the code again:
 
@@ -330,6 +338,130 @@ subtype in the page type) or "No". Stages after blank / junk skip blank, junk an
 | 5 | a header line only, nothing below | R6 | Junk / Others |
 | 6 | 12 words, all of them on page 4 (2 pages back) | short page contained (2A.3) | Junk / Others |
 | 7 | records request letter with the provider's name extracted, p(junk) 0.91 | R5, then `post_process` | Main |
+
+---
+
+## 2B. Member name, DOB and member ID
+
+Every Main page is searched for **the manifest's member**: its name, date of birth and
+member ID. The search is driven by the manifest (the page is asked "is this member
+here?"), not a blind extraction. Code: the key/value extraction
+(`core-pipeline/stages/lib/extraction/`, writes `staging/extraction.json` →
+`fields.name`, `fields.dob`, `fields.member_id`), the member stage
+`stages/lib/member/engine.py: overlay_staged_fields`, `verify_record`, and the rules in
+`member/extractors/rule_based/name_common.py`, `member/rules/`.
+
+```
+ kv_extract (seq 56): per field, rows {key, sentence, ner_text, value, score,
+                      model_score, accepted, selected}       → staging/extraction.json
+        │
+ member_verify (seq 70), per page:
+   name       1. a name row that is the member (value as written, else the
+                 member's phrase in its ner_text)
+              2. the shortest matching phrase in the name rows' sentences
+              3. the accepted / selected name
+   DOB, ID    the manifest's value in their own rows' sentences, else the
+              accepted row that matches, else the first selected
+   verify     name + (DOB or ID) → verified;  another patient named → wrong member
+        │
+ chart: Reject when wrong-member pages reach the threshold; else Accept
+```
+
+### 2B.1 Key/value rows (`extraction.json`)
+
+The extraction finds each field's **keys** on the page (Patient Name, Name, DOB, Member
+ID, MRN, Insurance #, Chart # ...; `extraction/*/keys.json`) and reads the value after
+each key in its sentence: by rules (`after_key`, `split_part`, `geometry`) and by the
+GLiNER model (`ner`). Every key occurrence is a row:
+
+| Column | Meaning |
+|---|---|
+| `key`, `region` | the key read, and where on the page (header, footer, mid cluster ...) |
+| `sentence` | the text around the key that was read |
+| `ner_text`, `value` | what the model read; the value the rules kept |
+| `score`, `model_score` | the rules' score; the model's score for the value |
+| `accepted`, `selected` | the rules accept the value; it is the one chosen for its key |
+
+**Member ID acceptance** (`extraction/member_id/extract.py`): only catalogued keys (no
+keyless IDs); the value must contain a digit; letters, digits and inner hyphens only;
+a masked SSN only with its last 4 digits; never a phone number or a slash date. The best
+row **per distinct key** is selected (header / footer first, then score), so a page can
+carry several selected IDs (Policy/Group #, Insurance #, MRN ...).
+
+### 2B.2 Member name (2026-11-01)
+
+Only the **name** rows are used, in this order (`overlay_staged_fields`):
+
+1. **A name row that is the member**: any name row, accepted or not, the selected ones
+   first. Its `value`, when it is the member (`name_matches`: either order, an initial,
+   nicknames, two-word surnames), is the name **as written**. Else, when its `ner_text`
+   *contains* the member ("Jackson Nicole D.O.B"), the member's phrase in it, as written
+   ("Jackson Nicole").
+2. **Else the member in the text**: the name rows' sentences (no other field's) and the
+   rules' whole-page find; the **shortest** phrase that matches.
+3. **Else the accepted / selected name**, when it looks like a person at all
+   (`name_filter`): a page about someone else keeps that name, so it can be
+   wrong member.
+
+The phrase rule (`find_two_word_name` / `find_three_word_name`) returns **the name only**:
+it is cut to its first and last word of the member's name, a hyphenated part is shown as
+written ("Parker-Hill"), and a phrase with a **date, number or field label** (Name, Phone,
+DOB ...) between the name's words is not a name. Before 2026-11-01 the rule searched
+every field's sentences first and kept neighbouring words: "Parker Hill Dylan Female",
+"Nicole Home Name Phone Jackson". Now "Parker-Hill Dylan", "Jackson Nicole".
+
+### 2B.3 DOB and member ID
+
+Each searches **its own field's rows only** (2026-11-01; was every field's sentences):
+
+1. the manifest's value in one of the field's sentences (DOB: the same date in any
+   format; ID: the same ID with or without its label) → that value;
+2. else an accepted row whose value matches the manifest;
+3. else the first selected row.
+
+### 2B.4 Page and chart verdict
+
+* **Verified page**: the member's name found (all names in full, or one as an initial)
+  **and** the DOB or the member ID matching. A name with only an initial needs both
+  DOB and ID.
+* **Wrong member**: not verified, and a patient-name context on the page names someone
+  else (the GLiNER names, `wrong_member_rules`). Without GLiNER no page can be wrong
+  member, so no chart can be rejected (CLAUDE.md §6).
+* **Chart**: **Reject** when the wrong-member pages reach
+  `reject_threshold(pages)` = 2 × min(5, ⌈10% of pages⌉), at least 2 and at most 10
+  (`what_if_rules`); else **Accept**.
+
+Written: `member_extraction_results` (one row per page: extracted name, DOB, member ID,
+where each came from, page status, other names, confidence) and
+`member_verification_summary` (the chart's decision).
+
+### 2B.5 What review-ui shows (2026-11-01)
+
+* **Member Name / DOB**: the member stage's values, marked against the manifest.
+* **Member ID**: every member ID row in `extraction.json` that is **accepted, selected
+  and scored above 0.9** (the model's score, else the rules'), one `Key: Value` per
+  line; when none is, the best-scored selected one. With a manifest member ID, the
+  matching ID comes first with **(Yes)** and the others follow with **(No)** (letters and
+  digits compared, case and leading zeros ignored); when no listed ID matches but the
+  member stage found the manifest's ID, that ID leads with (Yes). Example:
+
+  ```
+  Insurance #: A9000689900 (Yes)
+  Policy/Group #: G06330 (No)
+  ```
+
+  FIN # "71yo" (rules 0.92, model 0.63) is left out. The Additional tab lists the same
+  IDs without the marks.
+
+### 2B.6 Manual Review: any one match is a match (2026-11-01)
+
+Manual Review (`review-ui/backend/app/services/excel_compare/field_comparator.py`)
+compares the ground truth with the algorithm per field. A cell holding several values
+(`a | b`, one per line, `a; b`; the "(Yes)" / "(No)" marks dropped) **matches when any
+one of its values matches any one on the other side**, by the field's own rule: names
+by `names_match` (either order, near misses), IDs by `identifiers_match` (the same ID
+with or without its label), dates in any format. Credentials and page types keep their
+own rules. Both sides blank / junk: every field matches and reads "Skipped".
 
 ---
 
