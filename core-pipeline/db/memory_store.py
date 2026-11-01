@@ -962,6 +962,8 @@ class MemoryStore:
         blank_junk_flag: str,
         duplicate_of_page_id: Optional[int],
         reason: str,
+        junk_subtype: Optional[str] = None,
+        confidence: Optional[float] = None,
     ) -> None:
         with self._lock:
             for row in self.blank_junk.values():
@@ -972,6 +974,12 @@ class MemoryStore:
                         reason=reason,
                         updated_at=_now(),
                     )
+                    if blank_junk_flag != "junk":
+                        row["junk_subtype"] = None
+                    elif junk_subtype is not None:
+                        row["junk_subtype"] = junk_subtype
+                    if confidence is not None:
+                        row["confidence"] = confidence
 
     def list_blank_junk_for_csv(self, chart_id: int) -> list[dict[str, Any]]:
         chart = self.get_chart(chart_id) or {}

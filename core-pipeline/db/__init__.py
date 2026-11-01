@@ -1123,17 +1123,25 @@ def revise_blank_junk_final(
     blank_junk_flag: str,
     duplicate_of_page_id: Optional[int],
     reason: str,
+    junk_subtype: Optional[str] = None,
+    confidence: Optional[float] = None,
 ) -> None:
     """Change a page's final blank / junk verdict in place: continuity's duplicate check
     (stages/lib/continuity/duplicates.py) makes a partial duplicate a duplicate, or a
-    duplicate a Main page with duplicate content."""
+    duplicate a Main page with duplicate content; its short-page check
+    (stages/lib/continuity/short_pages.py) makes a Main page Junk / Others.
+    ``junk_subtype`` / ``confidence`` change only when given; a page that is no longer
+    junk loses its subtype."""
     conn.execute(
         """
         UPDATE blank_junk_classification
-           SET blank_junk_flag = %s, duplicate_of_page_id = %s, reason = %s, updated_at = now()
+           SET blank_junk_flag = %s, duplicate_of_page_id = %s, reason = %s,
+               junk_subtype = CASE WHEN %s = 'junk' THEN COALESCE(%s, junk_subtype) END,
+               confidence = COALESCE(%s, confidence),
+               updated_at = now()
          WHERE page_id = %s AND is_final
         """,
-        (blank_junk_flag, duplicate_of_page_id, reason, page_id),
+        (blank_junk_flag, duplicate_of_page_id, reason, blank_junk_flag, junk_subtype, confidence, page_id),
     )
 
 

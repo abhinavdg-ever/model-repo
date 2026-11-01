@@ -52,7 +52,7 @@ from stages.lib.continuity.engine import (
     text_lines,
     trust_points,
 )
-from stages.lib.continuity import duplicates
+from stages.lib.continuity import duplicates, short_pages
 from stages.lib.continuity.layout import load_pages, page_layout
 from stages.lib.continuity.signature import has_signature_section, signed_page_names
 from stages.lib.extraction.dos.extract import TIER_RANK
@@ -336,6 +336,8 @@ def _kind(final: Optional[dict[str, Any]]) -> str:
     flag = (final or {}).get("blank_junk_flag") or "not_blank_junk"
     if _content_copy(final):
         return "duplicate"  # an earlier run's duplicate content: checked again
+    if _short_junk(final):
+        return "main"  # an earlier run's short-page junk: checked again
     return {"blank": "blank", "junk": "junk", "duplicate": "duplicate"}.get(flag, "main")
 
 
@@ -344,6 +346,13 @@ def _content_copy(final: Optional[dict[str, Any]]) -> bool:
     return bool((final or {}).get("duplicate_of_page_id")) and duplicates.CONTENT_MARK in str(
         (final or {}).get("reason") or ""
     )
+
+
+def _short_junk(final: Optional[dict[str, Any]]) -> bool:
+    """A page an earlier run's short-page check junked (short_pages.py)."""
+    return (final or {}).get("blank_junk_flag") == "junk" and str(
+        (final or {}).get("reason") or ""
+    ).startswith(short_pages.MARK)
 
 
 def _review_duplicates(
@@ -409,6 +418,43 @@ def _review_duplicates(
         "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content",
         chart_name, len(result.promote), len(result.demote),
     )
+    return assign(inputs, rules)
+
+
+def _review_short_pages(
+    chart_id: int,
+    chart_name: str,
+    inputs: list[PageInput],
+    rows: list[dict[str, Any]],
+    texts: dict[int, str],
+    bj: dict[int, dict[str, Any]],
+    rules: Any,
+) -> list[dict[str, Any]]:
+    """2026-11-01 (user): a short Main page whose words are all on a page within 3 pages,
+    or in the same Progress Note, is Junk / Others (short_pages.py)."""
+    found = short_pages.find(inputs, rows, texts)
+    # Junked by an earlier run but not found now: a Main page again.
+    restored = [item for item in inputs if _short_junk(bj.get(item.page_id)) and item.page_id not in found]
+    if not (found or restored):
+        return rows
+    by_id = {item.page_id: item for item in inputs}
+    with connect() as conn:
+        for item in restored:
+            revise_blank_junk_final(
+                conn, item.page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=None,
+                reason="short page re-checked: not contained in a nearby page -> Main",
+            )
+        for page_id, (_container, reason) in found.items():
+            revise_blank_junk_final(
+                conn, page_id, blank_junk_flag="junk", duplicate_of_page_id=None, reason=reason,
+                junk_subtype="Others", confidence=short_pages.CONFIDENCE,
+            )
+            item = by_id[page_id]
+            item.kind, item.junk_subtype, item.junk_confidence = "junk", "Others", short_pages.CONFIDENCE
+            item.dos_from, item.dos_to, item.visual = "", "", False
+        _rewrite_junk_csv(conn, chart_id, chart_name)
+    logger.info("continuity chart=%s short pages: %d Main -> Junk / Others, %d back to Main",
+                chart_name, len(found), len(restored))
     return assign(inputs, rules)
 
 
@@ -511,6 +557,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # 2026-10-29 (user): a far copy in a Progress Note / Discharge Summary is a
         # duplicate only when its whole encounter is a copy.
         rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
+        # 2026-11-01 (user): a short page contained in a nearby page is junk.
+        rows = _review_short_pages(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
 
         csv_rows: list[dict[str, Any]] = []
