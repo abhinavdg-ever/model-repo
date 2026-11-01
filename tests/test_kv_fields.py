@@ -295,6 +295,10 @@ def test_a_surname_of_two_words_matches():
             {"key": "Patient", "sentence": "Patient Details Patient: Le Blanc Jonathan of Birth: 09/07/1997",
              "value": "", "accepted": False, "selected": False},
             {"key": "Patient", "sentence": "Patient: Doe, Mary", "value": "Doe, Mary", "accepted": True, "selected": True},
+        ], "dob": [
+            # 2026-11-01 (user): the DOB is searched in the DOB field's own sentences only.
+            {"key": "Date of Birth", "sentence": "Date of Birth: 09/07/1997", "value": "", "accepted": False,
+             "selected": False},
         ]}},
     )
     expected = {"DummyFirstName": "Jonathan", "DummyMiddleName": "", "DummyLastName": "Le Blanc",

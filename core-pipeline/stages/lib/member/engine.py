@@ -406,49 +406,89 @@ def overlay_staged_fields(
     def ours(value: str) -> bool:
         return bool(name_mode) and name_matches(value, first, last, middle, name_mode)
 
-    # 2026-10-27 (user): before the extraction's selected value, look for the manifest
-    # member in every sentence it read, of every field, accepted or not -- the names in
-    # either order, with an initial for one of them (extract_full_name_rule). Found: that
-    # is the name. Else the rules' whole-page find when it is the member, else an accepted
-    # name that is the member, else the accepted / selected one.
-    sentences = [
-        row for field_rows in staged.fields.values() for row in field_rows
-        if str(row.get("sentence") or "").strip()
-    ]
-    in_sentence = next(
+    # 2026-11-01 (user), in this order:
+    #  1. The extraction's name rows (accepted or not, the selected first): a value, else an
+    #     ner_text, that is the manifest member (name_matches) is the name, as written. One
+    #     that only contains the member: the member's phrase in it, as written.
+    #  2. Else the member in the text of the extraction's name rows (their sentences: name
+    #     only, no other field), and the rules' whole-page find: the shortest phrase that
+    #     matches.
+    #  3. Else the accepted / selected name (a person at all: name_filter).
+    import re as _re
+
+    def written(phrase: str, text: str) -> str:
+        """``phrase`` (words joined by spaces) as it is written in ``text``."""
+        words = tokenize(phrase)
+        if not words:
+            return phrase
+        hit = _re.search(r"\W+".join(_re.escape(word) for word in words), text, _re.IGNORECASE)
+        return hit.group(0).strip() if hit else phrase
+
+    def as_member(text: str, *, whole: bool) -> str:
+        """The member in ``text``: the whole text when ``whole`` and it is the member
+        (a clean value), else the member's phrase in it, as written."""
+        text = (text or "").strip()
+        if not text or is_age_name(text):
+            return ""
+        if whole and ours(text):
+            return text
+        found = extract_full_name_rule(text, expected, name_mode)
+        return written(found, text) if is_present(found) and ours(found) else ""
+
+    name_rows = sorted(
+        (row for row in staged.rows("name") if isinstance(row, dict)),
+        key=lambda row: (not row.get("selected"), not row.get("accepted")),
+    )
+    in_name = next(
         (
-            (found, row) for row in sentences
-            for found in [extract_full_name_rule(str(row["sentence"]), expected, name_mode)]
-            if is_present(found) and ours(found)
+            (found, row) for row in name_rows
+            for found in [
+                as_member(str(row.get("value") or ""), whole=True)
+                or as_member(str(row.get("ner_text") or ""), whole=False)
+            ]
+            if found
         ),
         None,
     )
-    # 2026-11-01 (user): an accepted extraction name that is the member comes first: it is
-    # read off one key, where the rules' search can run across neighbouring fields.
-    staged_member = next((row for row in names if ours(row["value"])), None)
-    if staged_member is not None:
-        fields["Detected_Full_Name"] = trim_extracted_name(staged_member["value"].strip(), expected).strip()
-        fields["Detection_Source_Name"] = source(staged_member)
-        fields["ner_key_source_Name"] = staged_member.get("key") or ""
-    elif in_sentence is not None:
-        found, row = in_sentence
-        fields["Detected_Full_Name"] = trim_extracted_name(found, expected).strip()
+    phrases: list[tuple[str, str]] = []  # (phrase, where)
+    if in_name is None:
+        for row in name_rows:
+            sentence = str(row.get("sentence") or "").strip()
+            if not sentence:
+                continue
+            found = extract_full_name_rule(sentence, expected, name_mode)
+            if is_present(found) and ours(found):
+                phrases.append((found.strip(), f"sentence: {row.get('key') or ''}"[:100]))
+        whole_page = fields.get("Detected_Full_Name", "")
+        if is_present(whole_page) and ours(whole_page) and fields.get("Detection_Source_Name") == "rule based":
+            phrases.append((whole_page.strip(), fields.get("ner_key_source_Name") or ""))
+    if in_name is not None:
+        found, row = in_name
+        fields["Detected_Full_Name"] = found
+        fields["Detection_Source_Name"] = source(row)
+        fields["ner_key_source_Name"] = row.get("key") or ""
+    elif phrases:
+        found, where = min(phrases, key=lambda item: (len(tokenize(item[0])), len(item[0])))
+        fields["Detected_Full_Name"] = found
         fields["Detection_Source_Name"] = "rule based"
-        fields["ner_key_source_Name"] = f"sentence: {row.get('key') or ''}"[:100]
+        fields["ner_key_source_Name"] = where
     elif not (is_present(fields.get("Detected_Full_Name", "")) and ours(fields["Detected_Full_Name"])):
         from .name_filter import looks_like_person
 
-        # Not the member: only a name that is a person at all (name_filter, 2026-10-28).
         people_names = [row for row in names if looks_like_person(str(row.get("value") or ""))]
-        pick = next((row for row in names if ours(row["value"])), None) or (people_names[0] if people_names else None)
+        pick = people_names[0] if people_names else None
         if pick is not None:
             fields["Detected_Full_Name"] = pick["value"].strip()
             fields["Detection_Source_Name"] = source(pick)
             fields["ner_key_source_Name"] = pick.get("key") or ""
 
-    # DOB and member ID the same way: the manifest's value in any sentence first.
+    # DOB and member ID: the manifest's value in the sentences of their own field first
+    # (2026-11-01, user: each field searches its own rows only).
+    def own_sentences(field_id: str) -> list[dict[str, Any]]:
+        return [row for row in staged.rows(field_id) if str(row.get("sentence") or "").strip()]
+
     dob_expected = expected.get("DummyDOB", "")
-    dob_sentence = next((row for row in sentences if date_parts_match(str(row["sentence"]), dob_expected)), None)
+    dob_sentence = next((row for row in own_sentences("dob") if date_parts_match(str(row["sentence"]), dob_expected)), None)
     dobs = chosen("dob")
     if dob_sentence is not None:
         fields["Detected_DOB"] = dob_expected
@@ -464,7 +504,8 @@ def overlay_staged_fields(
 
     id_expected = expected.get("MemberID", "")
     id_sentence = next(
-        (row for row in sentences if is_present(extract_member_id(str(row["sentence"]), id_expected))), None
+        (row for row in own_sentences("member_id") if is_present(extract_member_id(str(row["sentence"]), id_expected))),
+        None,
     )
     ids = chosen("member_id")
     if id_sentence is not None:
