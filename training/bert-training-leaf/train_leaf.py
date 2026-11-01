@@ -91,6 +91,9 @@ MIN_PROB = 0.01  # a leaf below this is never kept
 # v29.2 -> v29.3 (training/taxonomy/import_taxonomy_xlsx.py --rename).
 RENAMES = {
     "Consent and Authorization > HIPAA and Privacy": "Consent and Authorization > HIPAA Notice & Consent",
+    # 2026-11-01: labels in Training/processed/training_data.jsonl not in v29.3.
+    "Problem List > Diagnosis List/Coding Summary": "Problem List > Diagnosis List/Index",
+    "Order and Requisition > Medication Order": "Order and Requisition > Physician Order",
 }
 
 
