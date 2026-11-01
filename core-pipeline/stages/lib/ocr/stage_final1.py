@@ -73,7 +73,12 @@ def _ocr_onnx(image_path: Path) -> dict[str, Any]:
             "fallback (prelim already uses Tesseract). "
             "Install rapidocr-onnxruntime or enable Docling + .pth models."
         )
-    result, _ = engine(str(image_path))
+    from stages.lib.image_preprocess._cv2 import LOCK as CV_LOCK
+
+    # RapidOCR runs OpenCV inside: one page at a time, never beside stage 1's OpenCV
+    # calls (heap corruption on the VM with several at once; 2026-11-01).
+    with CV_LOCK:
+        result, _ = engine(str(image_path))
     from PIL import Image
 
     from stages.lib.extraction.ocr_input import words_from_line

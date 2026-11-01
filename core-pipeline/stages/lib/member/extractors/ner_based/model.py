@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 import gc
 import logging
 import os
@@ -212,8 +214,13 @@ def _hit(text: str, label: str, score: float, start: int | None, end: int | None
     return {"text": text, "label": label, "score": score, "start": start, "end": end}
 
 
+# One GLiNER call at a time: its tokenizer is not safe across threads (2026-11-01).
+_INFER_LOCK = threading.Lock()
+
+
 def _predict_gliner(model, text: str, labels: list[str], threshold: float) -> list[dict]:
-    hits = model.predict_entities(text, labels, threshold=threshold) or []
+    with _INFER_LOCK:
+        hits = model.predict_entities(text, labels, threshold=threshold) or []
     out: list[dict] = []
     for hit in hits:
         start = hit.get("start")

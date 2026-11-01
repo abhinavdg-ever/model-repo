@@ -24,6 +24,9 @@ from db import connect, create_job, get_chart, set_chart_status, update_job
 from db.chart_status import refresh_chart_status
 from stages._support import stage_label
 # Each stage runner lives next to its engine in stages/lib/<module>/.
+# OpenCV's own thread pool off process-wide before any stage runs (heap corruption on
+# the VM with page threads in OpenCV at once; 2026-11-01).
+import stages.lib.image_preprocess._cv2  # noqa: E402,F401
 from stages.lib.blank_junk import stage as blank_junk_classify
 from stages.lib.dos import stage as dos_extract
 from stages.lib.encounter import stage as encounter_type

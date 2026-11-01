@@ -95,6 +95,7 @@ def _patch_torch_jit_script_eager() -> None:
 
 # Charts run side by side in a batch, so two of them can ask for the model at once.
 _LOAD_LOCK = threading.Lock()
+_INFER_LOCK = threading.Lock()
 _OFFLINE_ENV = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
 
 
@@ -146,7 +147,10 @@ def _load_model():
 
 @lru_cache(maxsize=2048)
 def _predict_cached(snippet: str, labels: tuple[str, ...], threshold: float) -> tuple[tuple, ...]:
-    hits = get_model().predict_entities(snippet, list(labels), threshold=threshold) or []
+    model = get_model()
+    # One call at a time: GLiNER's tokenizer is not safe across threads (2026-11-01).
+    with _INFER_LOCK:
+        hits = model.predict_entities(snippet, list(labels), threshold=threshold) or []
     return tuple(
         (
             str(hit.get("text") or "").strip(),

@@ -56,6 +56,7 @@ def _bert_runtime_installed() -> bool:
 
 
 _lock = threading.Lock()
+_infer_lock = threading.Lock()
 _model: Any = None
 _model_version: str | None = None
 # Vendored helpers, bound at load time (``src`` leaves sys.path afterwards).
@@ -164,7 +165,10 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
         model_text = _model_input(text, docling)
         if not model_text.strip():
             return out
-        probs = [float(p) for p in model.predict_proba([model_text])[0]]
+        # One call at a time: the shared tokenizer is not safe across threads (two
+        # charts' blank / junk passes at once; 2026-11-01).
+        with _infer_lock:
+            probs = [float(p) for p in model.predict_proba([model_text])[0]]
     except Exception:
         logger.exception("Blank/junk BERT predict failed")
         return out
