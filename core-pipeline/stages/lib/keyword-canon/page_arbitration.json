@@ -199,7 +199,7 @@
     }
   },
   "final_placement": {
-    "comment": "2026-10-25: Final L2 of a page whose own L1 differs from its document's: final_placement[document L1][page L1] (context_rules: page_essence keeps the page's own label in Extracted; the document view is Final — a Lab Report > Pathology Report page inside a Progress Note is Progress Note / Lab and Imaging Results; absorb_into_progress_note; procedure_in_operative_document). A pair not listed: under the Progress Note, Others; under any other L1, the L2 the page classifier gave the page there (axes.under_l1: the model's, else the canon's), else its own name when that L1 has it, else Others. Never L1 / L1.",
+    "comment": "2026-10-25: Final L2 of a page whose own L1 differs from its document's: final_placement[document L1][page L1] (context_rules: page_essence keeps the page's own label in Extracted; the document view is Final — a Lab Report > Pathology Report page inside a Progress Note is Progress Note / Lab and Imaging Results; absorb_into_progress_note; procedure_in_operative_document). A pair not listed: under the Progress Note, Others; under any other L1, the L2 the page classifier gave the page there (axes.under_l1: the model's, else the canon's), else its own name when that L1 has it, else Others. Never L1 / L1. 2026-11-01 (user): a re-placed page always gets a valid L1 > L2: an L2 listed here must exist under that L1 (else it is ignored); '*' is the L2 for any family not listed (Clinical Summary: Summary); inside a Progress Note an unlisted page keeps its own name when the Progress Note has it (Summary, Vitals ...), else Others.",
     "Progress Note": {
       "Lab Report": "Lab and Imaging Results",
       "Medication Record": "Medication List",
@@ -208,6 +208,9 @@
     },
     "Operative Note": {
       "Procedure Note": "Intra-operative Record"
+    },
+    "Clinical Summary": {
+      "*": "Summary"
     }
   }
 }

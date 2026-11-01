@@ -131,8 +131,10 @@ def _placement(agreed: str, family: Optional[str]) -> Optional[str]:
     """``final_placement[agreed][family]``: the L2 a page of ``family`` takes
     inside a document of ``agreed``."""
     table = _ARBITRATION.get().get("final_placement") or {}
-    found = (table.get(agreed) or {}).get(family or "")
-    return found if isinstance(found, str) and found else None
+    row = table.get(agreed) or {}
+    found = row.get(family or "") or row.get("*")  # "*": any other family (2026-11-01, user)
+    # Only an L2 the taxonomy has under that L1: the Final path must stay a valid one.
+    return found if isinstance(found, str) and found and found in axes.l2_names(agreed) else None
 
 
 def _note_rules() -> dict[str, Any]:
@@ -182,8 +184,11 @@ def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
     ``agreed`` family, so L1, L2 and L3 always agree with the taxonomy:
 
     * ``final_placement[agreed][its own L1]`` (inside a Progress Note, a Lab
-      Report page is Progress Note / Lab and Imaging Results);
-    * inside a Progress Note otherwise Others (its L2 is the content section);
+      Report page is Progress Note / Lab and Imaging Results), else
+      ``final_placement[agreed]["*"]`` (any page that becomes a Clinical Summary is
+      Clinical Summary / Summary, 2026-11-01, user);
+    * inside a Progress Note otherwise its own name when the Progress Note has it
+      (a Summary page: Progress Note / Summary), else Others;
     * elsewhere, the L2 (and L3) the page classifier gave the page under that
       L1 (``under_l1``: the model's, else the canon's) -- "L1 (L2)" / L3 or
       L1 / L2;
@@ -193,14 +198,15 @@ def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
     placed = _placement(agreed, _family(page))
     if placed:
         return agreed, placed
-    if agreed == _section_l1():
-        return agreed, OTHERS
-    there = (page.under_l1 or {}).get(agreed) or {}
-    if there.get("l2"):
-        return (f"{agreed} ({there['l2']})", there["l3"]) if there.get("l3") else (agreed, there["l2"])
     permitted = axes.l2_names(agreed)
     own = (page.l2, *page.names) if page.names else (page.l2, page.page_subtype, page.page_type)
-    return agreed, next((name for name in own if name and name in permitted), OTHERS)
+    own_name = next((name for name in own if name and name != OTHERS and name in permitted), None)
+    if agreed == _section_l1():
+        return agreed, own_name or OTHERS
+    there = (page.under_l1 or {}).get(agreed) or {}
+    if there.get("l2") and there["l2"] in permitted:
+        return (f"{agreed} ({there['l2']})", there["l3"]) if there.get("l3") else (agreed, there["l2"])
+    return agreed, own_name or OTHERS
 
 
 def _keep(page: FinalPage, rule: str, review: bool, document_tag: Optional[str] = None) -> FinalResult:

@@ -166,6 +166,23 @@ class TestAgreedPageType:
         assert (med.page_type, med.page_subtype, med.codability) == (PN, "Medication List", "Codable")
         assert (bill.page_type, bill.page_subtype, bill.codability) == (PN, "Others", "Codable")
 
+    def test_a_page_that_becomes_a_clinical_summary_is_clinical_summary_summary(self):
+        """2026-11-01 (user): a re-placed page always has a valid L1 > L2."""
+        doc = [fp(1, "Clinical Summary", "After-Visit Summary", family="Clinical Summary",
+                  l2="After-Visit Summary", seq=1),
+               fp(2, PN, "Vitals", family=PN, l2="Vitals", names=("Vitals", PN), seq=2, link="strong",
+                  under={"Clinical Summary": {"l2": "Index Page"}}),
+               lab(3, seq=3, link="strong")]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [(f.page_type, f.page_subtype) for f in finals[1:]] == [("Clinical Summary", "Summary")] * 2
+
+    def test_inside_a_progress_note_a_page_keeps_its_own_name_when_the_note_has_it(self):
+        doc = [fp(1, PN, seq=1),
+               fp(2, "Clinical Summary", "Summary", family="Clinical Summary", names=("Summary", "Clinical Summary"),
+                  l2="Summary", seq=2, link="strong")]
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.page_subtype) == (PN, "Summary")
+
     def test_every_progress_note_path_is_codeable(self):
         """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""
         space = taxonomy.label_space()
