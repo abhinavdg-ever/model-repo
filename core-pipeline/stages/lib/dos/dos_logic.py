@@ -611,16 +611,14 @@ def keyword_pass_date(
     page_text: str, candidates: list[dict[str, Any]], kind: str, prof: Optional[DosProfile] = None,
     printed: frozenset[str] | set[str] = frozenset(),
 ) -> Optional[PageDate]:
-    """2026-11-01 (user): a discharge or Progress Note page with no date yet. First its weak
-    key/value dates under ``weak_min_score`` (the floor relaxed), then a DOS label anywhere
-    on the page (not only the edges). Confidence: the canon's keyword_pass, no model."""
+    """2026-11-01 (user): a discharge or Progress Note page with no date yet: its weak
+    key/value dates under ``weak_min_score`` (the floor relaxed). (A DOS label anywhere on
+    such a page is already read by the label step, which reads the whole page for these
+    kinds.) Confidence: the canon's keyword_pass, no model."""
     prof = prof or profile()
     if kind not in prof.keyword_pass_kinds:
         return None
     found = kv_page_date(candidates, kind, prof, printed, relaxed=True)
-    if found is None:
-        hits = [h for h in edge_dates(page_text, prof, whole_page=True) if h.iso not in printed]
-        found = edge_page_date(page_text, prof, hits)
     if found is None:
         return None
     found.confidence = conf.score(prof.confidence.get("keyword_pass", 0.7), "no_model", module="dos")
@@ -639,12 +637,22 @@ def signature_page_date(signature_dates: list[str], prof: Optional[DosProfile] =
                     "electronic signature", "signature")
 
 
+# DOS sources that are fallbacks: checked against the neighbouring pages' dates.
+FALLBACK_SOURCES = frozenset({"keyword_pass", "signature", "dictation"})
+
+
 def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str],
                                prof: Optional[DosProfile] = None) -> list[Optional[PageDate]]:
-    """2026-11-01 (user): dates do not vary within a run of pages. A page (not lab) with no
-    DOS, or one under ``neighbours.below``, between dated pages within ``max_gap`` pages
-    that agree on one date (each at least ``below``) takes that date; confidence = the
-    weaker neighbour's x ``factor``."""
+    """2026-11-01 (user): dates do not vary within a run of pages. For a page (not lab) with
+    no DOS, a DOS under ``neighbours.below``, or a fallback DOS (keyword pass, signature,
+    dictation), against the sure dated pages (each at least ``below``) within ``max_gap``
+    pages before and after it:
+
+    * both sides agree on one date -> the page takes it (confidence = the weaker
+      neighbour's x ``factor``);
+    * otherwise a date the page has that is outside the neighbours' dates (from the
+      earliest to the latest) is dropped: the page has no DOS rather than a stray one.
+    A page with no sure neighbour keeps what it has."""
     prof = prof or profile()
     cfg = prof.neighbours
     if not cfg:
@@ -656,17 +664,24 @@ def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str]
 
     out = list(found)
     for i, page in enumerate(found):
-        if kinds[i] == "lab" or (page is not None and page.confidence >= below):
+        weak = page is None or page.confidence < below or page.source in FALLBACK_SOURCES
+        if kinds[i] == "lab" or not weak:
             continue
         before = next((j for j in range(i - 1, max(-1, i - gap - 1), -1) if sure(j)), None)
         after = next((j for j in range(i + 1, min(len(found), i + gap + 1)) if sure(j)), None)
-        if before is None or after is None:
+        sides = [found[j] for j in (before, after) if j is not None]
+        if not sides:
             continue
-        a, b = found[before], found[after]
-        if (a.dos_from, a.dos_to) != (b.dos_from, b.dos_to):
+        if len(sides) == 2 and (sides[0].dos_from, sides[0].dos_to) == (sides[1].dos_from, sides[1].dos_to):
+            a = sides[0]
+            out[i] = PageDate(a.dos_from, a.dos_to, round(min(s.confidence for s in sides) * factor, 4),
+                              f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair)
             continue
-        out[i] = PageDate(a.dos_from, a.dos_to, round(min(a.confidence, b.confidence) * factor, 4),
-                          f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair)
+        if page is not None:
+            lo = min(s.dos_from for s in sides)
+            hi = max(s.dos_to or s.dos_from for s in sides)
+            if page.dos_from < lo or (page.dos_to or page.dos_from) > hi:
+                out[i] = None  # a stray date outside the neighbours': no DOS
     return out
 
 
@@ -801,8 +816,11 @@ def detect_dos_per_page(
         tesseract_text = (tesseract_texts or {}).get(page_name) or ""
         printed = print_dates(page_text, tesseract_text, (print_texts or {}).get(page_name))
         printed |= {str(item.get("iso")) for item in candidates if item.get("tier") == "printed"}
-        hits = [hit for hit in edge_dates(page_text, prof) if hit.iso not in printed]
         kind = page_kind((page_families or {}).get(page_name, ""), prof)
+        # 2026-11-01 (user): on a discharge or Progress Note page a DOS label anywhere on the
+        # page counts; elsewhere only in its first / last edge_words words.
+        whole = kind in prof.keyword_pass_kinds
+        hits = [hit for hit in edge_dates(page_text, prof, whole_page=whole) if hit.iso not in printed]
         found = None
         if kind == "discharge":
             dated = kv_dated(candidates, printed)

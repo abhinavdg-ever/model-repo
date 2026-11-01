@@ -73,7 +73,7 @@ class TestKeywordPass:
         middle = " ".join(["word"] * 40) + " Date of Service: 04/02/2024 " + " ".join(["word"] * 40)
         assert _pages(middle, page_families={"1.jpg": "Lab Report"})[0]["dos_from_iso"] == ""
         hit = _pages(middle, page_families={"1.jpg": "Progress Note"})[0]
-        assert (hit["dos_from_iso"], hit["match_type"]) == ("2024-04-02", "keyword_pass")
+        assert hit["dos_from_iso"] == "2024-04-02"
 
 
 class TestSignatureFallback:
@@ -140,3 +140,19 @@ class TestNonCodableCredentials:
         assert only_non_codable({"provider_credentials": ""}) is None  # no credential: unchanged
         signers = [{"name": "A", "credentials": "PharmD"}, {"name": "B", "credentials": "DO"}]
         assert only_non_codable({"provider_credentials": "PharmD", "signers": signers}) is None
+
+
+class TestStrayFallbackDates:
+    def test_a_signature_date_outside_the_neighbours_dates_is_dropped(self):
+        rows = {p: [_kv("Date of Service", "service", "2024-06-01", "Date of Service: 06/01/2024", 0.9)]
+                for p in ("1.jpg",)}
+        rows["3.jpg"] = [_kv("Date of Service", "service", "2024-06-09", "Date of Service: 06/09/2024", 0.9)]
+        hits = _pages("a", "b", "c", kv_dates=rows, signature_dates={"2.jpg": ["2025-01-15"]})
+        assert hits[1]["dos_from_iso"] == "" and hits[1]["match_type"] == "no_date_found"
+        inside = _pages("a", "b", "c", kv_dates=rows, signature_dates={"2.jpg": ["2024-06-05"]})
+        assert inside[1]["dos_from_iso"] == "2024-06-05"
+
+    def test_a_label_in_the_middle_counts_on_a_note_in_the_label_step(self):
+        middle = " ".join(["word"] * 40) + " Date of Service: 04/02/2024 " + " ".join(["word"] * 40)
+        hit = _pages(middle, page_families={"1.jpg": "Progress Note"})[0]
+        assert (hit["dos_from_iso"], hit["match_type"]) == ("2024-04-02", "edge_keyword")

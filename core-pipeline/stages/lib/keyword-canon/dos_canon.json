@@ -199,7 +199,7 @@
     "discharge",
     "note"
   ],
-  "note_keyword_pass": "2026-11-01 (user): a discharge or Progress Note page with no date yet gets a keyword pass: its weak key/value dates under weak_min_score, then any DOS label anywhere on the page (not only the edges).",
+  "note_keyword_pass": "2026-11-01 (user): on a discharge or Progress Note page the label step reads a DOS label anywhere on the page (other pages: the first / last edge_words words); with still no date, the keyword pass takes its weak key/value dates under weak_min_score.",
   "signature_fallback_below": 0.5,
   "note_signature": "2026-11-01 (user): when a page has no DOS, or one under signature_fallback_below, and kv_extract read an electronic signature with a date, the last signature's date (the main doctor's) is the DOS.",
   "neighbours": {
@@ -207,5 +207,5 @@
     "below": 0.5,
     "factor": 0.9
   },
-  "note_neighbours": "2026-11-01 (user): dates are kept consistent across pages: a page (not lab) with no DOS, or one under neighbours.below, between dated pages within max_gap pages that agree on one date (each at least neighbours.below) takes that date, confidence = the weaker neighbour's x factor."
+  "note_neighbours": "2026-11-01 (user): dates are kept consistent across pages. A page (not lab) with no DOS, one under neighbours.below, or a fallback DOS (keyword pass, signature, dictation): when the sure dated pages within max_gap before and after agree on one date it takes that date (confidence = the weaker neighbour's x factor); otherwise a date of its own outside the neighbours' dates is dropped (no DOS rather than a stray one)."
 }

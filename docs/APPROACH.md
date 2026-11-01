@@ -459,6 +459,16 @@ where each came from, page status, other names, confidence) and
   FIN # "71yo" (rules 0.92, model 0.63) is left out. The Additional tab lists the same
   IDs without the marks.
 
+### 2B.5a Rejection Rules tabs (2026-11-01)
+
+review-ui → Rejection Rules has three tabs:
+
+| Tab | What it shows |
+|---|---|
+| **Member Verification** | the member check above (2B.4) |
+| **Image Quality** | every page the page-tag model calls **not visible**, or the algorithm grades **Low** (quality score under 40%, its own grade before the handwritten / OCR downgrades): page, Printed / HW, quality (grade and score), visible, why |
+| **Service Date** | the requested DOS window read from the manifest's **service note** (`review-ui services/service_window.py`: the chart measure's own section; a written range "Oct 2024 to Dec 2026" / "01/01/2026 - 12/31/2026" first, else the years it names, "2026" → 2026-01-01 to 2026-12-31; "through 12/31/2026" alone is not a window). Each Main page's Final DOS (else Extracted) is Inside / **Out of Time Frame** / No DOS. Chart verdict, as the client's rejection reason *4. Missing Service Note/DOS*: dated pages but none inside → **Out of Time Frame**; no page dated → **Requested DOS Missing** |
+
 ### 2B.6 Manual Review: any one match is a match (2026-11-01)
 
 Manual Review (`review-ui/backend/app/services/excel_compare/field_comparator.py`)
@@ -1259,13 +1269,15 @@ The steps of 3A.3 now run in this order, with these additions (settings in `dos_
 | 1 | **Amended dates are dropped**: a date with *amended, amendment, addendum, revised* or *corrected* within 40 characters before it (same line) is when the note was amended, never the DOS; the next option is used | key/value dates, edge labels, keyword pass, dictation |
 | 2 | **Page kind by classification**: *note* (Progress Note) is its own kind. **Exam Date** is its own priority group: **last** on note and discharge pages (a study quoted in a note), with service on lab and other pages | the key/value order |
 | 3 | **Discharge without a discharge date**: an admit date and no discharge date → the page's **Report Date** (on or after admit) is the discharge date | discharge pages |
-| 4 | **Keyword pass**: no date yet → the weak key/value dates under the 0.3 floor, then a DOS label **anywhere** on the page (not only the first / last 20 words); confidence 0.7 × no_model | discharge and note pages |
+| 4 | **Labels anywhere + keyword pass**: the label step reads a DOS label **anywhere** on the page (other kinds: the first / last 20 words only); with still no date, the keyword pass takes the weak key/value dates under the 0.3 floor; confidence 0.7 × no_model | discharge and note pages |
 | 5 | **Electronic-signature fallback**: no DOS, or one under 0.5 → the **last** electronic signature's date (the main doctor's) from kv_extract; confidence 0.6 × no_model (`match_type signature_date`) | every page |
-| 6 | **Consistency with neighbouring pages**: a page with no DOS, or one under 0.5, between dated pages (within 2) that **agree** on one date (each ≥ 0.5) takes that date; confidence = the weaker neighbour's × 0.9 (`match_type neighbours`) | every page but lab |
+| 6 | **Consistency with neighbouring pages**: for a page with no DOS, one under 0.5, or a fallback DOS (keyword pass, signature, dictation), against the sure dated pages (≥ 0.5) within 2 pages: both sides agree on one date → the page takes it (the weaker neighbour's × 0.9, `match_type neighbours`); otherwise a date of its own **outside the neighbours' dates is dropped** (no DOS rather than a stray one) | every page but lab |
 
 Order per page: discharge pair (with Report Date) → key/value by kind (amended out, exam last
-on notes) → edge label → keyword pass → dictated / transcribed (other and note pages) →
-signature fallback → neighbours (across the chart).
+on notes) → DOS label (whole page on discharge / note pages, edges elsewhere) → keyword pass
+(weak dates under the floor) → dictated / transcribed (other and note pages) → signature
+fallback → neighbours (across the chart: fill from agreeing neighbours, drop a stray
+fallback date).
 
 Example (a Progress Note): "Encounter: Follow Up **Amended** 07/23/2025" (service) is dropped;
 "Date: 03/04/2025" (weak, model 0.20, under the floor) is taken by the keyword pass. Another
