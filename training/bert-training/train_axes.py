@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Train the page-axes model: one encoder, four heads (L1, L2, L3, specialty) over
-the v29.2 taxonomy. Codeability is not learned (2026-10-25, user): the pipeline reads
+the v29.3 taxonomy. Codeability is not learned (2026-10-25, user): the pipeline reads
 it from the taxonomy tag of the Final page type.
 
 Input is ``training_data.jsonl`` (one page per line: ``text`` plus the labels
 ``L1``, ``L2``, ``L3``, ``specialty`` and ``chart_id``), a copy
 of ``Training/processed/training_data.jsonl``. Every name comes from
-``taxonomy.json`` beside this file (v29.2, from the 2026-10-25 Claude Code
-pack); nothing here knows a page type. Output, by default ``output/page-axes``,
+``taxonomy.json`` beside this file (v29.3, from training/taxonomy/import_taxonomy_xlsx.py;
+v29.2 was the 2026-10-25 Claude Code pack); nothing here knows a page type. Output, by default ``output/page-axes``,
 always holds the best epoch by validation macro F1 of the selected heads.
 
     python train_axes.py --check              # two steps and a time estimate; saves nothing

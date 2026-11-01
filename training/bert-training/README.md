@@ -1,7 +1,7 @@
 # Page-axes training
 
 Trains the page-axes model the pipeline loads: one DistilBERT encoder, four heads
-(L1, L2, L3, specialty) over `taxonomy.json` (v29.2). Codeability is not learned
+(L1, L2, L3, specialty) over `taxonomy.json` (v29.3). Codeability is not learned
 (2026-10-25): the pipeline reads it from the taxonomy tag of the Final page type. A
 model trained before then still has a codeability head and still loads. Stands alone: it
 imports nothing from `annotation-tool/` or `core-pipeline/`.
@@ -12,10 +12,10 @@ imports nothing from `annotation-tool/` or `core-pipeline/`.
 | `predict_axes.py` | inference on text or a JSONL file |
 | `tune_thresholds.py` | the routing thresholds from a run's `predictions_val.csv` |
 | `page_axes.ipynb` | Colab (or a PC) notebook that runs the above |
-| `taxonomy.json` | the label space, v29.2 (from `Training/reference/claude_code_pack_2026-10-25/`; same file as `../taxonomy/taxonomy.json`) |
+| `taxonomy.json` | the label space, v29.3 (written by `../taxonomy/import_taxonomy_xlsx.py`; same file as `../taxonomy/taxonomy.json`) |
 | `check_test_pages.py`, `test_pages.jsonl` | 12 synthetic pages with the expected answer; fails if a Lab Report page comes back Progress Note |
 | `requirements.txt` | |
-| `data/training_data.jsonl` | input: a copy of `Training/processed/training_data.jsonl` (2,750 pages) |
+| `data/training_data.jsonl` | input: a copy of `Training/processed/training_data.jsonl` (3,054 usable pages) |
 | `data/mock_pages.jsonl` | optional input (`--with-mock`): `Training/mock/mock_pages.jsonl`, 25 synthetic pages, training split only |
 | `output/page-axes/` | output: the best epoch |
 
@@ -66,10 +66,10 @@ step 1.
 
 On Colab the notebook installs `requirements.txt` itself.
 
-## Page axes (taxonomy v29.2): L1, L2, L3, specialty
+## Page axes (taxonomy v29.3): L1, L2, L3, specialty
 
 `train_axes.py` replaces the single `model_type` head with one encoder and
-four heads over `taxonomy.json`, **v29.2** since 2026-10-25: 17 L1 (Clinical
+four heads over `taxonomy.json`, **v29.3** since 2026-11-01 (v29.2 since 2026-10-25: 17 L1, Clinical
 Summary and Provider Letter new, `Lab Report/Result` renamed `Lab Report`), the
 renamed and new L2/L3s, and the page-essence rule. It is the pack's file, copied
 as is. The rules version (context rules, overrides, merges)
