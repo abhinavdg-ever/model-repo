@@ -172,6 +172,11 @@ class Rules:
     demographics_types: frozenset[str]
     visit_heading_breaks: bool
     visual_joins: bool
+    # 2026-11-01 (user): a signed page ends its document (whatever a sticky header, the
+    # date or the printed page numbers say); pages of these families stand apart from
+    # pages of any other family (a summary pulls unrelated things together).
+    signature_breaks: bool = True
+    standalone_families: frozenset[str] = frozenset()
 
     def pts(self, name: str) -> float:
         return float(self.points[name]["points"])
@@ -252,6 +257,10 @@ def _build(data: dict[str, Any]) -> Rules:
         visual_joins=bool((data.get("visual_join") or {}).get("enabled", True)),
         demographics_types=frozenset(
             t.casefold() for t in (data.get("demographics_break") or {}).get("page_types") or ()
+        ),
+        signature_breaks=bool((data.get("signature_break") or {}).get("enabled", True)),
+        standalone_families=frozenset(
+            t.casefold() for t in (data.get("standalone_families") or {}).get("families") or ()
         ),
     )
 
@@ -564,6 +573,24 @@ def score_gap(
         gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["demographics_boundary"] = "Demographics page beside another kind of page"
         gap.flags.append("Demographics boundary: always a break")
+    # A signed page ends its document (2026-11-01, user): the note is finished; what comes
+    # after (lab results, orders, attachments printed with the visit) is its own, whatever
+    # the sticky visit header, the date or the printed page numbers say.
+    if rules.signature_breaks and a.kind == "main" and b.kind == "main" and a.signed:
+        gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
+        gap.confidence = _ruled_confidence(gap, rules)
+        gap.evidence["signature_break"] = "the earlier page is signed: its document ends there"
+        gap.flags.append("signed page: always a break after it")
+    # A summary page stands apart from pages of another family (2026-11-01, user).
+    fa, fb = (a.page_type or "").casefold(), (b.page_type or "").casefold()
+    if (
+        a.kind == "main" and b.kind == "main" and fa != fb
+        and (fa in rules.standalone_families or fb in rules.standalone_families)
+    ):
+        gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
+        gap.confidence = _ruled_confidence(gap, rules)
+        gap.evidence["standalone_family"] = f"{a.page_type or '-'} / {b.page_type or '-'}: a summary stands apart"
+        gap.flags.append("summary page beside another kind of page: always a break")
     # A visit heading at the top (Reason for Appointment, HPI, ...) opens a new Progress
     # Note (2026-10-23, user) -- unless the printed page N of M says it runs on.
     if (

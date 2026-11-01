@@ -232,14 +232,18 @@ class TestConflicts:
         return [page(1, signed=True, signed_in_tail=True, ends=0.6, visit_ids=visits),
                 page(2, visit_ids=visits)]
 
+    # The scored conflict, with the signature break (2026-11-01) switched off: it would
+    # decide the gap first.
+    NO_SIGNATURE_BREAK = dataclasses.replace(RULES, signature_breaks=False)
+
     def test_pattern_a_is_recorded_and_flagged_not_applied(self):
-        rows = assign(self._pages())
+        rows = assign(self._pages(), self.NO_SIGNATURE_BREAK)
         before = gap(rows[1])
         assert before["recorded"]["conflict"] == "A" and rows[1]["review_required"]
         assert before["decided_by"] == "sum"
 
     def test_pattern_a_breaks_when_switched_on(self):
-        rules = dataclasses.replace(RULES, conflict_apply=True)
+        rules = dataclasses.replace(self.NO_SIGNATURE_BREAK, conflict_apply=True)
         rows = assign(self._pages(), rules)
         assert rows[1]["decided_by"] == "conflict_a" and rows[1]["relation"] == "new_document"
 
@@ -647,3 +651,39 @@ class TestStartsMidThought:
     def test_text_lines_keep_the_case_as_read(self):
         line = text_lines("  Chest Pain  \n")[0]
         assert (line.text, line.raw) == ("chest pain", "Chest Pain")
+
+
+class TestSignatureAndSummaryBreaks:
+    """2026-11-01 (user): a signed page ends its document (a mid-page signature too, and
+    whatever a sticky '... visit (continued)' header, the date or the page numbers say);
+    a summary page stands apart from other families."""
+
+    STICKY = "07/29/2025 - procedure visit in clinic (continued)"
+
+    def test_a_signed_page_breaks_after_it_despite_sticky_header_date_and_page_numbers(self):
+        pages = [
+            page(1, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(1, 3)),
+            page(2, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(2, 3),
+                 signed=True),
+            page(3, head=self.STICKY, dos_from="2025-07-29", dos_trust=5, page_type="Lab Report", printed=(3, 3)),
+        ]
+        rows = assign(pages)
+        assert rows[1]["relation"] == "continue"
+        assert rows[2]["relation"] == "new_document"
+        assert "signature_break" in str(gap(rows[2]))
+
+    def test_the_switch_turns_it_off(self):
+        rules = dataclasses.replace(RULES, signature_breaks=False)
+        pages = [page(1, dos_from="2025-07-29", dos_trust=5, signed=True, printed=(1, 2)),
+                 page(2, dos_from="2025-07-29", dos_trust=5, printed=(2, 2))]
+        assert assign(pages, rules)[1]["relation"] == "continue"
+
+    def test_a_summary_page_stands_apart_but_summary_pages_join(self):
+        pages = [
+            page(1, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(1, 4)),
+            page(2, dos_from="2025-07-29", dos_trust=5, page_type="Clinical Summary", printed=(2, 4)),
+            page(3, dos_from="2025-07-29", dos_trust=5, page_type="Clinical Summary", printed=(3, 4)),
+            page(4, dos_from="2025-07-29", dos_trust=5, page_type="Progress Note", printed=(4, 4)),
+        ]
+        rows = assign(pages)
+        assert [r["relation"] for r in rows[1:]] == ["new_document", "continue", "new_document"]

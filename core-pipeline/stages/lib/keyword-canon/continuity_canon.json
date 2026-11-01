@@ -440,5 +440,15 @@
   "visual_join": {
     "comment": "2026-10-23 (user): a Visual page (ocr_quality_results.document_type 'visual' with fewer than blank_junk visual.max_words words) that is not junk always joins the page before it, whatever the score.",
     "enabled": true
+  },
+  "signature_break": {
+    "enabled": true,
+    "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it."
+  },
+  "standalone_families": {
+    "families": [
+      "Clinical Summary"
+    ],
+    "note": "2026-11-01 (user): a page of these families never shares a document with a page of another family: a summary pulls unrelated things together. Consecutive pages of the family can still join."
   }
 }
