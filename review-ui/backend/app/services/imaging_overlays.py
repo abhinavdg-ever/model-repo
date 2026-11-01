@@ -445,11 +445,31 @@ def undotted(credentials: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", text.replace(".", "")).strip()
 
 
+# 2026-11-01 (user): a signature block's role words are never part of a provider's name
+# (core-pipeline stages/lib/names.py PROVIDER_ROLE_WORDS; rows written before it still have them).
+_PROVIDER_ROLE_WORDS = (
+    "legal authenticator", "legal authority", "signing authority", "signing authenticator",
+    "authenticator", "authenticated by", "authenticated", "authority", "authorized by",
+    "legal", "signing", "signed by", "e-signed by", "electronically signed by", "signer",
+)
+_PROVIDER_ROLE = re.compile(
+    r"(?<![A-Za-z])(?:" + "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in
+                                   sorted(_PROVIDER_ROLE_WORDS, key=len, reverse=True)) + r")(?![A-Za-z])\s*:?",
+    re.IGNORECASE,
+)
+
+
+def without_role_words(name: str) -> str:
+    text = re.sub(r"\s{2,}", " ", _PROVIDER_ROLE.sub(" ", name or "")).strip()
+    return re.sub(r"\s+,", ",", text).strip(" ,;:")
+
+
 def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str]:
     """A provider's name and credentials as the pipeline stored them. Rows written since the
     provider-signature rule (2026-10-18) carry ``provider_credentials`` beside a bare name;
-    an older row (``credentials`` None: no such column) keeps them inside the name."""
-    bare_name, credentials_in_name = signature_people(name or "")
+    an older row (``credentials`` None: no such column) keeps them inside the name. Role
+    words (Legal Authenticator, Signing Authority ...) come off the name."""
+    bare_name, credentials_in_name = signature_people(without_role_words(name or ""))
     if credentials is None:
         return bare_name, undotted(credentials_in_name)
     # The name is shown without credentials even if some slipped into it: the known ones,

@@ -23,13 +23,37 @@ def trim_name(value: Optional[str]) -> Optional[str]:
     return text
 
 
-def trim_signers(signers: Any) -> Any:
-    """Each signer's name trimmed; anything else as it was."""
+# 2026-11-01 (user): a signature block's role words read into a provider's name ("Legal
+# Authenticator John Smith", "Jane Doe Signing Authority"): never part of the name.
+PROVIDER_ROLE_WORDS = (
+    "legal authenticator", "legal authority", "signing authority", "signing authenticator",
+    "authenticator", "authenticated by", "authenticated", "authority", "authorized by",
+    "legal", "signing", "signed by", "e-signed by", "electronically signed by", "signer",
+)
+_ROLE = re.compile(
+    r"(?<![A-Za-z])(?:" + "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in
+                                   sorted(PROVIDER_ROLE_WORDS, key=len, reverse=True)) + r")(?![A-Za-z])\s*:?",
+    re.IGNORECASE,
+)
+
+
+def trim_provider_name(value: Optional[str]) -> Optional[str]:
+    """A provider's name as stored: the role words of a signature block (Legal
+    Authenticator, Signing Authority, Authority ...) taken out, then trimmed like any name."""
+    if value is None:
+        return None
+    text = re.sub(r"\s{2,}", " ", _ROLE.sub(" ", str(value))).strip()
+    text = re.sub(r"\s+,", ",", text).strip(" ,;:")
+    return trim_name(text)
+
+
+def trim_signers(signers: Any, *, provider: bool = True) -> Any:
+    """Each signer's name trimmed (a provider's role words taken out); anything else as it was."""
     if not isinstance(signers, list):
         return signers
     out = []
     for signer in signers:
         if isinstance(signer, dict) and signer.get("name"):
-            signer = {**signer, "name": trim_name(signer["name"])}
+            signer = {**signer, "name": (trim_provider_name if provider else trim_name)(signer["name"])}
         out.append(signer)
     return out

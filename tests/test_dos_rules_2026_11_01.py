@@ -101,3 +101,26 @@ class TestNeighbours:
         same = {p: rows["1.jpg"] for p in ("1.jpg", "3.jpg")}
         lab = _pages("a", "b", "c", kv_dates=same, page_families={"2.jpg": "Lab Report"})
         assert lab[1]["dos_from_iso"] == ""
+
+
+class TestProviderRoleWords:
+    """2026-11-01 (user): Legal Authenticator / Signing Authority / Authority never in a provider name."""
+
+    CASES = {
+        "Legal Authenticator: John Smith, MD": "John Smith, MD",
+        "Jane Doe Signing Authority": "Jane Doe",
+        "Authority Mary Jones": "Mary Jones",
+        "Electronically signed by: Sameera T Raza": "Sameera T Raza",
+    }
+
+    def test_the_pipeline_strips_them(self):
+        from stages.lib.names import trim_provider_name
+
+        for raw, want in self.CASES.items():
+            assert trim_provider_name(raw) == want, raw
+
+    def test_review_ui_strips_them_from_older_rows(self):
+        from app.services.imaging_overlays import provider_fields
+
+        assert provider_fields("Legal Authenticator John Smith", "MD")[0] == "John Smith"
+        assert provider_fields("Jane Doe Signing Authority", "")[0] == "Jane Doe"

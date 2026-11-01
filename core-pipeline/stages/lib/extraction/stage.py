@@ -402,6 +402,13 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     if fields.get("confidence") is None:
         # No signature and no provider: how sure the page has none (2026-10-25, user).
         fields["confidence"] = staged_page.absent.get("electronic_signature")
+    # 2026-11-01 (user): a signature block's role words are never part of the name.
+    from stages.lib.names import trim_provider_name, trim_signers
+
+    if fields.get("provider_name"):
+        fields["provider_name"] = trim_provider_name(fields["provider_name"]) or None
+    if isinstance(fields.get("signers"), list):
+        fields["signers"] = trim_signers(fields["signers"])
     return fields
 
 

@@ -112,12 +112,13 @@ def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
                 signers = json.loads(signers)
             except ValueError:
                 signers = None
-        from stages.lib.names import trim_name, trim_signers
+        from stages.lib.names import trim_provider_name, trim_signers
 
         out[page_id] = {
             "signature_present": bool(row.get("signature_present")),
             # Without stray marks at either end ("→ Sameera T Raza"), 2026-10-28.
-            "provider_name": trim_name(row.get("provider_name")) or None,
+            # Role words out ("Legal Authenticator", "Signing Authority"), 2026-11-01.
+            "provider_name": trim_provider_name(row.get("provider_name")) or None,
             "provider_credentials": row.get("provider_credentials") or None,
             "signers": trim_signers(signers) or None,
             "provider_version": row.get("provider_version"),
