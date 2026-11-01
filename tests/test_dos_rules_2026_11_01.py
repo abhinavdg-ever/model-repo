@@ -30,8 +30,8 @@ class TestAmended:
             _kv("Date", "weak", "2025-03-04",
                 "Date: 03/04/2025 Provider: Christina Encounter: Amended 07/23/2025 Plan", 0.1959, raw="03/04/2025"),
         ]
-        hit = _pages("Follow up visit, plan reviewed.", kv_dates={"1.jpg": rows},
-                     page_families={"1.jpg": "Progress Note"})[0]
+        page = "Date: 03/04/2025 Provider: Christina Encounter: Follow Up Amended 07/23/2025\nPlan reviewed."
+        hit = _pages(page, kv_dates={"1.jpg": rows}, page_families={"1.jpg": "Progress Note"})[0]
         # The amended service date is gone; the weak Date is under the 0.3 floor, so the
         # keyword pass (floor relaxed) takes it.
         assert hit["dos_from_iso"] == "2025-03-04" and hit["match_type"] == "keyword_pass"
@@ -156,3 +156,23 @@ class TestStrayFallbackDates:
         middle = " ".join(["word"] * 40) + " Date of Service: 04/02/2024 " + " ".join(["word"] * 40)
         hit = _pages(middle, page_families={"1.jpg": "Progress Note"})[0]
         assert (hit["dos_from_iso"], hit["match_type"]) == ("2024-04-02", "edge_keyword")
+
+
+class TestStrongLabelsAndEdges:
+    """2026-11-01 (user): beyond the edges only a strong label ('Date of Service: ...'); a
+    bare 'Date:' only in the first / last 20 words; extraction.json first."""
+
+    FILL = " ".join(["word"] * 40)
+
+    def test_a_bare_date_in_the_middle_is_not_taken_by_the_keyword_pass(self):
+        rows = [_kv("Date", "weak", "2025-03-04", "Date: 03/04/2025", 0.2, raw="03/04/2025")]
+        middle = f"{self.FILL} Date: 03/04/2025 {self.FILL}"
+        assert _pages(middle, kv_dates={"1.jpg": rows}, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == ""
+        top = f"Date: 03/04/2025 {self.FILL} {self.FILL}"
+        assert _pages(top, kv_dates={"1.jpg": rows}, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == "2025-03-04"
+
+    def test_a_weak_label_in_the_middle_needs_two_words_and_a_colon(self):
+        loose = f"{self.FILL} date of service was 04/02/2024 {self.FILL}"
+        assert _pages(loose, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == ""
+        single = f"{self.FILL} DOS: 04/02/2024 {self.FILL}"
+        assert _pages(single, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == ""

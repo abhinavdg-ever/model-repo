@@ -275,7 +275,10 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None, *, whole_page:
     prof = prof or profile()
     found: list[LabelledDate] = []
     seen: set[int] = set()
-    spans = [("page", 0, len(page_text))] if whole_page else edge_spans(page_text, prof.edge_words)
+    edges = edge_spans(page_text, prof.edge_words)
+    # 2026-11-01 (user): beyond the edges only a strong label counts: two words or more,
+    # with ':' or '-' between it and its date ("Date of Service: 04/02/2024").
+    spans = edges + ([("page", 0, len(page_text))] if whole_page else [])
     for edge, lo, hi in spans:
         # Overlapping: "Office Visit  Date of Service" holds "visit date" and
         # "date of service"; only the second has its date right after it.
@@ -289,6 +292,8 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None, *, whole_page:
                 continue
             gap = reach[: match.start()]
             if any(w.casefold() not in prof.label_gap_words for w in re.findall(r"[A-Za-z]+", gap)):
+                continue
+            if edge == "page" and not _strong_mid_label(label.group(0), gap):
                 continue
             if _DICTATION_BEFORE.search(page_text, 0, label.end() + match.start()):
                 # 'D: 03/01/2024 T: 03/04/2024': dictated / transcribed, not a visit date.
@@ -309,6 +314,11 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None, *, whole_page:
                 )
             )
     return found
+
+
+def _strong_mid_label(label: str, gap: str) -> bool:
+    """A label read beyond the page's edges: at least two words, then ':' or '-' and the date."""
+    return len(label.split()) >= 2 and bool(re.match(r"^\s*[:\-–]\s*$", gap))
 
 
 # A date right after one of these is when the note was dictated or transcribed ('D: 03/01/2024
@@ -618,7 +628,14 @@ def keyword_pass_date(
     prof = prof or profile()
     if kind not in prof.keyword_pass_kinds:
         return None
-    found = kv_page_date(candidates, kind, prof, printed, relaxed=True)
+    # 2026-11-01 (user): a bare 'Date:' counts only in the page's first / last edge_words
+    # words: the weak dates kept are those whose date is written there.
+    edge_text = " ".join(page_text[lo:hi] for _edge, lo, hi in edge_spans(page_text, prof.edge_words))
+    near_edge = [
+        it for it in candidates
+        if it.get("tier") != "weak" or (str(it.get("raw") or "") and str(it.get("raw")) in edge_text)
+    ]
+    found = kv_page_date(near_edge, kind, prof, printed, relaxed=True)
     if found is None:
         return None
     found.confidence = conf.score(prof.confidence.get("keyword_pass", 0.7), "no_model", module="dos")

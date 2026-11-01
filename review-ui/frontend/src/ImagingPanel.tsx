@@ -2274,7 +2274,7 @@ function RejectionRules({
   const tabs: [RejectionTab, string][] = [
     ["member", "Member Verification"],
     ["quality", `Image Quality (${quality.length})`],
-    ["service", `Service Date${service.verdict === "in" ? "" : " ⚠"}`],
+    ["service", `Service Date${service.verdict === "in" || service.verdict === "no_window" ? "" : " ⚠"}`],
   ];
   return (
     <div className="rejection-rules">
@@ -2387,7 +2387,8 @@ export function serviceDateReview(pages: ImagingPageResult[], manifest?: Imaging
       rows.push({ page, from: "", to: "", status: "none" });
       continue;
     }
-    const inside = Boolean(from && to) && end >= (from as string) && start <= (to as string);
+    // No requested window (2026-11-01, user): Not Available, every page passes.
+    const inside = !from || !to || (end >= from && start <= to);
     rows.push({ page, from: start, to: end, status: inside ? "in" : "out" });
   }
   const dated = rows.filter((r) => r.status !== "none");
@@ -2401,7 +2402,7 @@ const SERVICE_VERDICT: Record<ServiceReview["verdict"], string> = {
   in: "In time frame",
   out_of_time_frame: "Reject: Missing Service Note/DOS — Out of Time Frame",
   requested_dos_missing: "Reject: Missing Service Note/DOS — Requested DOS Missing",
-  no_window: "The service note gives no requested DOS window",
+  no_window: "Service date range: Not Available — every page passes",
 };
 
 function ServiceDateTable({ review, processed }: { review: ServiceReview; processed: boolean }) {
@@ -2412,7 +2413,7 @@ function ServiceDateTable({ review, processed }: { review: ServiceReview; proces
     <div className="member-rejection">
       <p className="rejection-note">
         Requested DOS{review.measure ? ` (${review.measure})` : ""}:{" "}
-        <strong>{review.from && review.to ? `${displayIsoDates(review.from)} – ${displayIsoDates(review.to)}` : "not given"}</strong>
+        <strong>{review.from && review.to ? `${displayIsoDates(review.from)} – ${displayIsoDates(review.to)}` : "Not Available"}</strong>
         {review.words ? <span className="member-rejection-role"> from “{review.words}”</span> : null}
       </p>
       <p className={`member-rejection-verdict${review.verdict === "in" || review.verdict === "no_window" ? "" : " reject"}`}>
@@ -2432,7 +2433,7 @@ function ServiceDateTable({ review, processed }: { review: ServiceReview; proces
             <tr key={`${page.pageNumber}-${page.fileName}`} className={status === "out" ? "row-reject" : undefined}>
               <td>{page.pageNumber}</td>
               <td>{from ? (to && to !== from ? `${displayIsoDates(from)} – ${displayIsoDates(to)}` : displayIsoDates(from)) : NOT_FOUND}</td>
-              <td>{status === "in" ? "Inside" : status === "out" ? "Out of Time Frame" : "No DOS"}</td>
+              <td>{review.verdict === "no_window" ? "Pass (no range)" : status === "in" ? "Inside" : status === "out" ? "Out of Time Frame" : "No DOS"}</td>
             </tr>
           ))}
         </tbody>

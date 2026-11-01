@@ -107,6 +107,7 @@ document (described, not changed: this document changes no code).
 | k | **The page type as one leaf** (3L): a leaf model (`training/bert-training-leaf/`) and a per-leaf keyword canon (Must Have, Good To Have, Shared, Negative, Deciding; section headers ×2) combined by gates, Deciding and rank points; Others only when nothing else; codeability of the leaf. The cascade (3) stays for `PAGE_CLASSIFIER=axes` | `page_classify/leaf.py`, `leaf_canon.py`, `keyword-canon/leaf_keywords.json` |
 | l | **DOS rules** (3A.3a): amended dates dropped, Exam Date last on Progress Notes, Report Date as the discharge date, a keyword pass, the electronic-signature fallback, consistency with neighbouring pages | `dos/dos_logic.py`, `dos_canon.json` |
 | m | **Non-codable credentials** (5.6): a Codable page whose only credentials are non-codable is Non-Codable; provider names lose signature role words | `non_codable_credentials.py`, `names.trim_provider_name` |
+| n | **Continuity**: a signed page (a mid-page signature too) always ends its document, over sticky visit headers, dates and page numbers; a Clinical Summary page stands apart from other families (4.6) | `continuity/engine.score_gap`, `continuity_canon.json` |
 
 **2026-10-29.** Two sections added and the rest checked against the code again:
 
@@ -467,7 +468,7 @@ review-ui → Rejection Rules has three tabs:
 |---|---|
 | **Member Verification** | the member check above (2B.4) |
 | **Image Quality** | every page the page-tag model calls **not visible**, or the algorithm grades **Low** (quality score under 40%, its own grade before the handwritten / OCR downgrades): page, Printed / HW, quality (grade and score), visible, why |
-| **Service Date** | the requested DOS window read from the manifest's **service note** (`review-ui services/service_window.py`: the chart measure's own section; a written range "Oct 2024 to Dec 2026" / "01/01/2026 - 12/31/2026" first, else the years it names, "2026" → 2026-01-01 to 2026-12-31; "through 12/31/2026" alone is not a window). Each Main page's Final DOS (else Extracted) is Inside / **Out of Time Frame** / No DOS. Chart verdict, as the client's rejection reason *4. Missing Service Note/DOS*: dated pages but none inside → **Out of Time Frame**; no page dated → **Requested DOS Missing** |
+| **Service Date** | the requested DOS window read from the manifest's **service note** (`review-ui services/service_window.py`: the chart measure's own section; a written range "Oct 2024 to Dec 2026" / "01/01/2026 - 12/31/2026" first, else the years it names, "2026" → 2026-01-01 to 2026-12-31; "through 12/31/2026" alone is not a window). Each Main page's Final DOS (else Extracted) is Inside / **Out of Time Frame** / No DOS. Chart verdict, as the client's rejection reason *4. Missing Service Note/DOS*: dated pages but none inside → **Out of Time Frame**; no page dated → **Requested DOS Missing**. A chart whose note gives **no range**: "Not Available", every page passes |
 
 ### 2B.6 Manual Review: any one match is a match (2026-11-01)
 
@@ -1269,7 +1270,7 @@ The steps of 3A.3 now run in this order, with these additions (settings in `dos_
 | 1 | **Amended dates are dropped**: a date with *amended, amendment, addendum, revised* or *corrected* within 40 characters before it (same line) is when the note was amended, never the DOS; the next option is used | key/value dates, edge labels, keyword pass, dictation |
 | 2 | **Page kind by classification**: *note* (Progress Note) is its own kind. **Exam Date** is its own priority group: **last** on note and discharge pages (a study quoted in a note), with service on lab and other pages | the key/value order |
 | 3 | **Discharge without a discharge date**: an admit date and no discharge date → the page's **Report Date** (on or after admit) is the discharge date | discharge pages |
-| 4 | **Labels anywhere + keyword pass**: the label step reads a DOS label **anywhere** on the page (other kinds: the first / last 20 words only); with still no date, the keyword pass takes the weak key/value dates under the 0.3 floor; confidence 0.7 × no_model | discharge and note pages |
+| 4 | **Labels anywhere + keyword pass** (fallbacks; extraction.json stays the first source): the label step also reads a **strong** DOS label in the middle of the page (two words or more, then ":" or "-" and the date: "Date of Service: 04/02/2024"; the first / last 20 words take any label as before; other kinds read the edges only). With still no date, the keyword pass takes a weak key/value date under the 0.3 floor **only when the date is written in the first / last 20 words** (a bare "Date:" mid-page never counts); confidence 0.7 × no_model | discharge and note pages |
 | 5 | **Electronic-signature fallback**: no DOS, or one under 0.5 → the **last** electronic signature's date (the main doctor's) from kv_extract; confidence 0.6 × no_model (`match_type signature_date`) | every page |
 | 6 | **Consistency with neighbouring pages**: for a page with no DOS, one under 0.5, or a fallback DOS (keyword pass, signature, dictation), against the sure dated pages (≥ 0.5) within 2 pages: both sides agree on one date → the page takes it (the weaker neighbour's × 0.9, `match_type neighbours`); otherwise a date of its own **outside the neighbours' dates is dropped** (no DOS rather than a stray one) | every page but lab |
 
@@ -1506,6 +1507,8 @@ Applied after `_decide`, in this order (`score_gap`):
 | Rule | When | Effect | Canon |
 |---|---|---|---|
 | Demographics boundary | a and b are Main and exactly one is a Demographics page (any of its names in `demographics_break.page_types`: Demographics, Patient Demographics, Patient Information, Patient Registration) | **break**, decisive, high; the final pass never merges it back | `demographics_break` |
+| **Signed page** (2026-11-01) | a is signed **anywhere** on the page (kv_extract's electronic signature, a signature section; a mid-page signature counts), both Main | **break** after it, decisive, high, whatever a sticky visit header ("07/29/2025 - Procedure visit ... (continued)", "Office Visit ..."), the same date or the printed page numbers say: results, orders and attachments printed after a signed note are their own documents. The final pass never merges it back, and a Progress Note never runs on past it | `signature_break.enabled: true` |
+| **Summary stands apart** (2026-11-01) | a and b are Main, of different families, and one is in `standalone_families` (Clinical Summary) | **break**, decisive, high (consecutive summary pages still join) | `standalone_families` |
 | Visit heading | b has a visit heading (4.4), both Main, and `pagination_follows` did not fire | **break**, decisive, high | `visit_headings.decisive: true` |
 | Visual page | b is a Visual page, both Main | **join**, decisive, high | `visual_join.enabled: true` |
 
