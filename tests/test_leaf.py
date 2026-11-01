@@ -147,3 +147,44 @@ def test_the_drafted_canon_covers_the_taxonomy():
     for lists in data["nodes"].values():
         deciding = {leaf_canon._norm(t) for t in lists["deciding"]}
         assert not deciding & {leaf_canon._norm(t) for t in lists["must_have"]}
+
+
+class TestConfidence:
+    """2026-11-01 (user): the page type's confidence logic (leaf.leaf_confidence)."""
+
+    @staticmethod
+    def _conf(**kw):
+        args = dict(p=0.7, support=0.0, model_ranked=True, model_ranked_other=False, keywords_ranked_other=False,
+                    has_model=True, margin=None, overruled=False, others=False, settings=SETTINGS)
+        args.update(kw)
+        return leaf.leaf_confidence(**args)
+
+    def test_keywords_backing_the_model_lift_it(self):
+        backed, why = self._conf(support=0.7)
+        alone, _ = self._conf()
+        assert backed > alone and why["rule"] == "model backed by keywords"
+        assert self._conf(support=1.0)[0] > backed  # a Deciding word in a header lifts most
+
+    def test_the_model_alone_against_the_keywords_or_a_close_call_drops(self):
+        alone, _ = self._conf()
+        disagree, why = self._conf(keywords_ranked_other=True)
+        close, why_close = self._conf(margin=0.05)
+        assert disagree < alone and why["penalties"] == ["keywords_disagree"]
+        assert close < alone and why_close["factors"]
+
+    def test_the_keywords_alone(self):
+        no_model, why = self._conf(p=0.0, model_ranked=False, support=0.7, has_model=False)
+        assert why["rule"] == "keywords alone" and why["penalties"] == ["no_model"]
+        against, _ = self._conf(p=0.0, model_ranked=False, support=0.7, model_ranked_other=True)
+        assert against < self._conf(p=0.0, model_ranked=False, support=0.7)[0]
+
+    def test_an_overruled_deciding_word_and_others_cap(self):
+        assert self._conf(overruled=True)[0] < self._conf()[0]
+        capped, why = self._conf(p=0.95, support=1.0, others=True)
+        assert capped == 0.6 and why["factors"]
+
+    def test_the_decision_stores_how_it_was_reached(self, canon):
+        canon({"Progress Note > CC/HPI": {"good_to_have": ["hpi"]}})
+        kw = leaf_canon.score_leaves(LEAVES, "hpi: cough")
+        d = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.7), ("Progress Note > Others", 0.2)), kw, SETTINGS)
+        assert d.confidence_why["rule"] == "model backed by keywords" and d.confidence_why["keyword_support"] == 0.7

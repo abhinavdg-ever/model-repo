@@ -50,6 +50,22 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "model_sure_other_l1": 0.90,
     "top_k": 5,
     "per_l1": 3,
+    # The page type's confidence (leaf.leaf_confidence).
+    "confidence": {
+        # Keyword support for the winner, 0-1: a Deciding word (in a section header / on the
+        # page), else by the keywords' rank of the winner.
+        "support": {"deciding_header": 1.0, "deciding_page": 0.85, "rank_1": 0.7, "rank_2_3": 0.45, "rank_4_5": 0.25},
+        # The keywords' pick alone: base + span x support.
+        "keywords_only_base": 0.4,
+        "keywords_only_span": 0.5,
+        # The model's pick with no keyword support, its first two leaves this close: x close_call.
+        "close_call_margin": 0.10,
+        "close_call": 0.9,
+        # The keywords' pick when the model ranked other leaves (and not this one).
+        "model_disagree": 0.8,
+        # An Others leaf never reads higher than this (the fallback: worth a look).
+        "others_cap": 0.6,
+    },
 }
 
 
@@ -78,6 +94,7 @@ class Canon:
 def _build(data: dict[str, Any]) -> Canon:
     settings = {**DEFAULT_SETTINGS, **(data.get("settings") or {})}
     settings["weights"] = {**DEFAULT_SETTINGS["weights"], **(settings.get("weights") or {})}
+    settings["confidence"] = {**DEFAULT_SETTINGS["confidence"], **(settings.get("confidence") or {})}
     nodes = {}
     for path, lists in (data.get("nodes") or {}).items():
         clean = {name: tuple(dict.fromkeys(t.strip() for t in lists.get(name) or [] if t and t.strip()))

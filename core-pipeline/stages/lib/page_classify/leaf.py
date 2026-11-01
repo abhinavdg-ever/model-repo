@@ -15,10 +15,13 @@ vote (``axes.gate``) when ``PAGE_CLASSIFIER=leaf`` (the default).
 5. **Rank points**: each side gives its ranked leaves 6 - rank points (ties share a rank);
    the leaf with the most points wins (then the model's points, the keyword score, the
    model's probability). An ``Others`` leaf wins only when no other leaf has points.
-6. **Confidence**: both sides' first leaf is the winner -> the model's probability backed
-   by the keywords; a Deciding win -> backed by the Deciding word; the model's pick alone
-   -> its probability (x keywords_disagree when the keywords ranked another first); the
-   keywords' pick alone -> their own confidence (no_model).
+6. **Confidence** (``leaf_confidence``, settings ``confidence`` in leaf_keywords.json):
+   the model's probability for the winner lifted by the keywords' support for it (a
+   Deciding word 1.0 in a header / 0.85 on the page, else 0.7 / 0.45 / 0.25 by the
+   keywords' rank); the model alone -> its probability (x keywords_disagree, x close_call
+   when its first two are within 0.10); the keywords alone -> 0.4 + 0.5 x support (x
+   no_model / model_disagree); x conflict when a Deciding word was overruled; an Others
+   leaf at most 0.6.
 
 Codeability is the leaf's (``taxonomy.codeability_of``). The answer keeps the
 ``axes.AxesResult`` shape, so continuity, Final and review-ui read it as before; the
@@ -217,6 +220,7 @@ class Decision:
     deciding: Optional[str]
     deciding_overruled: Optional[str]
     excluded: dict[str, str]
+    confidence_why: dict[str, Any] = field(default_factory=dict)
 
 
 def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords,
@@ -278,27 +282,103 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
 
     model_first = min(model_rank_raw, key=model_rank_raw.get) if model_rank_raw else None
     keyword_first = min(keyword_rank, key=keyword_rank.get) if keyword_rank else None
-    p = _prob(model, winner)
+    model_has = any(under(winner, path) for path in model_rank_raw)
     if deciding and under(winner, deciding):
         how = "deciding"
-        confidence = conf.score(conf.backed(p if p else 0.5, 1.0), *(() if p else ("no_model",)), module="page_type")
     elif model_first and keyword_first and under(winner, model_first) and winner == keyword_first:
         how = "agree"
-        confidence = conf.score(conf.backed(p, 0.9), module="page_type")
     elif model_first and under(winner, model_first):
         how = "model"
-        confidence = conf.score(p, "keywords_disagree" if keyword_first else "", module="page_type")
     elif winner in kw.scores:
         how = "keywords"
-        strength = min(1.0, kw.scores[winner] / (2 * float(settings["weights"]["deciding"])))
-        confidence = conf.score(0.5 + 0.4 * strength, *(() if model.source != NO_MODEL else ("no_model",)),
-                                *(("keywords_disagree",) if model_first else ()), module="page_type")
     else:
         how = "nothing"
-        confidence = conf.score(p or 0.3, "no_model" if model.source == NO_MODEL else "", module="page_type")
+    support = keyword_support(winner, kw, keyword_rank, deciding, settings)
+    confidence, why = leaf_confidence(
+        p=_prob(model, winner), support=support, model_ranked=model_has,
+        model_ranked_other=bool(model_rank_raw) and not model_has,
+        keywords_ranked_other=bool(keyword_rank) and support == 0.0,
+        has_model=model.source != NO_MODEL, margin=_margin(model, winner, model_first),
+        overruled=bool(overruled), others=is_others(winner), settings=settings,
+    )
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
-                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()})
+                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why)
+
+
+CONFIDENCE = leaf_canon.DEFAULT_SETTINGS["confidence"]
+
+
+def keyword_support(winner: str, kw: leaf_canon.LeafKeywords, keyword_rank: dict[str, int],
+                    deciding: Optional[str], settings: dict[str, Any]) -> float:
+    """How much the keywords back the winning leaf, 0-1 (``confidence.support``)."""
+    table = {**CONFIDENCE, **(settings.get("confidence") or {})}["support"]
+    if deciding and under(winner, deciding):
+        in_header = any(where == "header" for where in (kw.hits.get(deciding, {}).get("deciding") or {}).values())
+        return float(table["deciding_header" if in_header else "deciding_page"])
+    rank = keyword_rank.get(winner)
+    if not rank:
+        return 0.0
+    return float(table["rank_1"] if rank == 1 else table["rank_2_3"] if rank <= 3 else table["rank_4_5"])
+
+
+def _margin(model: ModelSide, winner: str, model_first: Optional[str]) -> Optional[float]:
+    """The gap between the model's first and second leaf, when the winner is its first."""
+    if not model_first or not under(winner, model_first):
+        return None
+    scores = sorted((c["score"] for c in model.candidates), reverse=True)
+    return scores[0] - scores[1] if len(scores) > 1 else None
+
+
+def leaf_confidence(*, p: float, support: float, model_ranked: bool, model_ranked_other: bool,
+                    keywords_ranked_other: bool, has_model: bool, margin: Optional[float], overruled: bool,
+                    others: bool, settings: dict[str, Any]) -> tuple[Optional[float], dict[str, Any]]:
+    """The page type's confidence (module page_type, the one 0-1 scale: >= 0.8 good,
+    < 0.5 review) and how it was reached.
+
+    * the model ranked the winner and the keywords back it: the model's probability
+      lifted by the support (``confidence.backed``: support 1.0 closes half the gap to 1);
+    * the model ranked it, the keywords did not: the model's probability, x
+      keywords_disagree when the keywords ranked other leaves, x close_call when the
+      model's first two leaves are within 0.10;
+    * only the keywords: 0.4 + 0.5 x support, x no_model without a model, x model_disagree
+      when the model ranked other leaves;
+    * neither: the model's probability (0.3 without one), x no_model.
+    Then x conflict when a Deciding word was overruled by the model, and an Others leaf
+    is capped at 0.6. The page's own doubts (handwritten, thin text) are applied after,
+    by the stage."""
+    c = {**CONFIDENCE, **(settings.get("confidence") or {})}
+    reasons: list[str] = []
+    factors: list[str] = []
+    if model_ranked and support > 0:
+        rule, value = "model backed by keywords", conf.backed(p, support)
+    elif model_ranked:
+        rule, value = "model alone", p
+        if keywords_ranked_other:
+            reasons.append("keywords_disagree")
+        if margin is not None and margin < float(c["close_call_margin"]):
+            value *= float(c["close_call"])
+            factors.append(f"close_call x{c['close_call']}")
+    elif support > 0:
+        rule = "keywords alone"
+        value = float(c["keywords_only_base"]) + float(c["keywords_only_span"]) * support
+        if not has_model:
+            reasons.append("no_model")
+        elif model_ranked_other:
+            value *= float(c["model_disagree"])
+            factors.append(f"model_disagree x{c['model_disagree']}")
+    else:
+        rule, value = "neither", p or 0.3
+        if not has_model:
+            reasons.append("no_model")
+    if overruled:
+        reasons.append("conflict")
+    out = conf.score(value, *reasons, module="page_type")
+    if others and out is not None and out > float(c["others_cap"]):
+        out = float(c["others_cap"])
+        factors.append(f"others_cap {c['others_cap']}")
+    return out, {"rule": rule, "model_p": round(p, 4), "keyword_support": round(support, 4),
+                 "penalties": reasons or None, "factors": factors or None}
 
 
 def _prob(model: ModelSide, path: str) -> float:
@@ -352,6 +432,7 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[axes.AxesResu
                     for i, (leaf, total) in enumerate(decision.totals.items(), start=1)),
         leaf={
             "leaf": decision.path, "how": decision.how, "confidence": decision.confidence,
+            "confidence_why": decision.confidence_why,
             "model_source": model.source,
             "model_top": [{"path": p, "rank": r, "score": round(_prob(model, p), 4)}
                           for p, r in sorted(decision.model_rank.items(), key=lambda kv: kv[1])],

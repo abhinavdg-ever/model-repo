@@ -553,12 +553,39 @@ three or more L1s → Shared. Must Have and Negative start empty. Edit it in Exc
 4. **Others**: a leaf ending in Others wins only when no other leaf has points.
 5. Nothing on either side: the model's first leaf, else Others.
 
-| How it won (`leaf.how`) | Confidence (`page_type`) |
+**Confidence** (`leaf.leaf_confidence`; numbers in `leaf_keywords.json → settings.confidence`),
+on the one 0–1 scale (≥ 0.80 good, < 0.50 review):
+
+1. **Keyword support** for the winning leaf, 0–1: a Deciding word in a section header 1.0,
+   on the page 0.85; else by the keywords' rank of the leaf: 1st 0.7, 2nd–3rd 0.45,
+   4th–5th 0.25; not ranked 0.
+2. **The value:**
+   * the model ranked the leaf and the keywords back it: the model's probability *p*
+     lifted by the support, *p* + (1 − *p*) × 0.5 × support;
+   * the model ranked it, the keywords did not: *p*, × 0.7 (keywords_disagree) when the
+     keywords ranked other leaves, × 0.9 when the model's first two leaves are within 0.10;
+   * only the keywords: 0.4 + 0.5 × support, × 0.85 (no_model) without a model, × 0.8 when
+     the model ranked other leaves;
+   * neither: *p* (0.3 without a model).
+3. × 0.8 (conflict) when a Deciding word was overruled by the model; an **Others** leaf is
+   capped at 0.6; then the page's own doubts (handwritten × 0.9, thin text × 0.85).
+
+The working is stored in `axes.leaf.confidence_why` (rule, *p*, support, penalties).
+
+| Case | Confidence |
 |---|---|
-| `deciding` | the model's probability for the leaf backed by the Deciding word (no model: 0.5, × no_model) |
-| `agree`: both sides' first leaf | the model's probability backed by the keywords (0.9) |
-| `model`: the model's first leaf | its probability, × keywords_disagree when the keywords ranked another leaf first |
-| `keywords`: the keywords' leaf | 0.5 + 0.4 × its keyword strength, × no_model / keywords_disagree |
+| model 0.70 + Deciding word in a header | 0.85 |
+| model 0.70 + keywords rank 1 | 0.81 |
+| model 0.90 + keywords rank 1 | 0.94 |
+| model 0.40 + keywords rank 1 | 0.61 |
+| model 0.70 alone, keywords silent | 0.70 |
+| model 0.70 alone, close call | 0.63 |
+| model 0.70 alone, keywords ranked another leaf | 0.49 (review) |
+| keywords only, Deciding in a header, no model | 0.77 |
+| keywords only, rank 1, no model | 0.64 |
+| keywords only, rank 1, the model ranked others | 0.60 |
+| Deciding overruled (model 0.95 sure of another L1) | 0.76 |
+| an Others leaf | at most 0.60 |
 
 **Codeability** is the leaf's (`taxonomy.codeability_of`: the deepest level's tag; the
 families with one tag keep it). **Specialty** is the leaf model's when it is named and at
