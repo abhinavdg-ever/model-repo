@@ -4,8 +4,9 @@ Taxonomy **v29.2** (the version lives inside the files, as `version` /
 `taxonomy_version`; no file or folder name carries a version). Written 2026-10-28;
 replaces the 2026-10-25 version of this document. Updated 2026-10-29: date of service
 (section 3A) and duplicate pages (section 4A) added; sections 1, 5, 6 and 8 brought in
-line with them. The new sections carry letters so every existing section number and
-cross-reference stays as it was.
+line with them. Updated 2026-11-01: blank and junk pages (section 2A) added, specialty
+limited to five L1s (5.7). The new sections carry letters so every existing section
+number and cross-reference stays as it was.
 
 This is the one document for how a chart's pages get their page type (L1 / L2 / L3),
 how each page's date of service is read, how duplicate pages are found, how pages are
@@ -38,6 +39,9 @@ document (described, not changed: this document changes no code).
 * [What changed from the 2026-10-25 version](#what-changed-from-the-2026-10-25-version)
 * [1. The order of work](#1-the-order-of-work)
 * [2. The taxonomy and the two answers per page](#2-the-taxonomy-and-the-two-answers-per-page)
+* [2A. Blank and junk pages](#2a-blank-and-junk-pages)
+  * 2A.1 The ladder (R1–R6, cards) · 2A.2 After the ladder · 2A.3 Short page contained
+    in a nearby page · 2A.4 What is written · 2A.5 Worked example
 * [3. L1 / L2 / L3: the Extracted page type, page alone](#3-l1-l2-l3-the-extracted-page-type-page-alone)
   * 3.1 Inputs · 3.2 Keyword matching · 3.3 Keyword weights · 3.4 The vote ·
     3.5 Page rules · 3.6 L3 · 3.7 Alternatives kept (`under_l1`, `paths`) ·
@@ -79,6 +83,15 @@ document (described, not changed: this document changes no code).
 ---
 
 ## What changed from the 2026-10-25 version
+
+**2026-11-01.**
+
+| # | Change | Where |
+|---|---|---|
+| a | **Blank and junk pages** written up (2A): the rule ladder R1–R6, pass 1 and pass 2, `post_process` | `blank_junk/method.py` |
+| b | **Cards** (R3C, 2026-10-31): a strong ID or insurance card on a printed / visual page is Junk / Cards, pass 2 only; a medium card is flagged for review | `blank_junk/card_rules.py`, `method.decide` |
+| c | **Short page contained in a nearby page** → Junk / Others (2A.3): under 20% of the median page, every word on a longer page within 3 pages or in the same Progress Note | `continuity/short_pages.py` |
+| d | **Specialty only for Progress Note, Lab Report, Discharge Summary, Operative Note and Procedure Note** (5.7); every other page has none (review-ui: Not Applicable) | `imaging_final.has_specialty`, review-ui `ImagingPanel.tsx` |
 
 **2026-10-29.** Two sections added and the rest checked against the code again:
 
@@ -150,7 +163,7 @@ document is about are in bold:
 | 70 | `member_verify` | best text | member rows |
 | 75 | **`page_subtype`** | best text, OCR headings | **Extracted L1 / L2 / L3, specialty, codeability** (`page_classification`, `staging/page_classification.json`) |
 | 80 | **`dos_extract`** | key/value DOS rows, text, Extracted L1 | **each page's Extracted DOS** (`dos_extraction_results`; section 3A) |
-| 87 | **`continuity`** | everything above | **documents** (`page_continuity_results`, `staging/continuity.json`, `continuity_detail.json`); then the duplicate encounter check, which can revise blank / junk verdicts (4A.4) |
+| 87 | **`continuity`** | everything above | **documents** (`page_continuity_results`, `staging/continuity.json`, `continuity_detail.json`); then the duplicate encounter check (4A.4) and the short-page check (2A.3), which can revise blank / junk verdicts |
 | 90 | **`encounter_type`** | Extracted L1, text, documents, encounter model | encounter per document (`encounter_type_results`; `encounters` in `continuity.json`) |
 | 95 | `page_sequencing` | text, page numbers, documents | suggested reading order |
 | 100 | **`imaging_final`** | every table above | **Final page type, subtype (codability), specialty**, DOS, encounter, confidences (`imaging_final`, `imaging/<chart>_final.csv`) |
@@ -221,6 +234,105 @@ three levels, `"L1 (L2)"` / L3. `model_type` is the path `L1 > L2 > L3`.
 `arbitration.path_of` reads them back.
 
 ---
+## 2A. Blank and junk pages
+
+Every page gets one blank / junk verdict: **Main** (kept), **Blank**, or **Junk** with a
+subtype (Invoice, Cover Page, Record Request/Transmittal, Instructions, Letter/Fax,
+Cards, Others). Duplicates are found by the same stage but are not junk (section 4A).
+Code: `core-pipeline/stages/lib/blank_junk/method.py: decide` (the rule ladder) and
+`post_process`, `blank_junk/stage.py: _classify` (passes, duplicates, writing),
+`blank_junk/card_rules.py: detect` (cards), `continuity/short_pages.py: find` (the short
+page contained in a nearby page). Settings: `keyword-canon/blank_junk_context_canon.json`
+(`distilbert`, `short_page`, `visual`, `handwritten_veto`, `duplicates`), reloaded on change.
+
+```
+ pass 1 (seq 30, Tesseract text, printed pages)
+     R1 blank / tiny · R2 placeholder · R3 visual · R3C card → defer
+     DistilBERT sure (> 0.95): Main or Junk, final          everything else: Main for now
+        │
+ Final OCR 1 / Final OCR 2 (pages pass 1 did not settle), key/value extraction
+        │
+ pass 2 (seq 60, best text: Final OCR 2 → Final OCR 1 → Tesseract; handwritten + survivors)
+     R1 · R2 · R3C strong card → Junk / Cards · R3 · R4 signature · R6 short page · R5 DistilBERT
+     post_process: signature / provider details extracted → never junk
+     duplicates (4A)
+        │
+ continuity (seq 87): duplicate encounter check (4A.4) · short page contained nearby → Junk / Others
+```
+
+### 2A.1 The ladder
+
+The first rule that fires decides. DistilBERT's `p(keep)` / `p(junk)` come from
+`model_bridge.model_scores` (p(junk) = every JUNK_* label plus BLANK); its junk subtype
+is its top JUNK_* label (Invoice, Cover Page, Record Request, Instructions, Letter/Fax;
+anything else Others).
+
+| Rule | Pass | Fires when | Verdict | Confidence |
+|---|---|---|---|---|
+| **R1** blank / tiny | 1, 2 | no ink (handwriting stage); or not Visual and 0 characters; or the word "blank" in < 30 characters | Blank | 1.0 |
+| R1 tiny | 1, 2 | not Visual, under 15 characters (whitespace stripped) | Junk / Cover Page when a cover term is there, else Junk / Others | 1.0 |
+| **R2** placeholder | 1, 2 | "intentionally left blank" on a page of ≤ 25 words | Blank | 0.99 |
+| **R3C** card | 2 | page tag printed or visual, and `card_rules.detect` finds a **strong** ID or insurance card: 3+ card groups (member ID, group number, payer, Rx BIN / PCN, plan words, licence fields ...), ≤ 300 words, and **no** form / letter / clinical words (allergies, medications, vitals, impression, Plan:, subjective, objective, exam, chief concern ...) | Junk / **Cards** | 0.95 |
+| R3C (pass 1) | 1 | any card found | Main for now: a card is never settled in pass 1 | 0.5 |
+| R3C medium | 2 | a 2-group card | not junked: the ladder goes on, the page is flagged for review | — |
+| **R3** Visual | 1, 2 | page tag `visual`: card wording (an `id_card` term) with vendor / insurer / retrieval / invoice weight ≥ 4 → Junk / Others; else under 20 words → Main | Junk / Others or Main | 0.90 |
+| *pass 1 stops here* | 1 | DistilBERT p(keep) > 0.95 → Main, **final** (pass 2 skipped); p(junk) > 0.95 and the page ≤ 30% handwritten → Junk (its subtype), **final** (no Final OCR 2); otherwise Main for now | | DistilBERT's |
+| **R4** signature | 2 | kv_extract found an Electronic Signature, unless p(junk) > 0.95 (a signed records-request letter is still junk) | Main | 0.95 backed |
+| **R6** short page | 2 | the content ends in the top **15%** of the page (footer band and stamps left out) and the band below has < 0.5% ink; not when p(keep) > 0.90 or the word boxes cannot be read | Junk / Others | 0.95 backed |
+| **R5** DistilBERT | 2 | p(junk) ≥ 0.85 → Junk (its subtype); 0.50–0.85 → Junk for review; < 0.50 → Main. A page more than 30% handwritten is never junked here: Main for review. No model → Main for review | | DistilBERT's |
+
+"Backed" = DistilBERT's probability for the verdict lifted by the rule's strength
+(`method.rule_confidence`, section 8).
+
+### 2A.2 After the ladder (`post_process`, pass 2)
+
+A page junked by any rule except R3C is **Main** again when kv_extract found an
+Electronic Signature or provider details (name / credentials) on it: content a coder
+needs is never junk (2026-10-26). A DOS alone does not keep a page. Blank stays Blank. A
+card stays a card (cards print a PCP name).
+
+### 2A.3 Short page contained in a nearby page (continuity, 2026-11-01)
+
+After continuity has built the documents and run the duplicate check
+(`continuity/stage.py: _review_short_pages`), a **Main** page becomes **Junk / Others**
+(confidence 0.90) when all of these hold:
+
+* it is **short**: its text (whitespace stripped) is under **20%** of the chart's median
+  Main page, and it has at least 3 distinct words;
+* it is **not signed**;
+* **every** distinct word on it is on **one longer Main page** within **3 pages** before
+  or after it, or anywhere in the **same Progress Note** (the continuity document it sits
+  in, when that document's first page is a Progress Note).
+
+The reason reads `short_page_contained_in_page_id:<id> (...)`. The documents are
+assigned again with the page as junk. Every continuity run checks these pages again: a
+page that no longer qualifies is Main again. R6 (2A.1) is the other short-page rule: it
+reads the page's layout (a header at the top, nothing below), this one reads its words.
+
+### 2A.4 What is written
+
+`blank_junk_classification`, one row per page and pass, the final one `is_final`:
+`blank_junk_flag` (not_blank_junk / blank / junk / duplicate), `junk_subtype`,
+`confidence`, `reason` (the rule and why), `duplicate_of_page_id`,
+`duplicate_confidence`, the votes JSON; `staging/blank_junk.json` and the junk CSV are
+rebuilt from it. review-ui shows **Is Blank or Junk?** as "Yes (Blank)", "Yes (Junk)" (the
+subtype in the page type) or "No". Stages after blank / junk skip blank, junk and duplicate pages
+(`_support.BJ_EXCLUDE`); `imaging_final` gives them no page type (5.8).
+
+### 2A.5 Worked example
+
+| Page | What is on it | Rule | Verdict |
+|---|---|---|---|
+| 1 | fax cover, 40 words, DistilBERT p(junk) 0.97 (pass 1) | R5 pass 1 | Junk / Letter/Fax, final |
+| 2 | "This page intentionally left blank" | R2 | Blank |
+| 3 | insurance card: member ID, group number, Rx BIN, payer name | R3C (pass 2) | Junk / Cards |
+| 4 | progress note, signed, p(junk) 0.60 | R4 | Main |
+| 5 | a header line only, nothing below | R6 | Junk / Others |
+| 6 | 12 words, all of them on page 4 (2 pages back) | short page contained (2A.3) | Junk / Others |
+| 7 | records request letter with the provider's name extracted, p(junk) 0.91 | R5, then `post_process` | Main |
+
+---
+
 ## 3. L1 / L2 / L3: the Extracted page type, page alone
 
 Stage `page_subtype` (`core-pipeline/stages/lib/page_classify/stage.py: run`), one page
@@ -1558,6 +1670,12 @@ continuity document decides**, and every page of the document takes it, so the
 specialty never changes midway (2026-10-25, user). A first page with none, Unknown or
 Others gives **General**. A page outside a document keeps its own (General when it has
 none). Continuity's documents are used, not the page-type packets.
+
+**Only five L1s carry a specialty** (2026-11-01, user; `imaging_final.has_specialty`):
+Progress Note, Lab Report, Discharge Summary, Operative Note and Procedure Note, read
+from the page's **Final** L1. Every other page gets no specialty (and no specialty
+confidence); review-ui shows **Not Applicable** for both the Extracted and the Final
+specialty of such a page, read from its Extracted and Final L1.
 
 Consequence worth knowing: a cardiology note whose first page is a generic intake page
 (specialty General) reads General on every page, even when page 2's letterhead says
