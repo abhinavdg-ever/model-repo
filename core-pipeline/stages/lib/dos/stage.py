@@ -169,6 +169,7 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "iso": iso,
                 "iso_to": iso_to if len(iso_to) == 10 and iso_to > iso else "",
                 "raw": raw,
+                "sentence": row.get("sentence") or "",
                 "tier": row.get("tier") or "",
                 "keyword": row.get("key") or "",
                 "confidence": row.get("model_score") if row.get("model_score") is not None else row.get("score"),
@@ -203,11 +204,21 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         from stages.lib.extraction.stage import ensure_staging
 
         staged = ensure_staging(chart_id, ctx.chart_name)
+        from stages.lib.extraction.util.dates import canonical_date
         # Every key/value date the rules accepted; dos_logic picks by the page's priority.
         kv_dates: dict[str, list[dict[str, Any]]] = {}
         print_texts: dict[str, str] = {}
+        # 2026-11-01 (user): every electronic signature's date, in page order (the last is the
+        # main doctor's): the DOS when the page has none, or a weak one.
+        signature_dates: dict[str, list[str]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
+            if staged_page is not None:
+                signed = [canonical_date(str(row.get("signature_date") or ""))
+                          for row in staged_page.accepted("electronic_signature")]
+                signed = [iso for iso in signed if len(iso) == 10]
+                if signed:
+                    signature_dates[page["page_name"]] = signed
             # The print keys' sentences ('Printed: 10/30/20258:10 AM'), read or not.
             print_texts[page["page_name"]] = "\n".join(
                 [unwrap_ocr_content(prelim.get(page["id"]))]
@@ -230,6 +241,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             tesseract_texts=tesseract,
             page_families=families,
             print_texts=print_texts,
+            signature_dates=signature_dates,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}

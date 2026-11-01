@@ -19,7 +19,9 @@
   "confidence": {
     "kv": 0.9,
     "edge": 0.8,
-    "dictation": 0.5
+    "dictation": 0.5,
+    "keyword_pass": 0.7,
+    "signature": 0.6
   },
   "note_confidence": "2026-10-25 (user: one scale, never fixed; stages/lib/confidence.py, keyword-canon/confidence_canon.json): how strongly each source backs a date. A key/value date the model scored: the model's score lifted by the rules' score (x conflict 0.8 when another date of its priority group scores within 80% of it). kv: a key/value date with no score at all (staging from before the model ran), x no_model. edge: an edge-label date the key/value extractor did not read, x no_model (0.68: passable). dictation: a dictated / transcribed date, x no_model x fallback (0.26: flagged). No date: no confidence.",
   "weak_min_score": 0.3,
@@ -30,6 +32,9 @@
     ],
     "lab": [
       "Lab Report"
+    ],
+    "note": [
+      "Progress Note"
     ]
   },
   "note_page_kinds": "A page's kind is its page classification L1 (page_subtype stage, before DOS; a row without axes gives its page_type): these names make it discharge or lab; any other, or no classification, is other.",
@@ -50,6 +55,9 @@
       ],
       [
         "keyless"
+      ],
+      [
+        "exam"
       ]
     ],
     "lab": [
@@ -63,7 +71,8 @@
         "report"
       ],
       [
-        "service"
+        "service",
+        "exam"
       ],
       [
         "weak"
@@ -79,9 +88,31 @@
         "discharge"
       ]
     ],
-    "other": [
+    "note": [
       [
         "service"
+      ],
+      [
+        "weak"
+      ],
+      [
+        "weak_last"
+      ],
+      [
+        "keyless"
+      ],
+      [
+        "admit",
+        "discharge"
+      ],
+      [
+        "exam"
+      ]
+    ],
+    "other": [
+      [
+        "service",
+        "exam"
       ],
       [
         "weak"
@@ -141,5 +172,40 @@
       "discharged",
       "dos to"
     ]
-  }
+  },
+  "exam_keys": [
+    "exam date",
+    "date of exam",
+    "examination date",
+    "exam"
+  ],
+  "note_exam_keys": "2026-11-01 (user): an exam date (a study's date quoted on a note) is a priority group of its own, 'exam': last on Progress Note and discharge pages, with service on lab and other pages.",
+  "amended_words": [
+    "amended",
+    "amendment",
+    "addendum",
+    "revised",
+    "corrected"
+  ],
+  "amended_reach_chars": 40,
+  "note_amended": "2026-11-01 (user): a date with one of amended_words within amended_reach_chars before it (on its line) is when the note was amended, never the DOS: dropped from the key/value dates, the edge labels, the keyword pass and the dictated date; the next option is used.",
+  "report_as_discharge_keys": [
+    "report date",
+    "date of report",
+    "reported"
+  ],
+  "note_report_as_discharge": "2026-11-01 (user): a discharge page with an admit date and no discharge date takes its Report Date (on or after the admit date) as the discharge date.",
+  "keyword_pass_kinds": [
+    "discharge",
+    "note"
+  ],
+  "note_keyword_pass": "2026-11-01 (user): a discharge or Progress Note page with no date yet gets a keyword pass: its weak key/value dates under weak_min_score, then any DOS label anywhere on the page (not only the edges).",
+  "signature_fallback_below": 0.5,
+  "note_signature": "2026-11-01 (user): when a page has no DOS, or one under signature_fallback_below, and kv_extract read an electronic signature with a date, the last signature's date (the main doctor's) is the DOS.",
+  "neighbours": {
+    "max_gap": 2,
+    "below": 0.5,
+    "factor": 0.9
+  },
+  "note_neighbours": "2026-11-01 (user): dates are kept consistent across pages: a page (not lab) with no DOS, or one under neighbours.below, between dated pages within max_gap pages that agree on one date (each at least neighbours.below) takes that date, confidence = the weaker neighbour's x factor."
 }

@@ -32,7 +32,7 @@ Labels and settings live in ``keyword-canon/dos_canon.json`` (reloads on change)
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -64,6 +64,16 @@ class DosProfile:
     weak_last_keys: frozenset[str]
     # A weak key's date is a candidate only when scored above this; no other tier has a floor.
     weak_min_score: float
+    # 2026-11-01 (user): exam-date keys (group "exam"), the amended words and their reach,
+    # Report Date keys a discharge page takes as its discharge date, the page kinds that get
+    # the keyword pass, the signature fallback and the neighbour consistency.
+    exam_keys: frozenset[str] = frozenset()
+    amended_re: Optional[re.Pattern[str]] = None
+    amended_reach_chars: int = 40
+    report_as_discharge_keys: frozenset[str] = frozenset()
+    keyword_pass_kinds: frozenset[str] = frozenset()
+    signature_fallback_below: float = 0.0
+    neighbours: dict[str, float] = field(default_factory=dict)
 
 
 def _letters(text: str) -> str:
@@ -101,6 +111,14 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         kv_priority={kind: [list(group) for group in groups] for kind, groups in (data.get("kv_priority") or {}).items()},
         weak_last_keys=frozenset(k.casefold() for k in data.get("weak_last_keys") or []),
         weak_min_score=float(data.get("weak_min_score", 0.0)),
+        exam_keys=frozenset(k.casefold() for k in data.get("exam_keys") or []),
+        amended_re=re.compile(r"(?<![a-z])(?:" + "|".join(re.escape(w) for w in data["amended_words"]) + r")(?![a-z])",
+                              re.IGNORECASE) if data.get("amended_words") else None,
+        amended_reach_chars=int(data.get("amended_reach_chars", 40)),
+        report_as_discharge_keys=frozenset(k.casefold() for k in data.get("report_as_discharge_keys") or []),
+        keyword_pass_kinds=frozenset(data.get("keyword_pass_kinds") or []),
+        signature_fallback_below=float(data.get("signature_fallback_below", 0.0)),
+        neighbours={k: float(v) for k, v in (data.get("neighbours") or {}).items()},
     )
 
 
@@ -247,7 +265,7 @@ def _overlapping(pattern: re.Pattern[str], text: str, lo: int, hi: int):
         position = match.start() + 1
 
 
-def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[LabelledDate]:
+def edge_dates(page_text: str, prof: Optional[DosProfile] = None, *, whole_page: bool = False) -> list[LabelledDate]:
     """Every DOS label starting inside an edge span, with the date after it.
 
     The date must start within ``label_reach_chars`` of the label, with only
@@ -257,7 +275,8 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
     prof = prof or profile()
     found: list[LabelledDate] = []
     seen: set[int] = set()
-    for edge, lo, hi in edge_spans(page_text, prof.edge_words):
+    spans = [("page", 0, len(page_text))] if whole_page else edge_spans(page_text, prof.edge_words)
+    for edge, lo, hi in spans:
         # Overlapping: "Office Visit  Date of Service" holds "visit date" and
         # "date of service"; only the second has its date right after it.
         for label in _overlapping(prof.label_re, page_text, lo, hi):
@@ -277,6 +296,8 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
             iso = parse_date_match(match)
             if iso is None:
                 continue
+            if amended_before(page_text, label.end() + match.start(), prof):
+                continue  # 'Amended 07/23/2025': when the note was amended
             found.append(
                 LabelledDate(
                     label=re.sub(r"\s+", " ", label.group(0)).strip(),
@@ -319,7 +340,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "kv" | "edge" | "edge_tesseract" | "admit_discharge" | "dictation"
+    source: str  # kv | edge | edge_tesseract | admit_discharge | dictation | keyword_pass | signature | neighbours
     is_pair: bool = False
     # A key/value date gave it (extraction_method kv).
     kv_backed: bool = False
@@ -378,6 +399,9 @@ def _group(item: dict[str, Any], prof: DosProfile, rank: dict[str, int]) -> str:
     when it is in ``weak_last_keys`` (dt, dd), and report when it is Report Date and the
     page kind ranks report on its own (lab); otherwise weak."""
     tier = str(item.get("tier") or "")
+    key = str(item.get("keyword") or "").strip().casefold()
+    if tier == "service" and key in prof.exam_keys and "exam" in rank:
+        return "exam"
     if tier != "weak":
         return tier
     key = str(item.get("keyword") or "").strip().casefold()
@@ -415,6 +439,25 @@ def print_dates(*texts: Optional[str]) -> set[str]:
     return found
 
 
+def amended_before(text: str, at: int, prof: Optional[DosProfile] = None) -> bool:
+    """An amended word (amended, addendum ...) within ``amended_reach_chars`` before
+    offset ``at``, on the same line: the date there is when the note was amended."""
+    prof = prof or profile()
+    if prof.amended_re is None or at < 0:
+        return False
+    window = text[max(0, at - prof.amended_reach_chars):at].rsplit("\n", 1)[-1]
+    return bool(prof.amended_re.search(window))
+
+
+def amended_item(item: dict[str, Any], prof: Optional[DosProfile] = None) -> bool:
+    """A key/value date whose sentence puts an amended word right before it."""
+    sentence, raw = str(item.get("sentence") or ""), str(item.get("raw") or "")
+    if not sentence or not raw:
+        return False
+    at = sentence.find(raw)
+    return at >= 0 and amended_before(sentence, at, prof)
+
+
 def kv_dated(candidates: list[dict[str, Any]], printed: frozenset[str] | set[str] = frozenset()) -> list[dict[str, Any]]:
     """The candidates with a date that may be a DOS.
 
@@ -426,6 +469,7 @@ def kv_dated(candidates: list[dict[str, Any]], printed: frozenset[str] | set[str
         item for item in candidates or []
         if len(str(item.get("iso") or "")) == 10
         and item.get("tier") != "printed"
+        and not amended_item(item)
         and str(item.get("iso")) not in printed
         and str(item.get("iso_to") or "") not in printed
     ]
@@ -433,7 +477,7 @@ def kv_dated(candidates: list[dict[str, Any]], printed: frozenset[str] | set[str
 
 def kv_page_date(
     candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None,
-    printed: frozenset[str] | set[str] = frozenset(),
+    printed: frozenset[str] | set[str] = frozenset(), *, relaxed: bool = False,
 ) -> Optional[PageDate]:
     """State 1: among the key/value dates (``kv_dated``), the first priority group of the
     page's kind that has one (``kv_priority``), and within it the date scored highest (then
@@ -452,7 +496,7 @@ def kv_page_date(
     dated = [
         it for it in kv_dated(candidates, printed)
         if _group(it, prof, rank) in rank
-        and (it.get("tier") != "weak" or score(it) > prof.weak_min_score)
+        and (relaxed or it.get("tier") != "weak" or score(it) > prof.weak_min_score)
     ]
     if not dated:
         return None
@@ -512,7 +556,7 @@ def dictation_page_date(page_text: str, prof: Optional[DosProfile] = None) -> Op
         for found in marker.finditer(page_text):
             match = DATE_RE.match(page_text, found.end())
             iso = parse_date_match(match) if match else None
-            if iso:
+            if iso and not amended_before(page_text, found.end(), prof):
                 # A dictation date is often not the visit's: a fallback, flagged.
                 return PageDate(iso, iso, conf.score(prof.confidence["dictation"], "no_model", "fallback", module="dos"),
                                 label, "dictation")
@@ -523,6 +567,7 @@ def admit_discharge_date(
     kv_stay: dict[str, dict[str, Any]],
     hits: list[LabelledDate],
     prof: Optional[DosProfile] = None,
+    reports: Optional[list[dict[str, Any]]] = None,
 ) -> Optional[PageDate]:
     """Discharge pages: the stay's Admit (From) and Discharge (To) dates, ahead of every other.
 
@@ -542,6 +587,13 @@ def admit_discharge_date(
     admit, discharge = side("admit"), side("discharge")
     if admit and discharge and discharge[0] < admit[0]:
         discharge = None
+    if admit and discharge is None and reports:
+        # 2026-11-01 (user): no discharge date: the Report Date on or after the admit date.
+        later = [it for it in reports if str(it.get("iso") or "") >= admit[0]]
+        if later:
+            best = max(later, key=lambda it: float(it.get("confidence") or 0))
+            discharge = (str(best["iso"]), conf.score(kv_confidence(best, prof), "fallback", module="dos"),
+                         str(best.get("keyword") or "report date"))
     used = [s for s in (admit, discharge) if s]
     if not used:
         return None
@@ -553,6 +605,69 @@ def admit_discharge_date(
     confidence = min(kv_scores + ([edge] if len(kv_scores) < len(used) else [])) if kv_scores else edge
     return PageDate(start, end, confidence, "+".join(s[2] for s in used), "admit_discharge",
                     is_pair=end != start, kv_backed=bool(kv_scores))
+
+
+def keyword_pass_date(
+    page_text: str, candidates: list[dict[str, Any]], kind: str, prof: Optional[DosProfile] = None,
+    printed: frozenset[str] | set[str] = frozenset(),
+) -> Optional[PageDate]:
+    """2026-11-01 (user): a discharge or Progress Note page with no date yet. First its weak
+    key/value dates under ``weak_min_score`` (the floor relaxed), then a DOS label anywhere
+    on the page (not only the edges). Confidence: the canon's keyword_pass, no model."""
+    prof = prof or profile()
+    if kind not in prof.keyword_pass_kinds:
+        return None
+    found = kv_page_date(candidates, kind, prof, printed, relaxed=True)
+    if found is None:
+        hits = [h for h in edge_dates(page_text, prof, whole_page=True) if h.iso not in printed]
+        found = edge_page_date(page_text, prof, hits)
+    if found is None:
+        return None
+    found.confidence = conf.score(prof.confidence.get("keyword_pass", 0.7), "no_model", module="dos")
+    found.source = "keyword_pass"
+    return found
+
+
+def signature_page_date(signature_dates: list[str], prof: Optional[DosProfile] = None,
+                        printed: frozenset[str] | set[str] = frozenset()) -> Optional[PageDate]:
+    """2026-11-01 (user): the last electronic signature's date (the main doctor's) on the page."""
+    prof = prof or profile()
+    dated = [iso for iso in signature_dates if len(iso) == 10 and iso not in printed]
+    if not dated:
+        return None
+    return PageDate(dated[-1], dated[-1], conf.score(prof.confidence.get("signature", 0.6), "no_model", module="dos"),
+                    "electronic signature", "signature")
+
+
+def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str],
+                               prof: Optional[DosProfile] = None) -> list[Optional[PageDate]]:
+    """2026-11-01 (user): dates do not vary within a run of pages. A page (not lab) with no
+    DOS, or one under ``neighbours.below``, between dated pages within ``max_gap`` pages
+    that agree on one date (each at least ``below``) takes that date; confidence = the
+    weaker neighbour's x ``factor``."""
+    prof = prof or profile()
+    cfg = prof.neighbours
+    if not cfg:
+        return found
+    gap, below, factor = int(cfg.get("max_gap", 2)), float(cfg.get("below", 0.5)), float(cfg.get("factor", 0.9))
+
+    def sure(i: int) -> bool:
+        return found[i] is not None and found[i].confidence >= below
+
+    out = list(found)
+    for i, page in enumerate(found):
+        if kinds[i] == "lab" or (page is not None and page.confidence >= below):
+            continue
+        before = next((j for j in range(i - 1, max(-1, i - gap - 1), -1) if sure(j)), None)
+        after = next((j for j in range(i + 1, min(len(found), i + gap + 1)) if sure(j)), None)
+        if before is None or after is None:
+            continue
+        a, b = found[before], found[after]
+        if (a.dos_from, a.dos_to) != (b.dos_from, b.dos_to):
+            continue
+        out[i] = PageDate(a.dos_from, a.dos_to, round(min(a.confidence, b.confidence) * factor, 4),
+                          f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair)
+    return out
 
 
 # --- date formats ------------------------------------------------------------
@@ -600,6 +715,7 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
 _MATCH_TYPE = {
     "kv": "kv", "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract",
     "admit_discharge": "admit_discharge", "dictation": "dictation_date",
+    "keyword_pass": "keyword_pass", "signature": "signature_date", "neighbours": "neighbours",
 }
 
 
@@ -645,6 +761,7 @@ def detect_dos_per_page(
     tesseract_texts: Optional[dict[str, str]] = None,
     page_families: Optional[dict[str, str]] = None,
     print_texts: Optional[dict[str, str]] = None,
+    signature_dates: Optional[dict[str, list[str]]] = None,
 ) -> list[dict]:
     """One row per page. On a discharge page, its Admit / Discharge pair first
     (``admit_discharge_date``). Then the key/value date chosen by the page kind's priority,
@@ -665,7 +782,9 @@ def detect_dos_per_page(
     labels, the dictated date and a range's end.
     """
     prof = profile()
-    rows: list[dict] = []
+    pages: list[dict] = []
+    founds: list[Optional[PageDate]] = []
+    kinds: list[str] = []
     for page in split_ocr_into_pages(text):
         page_text = text[page["start"] : page["end"]]
         cleaned = re.sub(
@@ -686,7 +805,10 @@ def detect_dos_per_page(
         kind = page_kind((page_families or {}).get(page_name, ""), prof)
         found = None
         if kind == "discharge":
-            found = admit_discharge_date(_kv_stay(kv_dated(candidates, printed)), hits, prof)
+            dated = kv_dated(candidates, printed)
+            reports = [it for it in dated if str(it.get("keyword") or "").strip().casefold()
+                       in prof.report_as_discharge_keys]
+            found = admit_discharge_date(_kv_stay(dated), hits, prof, reports)
         if found is None:
             found = kv_page_date(candidates, kind, prof, printed)
         # State 2: no key/value date; the edge keyword.
@@ -700,15 +822,26 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
-        if found is None and kind == "other":
+        # 2026-11-01 (user): discharge / Progress Note pages: a keyword pass over the page.
+        if found is None:
+            found = keyword_pass_date(page_text, candidates, kind, prof, printed)
+        if found is None and kind in ("other", "note"):
             found = dictation_page_date(page_text, prof)
             if found is not None and found.dos_from in printed:
                 found = None
+        # 2026-11-01 (user): no DOS, or a weak one: the last electronic signature's date.
+        if found is None or found.confidence < prof.signature_fallback_below:
+            signed = signature_page_date((signature_dates or {}).get(page_name) or [], prof, printed)
+            if signed is not None:
+                found = signed
         if found is not None and found.dos_to in printed:
             # A written range never ends on a print date.
             found.dos_to, found.is_pair = found.dos_from, False
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)
-        rows.append(_row(page, found, prof))
-    return rows
+        pages.append(page)
+        founds.append(found)
+        kinds.append(kind)
+    founds = consistent_with_neighbours(founds, kinds, prof)
+    return [_row(page, found, prof) for page, found in zip(pages, founds)]
