@@ -52,6 +52,7 @@ from stages.lib import confidence as conf
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
 from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets, path_of
+from stages.lib.non_codable_credentials import only_non_codable
 from stages.lib.page_classify.taxonomy import CATEGORY
 
 logger = logging.getLogger(__name__)
@@ -303,6 +304,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         document_of = {pid: pages for pages in documents.values() for pid in pages}
         rows: dict[int, dict[str, Any]] = {}
+        non_codable_pages = 0
         # Every row first: a duplicate copies its reference page's, which can
         # come after it in page order.
         for page in ctx.pages:
@@ -323,6 +325,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             dates = document or own[page_id]
             dos_origin = "document" if document else "page"
             with_specialty = has_specialty(verdict.page_type, verdict.page_subtype)
+            # 2026-11-01 (user): a Codable page whose every provider credential is a
+            # non-codable one (RN, LPN, MA, PharmD ...) is Non-Codable.
+            codability = verdict.codability
+            downgraded = codability == "Codable" and only_non_codable(signature) is not None
+            if downgraded:
+                codability = "Non-Codable"
+                non_codable_pages += 1
             row = {
                 "member_name": member.get("extracted_name") or None,
                 "member_dob": _iso(member.get("extracted_dob")),
@@ -340,9 +349,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "page_type": verdict.page_type,
                 "page_subtype": verdict.page_subtype,
                 "model_type": verdict.model_type,
-                "codability": verdict.codability,
+                "codability": codability,
                 "classification_category": (
-                    CATEGORY.get(verdict.codability or "")
+                    CATEGORY.get(codability or "")
                     or kind.get("classification_category")
                 ),
                 "page_type_source": verdict.source if verdict.page_type or verdict.page_subtype else None,
@@ -461,12 +470,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             if r["page_type_source"] in ("continuation", "embedded")
         )
         logger.info(
-            "imaging_final chart=%s pages=%d page_type_changed_by_continuation=%d → %s",
-            ctx.chart_name, len(csv_rows), changed, path,
+            "imaging_final chart=%s pages=%d page_type_changed_by_continuation=%d "
+            "non_codable_credentials=%d → %s",
+            ctx.chart_name, len(csv_rows), changed, non_codable_pages, path,
         )
         return {
             "chart_id": chart_id,
             "final_csv": str(path),
             "pages_done": ctx.done,
             "page_type_changed": changed,
+            "non_codable_by_credentials": non_codable_pages,
         }

@@ -124,3 +124,19 @@ class TestProviderRoleWords:
 
         assert provider_fields("Legal Authenticator John Smith", "MD")[0] == "John Smith"
         assert provider_fields("Jane Doe Signing Authority", "")[0] == "Jane Doe"
+
+
+class TestNonCodableCredentials:
+    """2026-11-01 (user): a Codable page whose every credential is non-codable is Non-Codable in Final."""
+
+    def test_only_non_codable_credentials(self):
+        from stages.lib.non_codable_credentials import only_non_codable
+
+        assert only_non_codable({"provider_credentials": "RN"}) == ["RN"]
+        assert only_non_codable({"provider_credentials": "R.N., LPN"})
+        assert only_non_codable({"provider_credentials": "MB ChB"})
+        assert only_non_codable({"provider_credentials": "OA-C"}) and only_non_codable({"provider_credentials": "COTA"})
+        assert only_non_codable({"provider_credentials": "MD, MS"}) is None  # an MD makes it codable
+        assert only_non_codable({"provider_credentials": ""}) is None  # no credential: unchanged
+        signers = [{"name": "A", "credentials": "PharmD"}, {"name": "B", "credentials": "DO"}]
+        assert only_non_codable({"provider_credentials": "PharmD", "signers": signers}) is None

@@ -105,6 +105,8 @@ document (described, not changed: this document changes no code).
 | i | Stability: every OpenCV call in stage 1 one at a time and OpenCV's own thread pool off; shared models (blank / junk BERT, GLiNER, RapidOCR fallback) one call at a time (VM "double free or corruption" aborts) | `image_preprocess/_cv2.py`, `model_bridge`, `extraction/util/model`, `member/.../model` |
 | j | **Taxonomy v29.3** (`Taxonomy_v29_3_training_needs.xlsx`): HIPAA and Privacy → HIPAA Notice & Consent; new L1 Pharmacy Note; Clinical Summary gains Summary and Index Page. `training/taxonomy/import_taxonomy_xlsx.py` brings a workbook in; codeability already decided is kept | `page_taxonomy.json`, `training/taxonomy/taxonomy.json` |
 | k | **The page type as one leaf** (3L): a leaf model (`training/bert-training-leaf/`) and a per-leaf keyword canon (Must Have, Good To Have, Shared, Negative, Deciding; section headers ×2) combined by gates, Deciding and rank points; Others only when nothing else; codeability of the leaf. The cascade (3) stays for `PAGE_CLASSIFIER=axes` | `page_classify/leaf.py`, `leaf_canon.py`, `keyword-canon/leaf_keywords.json` |
+| l | **DOS rules** (3A.3a): amended dates dropped, Exam Date last on Progress Notes, Report Date as the discharge date, a keyword pass, the electronic-signature fallback, consistency with neighbouring pages | `dos/dos_logic.py`, `dos_canon.json` |
+| m | **Non-codable credentials** (5.6): a Codable page whose only credentials are non-codable is Non-Codable; provider names lose signature role words | `non_codable_credentials.py`, `names.trim_provider_name` |
 
 **2026-10-29.** Two sections added and the rest checked against the code again:
 
@@ -1248,6 +1250,28 @@ Priority groups (`kv_priority`; groups are the tiers `kv_extract` wrote):
 | admit + discharge | the **weaker** side's (an edge side counts 0.68) |
 | dictated / transcribed | `confidence.dictation` 0.50 × `no_model` × `fallback` = **0.26** (review) |
 
+### 3A.3a Rules added 2026-11-01 (user)
+
+The steps of 3A.3 now run in this order, with these additions (settings in `dos_canon.json`):
+
+| # | Rule | Applies to |
+|---|---|---|
+| 1 | **Amended dates are dropped**: a date with *amended, amendment, addendum, revised* or *corrected* within 40 characters before it (same line) is when the note was amended, never the DOS; the next option is used | key/value dates, edge labels, keyword pass, dictation |
+| 2 | **Page kind by classification**: *note* (Progress Note) is its own kind. **Exam Date** is its own priority group: **last** on note and discharge pages (a study quoted in a note), with service on lab and other pages | the key/value order |
+| 3 | **Discharge without a discharge date**: an admit date and no discharge date → the page's **Report Date** (on or after admit) is the discharge date | discharge pages |
+| 4 | **Keyword pass**: no date yet → the weak key/value dates under the 0.3 floor, then a DOS label **anywhere** on the page (not only the first / last 20 words); confidence 0.7 × no_model | discharge and note pages |
+| 5 | **Electronic-signature fallback**: no DOS, or one under 0.5 → the **last** electronic signature's date (the main doctor's) from kv_extract; confidence 0.6 × no_model (`match_type signature_date`) | every page |
+| 6 | **Consistency with neighbouring pages**: a page with no DOS, or one under 0.5, between dated pages (within 2) that **agree** on one date (each ≥ 0.5) takes that date; confidence = the weaker neighbour's × 0.9 (`match_type neighbours`) | every page but lab |
+
+Order per page: discharge pair (with Report Date) → key/value by kind (amended out, exam last
+on notes) → edge label → keyword pass → dictated / transcribed (other and note pages) →
+signature fallback → neighbours (across the chart).
+
+Example (a Progress Note): "Encounter: Follow Up **Amended** 07/23/2025" (service) is dropped;
+"Date: 03/04/2025" (weak, model 0.20, under the floor) is taken by the keyword pass. Another
+note with "CT CHEST EXAM DATE: 12/12/2024", "RENAL ULTRASOUND EXAM DATE: 8/5/2024" and
+"Date: 03/25/2025": the exam dates come last, so 03/25/2025.
+
 ### 3A.4 What is written per page
 
 `dos_extraction_results` (one row per page, `db.upsert_dos`) and
@@ -1933,6 +1957,19 @@ Report / Pathology Report" when `under_l1["Lab Report"]` carries no L3.
 
 `imaging_final.codability` is the label (Codable / Non-Codable / Discharge) and
 `classification_category` its code (codeable / non_codeable / discharge_summary).
+
+**Non-codable credentials** (2026-11-01, user; `stages/lib/non_codable_credentials.py`,
+list in `keyword-canon/non_codable_credentials.json`): a page Final calls **Codable** whose
+every provider credential (the signature row's and each signer's) is on the list (RN, LPN,
+MA, PharmD, PhD non-psychologist, LCSW-type counsellors, assistants, technicians ...) is
+**Non-Codable**. Matching ignores case, spaces, periods, hyphens and slashes; a credential
+of several words matches as a whole or word by word. A page with no credential, or with
+one codable credential (MD, DO, NP, PA ...) beside them, keeps its codability.
+
+**Provider names** (2026-11-01, user; `stages/lib/names.trim_provider_name`): the role
+words of a signature block (Legal Authenticator, Signing Authority, Authority, Signed by
+...) are taken out of a provider's name and every signer's, in kv_extract, imaging_final
+and review-ui.
 
 ### 5.7 Specialty
 
