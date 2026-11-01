@@ -12,14 +12,11 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Blank
-  R3C card          pass 2, page-tag printed or visual: a STRONG ID or insurance card by
-                    card_rules.detect (3+ card groups, no form / letter / clinical words,
-                    <= 300 words) -> Junk / Cards (2026-10-31, user). Not undone by
-                    post_process. A medium card goes on down the ladder, flagged for review.
-                    In pass 1 a card is never settled: Main for now, judged in pass 2
-  R3 Visual         document_type 'visual': card evidence (an id_card term or pattern;
-                    vendor / insurer / retrieval / invoice wording adds weight, total >= 4)
-                    -> Junk / Others; else < 20 words -> Main; else on
+  R3 card           pass 1 and pass 2, page-tag printed or visual: a STRONG ID or
+                    insurance card by card_rules.detect (3+ card groups, no form / letter /
+                    clinical words, <= 300 words) -> Junk / Cards (2026-11-01, user: the one
+                    card rule; the old Visual rule is gone). Not undone by post_process. A
+                    medium card goes on down the ladder, flagged for review
   pass 1 (Tesseract text) stops here:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
     R5 junk         DistilBERT p(junk) > 0.95 -> Junk (DistilBERT's subtype), final: pass 2
@@ -43,7 +40,7 @@ After the ladder (``post_process``, 2026-10-26, user):
 
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
-Confidence: R1 1.0, R2 0.99, R3 0.90, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
+Confidence: R1 1.0, R2 0.99, R3 0.95, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
 probability for its verdict. Thresholds live in ``keyword-canon/blank_junk_context_canon.json``
 (``distilbert``), which reloads on change.
 """
@@ -81,9 +78,9 @@ SUBTYPE_CODE = {
     "Cards": CODE_CARDS,
 }
 
-# Page-tag types the card rule R3C reads (2026-10-31, user).
+# Page-tag types the card rule R3 reads (2026-10-31, user).
 CARD_DOCUMENT_TYPES = frozenset({"printed", "visual"})
-# R3C junks a strong card only (2026-10-31, user); a medium one is flagged for review.
+# R3 junks a strong card only (2026-10-31, user); a medium one is flagged for review.
 CARD_JUNK_CONFIDENCE = "strong"
 # DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
@@ -102,12 +99,12 @@ RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 # and DOB, which must not rescue it as a face sheet. These groups are also the R3 card check.
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
-# How strongly each rule backs its verdict (stages/lib/confidence.py). R1-R3 judge a page
-# with (almost) no text -- empty, a placeholder, a Visual page -- where DistilBERT has
+# How strongly each rule backs its verdict (stages/lib/confidence.py). R1-R2 judge a page
+# with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95}
-NO_TEXT_RULES = ("R1", "R2", "R3")
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95}
+NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
 MIN_TEXT_CHARS = 15
@@ -538,7 +535,7 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
 
 
 def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optional[float]) -> float:
-    """A rule's verdict confidence (stages/lib/confidence.py). R1-R3 (no text to read):
+    """A rule's verdict confidence (stages/lib/confidence.py). R1-R2 (no text to read):
     the rule's strength. R4 / R6: DistilBERT's probability for the verdict (p(keep) for
     Main, p(junk) otherwise) lifted by the rule's strength, times ``keywords_disagree``
     when DistilBERT itself says the other side (>= 0.5); without DistilBERT the strength
@@ -590,7 +587,7 @@ def decide(inputs: PageInputs) -> Verdict:
     # R1 blank, or a tiny page that is junk
     chars = len(re.sub(r"\s", "", text))
     # For blank_junk.json (2026-10-23): no ink or no text, and the ID / insurance-card words
-    # found (counted on Visual pages only, the R3 card evidence).
+    # found (the canon id_card group, recorded only).
     votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
     if inputs.no_ink:
@@ -606,37 +603,22 @@ def decide(inputs: PageInputs) -> Verdict:
     # R2 placeholder: a page left blank on purpose is Blank, not junk.
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank")
-    # R3C card (2026-10-31, user): a strong ID or insurance card on a printed or visual page,
-    # judged in pass 2 on the Final OCR. In pass 1 a card is never settled either way.
+    # R3 card (2026-11-01, user: one card rule, both passes): a printed or visual page that
+    # card_rules.detect calls a strong ID or insurance card is Junk / Cards. Every other
+    # page goes on down the ladder to DistilBERT.
     card = detect_card(text) if inputs.document_type in CARD_DOCUMENT_TYPES else None
     if card is not None and card.is_card:
         votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
-        if not pass2:
-            votes["deferred"] = True
-            return ruled(CODE_MAIN, "P1", f"pass 1: {card.card_type} card words -> Main for now, judged in pass 2",
-                         conf.score(0.5, "degraded"))
         if card.confidence == CARD_JUNK_CONFIDENCE:
             return ruled(
-                CODE_CARDS, "R3C",
-                f"R3C card: {card.card_type} ({card.confidence}; {'; '.join(card.matched)}) -> Junk / Cards",
+                CODE_CARDS, "R3",
+                f"R3 card: {card.card_type} ({card.confidence}; {'; '.join(card.matched)}) -> Junk / Cards",
                 0.95,
             )
         votes["review_required"] = True
         votes["card_review"] = f"{card.card_type} card ({card.confidence}): not junked, review"
     elif card is not None and card.blocked_by:
         votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
-    # R3 Visual. A visual page with card evidence (an insurance card, a driver's licence) is
-    # junk, whatever its length; without a card a Visual page (< 20 words) is kept; a visual
-    # page with more text goes on like any other.
-    if inputs.document_type == prof.raw["visual"]["document_type"]:
-        cfg = prof.raw["visual"]
-        card = scores.group("junk", cfg["card_group"])
-        weight = sum(scores.group("junk", g) for g in cfg["veto_junk_groups"])
-        if card > 0 and weight >= float(cfg["veto_min_score"]):
-            return ruled(CODE_OTHERS, "R3", f"R3 visual with card wording ({weight:g}) -> Junk / Others")
-        if visual:
-            return ruled(CODE_MAIN, "R3", "R3 Visual -> Main")
-
     if not pass2:
         # Pass 1 settles only what DistilBERT is sure of: a keep, or a junk page (which
         # pass 2's R4 / R6 / R5 would junk too, as R4 is overruled at the same p(junk)).
@@ -716,7 +698,7 @@ def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
                                      ("provider details", inputs.provider)) if hit]
     if inputs.pass_no != 2 or not found or verdict.code in (CODE_MAIN, CODE_BLANK):
         return verdict
-    if verdict.rule == "R3C":
+    if verdict.rule == "R3":
         return verdict  # a card prints a PCP / provider name: still a card
     verdict.votes["content_kept"] = verdict.reason
     verdict.votes["rule"] = "CONTENT"

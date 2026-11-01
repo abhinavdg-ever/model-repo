@@ -98,23 +98,10 @@ class TestRules:
         assert verdict.rule == "R5" and verdict.code != classify.CODE_MAIN
 
 
-    def test_r3_visual_is_kept(self):
+    def test_a_visual_page_is_judged_like_any_other(self):
+        # 2026-11-01 (user): no Visual rule; only the card rule reads the page tag.
         verdict = run(FILLER, document_type="visual", bert=bert(0.8))
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R3")
-
-    def test_r3_visual_needs_card_wording_to_be_junk(self):
-        text = "Invoice number 12, amount due, remit to, balance due"  # < 20 words: Visual
-        verdict = run(text, document_type="visual")
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R3")
-        verdict = run(text + " member card", document_type="visual")
-        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R3")
-
-    def test_r3_visual_needs_fewer_than_20_words(self):
-        # 19 words: still Visual. 20 words: judged like any other page (the vote here).
-        assert run(" ".join(["word"] * 19), document_type="visual", bert=bert(0.8)).rule == "R3"
-        verdict = run(" ".join(["word"] * 20), document_type="visual", bert=bert(0.8))
-        assert verdict.rule != "R3"
-        assert "not Visual" in verdict.votes["visual"]
+        assert verdict.rule == "R5" and verdict.code != classify.CODE_MAIN
         assert method.text_is_visual("visual", "a b c") and not method.text_is_visual("printed", "a")
 
 
@@ -164,9 +151,11 @@ CARD_TEXT = (
 )
 
 
-def test_a_visual_card_with_card_wording_is_junk():
-    verdict = run("UCard RxBIN 610097 RxPCN 9999 Card # 8101", document_type="visual")
-    assert verdict.rule == "R3" and verdict.code != classify.CODE_MAIN
+def test_a_strong_card_is_junk_cards_in_either_pass():
+    for pass_no in (1, 2):
+        for kind in ("visual", "printed"):
+            verdict = run(CARD_TEXT, pass_no=pass_no, document_type=kind, bert=bert(0.0))
+            assert (verdict.rule, verdict.code) == ("R3", classify.CODE_CARDS), (pass_no, kind)
 
 
 def test_a_drivers_licence_is_junk_evidence():
@@ -185,47 +174,16 @@ def test_a_heading_line_counts_its_heading_word_anywhere():
     ] == ["allergies"]
 
 
-class TestVisualR3:
-    def test_one_card_term_is_enough(self):
-        verdict = run("Member card", document_type="visual")
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_OTHERS)
+class TestCardOnly:
+    """2026-11-01 (user): card wording alone (the old Visual R3) junks nothing."""
 
-    def test_an_insurer_or_an_roi_vendor_alone_is_not_a_card(self):
-        for text in ("Aetna", "Datavant", "Aetna Datavant Optum"):
-            verdict = run(text, document_type="visual")
-            assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN), text
-        # With a card term they add weight (card 4 + insurer 2 + vendor 4); Junk / Others.
-        verdict = run("Aetna Datavant member card", document_type="visual")
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_OTHERS)
-        assert "(10)" in verdict.reason
+    def test_card_words_without_a_strong_card_go_on_to_distilbert(self):
+        for text in ("Member card", "Aetna Datavant member card", "RxBIN 610097 RxPCN 9999 RxGRP COS"):
+            verdict = run(text, document_type="visual", bert=bert(0.1))
+            assert verdict.rule != "R3" and verdict.code == classify.CODE_MAIN, text
 
-    def test_card_numbers_count(self):
-        for text in ("Group # 12345", "Member ID: W123456789", "PCP $25", "EXP 01/31/2027", "Card # 8101"):
-            assert run(text, document_type="visual").rule == "R3", text
-            assert run(text, document_type="visual").code == classify.CODE_OTHERS, text
-
-    def test_card_check_comes_before_the_signature_and_clinical_rules(self):
-        text = CLINICAL_TEXT + "\nChief Complaint:\nchest pain\nElectronically signed by A. Smith, MD\nMember ID: W123456789"
-        verdict = run(text, document_type="visual", signed=True)
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_OTHERS)
-
-    def test_a_card_is_always_junk_others(self):
-        # Card 4 and vendor 4: Others, not Record Request.
-        assert run("Optum member card", document_type="visual").code == classify.CODE_OTHERS
-
-    def test_no_card_under_20_words_is_kept(self):
-        verdict = run("ECG tracing lead II", document_type="visual", bert=bert(0.99))
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN)
-
-
-    def test_card_wording_on_a_printed_page_is_not_r3(self):
-        assert run("Aetna member card BIN: 610014 " + FILLER, document_type="printed").rule != "R3"
-
-
-def test_pharmacy_wording_is_not_card_evidence():
-    for text in ("RxBIN 610097 RxPCN 9999 RxGRP COS", "BIN: 610014", "For Pharmacist: 1-877-889-6510 Rx Claims"):
-        verdict = run(text, document_type="visual")
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN), text
+    def test_a_handwritten_page_is_never_read_for_a_card(self):
+        assert run(CARD_TEXT, document_type="handwritten", bert=bert(0.0)).rule != "R3"
 
 
 class TestDistilBertLadder:
@@ -260,12 +218,11 @@ class TestDistilBertLadder:
         assert verdict.code == classify.CODE_MAIN and verdict.rule == "P1"
         assert not verdict.reason.startswith(FINAL_JUNK) and verdict.votes["veto"] == "handwritten"
 
-    def test_pass_1_still_takes_r1_and_r3_junk(self):
+    def test_pass_1_takes_r1_and_r3_card_junk(self):
         assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "R1"
-        card = "Member ID card, Group number 0042, Datavant " + FILLER
-        # 2026-10-31: card words in pass 1 settle nothing: Main for now, judged in pass 2.
-        verdict = run(card, pass_no=1, document_type="visual", bert=bert(0.0))
-        assert (verdict.rule, verdict.code) == ("P1", classify.CODE_MAIN) and verdict.votes["card"]
+        # 2026-11-01 (user): a strong card is junk in pass 1 too.
+        verdict = run(CARD_TEXT, pass_no=1, document_type="visual", bert=bert(0.0))
+        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_CARDS)
 
     def test_pass_2_junk_cut_offs(self):
         sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))

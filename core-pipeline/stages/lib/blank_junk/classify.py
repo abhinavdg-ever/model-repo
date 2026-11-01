@@ -28,7 +28,7 @@ CODE_OTHERS = 7
 CODE_LETTER_FAX = 8
 # Junk with no sub-type: a page the model called Blank that still has text.
 CODE_JUNK = 9
-# An ID or insurance card (card_rules.detect, rule R3C, 2026-10-31, user).
+# An ID or insurance card (card_rules.detect, rule R3, 2026-10-31, user).
 CODE_CARDS = 10
 
 # Back-compat alias

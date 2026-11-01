@@ -1082,7 +1082,7 @@ class TestSignedExactCopy:
 
 
 class TestCardRule:
-    """2026-10-31 (user): an ID or insurance card on a printed or visual page is Junk / Cards."""
+    """2026-10-31 (user): an ID or insurance card on a printed or visual page is Junk / Cards (both passes since 2026-11-01)."""
 
     CARD = (
         "UnitedHealthcare Member ID: 912345678 Group Number: 70123 Rx BIN 610279 "
@@ -1095,18 +1095,19 @@ class TestCardRule:
     def test_a_card_on_a_printed_or_visual_page_is_junk_cards(self):
         for kind in ("printed", "visual"):
             verdict = self._decide(self.CARD, kind)
-            assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3C")
+            assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3")
             assert classify.CLASSIFICATION_LABELS[verdict.code] == "Cards"
 
     def test_other_page_tags_and_forms_are_not_cards(self):
-        assert self._decide(self.CARD, "handwritten").rule != "R3C"
+        assert self._decide(self.CARD, "handwritten").rule != "R3"
         form = self.CARD + " Relationship to patient ____ Employer ____ Patient signature"
         verdict = self._decide(form)
-        assert verdict.rule != "R3C" and verdict.votes.get("card_near_miss")
+        assert verdict.rule != "R3" and verdict.votes.get("card_near_miss")
 
-    def test_pass_one_never_settles_a_card(self):
+    def test_pass_one_junks_a_strong_card_too(self):
+        # 2026-11-01 (user): one card rule, both passes.
         verdict = self._decide(self.CARD, pass_no=1)
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "P1")
+        assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3")
 
     def test_a_medium_card_is_flagged_not_junked(self):
         medium = "Member ID: 912345678 Group Number: 70123"  # two groups only

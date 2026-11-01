@@ -11,7 +11,7 @@ Two passes, as the pipeline spec requires:
           is not judged again.
 
 The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R4, then DistilBERT
-alone (no keyword vote). Pass 1 removes blank pages, R1-R3 junk and the pages DistilBERT is
+alone (no keyword vote). Pass 1 removes blank pages, R1-R3 junk (R3: strong cards) and the pages DistilBERT is
 sure are junk (p(junk) > 0.95); every page it settles still gets Final OCR 1, which changes
 nothing (no quality re-grade, no Final OCR 2, no later stage reads it). It also settles the
 pages it is sure to keep (p(keep) > 0.95: pass 2 skips them);
@@ -930,15 +930,6 @@ def _run_pass(
                 # plus printed pages pass 1 did not already rule out.
                 not_eligible = sorted(pass1_ruled_out(conn, chart_id) & ctx.todo)
                 mark_skipped(conn, ctx, not_eligible, "blank_junk_pass1")
-                # A Visual page (visual, < 20 words in the text pass 1 read) is decided in
-                # pass 1 (R3); pass 2 does not judge it again. A visual page with more text
-                # was judged like any other and goes on to pass 2.
-                visual_done = [
-                    pid for pid in ctx.todo
-                    if pid in pass1
-                    and method.text_is_visual(page_type(quality.get(pid)), prelim_texts.get(pid))
-                ]
-                mark_skipped(conn, ctx, visual_done, "visual_pass1")
                 # DistilBERT was sure in pass 1 that the page is a keep (R5 keep, final):
                 # pass 2 does not judge it again.
                 reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)

@@ -1,6 +1,6 @@
 """Strict word rules: is this page an ID card or a US health insurance card?
 
-The blank / junk rule R3C (method.decide, 2026-10-31, user): on a page the page-tag
+The blank / junk rule R3 (method.decide; both passes since 2026-11-01, user): on a page the page-tag
 model calls printed or visual, a card found here is Junk / Cards. Near misses (card words
 with form / letter / clinical words) are not junk; the ladder goes on.
 

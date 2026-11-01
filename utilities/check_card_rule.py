@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""How the card rule (blank / junk R3C) would call the pages already in the database,
+"""How the card rule (blank / junk R3) would call the pages already in the database,
 against the reviewers' ground truth. Reads only; prints counts, never page text.
 
 For every printed or visual page (the page-tag model's document_type) it runs
@@ -11,7 +11,7 @@ what the ground truth says the page is: blank, junk, main, or no ground truth.
     python ../utilities/check_card_rule.py
     python ../utilities/check_card_rule.py --run R2 --batch B4
 
-Strong cards on "GT main" pages are the rule's false positives: each is a page R3C would
+Strong cards on "GT main" pages are the rule's false positives: each is a page R3 would
 junk that a reviewer kept. Needs DATABASE_URL (env or core-pipeline/.env).
 """
 from __future__ import annotations
