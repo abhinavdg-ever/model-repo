@@ -46,7 +46,7 @@ from db.paths import imaging_csv, write_csv
 from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, stage_run
 from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify import axes
+from stages.lib.page_classify import axes, leaf
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +283,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             else:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                 headings = tuple(_headings(f2, f1))
-                page_axes = axes.predict(text, headings)
+                # 2026-11-01 (user): one leaf from the model and the per-leaf keyword canon
+                # (leaf.py); PAGE_CLASSIFIER=axes keeps the cascade.
+                page_axes = (leaf.predict if leaf.enabled() else axes.predict)(text, headings)
                 row = _page_row(page_axes, conf.page_reasons(
                     text, (quality.get(page_id) or {}).get("printed_or_handwritten")))
                 if page_axes is not None:
@@ -350,4 +352,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "skipped": ctx.skipped,
             **counts,
             "page_axes": axes.status().get("ready", False),
+            "page_classifier": "leaf" if leaf.enabled() else "axes",
+            **({"page_leaf": leaf.status()} if leaf.enabled() else {}),
         }

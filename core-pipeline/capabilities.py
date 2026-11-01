@@ -283,6 +283,16 @@ def page_axes_model_status() -> dict[str, Any]:
         return {"ready": False, "loaded": False, "reason": str(exc)}
 
 
+def page_leaf_model_status() -> dict[str, Any]:
+    """Page-leaf model in models/page-family/page-leaf. Never raises; never loads the weights."""
+    try:
+        from stages.lib.page_classify.leaf import describe
+
+        return describe()
+    except Exception as exc:
+        return {"ready": False, "loaded": False, "reason": str(exc)}
+
+
 def encounter_model_status() -> dict[str, Any]:
     """Encounter model in models/encounter. Never raises; never loads the weights."""
     try:
@@ -354,6 +364,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
         "page_axes_model": page_axes_model_status(),
+        "page_leaf_model": page_leaf_model_status(),
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),
         "extraction": extraction_status(),
@@ -394,6 +405,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     rapid = caps.get("rapidocr_models") or {}
     bj = caps.get("blank_junk_model") or {}
     page_axes = caps.get("page_axes_model") or {}
+    page_leaf = caps.get("page_leaf_model") or {}
     encounter = caps.get("encounter_model") or {}
     kv = caps.get("extraction") or {}
 
@@ -417,6 +429,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         f"OK — {page_axes.get('taxonomy_version')}, {page_axes.get('l1_classes')} L1 classes, "
         f"{page_axes.get('specialties')} specialties"
     )
+    leaf_on = f"OK — {page_leaf.get('taxonomy_version')}, {page_leaf.get('leaf_classes')} leaf classes"
     encounter_on = f"OK — {encounter.get('label_version') or 'ready'}"
     kv_on = f"OK — {kv.get('model_version')}"
     if kv.get("fallback"):
@@ -435,6 +448,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("RapidOCR", _one_line(rapid, rapid_on)),
         ("blank/junk model", _one_line(bj, bj_on)),
         ("page-axes model", _one_line(page_axes, axes_on)),
+        ("page-leaf model", _one_line(page_leaf, leaf_on)),
         ("encounter model", _one_line(encounter, encounter_on)),
         ("KV extraction", _one_line(kv, kv_on)),
         ("final1 Docling", _one_line(docling, docling_on)),

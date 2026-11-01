@@ -45,6 +45,9 @@ document (described, not changed: this document changes no code).
 * [2B. Member name, DOB and member ID](#2b-member-name-dob-and-member-id)
   * 2B.1 Key/value rows · 2B.2 Member name · 2B.3 DOB and member ID · 2B.4 Page and
     chart verdict · 2B.5 What review-ui shows · 2B.6 Manual Review: any one match
+* [3L. The page type as one leaf](#3l-the-page-type-as-one-leaf-2026-11-01)
+  * 3L.1 The leaves · 3L.2 The model side · 3L.3 The keyword side · 3L.4 Combining ·
+    3L.5 What is written
 * [3. L1 / L2 / L3: the Extracted page type, page alone](#3-l1-l2-l3-the-extracted-page-type-page-alone)
   * 3.1 Inputs · 3.2 Keyword matching · 3.3 Keyword weights · 3.4 The vote ·
     3.5 Page rules · 3.6 L3 · 3.7 Alternatives kept (`under_l1`, `paths`) ·
@@ -100,6 +103,8 @@ document (described, not changed: this document changes no code).
 | g | review-ui **Member ID**: every accepted, selected ID above 0.9 as `Key: Value` lines; the manifest's ID first with (Yes), the rest (No) | review-ui `extraction_review.member_id_rows`, `ImagingPanel.memberIdList` |
 | h | **Manual Review: any one match is a match** for cells with several values | `excel_compare/field_comparator._values_match` |
 | i | Stability: every OpenCV call in stage 1 one at a time and OpenCV's own thread pool off; shared models (blank / junk BERT, GLiNER, RapidOCR fallback) one call at a time (VM "double free or corruption" aborts) | `image_preprocess/_cv2.py`, `model_bridge`, `extraction/util/model`, `member/.../model` |
+| j | **Taxonomy v29.3** (`Taxonomy_v29_3_training_needs.xlsx`): HIPAA and Privacy → HIPAA Notice & Consent; new L1 Pharmacy Note; Clinical Summary gains Summary and Index Page. `training/taxonomy/import_taxonomy_xlsx.py` brings a workbook in; codeability already decided is kept | `page_taxonomy.json`, `training/taxonomy/taxonomy.json` |
+| k | **The page type as one leaf** (3L): a leaf model (`training/bert-training-leaf/`) and a per-leaf keyword canon (Must Have, Good To Have, Shared, Negative, Deciding; section headers ×2) combined by gates, Deciding and rank points; Others only when nothing else; codeability of the leaf. The cascade (3) stays for `PAGE_CLASSIFIER=axes` | `page_classify/leaf.py`, `leaf_canon.py`, `keyword-canon/leaf_keywords.json` |
 
 **2026-10-29.** Two sections added and the rest checked against the code again:
 
@@ -463,7 +468,118 @@ own rules. Both sides blank / junk: every field matches and reads "Skipped".
 
 ---
 
+## 3L. The page type as one leaf (2026-11-01)
+
+The Extracted page type is now **one leaf**: a whole path L1 > L2 > L3 of taxonomy v29.3,
+decided by a model and a per-leaf keyword canon together
+(`core-pipeline/stages/lib/page_classify/leaf.py`, `leaf_canon.py`, `leaf_model.py`).
+It replaces the cascade of section 3 (L1, then L2 under it, then L3). The cascade stays
+in the code for `PAGE_CLASSIFIER=axes`, and its model stands in until a leaf model is
+trained. The answer is written exactly as before (`page_classification`, `axes` JSON), so
+continuity, Final and review-ui read it unchanged; the working is in `axes → leaf`.
+
+```
+ page text + section headers
+   │
+   ├─ MODEL      page-leaf model (training/bert-training-leaf): every leaf scored
+   │             → top 5 above 0.01, at most 3 per L1, ties at the cut kept
+   │             (no leaf model yet: the page-axes model's best paths stand in)
+   │
+   ├─ KEYWORDS   leaf_keywords.json: Must Have · Good To Have · Shared · Negative · Deciding
+   │             per node (L1, L1 > L2, leaf); a leaf takes its ancestors' at half;
+   │             a word in a section header ×2 → top 5 the same way
+   │
+   ├─ GATES      no Must Have word (and no Deciding word) → out;  a Negative word → out
+   ├─ DECIDING   a Deciding word → only leaves under that node, unless the model is
+   │             > 0.90 sure of another L1
+   └─ POINTS     6 − rank from each side, summed → most points wins;
+                 an Others leaf only when nothing else has points
+        │
+        ▼
+ L1 / L2 / L3, confidence, codeability of the leaf, specialty
+```
+
+### 3L.1 The leaves
+
+Every path with nothing under it: an L1 without L2s, an L2 without L3s, every L3. v29.3
+has 167. A page labelled above the leaves (an L1 with L2s and no L2 given) trains as that
+level's Others. The trainer folds a leaf with fewer than 3 pages into its parent's Others
+(`label_space.json → folded`); the keyword canon still finds those leaves.
+
+### 3L.2 The model side
+
+* **Page-leaf model** (`models/page-family/page-leaf/`, trained by
+  `training/bert-training-leaf/train_leaf.py`): one encoder, a leaf head (softmax over the
+  leaf classes) and a specialty head. `top_leaves` keeps the best 5 leaves above 0.01,
+  at most 3 under one L1, plus any leaf tied with the last one kept.
+* **Until it is trained**: the page-axes model's best paths (`axes.model_paths`, the same
+  5 / 3 per L1) stand in, `model_source: axes_fallback`. A path that stops above the leaves
+  (the Progress Note L1, whose L2 the cascade never learned) stands for the leaves under
+  it that the keywords scored, else for its Others leaf.
+* No model at all: the keywords decide alone (`model_source: none`).
+
+### 3L.3 The keyword side (`keyword-canon/leaf_keywords.json`)
+
+Five lists on any node; a leaf uses its own lists and every ancestor's (an ancestor's
+score counts half, `ancestor_share`).
+
+| List | Weight | What it does |
+|---|---|---|
+| **Deciding** | 6 | makes the node sure (3L.4). A one-word Deciding term counts only as a heading: in a section header or alone on its line |
+| **Must Have** | 2 | at least one (or a Deciding word of the node) must be on the page, else no leaf under the node can win. A word also in Deciding is removed from Must Have |
+| **Good To Have** | 2 | supporting words |
+| **Shared** | 0.5 | words many page types use |
+| **Negative** | — | one on the page rules every leaf under the node out |
+
+A word found in one of the page's **section headers** (the section-header stage's matched
+headings) counts ×2 (`header_multiplier`). Matching is on whole words and phrases, any
+case. The draft (`python -m stages.lib.page_classify.leaf_canon draft`) came from the
+old canon: page_canon title terms → Deciding, body terms → Good To Have, ambiguous terms
+→ Shared; class_keywords strong → Deciding, body → Shared; a Good To Have word on nodes of
+three or more L1s → Shared. Must Have and Negative start empty. Edit it in Excel:
+`... leaf_canon export leaf_keywords.xlsx`, then `... leaf_canon import leaf_keywords.xlsx`
+(edited rows are marked and never redrafted).
+
+### 3L.4 Combining (`leaf.decide`)
+
+1. **Gates** rule leaves out (Must Have missing, Negative present).
+2. **Deciding**: the best-scored node with a Deciding word (and an eligible leaf) limits
+   the winner to leaves under it, unless the model's first leaf is over 0.90 and has
+   another L1 (recorded as `deciding_overruled`).
+3. **Points**: each side ranks its leaves (ties share a rank, so a list can run past 5);
+   a leaf gets 6 − rank from each side. Most points wins; ties go to the model's points,
+   then the keyword score, then the model's probability.
+4. **Others**: a leaf ending in Others wins only when no other leaf has points.
+5. Nothing on either side: the model's first leaf, else Others.
+
+| How it won (`leaf.how`) | Confidence (`page_type`) |
+|---|---|
+| `deciding` | the model's probability for the leaf backed by the Deciding word (no model: 0.5, × no_model) |
+| `agree`: both sides' first leaf | the model's probability backed by the keywords (0.9) |
+| `model`: the model's first leaf | its probability, × keywords_disagree when the keywords ranked another leaf first |
+| `keywords`: the keywords' leaf | 0.5 + 0.4 × its keyword strength, × no_model / keywords_disagree |
+
+**Codeability** is the leaf's (`taxonomy.codeability_of`: the deepest level's tag; the
+families with one tag keep it). **Specialty** is the leaf model's when it is named and at
+least 0.5 sure, else as before (3.9). The cascade's page rules (lab guard, hospital stay,
+clinical summary) do not run in the leaf decision.
+
+### 3L.5 What is written
+
+`page_classification.axes` as before (L1, L2, L3, confidences, codeability, specialty,
+sources), plus `axes.leaf`: the leaf, how it won, `model_source`, both top lists with
+ranks and scores, the Deciding node (and any overrule), the leaves ruled out and why, and
+the keyword hits on the winner's nodes. `axes.paths` lists the leaves with points
+(rank, points, model rank, keyword rank).
+
+---
+
 ## 3. L1 / L2 / L3: the Extracted page type, page alone
+
+> **Since 2026-11-01 the pipeline decides the page type as one leaf (section 3L).** This
+> section describes the cascade it replaced: it still runs with `PAGE_CLASSIFIER=axes`,
+> and its model's paths stand in for the leaf model until that is trained.
+
 
 Stage `page_subtype` (`core-pipeline/stages/lib/page_classify/stage.py: run`), one page
 at a time, for every page that is not blank, junk or duplicate. The decision is

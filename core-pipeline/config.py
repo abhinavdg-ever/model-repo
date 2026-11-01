@@ -272,6 +272,16 @@ PAGE_AXES_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_AXES_MODEL_DIR"),
     "models/page-family/page-axes",
 )
+# Page-leaf model (training/bert-training-leaf/train_leaf.py: encoder/, heads.pt,
+# label_space.json with kind "leaf"): one class per whole path L1 > L2 > L3. With it the
+# page-axes model is not run. Missing: the page-axes model's paths stand in for it.
+PAGE_LEAF_MODEL_DIR = _path_under_core(
+    os.environ.get("PAGE_LEAF_MODEL_DIR"),
+    "models/page-family/page-leaf",
+)
+# How page_subtype decides a page's type: "leaf" (2026-11-01: the leaf model / its stand-in
+# + the per-leaf keyword canon, stages/lib/page_classify/leaf.py) or "axes" (the cascade).
+PAGE_CLASSIFIER = (os.environ.get("PAGE_CLASSIFIER") or "leaf").strip().lower()
 # Encounter model (folder written by training/bert-training-encounter/train_encounter.py:
 # encoder/, head.pt, label_space.json). One more vote per page in the encounter stage,
 # where the rules found no evidence (encounter_canon.json -> model_vote). Missing folder,

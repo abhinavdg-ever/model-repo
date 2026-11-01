@@ -135,6 +135,9 @@ class AxesResult:
     # step reads it when the page's document has another L1.
     under_l1: dict[str, Any] = field(default_factory=dict, compare=False)
     prediction: dict[str, Any] = field(default_factory=dict, compare=False)
+    # The page-leaf decision (stages/lib/page_classify/leaf.py): both top-5 lists, the
+    # keyword gates and hits, the points and why the leaf won. {} from the cascade.
+    leaf: dict[str, Any] = field(default_factory=dict, compare=False)
 
     @property
     def decided_by(self) -> str:
@@ -162,6 +165,7 @@ class AxesResult:
             "paths": list(self.paths) or None,
             "under_l1": self.under_l1 or None,
             "prediction": self.prediction or None,
+            "leaf": self.leaf or None,
         }
 
     def csv_columns(self) -> dict[str, Any]:
@@ -169,7 +173,7 @@ class AxesResult:
         the newer keys stay in the JSON only)."""
         flat = self.as_json()
         for key in ("prediction", "under_l1", "model_paths", "paths", "decided_by", "taxonomy_version", "rules",
-                    "page_type_confidence"):
+                    "page_type_confidence", "leaf"):
             flat.pop(key)
         return {
             ("axes_" + key if not key.startswith("specialty") else key): value
@@ -811,14 +815,11 @@ def _load() -> Optional[dict[str, Any]]:
         return _loaded
 
 
-def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[AxesResult]:
-    """The decided axes for one page, or None when the page has no text.
-    Without a model the canon decides every level."""
-    if not (text or "").strip():
-        return None
+def model_raw(text: str) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
+    """(the model's decoded answer, its label space) for one page; None without a model."""
     loaded = _load()
     if loaded is None:
-        return gate(None, {}, text, headings)
+        return None
     from stages.lib.page_classify import axes_model
 
     torch, space = loaded["torch"], loaded["space"]
@@ -830,6 +831,18 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[AxesResult]:
     with _lock, torch.no_grad():
         logits = loaded["model"](torch.tensor([ids]), torch.ones((1, len(ids)), dtype=torch.long))
         raw = axes_model.decode(logits, loaded["model"], space)[0]
+    return raw, space
+
+
+def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[AxesResult]:
+    """The decided axes for one page, or None when the page has no text.
+    Without a model the canon decides every level."""
+    if not (text or "").strip():
+        return None
+    found = model_raw(text)
+    if found is None:
+        return gate(None, {}, text, headings)
+    raw, space = found
     return gate(raw, space, text, headings)
 
 
