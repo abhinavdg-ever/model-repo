@@ -13,24 +13,28 @@ per-leaf keyword canon (`core-pipeline/stages/lib/keyword-canon/leaf_keywords.js
 | `predict_leaf.py` | runs a trained folder on text files |
 | `taxonomy.json` | v29.3, written by `training/taxonomy/import_taxonomy_xlsx.py`; never edit by hand |
 | `requirements.txt` | the trainer's packages |
+| `page_leaf.ipynb` | Colab (or a PC) notebook: check, train, results per leaf, synthetic pages, inference, compare runs, zip for the pipeline |
+| `check_test_pages.py`, `test_pages.jsonl` | 12 synthetic pages with the expected leaf; fails if a Lab Report page comes back Progress Note |
+| `tests/test_package.py` | the notebook parses and names files that are here; every test page expects a v29.3 leaf |
+| `data/training_data.jsonl` | input: a copy of `Training/processed/training_data.jsonl` (git-ignored) |
+| `output/` | output (git-ignored) |
 
 ## Train on Colab
 
-```bash
-# 1. Upload this folder and training_data.jsonl (Training/processed/training_data.jsonl)
-#    to Drive, then in a GPU notebook:
-pip install -r requirements.txt
-mkdir -p data && cp /content/drive/MyDrive/<where>/training_data.jsonl data/
+1. Upload to one Drive folder, `MyDrive/page-leaf-training/`: `train_leaf.py`, `predict_leaf.py`,
+   `taxonomy.json`, `requirements.txt`, `check_test_pages.py`, `test_pages.jsonl`,
+   `page_leaf.ipynb` and `training_data.jsonl` (from `Training/processed/`).
+   `page-leaf-training.zip` in this folder (git-ignored) holds all eight: unzip it into Drive.
+2. Open `page_leaf.ipynb` in Colab, Runtime -> Change runtime type -> GPU (T4 or better).
+3. Set `RUN` in the first code cell: `biobert` (dmis-lab/biobert-base-cased-v1.2, the default)
+   or `bioclinicalbert` (emilyalsentzer/Bio_ClinicalBERT). Runtime -> Run all.
+4. Each run is saved to `runs/<RUN>/` on Drive after every improving epoch; the last cell
+   zips it as `runs/page-leaf-<RUN>.zip`. Run the notebook again with the other `RUN` to
+   compare: the "Compare the runs" cell lists every finished run.
 
-# 2. A check (two steps, a time estimate, nothing saved), then the run:
-python train_leaf.py --check
-python train_leaf.py            # 20 epochs; best epoch saved to output/page-leaf/
-
-# 3. Look at output/page-leaf/metrics_summary.json and per_leaf.csv
-```
-
-Useful options: `--epochs`, `--batch-size`, `--min-leaf-pages` (default 3: rarer leaves
-fold into their parent's Others), `--oversample` (default 30), `--base-model`.
+Useful options (`--` flags of `train_leaf.py`, or the `RUNS` settings): `--epochs`, `--batch-size`
+(16 on a T4; 8 if CUDA runs out of memory), `--min-leaf-pages` (default 3: rarer leaves fold
+into their parent's Others), `--oversample` (default 30), `--base-model`.
 
 ## What it writes (`output/page-leaf/`)
 
