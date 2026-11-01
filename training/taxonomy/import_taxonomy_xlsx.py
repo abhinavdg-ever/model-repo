@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--rename", action="append", default=[], metavar="OLD=NEW",
                         help="a renamed node, as a full path ('L1 > L2'); repeat for several")
+    parser.add_argument("--workbook-codeability", action="store_true",
+                        help="take every path's codeability from the workbook (default: a path already "
+                             "tagged keeps its tag)")
     args = parser.parse_args(argv)
 
     old = json.loads(TAXONOMY.read_text(encoding="utf-8"))
@@ -121,9 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     for pair in args.rename:
         was, _, now = (part.strip() for part in pair.partition("="))
         renamed[now] = was
-    codeability = {
-        path: before.get(path, before.get(renamed.get(path, ""), tag)) for path, tag in codeability.items()
-    }
+    if not args.workbook_codeability:
+        codeability = {
+            path: before.get(path, before.get(renamed.get(path, ""), tag)) for path, tag in codeability.items()
+        }
     for parent_key in ("L2", "L3"):
         for parent, items in new[parent_key].items():
             for item in items:

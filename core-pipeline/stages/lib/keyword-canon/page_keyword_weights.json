@@ -37393,7 +37393,7 @@
   },
   "Problem List": {
    "account|body": {
-    "Diagnosis List/Index": 0.272
+    "Diagnosis List/Coding Summary": 0.272
    },
    "active problems|body": {
     "Problem List": 1.0
@@ -37408,28 +37408,28 @@
     "Problem List": 1.0
    },
    "admission|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "admit date|body": {
-    "Diagnosis List/Index": 0.272
+    "Diagnosis List/Coding Summary": 0.272
    },
    "admitting|body": {
     "Problem List": 0.073
    },
    "bladder|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "clinical diagnosis list|body": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "clinical diagnosis list|title": {
-    "Diagnosis List/Index": 2.5
+    "Diagnosis List/Coding Summary": 2.5
    },
    "codes|body": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "codes|title": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "ct|body": {
     "Problem List": 0.081
@@ -37438,31 +37438,31 @@
     "Problem List": 0.087
    },
    "diagnoses|body": {
-    "Diagnosis List/Index": 0.985
+    "Diagnosis List/Coding Summary": 0.985
    },
    "diagnoses|title": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "discharge|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "disposition|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "dob|body": {
-    "Diagnosis List/Index": 0.081
+    "Diagnosis List/Coding Summary": 0.081
    },
    "drg|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "history|body": {
     "Problem List": 0.053
    },
    "home|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "hospital|body": {
-    "Diagnosis List/Index": 0.081
+    "Diagnosis List/Coding Summary": 0.081
    },
    "icd-10|body": {
     "Problem List": 0.666
@@ -37471,19 +37471,19 @@
     "Problem List": 1.0
    },
    "icd|body": {
-    "Diagnosis List/Index": 0.897
+    "Diagnosis List/Coding Summary": 0.897
    },
    "icd|title": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "index|body": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "index|title": {
-    "Diagnosis List/Index": 1.0
+    "Diagnosis List/Coding Summary": 1.0
    },
    "information|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "medical|body": {
     "Problem List": 0.087
@@ -37513,13 +37513,13 @@
     "Problem List": 1.0
    },
    "pa|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "primary|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "principal|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "problem list|body": {
     "Problem List": 0.844
@@ -37537,13 +37537,13 @@
     "Problem List": 0.087
    },
    "procedure|body": {
-    "Diagnosis List/Index": 0.242
+    "Diagnosis List/Coding Summary": 0.242
    },
    "referral|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "referring provider|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "request|body": {
     "Problem List": 0.073
@@ -37561,19 +37561,19 @@
     "Problem List": 1.0
    },
    "secondary|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "sex|body": {
-    "Diagnosis List/Index": 0.081
+    "Diagnosis List/Coding Summary": 0.081
    },
    "skin|body": {
-    "Diagnosis List/Index": 0.206
+    "Diagnosis List/Coding Summary": 0.206
    },
    "unit|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    },
    "visit|body": {
-    "Diagnosis List/Index": 0.271
+    "Diagnosis List/Coding Summary": 0.271
    }
   },
   "Procedure Note": {

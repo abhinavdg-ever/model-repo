@@ -426,7 +426,7 @@
       "partial": [
         "Progress Note",
         "Discharge Summary > Discharge Diagnosis",
-        "Problem List > Diagnosis List/Index",
+        "Problem List > Diagnosis List/Coding Summary",
         "Problem List"
       ]
     },
@@ -440,7 +440,7 @@
       "partial": [
         "Progress Note",
         "Discharge Summary > Discharge Diagnosis",
-        "Problem List > Diagnosis List/Index",
+        "Problem List > Diagnosis List/Coding Summary",
         "Problem List"
       ]
     },
@@ -722,7 +722,7 @@
       "partial": [
         "Progress Note",
         "Discharge Summary > Discharge Diagnosis",
-        "Problem List > Diagnosis List/Index",
+        "Problem List > Diagnosis List/Coding Summary",
         "Problem List"
       ]
     },
@@ -750,7 +750,7 @@
       "partial": [
         "Progress Note",
         "Discharge Summary > Discharge Diagnosis",
-        "Problem List > Diagnosis List/Index",
+        "Problem List > Diagnosis List/Coding Summary",
         "Problem List"
       ]
     },
@@ -3397,7 +3397,7 @@
       "partial": [
         "Progress Note",
         "Discharge Summary > Discharge Diagnosis",
-        "Problem List > Diagnosis List/Index",
+        "Problem List > Diagnosis List/Coding Summary",
         "Problem List"
       ]
     },

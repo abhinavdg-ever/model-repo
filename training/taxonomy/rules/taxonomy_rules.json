@@ -393,7 +393,7 @@
   ],
   "Problem List": [
    "Problem List",
-   "Diagnosis List/Index",
+   "Diagnosis List/Coding Summary",
    "Others"
   ],
   "Medication Record": [
@@ -848,15 +848,15 @@
   },
   "Diagnosis List": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Diagnosis Index": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Clinical Diagnosis List": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Referral Letter": {
    "L1": "Provider Letter",
@@ -1870,15 +1870,15 @@
   },
   "Diagnosis List": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Diagnosis Index": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Clinical Diagnosis List": {
    "L1": "Problem List",
-   "L2": "Diagnosis List/Index"
+   "L2": "Diagnosis List/Coding Summary"
   },
   "Referral Letter": {
    "L1": "Provider Letter",
@@ -2056,9 +2056,9 @@
    "Therapy Order": "Physician Order"
   },
   "Problem List": {
-   "Diagnosis List": "Diagnosis List/Index",
-   "Diagnosis Index": "Diagnosis List/Index",
-   "Clinical Diagnosis List": "Diagnosis List/Index",
+   "Diagnosis List": "Diagnosis List/Coding Summary",
+   "Diagnosis Index": "Diagnosis List/Coding Summary",
+   "Clinical Diagnosis List": "Diagnosis List/Coding Summary",
    "Problem List": "Problem List"
   },
   "Forms and Questionnaires": {
@@ -2567,7 +2567,7 @@
  "_comment_administrative_scope": "Administrative means money or scheduling, nothing else. Billing statements, invoices, superbills, statements of account, payment plans; appointment lists, no-show letters, scheduling notes. The old 'Administrative Record' catch-all was removed on 2026-10-23 because it had become a home for anything non-clinical: 15 of its 19 pages were financial-policy and patient-rights pages the patient signs, which are consents, and insurance verification pages, which are authorizations. A catch-all under a vague L1 attracts exactly the pages that belong somewhere specific.",
  "problem_list_L2": [
   "Problem List",
-  "Diagnosis List/Index",
+  "Diagnosis List/Coding Summary",
   "Others"
  ],
  "_comment_problem_list": "Problem List took an L2 on 2026-10-23: a diagnosis list or index is a different page from a running problem list, and the client codes from them differently.",
@@ -2656,7 +2656,7 @@
    "Others"
   ]
  },
- "_comment_2026_10_24": "Consistency fixes, no new design decisions: procedure_note_L2: removed duplicate EGD (merged into Endoscopy (EGD)) | consent_auth_side._comment_notice: aligned with the 2026-10-23 rule (signature not required) | collapse_L3[Operative Note]: ['Surgery Report', 'Procedure', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] -> ['Surgery Report', 'Procedure List', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] | collapse_L3[Problem List]: [] -> ['Problem List', 'Diagnosis List/Index', 'Others'] | collapse_L3[Order and Requisition]: ['Others'] -> ['Physician Order', 'Laboratory Requisition', 'Referral Order', 'Others'] | collapse_L3[Discharge Summary]: ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Others'] -> ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Discharge Diagnosis', 'Others'] | collapse_L3[Patient Communication]: ['Provider Letter', 'Patient Message', 'Notice', 'Patient Education Material', 'Others'] -> ['Patient Message', 'Notice', 'Patient Education Material', 'Others'] | collapse_L3[Consent and Authorization]: ['Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Prior Authorization', 'Referral Authorization', 'Assignment of Benefits', 'Others'] -> ['Consent for Treatment', 'Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Assignment of Benefits', 'General Consent', 'Prior Authorization', 'Referral Authorization', 'General Authorization', 'Others'] | collapse_L3[Provider Letter]: None -> ['Referral Letter', 'Consultation Letter', 'Others'] | progress_note.from_sections[lab_results]: Lab Results -> Lab and Imaging Results | progress_note.from_sections[imaging_results]: Imaging Results -> Lab and Imaging Results | progress_note.from_sections[procedures]: Procedure -> Procedure List | progress_note.from_sections[vitals]: Physical Exam -> Vitals | L2_merge[Order and Requisition][Insurance Authorization Note]: __move:Authorization -> __move:Consent and Authorization | L2_merge[Order and Requisition][Referral Authorization Form]: __move:Authorization -> __move:Consent and Authorization | lab_report_L3: added explicit list of defined leaves (62 incl. 4 Others), taken from the canon, L3_additions and the L3 values the overrides already name; Cardiac Catheterization Report added; Pap and HPV Report merged into Cytology Report; undocumented merges recorded in L3_merge | generic_leaf_rule.parent_also_covers: added current L2 names (Lab Result, Pathology Report, Radiology Report) | family_map: Esophagogastroduodenoscopy Report and EGD now point at Endoscopy (EGD) | page_type_overrides: 'Audiogram and Hearing Test' and 'Optical Coherence Tomography' renamed to the L3_additions names ('Audiogram and Hearing Loss Report', 'Optical Coherence Tomography Report'); the same study had two names",
+ "_comment_2026_10_24": "Consistency fixes, no new design decisions: procedure_note_L2: removed duplicate EGD (merged into Endoscopy (EGD)) | consent_auth_side._comment_notice: aligned with the 2026-10-23 rule (signature not required) | collapse_L3[Operative Note]: ['Surgery Report', 'Procedure', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] -> ['Surgery Report', 'Procedure List', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] | collapse_L3[Problem List]: [] -> ['Problem List', 'Diagnosis List/Coding Summary', 'Others'] | collapse_L3[Order and Requisition]: ['Others'] -> ['Physician Order', 'Laboratory Requisition', 'Referral Order', 'Others'] | collapse_L3[Discharge Summary]: ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Others'] -> ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Discharge Diagnosis', 'Others'] | collapse_L3[Patient Communication]: ['Provider Letter', 'Patient Message', 'Notice', 'Patient Education Material', 'Others'] -> ['Patient Message', 'Notice', 'Patient Education Material', 'Others'] | collapse_L3[Consent and Authorization]: ['Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Prior Authorization', 'Referral Authorization', 'Assignment of Benefits', 'Others'] -> ['Consent for Treatment', 'Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Assignment of Benefits', 'General Consent', 'Prior Authorization', 'Referral Authorization', 'General Authorization', 'Others'] | collapse_L3[Provider Letter]: None -> ['Referral Letter', 'Consultation Letter', 'Others'] | progress_note.from_sections[lab_results]: Lab Results -> Lab and Imaging Results | progress_note.from_sections[imaging_results]: Imaging Results -> Lab and Imaging Results | progress_note.from_sections[procedures]: Procedure -> Procedure List | progress_note.from_sections[vitals]: Physical Exam -> Vitals | L2_merge[Order and Requisition][Insurance Authorization Note]: __move:Authorization -> __move:Consent and Authorization | L2_merge[Order and Requisition][Referral Authorization Form]: __move:Authorization -> __move:Consent and Authorization | lab_report_L3: added explicit list of defined leaves (62 incl. 4 Others), taken from the canon, L3_additions and the L3 values the overrides already name; Cardiac Catheterization Report added; Pap and HPV Report merged into Cytology Report; undocumented merges recorded in L3_merge | generic_leaf_rule.parent_also_covers: added current L2 names (Lab Result, Pathology Report, Radiology Report) | family_map: Esophagogastroduodenoscopy Report and EGD now point at Endoscopy (EGD) | page_type_overrides: 'Audiogram and Hearing Test' and 'Optical Coherence Tomography' renamed to the L3_additions names ('Audiogram and Hearing Loss Report', 'Optical Coherence Tomography Report'); the same study had two names",
  "_comment_demographics_2026_10_24": "Client direction 2026-10-24: Demographics L2 is Patient Information, Face Sheet, Others. A page that carries only who the patient is (name, DOB, address, contact) is Patient Information. A Face Sheet carries that plus other blocks: insurance or subscriber, guarantor, emergency contact or next of kin, employer, attending physician or admission details. Two or more of those blocks make it a Face Sheet.",
  "_comment_hp_2026_10_24": "Client direction 2026-10-24: Discharge Summary gains L2 History and Physical for the admission H&P of an inpatient, observation or short stay. See context_rules.admission_history_and_physical. Office H&Ps stay Progress Note.",
  "_comment_taxonomy_2026_10_24b": "Client approved 2026-10-24 (after Charts 4-7): Operative Note > Intra-operative Record; Procedure Note > Cardiac Procedure; Discharge Summary > Consultation Note (inpatient); Provider Letter > Records Request; Patient Communication > Telephone Encounter; Lab Result leaf INR and Prothrombin Time renamed Coagulation Report; specialty Pain Management; context rules inpatient_consultation, combined_endoscopy, telephone_encounter.",

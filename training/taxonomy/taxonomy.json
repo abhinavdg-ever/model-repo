@@ -3,15 +3,15 @@
  "source": "Taxonomy_v29_3_training_needs.xlsx (Taxonomy tab), imported by training/taxonomy/import_taxonomy_xlsx.py",
  "counts": {
   "L1": 18,
-  "L2": 106,
+  "L2": 107,
   "L3": 64,
   "specialty": 34,
-  "paths": 170
+  "paths": 171
  },
  "L1": [
   {
    "name": "Progress Note",
-   "description": "A clinician's record of an encounter. L2 here is the CONTENT SECTION the page carries, not the kind of note, because a scanned page of a note is a page and what matters is what is on it. A note is a Progress Note whatever service produced it; the service line goes on the specialty axis. L2 = the section that covers about 60-70%+ of the page; mixed page with nothing standing out = Summary; history-only or undeterminable continuation = Others (client rule, 28 Oct)."
+   "description": "A clinician's record of an encounter. L2 here is the CONTENT SECTION the page carries, not the kind of note, because a scanned page of a note is a page and what matters is what is on it. A note is a Progress Note whatever service produced it; the service line goes on the specialty axis. L2 = the note section covering about 3/4 of the page; opening listing pages = Summary; else Others. Medication-list, problem-list and questionnaire pages are not Progress Note: they keep their own type (1 Nov)."
   },
   {
    "name": "Lab Report",
@@ -110,7 +110,7 @@
    },
    {
     "name": "Summary",
-    "description": "A narrative recap (hospital course, ED course) AND any mixed note page where no single section covers about 60-70% of the page (client rule, 28 Oct).",
+    "description": "Opening pages (1-3) of a note that are mostly listings, or a narrative recap. Mixed pages with no section covering about 3/4 of the page are Others (client rule, 1 Nov).",
     "specialty": "",
     "codeability": "codeable",
     "codeability_tag": "Codeable",
@@ -118,7 +118,7 @@
    },
    {
     "name": "Problem List",
-    "description": "A problem list printed as a section inside a note, as opposed to a standalone problem list page, which is its own L1.",
+    "description": "Not used for page labels since 1 Nov: these pages keep their own type (Medication Record > Medication List, Problem List > Problem List, Forms and Questionnaires > Questionnaire). Kept only as a section name for the section tagger.",
     "specialty": "",
     "codeability": "codeable",
     "codeability_tag": "Codeable",
@@ -126,7 +126,7 @@
    },
    {
     "name": "Medication List",
-    "description": "Medications and allergies as a section inside a note. A standalone medication page is Medication Record instead.",
+    "description": "Not used for page labels since 1 Nov: these pages keep their own type (Medication Record > Medication List, Problem List > Problem List, Forms and Questionnaires > Questionnaire). Kept only as a section name for the section tagger.",
     "specialty": "",
     "codeability": "codeable",
     "codeability_tag": "Codeable",
@@ -166,7 +166,7 @@
    },
    {
     "name": "Questionnaire",
-    "description": "A form or questionnaire bound into a note, which makes it part of that note. The same form standing alone is Forms and Questionnaires.",
+    "description": "Not used for page labels since 1 Nov: these pages keep their own type (Medication Record > Medication List, Problem List > Problem List, Forms and Questionnaires > Questionnaire). Kept only as a section name for the section tagger.",
     "specialty": "",
     "codeability": "codeable",
     "codeability_tag": "Codeable",
@@ -746,7 +746,15 @@
   "Order and Requisition": [
    {
     "name": "Physician Order",
-    "description": "Any order written by a clinician: medication, treatment, service request, post-operative orders.",
+    "description": "Any order written by a clinician: treatment, service request, nursing, post-operative orders, and mixed order sets (standing orders that include medications alongside other orders).",
+    "specialty": "",
+    "codeability": "non_codeable",
+    "codeability_tag": "Non-Codeable",
+    "notes": ""
+   },
+   {
+    "name": "Medication Order",
+    "description": "A page whose orders are (almost) all medication orders: CPOE 'Orders - Medications' entries with status Prescribed/Ordered, a facility physician's order sheet of current medication orders, new medication orders from a visit. Not a mixed standing order set (Physician Order), not the prescription as issued to the patient or pharmacy (Medication Record > Prescription Page), not documented home medications shown as orders (Medication Record > Medication List).",
     "specialty": "",
     "codeability": "non_codeable",
     "codeability_tag": "Non-Codeable",
@@ -787,7 +795,7 @@
     "notes": ""
    },
    {
-    "name": "Diagnosis List/Index",
+    "name": "Diagnosis List/Coding Summary",
     "description": "A list or index of diagnoses, often coded, with no assessment.",
     "specialty": "",
     "codeability": "non_codeable",
@@ -1634,11 +1642,12 @@
   "Medication Record > Blood Transfusion Record",
   "Medication Record > Others",
   "Order and Requisition > Physician Order",
+  "Order and Requisition > Medication Order",
   "Order and Requisition > Laboratory Requisition",
   "Order and Requisition > Referral Order",
   "Order and Requisition > Others",
   "Problem List > Problem List",
-  "Problem List > Diagnosis List/Index",
+  "Problem List > Diagnosis List/Coding Summary",
   "Problem List > Others",
   "Forms and Questionnaires > Assessment",
   "Forms and Questionnaires > Questionnaire",

@@ -1872,6 +1872,16 @@
         "discontinue"
       ]
     },
+    "Order and Requisition > Medication Order": {
+      "strong": [],
+      "body": [
+        "prescribed",
+        "ordered",
+        "dose",
+        "frequency",
+        "refills"
+      ]
+    },
     "Order and Requisition > Laboratory Requisition": {
       "strong": [],
       "body": [
@@ -1916,7 +1926,7 @@
         "noted"
       ]
     },
-    "Problem List > Diagnosis List/Index": {
+    "Problem List > Diagnosis List/Coding Summary": {
       "strong": [],
       "body": [
         "diagnoses",

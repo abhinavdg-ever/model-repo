@@ -123,13 +123,14 @@
     ],
     "Order and Requisition": [
       "Physician Order",
+      "Medication Order",
       "Laboratory Requisition",
       "Referral Order",
       "Others"
     ],
     "Problem List": [
       "Problem List",
-      "Diagnosis List/Index",
+      "Diagnosis List/Coding Summary",
       "Others"
     ],
     "Forms and Questionnaires": [

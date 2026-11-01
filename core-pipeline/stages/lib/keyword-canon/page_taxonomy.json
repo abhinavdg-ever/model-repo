@@ -125,13 +125,14 @@
       ],
       "Order and Requisition": [
         "Physician Order",
+        "Medication Order",
         "Laboratory Requisition",
         "Referral Order",
         "Others"
       ],
       "Problem List": [
         "Problem List",
-        "Diagnosis List/Index",
+        "Diagnosis List/Coding Summary",
         "Others"
       ],
       "Forms and Questionnaires": [
@@ -421,11 +422,12 @@
     "Medication Record > Blood Transfusion Record": "non_codeable",
     "Medication Record > Others": "non_codeable",
     "Order and Requisition > Physician Order": "non_codeable",
+    "Order and Requisition > Medication Order": "non_codeable",
     "Order and Requisition > Laboratory Requisition": "non_codeable",
     "Order and Requisition > Referral Order": "non_codeable",
     "Order and Requisition > Others": "non_codeable",
     "Problem List > Problem List": "non_codeable",
-    "Problem List > Diagnosis List/Index": "non_codeable",
+    "Problem List > Diagnosis List/Coding Summary": "non_codeable",
     "Problem List > Others": "non_codeable",
     "Forms and Questionnaires > Assessment": "non_codeable",
     "Forms and Questionnaires > Questionnaire": "non_codeable",
@@ -491,7 +493,8 @@
       "Administrative > Billing Statement": "Administrative > Billing & Invoices",
       "Demographics > Registration Form": "Administrative > Patient Registration",
       "Progress Note > Lab Results": "Progress Note > Lab and Imaging Results",
-      "Consent and Authorization > HIPAA and Privacy": "Consent and Authorization > HIPAA Notice & Consent"
+      "Consent and Authorization > HIPAA and Privacy": "Consent and Authorization > HIPAA Notice & Consent",
+      "Problem List > Diagnosis List/Index": "Problem List > Diagnosis List/Coding Summary"
     },
     "L3": {
       "INR and Prothrombin Time": "Coagulation Report",
@@ -1417,15 +1420,15 @@
     },
     "Diagnosis List": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Diagnosis Index": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Clinical Diagnosis List": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Referral Letter": {
       "L1": "Provider Letter",
@@ -1863,15 +1866,15 @@
     },
     "Diagnosis List": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Diagnosis Index": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Clinical Diagnosis List": {
       "L1": "Problem List",
-      "L2": "Diagnosis List/Index"
+      "L2": "Diagnosis List/Coding Summary"
     },
     "Referral Letter": {
       "L1": "Provider Letter",
@@ -1959,9 +1962,9 @@
       "Therapy Order": "Physician Order"
     },
     "Problem List": {
-      "Diagnosis List": "Diagnosis List/Index",
-      "Diagnosis Index": "Diagnosis List/Index",
-      "Clinical Diagnosis List": "Diagnosis List/Index",
+      "Diagnosis List": "Diagnosis List/Coding Summary",
+      "Diagnosis Index": "Diagnosis List/Coding Summary",
+      "Clinical Diagnosis List": "Diagnosis List/Coding Summary",
       "Problem List": "Problem List"
     },
     "Forms and Questionnaires": {
