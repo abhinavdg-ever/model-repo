@@ -215,6 +215,10 @@ def main() -> None:
     )
     _configure_batch(p_batch_alias)
     p_stages = sub.add_parser("stages", help="List the pipeline stages in order")
+    sub.add_parser(
+        "stats",
+        help="Rebuild run_stats_charts.csv / run_stats_hourly.csv in the log folder and print the hourly table",
+    )
 
     p_status = sub.add_parser("status", help="Show a chart's stage progress")
     p_status.add_argument("chart_id", type=int)
@@ -456,6 +460,21 @@ def main() -> None:
                 indent=2,
             )
         )
+        return
+
+    if args.cmd == "stats":
+        from orchestrator import run_stats
+
+        paths = run_stats.write_reports()
+        rows = run_stats.hourly_rows(run_stats.read_rows())
+        print(f"{'hour':<17} {'ocr':<4} {'started':>7} {'ended':>5} {'failed':>6} {'pages':>6} "
+              f"{'docintel':>8} {'avg s/chart':>11} {'avg s/page':>10}")
+        for r in rows:
+            print(f"{r['hour']:<17} {r['ocr']:<4} {r['charts_started']:>7} {r['charts_ended']:>5} "
+                  f"{r['charts_failed']:>6} {r['pages']:>6} {r['docintel_pages']:>8} "
+                  f"{r['avg_seconds_per_chart'] if r['avg_seconds_per_chart'] is not None else '-':>11} "
+                  f"{r['avg_seconds_per_page'] if r['avg_seconds_per_page'] is not None else '-':>10}")
+        print(f"\nwritten: {paths['charts']}\n         {paths['hourly']}")
         return
 
     if args.cmd == "stages":

@@ -171,6 +171,11 @@ def run_pipeline_for_chart(
     re-download when local pages already exist unless ``redownload_pages``.
     """
     stop_at = resolve_stage(through) if through else None
+    from datetime import datetime
+
+    from orchestrator import run_stats
+
+    run_started = datetime.now().astimezone()
     with connect() as conn:
         chart = get_chart(conn, chart_id)
         if not chart:
@@ -223,6 +228,8 @@ def run_pipeline_for_chart(
                 error_message=str(exc),
                 completed=True,
             )
+        run_stats.record(chart, {}, started=run_started, ended=datetime.now().astimezone(),
+                         status="failed", only=only, through=through, error=str(exc))
         reset_current_chart(chart_token)
         raise
 
@@ -469,6 +476,8 @@ def run_pipeline_for_chart(
 
         results["progress"] = progress
         results["status"] = progress.get("status")
+        run_stats.record(chart, results, started=run_started, ended=datetime.now().astimezone(),
+                         status=str(results["status"] or "completed"), only=only, through=through)
         return results
 
     except Exception as exc:
@@ -492,6 +501,8 @@ def run_pipeline_for_chart(
         results["status"] = "failed"
         results["progress"] = progress
         results["error"] = str(exc)
+        run_stats.record(chart, results, started=run_started, ended=datetime.now().astimezone(),
+                         status="failed", only=only, through=through, error=str(exc))
         raise
     finally:
         reset_current_chart(chart_token)
