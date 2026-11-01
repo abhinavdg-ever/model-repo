@@ -29,8 +29,8 @@ PN = "Progress Note"
 class TestTaxonomy:
     def test_the_label_space_is_the_one_names_come_from(self):
         space = taxonomy.label_space()
-        assert taxonomy.version() == "v29.2"
-        assert len(space["L1"]) == 17 and "Lab Report" in space["L1"] and "Others" in space["L1"]
+        assert taxonomy.version() == "v29.3"
+        assert len(space["L1"]) == 18 and "Pharmacy Note" in space["L1"] and "Lab Report" in space["L1"] and "Others" in space["L1"]
         assert "Lab Result" in taxonomy.l2_names("Lab Report")
         assert "Lab and Imaging Results" in taxonomy.l2_names(PN)
         assert PN not in taxonomy.l2_names(PN)  # an L1 is never its own sub-type
@@ -45,7 +45,8 @@ class TestTaxonomy:
         tool's and the training copy of taxonomy.json are one file, and its label
         space is the pipeline's (page_taxonomy.json → label_space); the training
         copy of page_canon.json is the pipeline's."""
-        copies = [REPO / "training" / folder / "taxonomy.json" for folder in ("taxonomy", "bert-training", "annotation-tool")]
+        copies = [REPO / "training" / folder / "taxonomy.json"
+                  for folder in ("taxonomy", "bert-training", "bert-training-leaf", "annotation-tool")]
         assert len({path.read_text(encoding="utf-8") for path in copies}) == 1, \
             "copy training/taxonomy/taxonomy.json into training/bert-training/ and training/annotation-tool/"
         training = json.loads(copies[0].read_text(encoding="utf-8"))
@@ -313,10 +314,10 @@ class TestOthersPages:
     def test_an_others_page_takes_the_documents_l1_and_its_own_l2_there(self):
         doc = [fp(1, "Consent and Authorization", "General Consent", seq=1),
                fp(2, "Others", "Others", family="Others", seq=2, link="strong",
-                  under={"Consent and Authorization": {"l2": "HIPAA and Privacy", "l3": None}})]
+                  under={"Consent and Authorization": {"l2": "HIPAA Notice & Consent", "l3": None}})]
         final = decide_final(doc[1], doc)
         assert (final.page_type, final.page_subtype, final.source) == (
-            "Consent and Authorization", "HIPAA and Privacy", "continuation")
+            "Consent and Authorization", "HIPAA Notice & Consent", "continuation")
 
     def test_with_no_l2_there_it_is_the_l1_and_others(self):
         doc = [fp(1, DS, "Depart/Discharge Note", category="discharge_summary", seq=1),

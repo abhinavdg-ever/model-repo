@@ -1,6 +1,6 @@
 {
   "version": "2026-10-25",
-  "taxonomy": "v29.2",
+  "taxonomy": "v29.3",
   "status": "The keyword canon: page types with their lexicons (title / body / ambiguous terms), codeability and path. Paths are in the page taxonomy's names (page_taxonomy.json), put there by `python -m stages.lib.page_classify.canon_convert` (see paths_from). Lexicons are starting lists or the page type's own name: tune them on labelled pages.",
   "how_to_match": [
     "Match case-insensitively on whole words or whole phrases, never on substrings of a longer word.",
@@ -8434,7 +8434,7 @@
       "family": "Consent and Authorization",
       "path": {
         "L1": "Consent and Authorization",
-        "L2": "HIPAA and Privacy",
+        "L2": "HIPAA Notice & Consent",
         "L3": ""
       },
       "codeability": "non_codeable",

@@ -125,7 +125,7 @@
       "standard": "Acknowledgement Form",
       "status": "mapped",
       "full": [
-        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > HIPAA Notice & Consent",
         "Consent and Authorization > General Consent"
       ],
       "partial": [
@@ -2042,7 +2042,7 @@
       ],
       "partial": [
         "Patient Communication",
-        "Consent and Authorization > HIPAA and Privacy"
+        "Consent and Authorization > HIPAA Notice & Consent"
       ]
     },
     "nurshingchart": {
@@ -2639,7 +2639,7 @@
       "standard": "Policy",
       "status": "mapped",
       "full": [
-        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > HIPAA Notice & Consent",
         "Consent and Authorization > General Consent"
       ],
       "partial": [
@@ -2652,7 +2652,7 @@
       "standard": "Policy",
       "status": "mapped",
       "full": [
-        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > HIPAA Notice & Consent",
         "Consent and Authorization > General Consent"
       ],
       "partial": [
@@ -3502,6 +3502,18 @@
       "partial": [
         "Procedure Note"
       ]
+    },
+    "hipaaandprivacy": {
+      "label": "HIPAA and Privacy",
+      "standard": "HIPAA Notice & Consent",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > HIPAA Notice & Consent"
+      ],
+      "partial": [
+        "Consent and Authorization"
+      ],
+      "note": "v29.3 renamed HIPAA and Privacy to HIPAA Notice & Consent; ground truth saved with the old name still scores."
     }
   }
 }

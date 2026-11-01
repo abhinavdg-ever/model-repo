@@ -1,5 +1,5 @@
 gt_label,standard_name,status,match,l1,l2,l3,note
-Anknowledgement Form,Acknowledgement Form,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Anknowledgement Form,Acknowledgement Form,mapped,full,Consent and Authorization,HIPAA Notice & Consent,,
 Anknowledgement Form,Acknowledgement Form,mapped,full,Consent and Authorization,General Consent,,
 Anknowledgement Form,Acknowledgement Form,mapped,partial,Consent and Authorization,,,
 Anknowledgement Form,Acknowledgement Form,mapped,partial,Progress Note,Signature,,
@@ -355,6 +355,8 @@ Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Holter Moni
 Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Cardiac Catheterization Report,Unspecified cardiac study.
 Heart Report,Heart Report,ambiguous,partial,Lab Report,Diagnostic Study,,Unspecified cardiac study.
 Heart Report,Heart Report,ambiguous,partial,Lab Report,Radiology Report,CT Angiography Report,Unspecified cardiac study.
+HIPAA and Privacy,HIPAA Notice & Consent,mapped,full,Consent and Authorization,HIPAA Notice & Consent,,v29.3 renamed HIPAA and Privacy to HIPAA Notice & Consent; ground truth saved with the old name still scores.
+HIPAA and Privacy,HIPAA Notice & Consent,mapped,partial,Consent and Authorization,,,v29.3 renamed HIPAA and Privacy to HIPAA Notice & Consent; ground truth saved with the old name still scores.
 Patinet History,History (Social / Patient),mapped,full,Progress Note,Others,,History-only continuation pages are PN > Others in our rules.
 Patinet History,History (Social / Patient),mapped,partial,Progress Note,,,History-only continuation pages are PN > Others in our rules.
 Social History,History (Social / Patient),mapped,full,Progress Note,Others,,History-only continuation pages are PN > Others in our rules.
@@ -472,7 +474,7 @@ Misc,Not a page type,exclude,not scored,,,,Placeholder / column header / workflo
 NA,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
 Notice,Notice,mapped,full,Patient Communication,Notice,,
 Notice,Notice,mapped,partial,Patient Communication,,,
-Notice,Notice,mapped,partial,Consent and Authorization,HIPAA and Privacy,,
+Notice,Notice,mapped,partial,Consent and Authorization,HIPAA Notice & Consent,,
 Nurshing Chart,Nursing Note,ambiguous,full,Progress Note,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
 Nurshing Chart,Nursing Note,ambiguous,full,Operative Note,Pre-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
 Nurshing Chart,Nursing Note,ambiguous,full,Operative Note,Intra-operative Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
@@ -623,11 +625,11 @@ Plan of Care,Plan of Care,mapped,full,Progress Note,Assessment and Plan,,Home-he
 Plan of Care,Plan of Care,mapped,partial,Progress Note,,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
 Plan of Care,Plan of Care,mapped,partial,Forms and Questionnaires,Assessment,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
 Plan of Care,Plan of Care,mapped,partial,Progress Note,Patient Instructions,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
-Policy,Policy,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Policy,Policy,mapped,full,Consent and Authorization,HIPAA Notice & Consent,,
 Policy,Policy,mapped,full,Consent and Authorization,General Consent,,
 Policy,Policy,mapped,partial,Consent and Authorization,,,
 Policy,Policy,mapped,partial,Patient Communication,Notice,,
-Policy Pages,Policy,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Policy Pages,Policy,mapped,full,Consent and Authorization,HIPAA Notice & Consent,,
 Policy Pages,Policy,mapped,full,Consent and Authorization,General Consent,,
 Policy Pages,Policy,mapped,partial,Consent and Authorization,,,
 Policy Pages,Policy,mapped,partial,Patient Communication,Notice,,

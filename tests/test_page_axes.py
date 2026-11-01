@@ -621,7 +621,7 @@ class TestConvertedCanon:
         ({"L1": "Lab Report/Result", "L2": "Diagnostic Study", "L3": "Myocardial Perfusion Study"},
          {"L1": "Lab Report", "L2": "Diagnostic Study", "L3": "Stress Test"}),
         ({"L1": "Consent Form", "L2": "HIPAA Form", "L3": ""},
-         {"L1": "Consent and Authorization", "L2": "HIPAA and Privacy", "L3": ""}),
+         {"L1": "Consent and Authorization", "L2": "HIPAA Notice & Consent", "L3": ""}),
         ({"L1": "Demographics", "L2": "Registration Form", "L3": ""},
          {"L1": "Administrative", "L2": "Patient Registration", "L3": ""}),
         ({"L1": "Patient Communication", "L2": "Provider Letter", "L3": ""},

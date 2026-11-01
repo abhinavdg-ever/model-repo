@@ -449,7 +449,7 @@
    "Surgical Consent",
    "Transfusion Consent",
    "Immunization Consent",
-   "HIPAA and Privacy",
+   "HIPAA Notice & Consent",
    "Release of Information",
    "Assignment of Benefits",
    "General Consent",
@@ -1701,7 +1701,7 @@
   },
   "HIPAA Form": {
    "L1": "Consent and Authorization",
-   "L2": "HIPAA and Privacy"
+   "L2": "HIPAA Notice & Consent"
   },
   "Consent Form": {
    "L1": "Consent and Authorization",
@@ -2100,7 +2100,7 @@
    "Surgical Consent Form": "Surgical Consent",
    "Transfusion Consent Form": "Transfusion Consent",
    "Immunization Consent Form": "Immunization Consent",
-   "HIPAA Form": "HIPAA and Privacy",
+   "HIPAA Form": "HIPAA Notice & Consent",
    "Patient Agreement Form": "General Consent",
    "Consent Form": "General Consent",
    "Release of Information Authorization": "Release of Information",
@@ -2332,7 +2332,7 @@
   "Surgical Consent",
   "Transfusion Consent",
   "Immunization Consent",
-  "HIPAA and Privacy",
+  "HIPAA Notice & Consent",
   "Release of Information",
   "Assignment of Benefits",
   "General Consent",
@@ -2428,9 +2428,9 @@
   "hipaa_pages": {
    "_comment": "Both sides of a HIPAA page are patient-signed, so both are consents. The split is only how specific it is.",
    "names_a_recipient": "Consent and Authorization > Release of Information",
-   "acknowledges_the_notice_only": "Consent and Authorization > HIPAA and Privacy",
-   "hie_notice": "Consent and Authorization > HIPAA and Privacy",
-   "_comment_hie_2026_10_24": "Client direction 2026-10-24: a health information exchange (HIE) notice, HIE opt-out/opt-in form or HIE participation acknowledgement is HIPAA and Privacy, signed or not. It is about sharing health information, so it does not go to General Consent, General Authorization or Notice."
+   "acknowledges_the_notice_only": "Consent and Authorization > HIPAA Notice & Consent",
+   "hie_notice": "Consent and Authorization > HIPAA Notice & Consent",
+   "_comment_hie_2026_10_24": "Client direction 2026-10-24: a health information exchange (HIE) notice, HIE opt-out/opt-in form or HIE participation acknowledgement is HIPAA Notice & Consent, signed or not. It is about sharing health information, so it does not go to General Consent, General Authorization or Notice."
   },
   "context_resolved_pairs": {
    "_comment": "Three L2 labels exist under more than one L1. They are not duplicates: the PATH differs, and which one applies is decided by the document the page is bound into, not by the page. All three run after the continuity step. Listed here so the collision reads as a designed pair rather than an oversight, and so the annotation tool can show both options with the rule.",
@@ -2505,7 +2505,7 @@
    "a notice about a policy, privacy, rights or responsibilities": "Consent and Authorization > General Consent",
    "a notice about an event: closure, recall, results ready, service change": "Patient Communication > Notice",
    "patient-facing teaching material about a condition or procedure": "Patient Communication > Patient Education Material",
-   "exception_hie": "An HIE notice is Consent and Authorization > HIPAA and Privacy (see hipaa_pages.hie_notice)."
+   "exception_hie": "An HIE notice is Consent and Authorization > HIPAA Notice & Consent (see hipaa_pages.hie_notice)."
   },
   "assessment_vs_questionnaire": {
    "rule": "Inside Forms and Questionnaires the L2 is decided by what the questions are about. Anything about a disease or clinical matter (symptoms, medical, surgical, family or ocular history, screening tools such as PHQ-2/PHQ-9/EPDS/MMSE/Mini-Cog/fall risk, health risk assessments, vaccine or contrast screening, pre-procedure clinical questions, growth charts, nutrition and functional status) is Assessment. Questions of a general kind with no clinical content (identity, insurance, employment, education, relationship, scheduling or practice workflow checklists) are Questionnaire.",
@@ -2525,7 +2525,7 @@
    "Surgical Consent",
    "Transfusion Consent",
    "Immunization Consent",
-   "HIPAA and Privacy",
+   "HIPAA Notice & Consent",
    "Release of Information",
    "Assignment of Benefits",
    "General Consent"
@@ -2656,7 +2656,7 @@
    "Others"
   ]
  },
- "_comment_2026_10_24": "Consistency fixes, no new design decisions: procedure_note_L2: removed duplicate EGD (merged into Endoscopy (EGD)) | consent_auth_side._comment_notice: aligned with the 2026-10-23 rule (signature not required) | collapse_L3[Operative Note]: ['Surgery Report', 'Procedure', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] -> ['Surgery Report', 'Procedure List', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] | collapse_L3[Problem List]: [] -> ['Problem List', 'Diagnosis List/Index', 'Others'] | collapse_L3[Order and Requisition]: ['Others'] -> ['Physician Order', 'Laboratory Requisition', 'Referral Order', 'Others'] | collapse_L3[Discharge Summary]: ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Others'] -> ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Discharge Diagnosis', 'Others'] | collapse_L3[Patient Communication]: ['Provider Letter', 'Patient Message', 'Notice', 'Patient Education Material', 'Others'] -> ['Patient Message', 'Notice', 'Patient Education Material', 'Others'] | collapse_L3[Consent and Authorization]: ['Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA and Privacy', 'Release of Information', 'Prior Authorization', 'Referral Authorization', 'Assignment of Benefits', 'Others'] -> ['Consent for Treatment', 'Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA and Privacy', 'Release of Information', 'Assignment of Benefits', 'General Consent', 'Prior Authorization', 'Referral Authorization', 'General Authorization', 'Others'] | collapse_L3[Provider Letter]: None -> ['Referral Letter', 'Consultation Letter', 'Others'] | progress_note.from_sections[lab_results]: Lab Results -> Lab and Imaging Results | progress_note.from_sections[imaging_results]: Imaging Results -> Lab and Imaging Results | progress_note.from_sections[procedures]: Procedure -> Procedure List | progress_note.from_sections[vitals]: Physical Exam -> Vitals | L2_merge[Order and Requisition][Insurance Authorization Note]: __move:Authorization -> __move:Consent and Authorization | L2_merge[Order and Requisition][Referral Authorization Form]: __move:Authorization -> __move:Consent and Authorization | lab_report_L3: added explicit list of defined leaves (62 incl. 4 Others), taken from the canon, L3_additions and the L3 values the overrides already name; Cardiac Catheterization Report added; Pap and HPV Report merged into Cytology Report; undocumented merges recorded in L3_merge | generic_leaf_rule.parent_also_covers: added current L2 names (Lab Result, Pathology Report, Radiology Report) | family_map: Esophagogastroduodenoscopy Report and EGD now point at Endoscopy (EGD) | page_type_overrides: 'Audiogram and Hearing Test' and 'Optical Coherence Tomography' renamed to the L3_additions names ('Audiogram and Hearing Loss Report', 'Optical Coherence Tomography Report'); the same study had two names",
+ "_comment_2026_10_24": "Consistency fixes, no new design decisions: procedure_note_L2: removed duplicate EGD (merged into Endoscopy (EGD)) | consent_auth_side._comment_notice: aligned with the 2026-10-23 rule (signature not required) | collapse_L3[Operative Note]: ['Surgery Report', 'Procedure', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] -> ['Surgery Report', 'Procedure List', 'Pre-operative', 'Post-operative', 'Anesthesia Record', 'Critical Care Record', 'Triage Report', 'Others'] | collapse_L3[Problem List]: [] -> ['Problem List', 'Diagnosis List/Index', 'Others'] | collapse_L3[Order and Requisition]: ['Others'] -> ['Physician Order', 'Laboratory Requisition', 'Referral Order', 'Others'] | collapse_L3[Discharge Summary]: ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Others'] -> ['Depart/Discharge Note', 'Discharge Instruction', 'Discharge Medication', 'Transfer of Care', 'Interim Summary', 'Short Stay Summary', 'Discharge Diagnosis', 'Others'] | collapse_L3[Patient Communication]: ['Provider Letter', 'Patient Message', 'Notice', 'Patient Education Material', 'Others'] -> ['Patient Message', 'Notice', 'Patient Education Material', 'Others'] | collapse_L3[Consent and Authorization]: ['Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Prior Authorization', 'Referral Authorization', 'Assignment of Benefits', 'Others'] -> ['Consent for Treatment', 'Surgical Consent', 'Transfusion Consent', 'Immunization Consent', 'HIPAA Notice & Consent', 'Release of Information', 'Assignment of Benefits', 'General Consent', 'Prior Authorization', 'Referral Authorization', 'General Authorization', 'Others'] | collapse_L3[Provider Letter]: None -> ['Referral Letter', 'Consultation Letter', 'Others'] | progress_note.from_sections[lab_results]: Lab Results -> Lab and Imaging Results | progress_note.from_sections[imaging_results]: Imaging Results -> Lab and Imaging Results | progress_note.from_sections[procedures]: Procedure -> Procedure List | progress_note.from_sections[vitals]: Physical Exam -> Vitals | L2_merge[Order and Requisition][Insurance Authorization Note]: __move:Authorization -> __move:Consent and Authorization | L2_merge[Order and Requisition][Referral Authorization Form]: __move:Authorization -> __move:Consent and Authorization | lab_report_L3: added explicit list of defined leaves (62 incl. 4 Others), taken from the canon, L3_additions and the L3 values the overrides already name; Cardiac Catheterization Report added; Pap and HPV Report merged into Cytology Report; undocumented merges recorded in L3_merge | generic_leaf_rule.parent_also_covers: added current L2 names (Lab Result, Pathology Report, Radiology Report) | family_map: Esophagogastroduodenoscopy Report and EGD now point at Endoscopy (EGD) | page_type_overrides: 'Audiogram and Hearing Test' and 'Optical Coherence Tomography' renamed to the L3_additions names ('Audiogram and Hearing Loss Report', 'Optical Coherence Tomography Report'); the same study had two names",
  "_comment_demographics_2026_10_24": "Client direction 2026-10-24: Demographics L2 is Patient Information, Face Sheet, Others. A page that carries only who the patient is (name, DOB, address, contact) is Patient Information. A Face Sheet carries that plus other blocks: insurance or subscriber, guarantor, emergency contact or next of kin, employer, attending physician or admission details. Two or more of those blocks make it a Face Sheet.",
  "_comment_hp_2026_10_24": "Client direction 2026-10-24: Discharge Summary gains L2 History and Physical for the admission H&P of an inpatient, observation or short stay. See context_rules.admission_history_and_physical. Office H&Ps stay Progress Note.",
  "_comment_taxonomy_2026_10_24b": "Client approved 2026-10-24 (after Charts 4-7): Operative Note > Intra-operative Record; Procedure Note > Cardiac Procedure; Discharge Summary > Consultation Note (inpatient); Provider Letter > Records Request; Patient Communication > Telephone Encounter; Lab Result leaf INR and Prothrombin Time renamed Coagulation Report; specialty Pain Management; context rules inpatient_consultation, combined_endoscopy, telephone_encounter.",

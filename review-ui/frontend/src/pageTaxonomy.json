@@ -17,6 +17,7 @@
     "Provider Letter",
     "Patient Communication",
     "Administrative",
+    "Pharmacy Note",
     "Others"
   ],
   "L2": {
@@ -86,6 +87,8 @@
     "Clinical Summary": [
       "Summary of Care (C-CDA)",
       "After-Visit Summary",
+      "Summary",
+      "Index Page",
       "Others"
     ],
     "Consent and Authorization": [
@@ -93,7 +96,7 @@
       "Surgical Consent",
       "Transfusion Consent",
       "Immunization Consent",
-      "HIPAA and Privacy",
+      "HIPAA Notice & Consent",
       "Release of Information",
       "Assignment of Benefits",
       "General Consent",
@@ -152,6 +155,10 @@
       "Billing & Invoices",
       "Patient Registration",
       "Superbill",
+      "Others"
+    ],
+    "Pharmacy Note": [
+      "Summary",
       "Others"
     ],
     "Others": []

@@ -18805,7 +18805,7 @@
     "Consent for Treatment": 0.315
    },
    "access|body": {
-    "HIPAA and Privacy": 0.745
+    "HIPAA Notice & Consent": 0.745
    },
    "account|body": {
     "Consent for Treatment": 0.268,
@@ -18819,10 +18819,10 @@
     "General Consent": 1.0
    },
    "acknowledgment of receipt|body": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "acknowledgment of receipt|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "active|body": {
     "General Authorization": 0.948,
@@ -18838,7 +18838,7 @@
     "Release of Information": 0.463
    },
    "add|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "administered|body": {
     "Immunization Consent": 0.334
@@ -18923,11 +18923,11 @@
    },
    "appointments|body": {
     "General Consent": 0.069,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "appointment|body": {
     "General Consent": 0.201,
-    "HIPAA and Privacy": 0.527
+    "HIPAA Notice & Consent": 0.527
    },
    "approved/denied|body": {
     "Referral Authorization": 0.3
@@ -18936,7 +18936,7 @@
     "Referral Authorization": 0.3
    },
    "approved|body": {
-    "HIPAA and Privacy": 0.348,
+    "HIPAA Notice & Consent": 0.348,
     "Immunization Consent": 0.491,
     "Prior Authorization": 1.213,
     "Referral Authorization": 0.979
@@ -18953,7 +18953,7 @@
    },
    "assessment|body": {
     "General Consent": 0.137,
-    "HIPAA and Privacy": 0.081,
+    "HIPAA Notice & Consent": 0.081,
     "Release of Information": 0.436
    },
    "assignment of benefits|body": {
@@ -19002,7 +19002,7 @@
    },
    "authorization form|body": {
     "General Authorization": 0.714,
-    "HIPAA and Privacy": 0.168,
+    "HIPAA Notice & Consent": 0.168,
     "Prior Authorization": 0.646
    },
    "authorization form|title": {
@@ -19015,16 +19015,16 @@
     "Referral Authorization": 2.5
    },
    "authorization to release phi|body": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "authorization to release phi|title": {
-    "HIPAA and Privacy": 2.5
+    "HIPAA Notice & Consent": 2.5
    },
    "authorization|body": {
     "Assignment of Benefits": 0.414,
     "General Authorization": 0.192,
     "General Consent": 0.058,
-    "HIPAA and Privacy": 0.296,
+    "HIPAA Notice & Consent": 0.296,
     "Prior Authorization": 0.414,
     "Referral Authorization": 0.472,
     "Release of Information": 0.747
@@ -19068,11 +19068,11 @@
     "General Authorization": 1.0
    },
    "behavioral health|body": {
-    "HIPAA and Privacy": 0.137,
+    "HIPAA Notice & Consent": 0.137,
     "Release of Information": 0.672
    },
    "behavioral|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "benefits|body": {
     "Assignment of Benefits": 0.192,
@@ -19089,7 +19089,7 @@
    },
    "billing|body": {
     "General Consent": 0.17,
-    "HIPAA and Privacy": 0.302,
+    "HIPAA Notice & Consent": 0.302,
     "Release of Information": 0.241
    },
    "bill|body": {
@@ -19114,7 +19114,7 @@
     "Transfusion Consent": 1.0
    },
    "bp|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "brain|body": {
     "Surgical Consent": 0.241
@@ -19123,10 +19123,10 @@
     "Prior Authorization": 0.425
    },
    "called|body": {
-    "HIPAA and Privacy": 0.341
+    "HIPAA Notice & Consent": 0.341
    },
    "caller|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "call|body": {
     "General Consent": 0.4,
@@ -19140,7 +19140,7 @@
     "Consent for Treatment": 0.16,
     "General Authorization": 0.071,
     "General Consent": 0.129,
-    "HIPAA and Privacy": 0.234,
+    "HIPAA Notice & Consent": 0.234,
     "Referral Authorization": 0.234
    },
    "carrier|body": {
@@ -19187,7 +19187,7 @@
    },
    "collected|body": {
     "Consent for Treatment": 0.56,
-    "HIPAA and Privacy": 0.081
+    "HIPAA Notice & Consent": 0.081
    },
    "collection|body": {
     "General Consent": 0.491
@@ -19200,7 +19200,7 @@
    },
    "complaint|body": {
     "General Consent": 0.237,
-    "HIPAA and Privacy": 0.286
+    "HIPAA Notice & Consent": 0.286
    },
    "completed|body": {
     "General Consent": 0.069,
@@ -19229,7 +19229,7 @@
    },
    "consent form|body": {
     "General Consent": 0.455,
-    "HIPAA and Privacy": 0.239,
+    "HIPAA Notice & Consent": 0.239,
     "Immunization Consent": 0.557,
     "Surgical Consent": 0.586
    },
@@ -19256,12 +19256,12 @@
     "Referral Authorization": 0.258
    },
    "contact information|body": {
-    "HIPAA and Privacy": 0.341
+    "HIPAA Notice & Consent": 0.341
    },
    "contact|body": {
     "Consent for Treatment": 0.363,
     "General Consent": 0.112,
-    "HIPAA and Privacy": 0.202,
+    "HIPAA Notice & Consent": 0.202,
     "Immunization Consent": 0.406,
     "Prior Authorization": 0.323
    },
@@ -19274,7 +19274,7 @@
    },
    "copies|body": {
     "General Consent": 0.186,
-    "HIPAA and Privacy": 0.43
+    "HIPAA Notice & Consent": 0.43
    },
    "corneal|body": {
     "Surgical Consent": 0.241
@@ -19371,7 +19371,7 @@
     "Release of Information": 0.413
    },
    "disclose|body": {
-    "HIPAA and Privacy": 0.832,
+    "HIPAA Notice & Consent": 0.832,
     "Release of Information": 0.455
    },
    "disclose|title": {
@@ -19379,14 +19379,14 @@
    },
    "disclosures|body": {
     "Consent for Treatment": 0.09,
-    "HIPAA and Privacy": 1.213
+    "HIPAA Notice & Consent": 1.213
    },
    "disclosures|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "disclosure|body": {
     "Consent for Treatment": 0.444,
-    "HIPAA and Privacy": 0.611,
+    "HIPAA Notice & Consent": 0.611,
     "Release of Information": 0.426
    },
    "discontinue|body": {
@@ -19404,7 +19404,7 @@
    "dob|body": {
     "Consent for Treatment": 0.198,
     "General Authorization": 0.576,
-    "HIPAA and Privacy": 0.265,
+    "HIPAA Notice & Consent": 0.265,
     "Prior Authorization": 0.156,
     "Referral Authorization": 0.156,
     "Surgical Consent": 0.055
@@ -19444,14 +19444,14 @@
    },
    "electronically signed|body": {
     "General Consent": 0.069,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "electronically|body": {
     "Assignment of Benefits": 0.851,
-    "HIPAA and Privacy": 0.461
+    "HIPAA Notice & Consent": 0.461
    },
    "emergency contact|body": {
-    "HIPAA and Privacy": 0.323
+    "HIPAA Notice & Consent": 0.323
    },
    "emergency department|body": {
     "Assignment of Benefits": 0.425
@@ -19459,7 +19459,7 @@
    "emergency|body": {
     "Consent for Treatment": 0.714,
     "General Consent": 0.108,
-    "HIPAA and Privacy": 0.115
+    "HIPAA Notice & Consent": 0.115
    },
    "employer|body": {
     "Consent for Treatment": 0.304,
@@ -19470,17 +19470,17 @@
    },
    "endoscopy|body": {
     "General Consent": 0.249,
-    "HIPAA and Privacy": 0.428
+    "HIPAA Notice & Consent": 0.428
    },
    "ent|body": {
-    "HIPAA and Privacy": 0.137,
+    "HIPAA Notice & Consent": 0.137,
     "Release of Information": 0.436
    },
    "esc|body": {
     "Surgical Consent": 0.241
    },
    "esi|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "esophagus|body": {
     "Surgical Consent": 0.241
@@ -19492,10 +19492,10 @@
    },
    "evaluation|body": {
     "Consent for Treatment": 0.304,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "events|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "examination|body": {
     "Consent for Treatment": 0.94,
@@ -19512,7 +19512,7 @@
     "Surgical Consent": 0.241
    },
    "expiration|body": {
-    "HIPAA and Privacy": 0.146,
+    "HIPAA Notice & Consent": 0.146,
     "Release of Information": 0.833
    },
    "expiration|title": {
@@ -19558,7 +19558,7 @@
     "Assignment of Benefits": 0.183,
     "Consent for Treatment": 0.556,
     "General Authorization": 0.6,
-    "HIPAA and Privacy": 0.058,
+    "HIPAA Notice & Consent": 0.058,
     "Prior Authorization": 0.183,
     "Surgical Consent": 0.497
    },
@@ -19626,17 +19626,17 @@
     "Release of Information": 0.463
    },
    "hipaa form|body": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "hipaa form|title": {
-    "HIPAA and Privacy": 2.5
+    "HIPAA Notice & Consent": 2.5
    },
    "hipaa|body": {
     "Consent for Treatment": 0.691,
-    "HIPAA and Privacy": 1.661
+    "HIPAA Notice & Consent": 1.661
    },
    "hipaa|title": {
-    "HIPAA and Privacy": 4.0
+    "HIPAA Notice & Consent": 4.0
    },
    "history|body": {
     "Consent for Treatment": 0.555,
@@ -19645,7 +19645,7 @@
    },
    "home|body": {
     "Consent for Treatment": 0.292,
-    "HIPAA and Privacy": 0.081,
+    "HIPAA Notice & Consent": 0.081,
     "Prior Authorization": 0.825,
     "Surgical Consent": 0.333
    },
@@ -19674,7 +19674,7 @@
    },
    "imaging|body": {
     "Consent for Treatment": 0.315,
-    "HIPAA and Privacy": 0.137,
+    "HIPAA Notice & Consent": 0.137,
     "Immunization Consent": 0.559
    },
    "immunization consent form|body": {
@@ -19709,7 +19709,7 @@
     "Assignment of Benefits": 0.144,
     "Consent for Treatment": 0.07,
     "General Consent": 0.081,
-    "HIPAA and Privacy": 0.32
+    "HIPAA Notice & Consent": 0.32
    },
    "informed consent|body": {
     "Consent for Treatment": 0.553,
@@ -19779,14 +19779,14 @@
     "General Consent": 0.088
    },
    "lab results|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "laboratory|body": {
     "Consent for Treatment": 0.74,
     "Immunization Consent": 0.578
    },
    "labs|body": {
-    "HIPAA and Privacy": 0.323
+    "HIPAA Notice & Consent": 0.323
    },
    "lab|body": {
     "Immunization Consent": 0.334
@@ -19800,7 +19800,7 @@
     "Surgical Consent": 0.605
    },
    "letter|body": {
-    "HIPAA and Privacy": 0.137,
+    "HIPAA Notice & Consent": 0.137,
     "Referral Authorization": 0.622
    },
    "lot|body": {
@@ -19808,7 +19808,7 @@
    },
    "md|body": {
     "General Consent": 0.108,
-    "HIPAA and Privacy": 0.115,
+    "HIPAA Notice & Consent": 0.115,
     "Release of Information": 0.501,
     "Surgical Consent": 0.593
    },
@@ -19847,7 +19847,7 @@
     "General Consent": 0.088
    },
    "monitor|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "motility|body": {
     "Surgical Consent": 0.241
@@ -19880,27 +19880,27 @@
    },
    "notice of privacy practices|body": {
     "Consent for Treatment": 0.518,
-    "HIPAA and Privacy": 0.762
+    "HIPAA Notice & Consent": 0.762
    },
    "notice of privacy practices|title": {
-    "HIPAA and Privacy": 0.3
+    "HIPAA Notice & Consent": 0.3
    },
    "notice|body": {
     "Assignment of Benefits": 0.478,
     "General Consent": 0.092,
-    "HIPAA and Privacy": 0.787,
+    "HIPAA Notice & Consent": 0.787,
     "Prior Authorization": 0.478
    },
    "notice|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "notification|body": {
-    "HIPAA and Privacy": 0.081,
+    "HIPAA Notice & Consent": 0.081,
     "Immunization Consent": 0.582,
     "Referral Authorization": 0.381
    },
    "notified|body": {
-    "HIPAA and Privacy": 0.59
+    "HIPAA Notice & Consent": 0.59
    },
    "number of visits approved|body": {
     "Referral Authorization": 1.0
@@ -19917,14 +19917,14 @@
    "oct|body": {
     "Consent for Treatment": 0.499,
     "General Consent": 0.13,
-    "HIPAA and Privacy": 0.187
+    "HIPAA Notice & Consent": 0.187
    },
    "od|body": {
     "General Consent": 0.184,
     "Release of Information": 0.436
    },
    "office use only|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "office visit|body": {
     "Consent for Treatment": 0.304,
@@ -19956,7 +19956,7 @@
    },
    "order|body": {
     "Consent for Treatment": 0.555,
-    "HIPAA and Privacy": 0.162,
+    "HIPAA Notice & Consent": 0.162,
     "Release of Information": 0.094
    },
    "os|body": {
@@ -19974,7 +19974,7 @@
     "General Consent": 0.184
    },
    "ou|body": {
-    "HIPAA and Privacy": 0.59
+    "HIPAA Notice & Consent": 0.59
    },
    "ov|body": {
     "Consent for Treatment": 0.225
@@ -20039,7 +20039,7 @@
     "Assignment of Benefits": 0.927,
     "Consent for Treatment": 0.432,
     "General Consent": 0.153,
-    "HIPAA and Privacy": 0.209,
+    "HIPAA Notice & Consent": 0.209,
     "Prior Authorization": 0.775
    },
    "payment|title": {
@@ -20057,7 +20057,7 @@
    },
    "permission|body": {
     "General Authorization": 0.625,
-    "HIPAA and Privacy": 0.472
+    "HIPAA Notice & Consent": 0.472
    },
    "permission|title": {
     "General Authorization": 1.0
@@ -20067,13 +20067,13 @@
     "Prior Authorization": 0.825
    },
    "phi|body": {
-    "HIPAA and Privacy": 1.263
+    "HIPAA Notice & Consent": 1.263
    },
    "phi|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "phone|body": {
-    "HIPAA and Privacy": 0.363,
+    "HIPAA Notice & Consent": 0.363,
     "Prior Authorization": 1.006,
     "Referral Authorization": 0.177
    },
@@ -20098,7 +20098,7 @@
    "policies|body": {
     "Assignment of Benefits": 0.851,
     "General Consent": 0.577,
-    "HIPAA and Privacy": 0.286
+    "HIPAA Notice & Consent": 0.286
    },
    "policies|title": {
     "General Consent": 1.0
@@ -20132,10 +20132,10 @@
     "Release of Information": 0.436
    },
    "practices|body": {
-    "HIPAA and Privacy": 1.026
+    "HIPAA Notice & Consent": 1.026
    },
    "practices|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "preauthorization|body": {
     "Prior Authorization": 3.0
@@ -20201,17 +20201,17 @@
    },
    "privacy policy|body": {
     "Consent for Treatment": 0.304,
-    "HIPAA and Privacy": 0.882
+    "HIPAA Notice & Consent": 0.882
    },
    "privacy policy|title": {
-    "HIPAA and Privacy": 2.5
+    "HIPAA Notice & Consent": 2.5
    },
    "privacy|body": {
-    "HIPAA and Privacy": 1.057,
+    "HIPAA Notice & Consent": 1.057,
     "Release of Information": 0.575
    },
    "privacy|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "problems|body": {
     "Surgical Consent": 0.241
@@ -20240,13 +20240,13 @@
    },
    "protected|body": {
     "Consent for Treatment": 0.714,
-    "HIPAA and Privacy": 0.957
+    "HIPAA Notice & Consent": 0.957
    },
    "protected|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "protocols|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "pr|body": {
     "Consent for Treatment": 0.252,
@@ -20273,7 +20273,7 @@
    },
    "purpose|body": {
     "Consent for Treatment": 0.691,
-    "HIPAA and Privacy": 0.507,
+    "HIPAA Notice & Consent": 0.507,
     "Release of Information": 0.674
    },
    "purpose|title": {
@@ -20292,7 +20292,7 @@
     "Consent for Treatment": 0.225
    },
    "radiology|body": {
-    "HIPAA and Privacy": 0.341
+    "HIPAA Notice & Consent": 0.341
    },
    "rate|body": {
     "Consent for Treatment": 0.315,
@@ -20300,7 +20300,7 @@
    },
    "rd|body": {
     "General Consent": 0.425,
-    "HIPAA and Privacy": 0.363
+    "HIPAA Notice & Consent": 0.363
    },
    "reaction|body": {
     "Immunization Consent": 1.043,
@@ -20314,7 +20314,7 @@
    },
    "reason|body": {
     "General Consent": 0.073,
-    "HIPAA and Privacy": 0.132,
+    "HIPAA Notice & Consent": 0.132,
     "Prior Authorization": 0.828,
     "Referral Authorization": 0.213,
     "Surgical Consent": 0.147
@@ -20330,7 +20330,7 @@
     "Prior Authorization": 0.611
    },
    "receiving|body": {
-    "HIPAA and Privacy": 0.428,
+    "HIPAA Notice & Consent": 0.428,
     "Immunization Consent": 0.411
    },
    "recipient|body": {
@@ -20354,7 +20354,7 @@
    "records|body": {
     "Consent for Treatment": 0.393,
     "General Consent": 0.143,
-    "HIPAA and Privacy": 0.353,
+    "HIPAA Notice & Consent": 0.353,
     "Release of Information": 0.464
    },
    "recovery|body": {
@@ -20373,7 +20373,7 @@
     "Referral Authorization": 1.0
    },
    "reference|body": {
-    "HIPAA and Privacy": 0.168,
+    "HIPAA Notice & Consent": 0.168,
     "Referral Authorization": 0.361
    },
    "referral & authorization|body": {
@@ -20443,7 +20443,7 @@
    },
    "refuse|body": {
     "General Consent": 0.28,
-    "HIPAA and Privacy": 0.081,
+    "HIPAA Notice & Consent": 0.081,
     "Transfusion Consent": 0.556
    },
    "refuse|title": {
@@ -20453,7 +20453,7 @@
     "General Consent": 0.088
    },
    "rehabilitation|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "release of information authorization|body": {
     "Release of Information": 1.0
@@ -20463,7 +20463,7 @@
    },
    "release of information|body": {
     "General Consent": 0.625,
-    "HIPAA and Privacy": 0.341,
+    "HIPAA Notice & Consent": 0.341,
     "Release of Information": 0.436
    },
    "release of information|title": {
@@ -20484,7 +20484,7 @@
     "General Consent": 0.088
    },
    "reports|body": {
-    "HIPAA and Privacy": 0.323
+    "HIPAA Notice & Consent": 0.323
    },
    "representative|body": {
     "Assignment of Benefits": 0.544,
@@ -20493,12 +20493,12 @@
     "Surgical Consent": 0.161
    },
    "requesting|body": {
-    "HIPAA and Privacy": 0.168,
+    "HIPAA Notice & Consent": 0.168,
     "Prior Authorization": 0.646
    },
    "request|body": {
     "Consent for Treatment": 0.458,
-    "HIPAA and Privacy": 0.344,
+    "HIPAA Notice & Consent": 0.344,
     "Prior Authorization": 0.237
    },
    "request|title": {
@@ -20527,10 +20527,10 @@
    },
    "restrictions|body": {
     "Consent for Treatment": 0.292,
-    "HIPAA and Privacy": 0.478
+    "HIPAA Notice & Consent": 0.478
    },
    "resulted|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "results|body": {
     "Consent for Treatment": 0.747,
@@ -20550,15 +20550,15 @@
    },
    "return|body": {
     "Assignment of Benefits": 0.646,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "reviewed|body": {
     "Assignment of Benefits": 0.577,
     "General Consent": 0.3,
-    "HIPAA and Privacy": 0.466
+    "HIPAA Notice & Consent": 0.466
    },
    "revoke|body": {
-    "HIPAA and Privacy": 0.662,
+    "HIPAA Notice & Consent": 0.662,
     "Release of Information": 1.119
    },
    "revoke|title": {
@@ -20567,10 +20567,10 @@
    "rights|body": {
     "Assignment of Benefits": 0.265,
     "General Consent": 0.278,
-    "HIPAA and Privacy": 0.712
+    "HIPAA Notice & Consent": 0.712
    },
    "rights|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "risks and benefits|body": {
     "General Consent": 1.0
@@ -20596,7 +20596,7 @@
     "Consent for Treatment": 0.225
    },
    "rom|body": {
-    "HIPAA and Privacy": 0.168,
+    "HIPAA Notice & Consent": 0.168,
     "Referral Authorization": 0.361
    },
    "route|body": {
@@ -20628,14 +20628,14 @@
    },
    "send|body": {
     "General Consent": 0.069,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "sensitivity|body": {
     "Immunization Consent": 0.334
    },
    "sent|body": {
     "General Consent": 0.184,
-    "HIPAA and Privacy": 0.137
+    "HIPAA Notice & Consent": 0.137
    },
    "sex|body": {
     "Consent for Treatment": 0.485,
@@ -20658,21 +20658,21 @@
     "Surgical Consent": 0.601
    },
    "signature|title": {
-    "HIPAA and Privacy": 0.3
+    "HIPAA Notice & Consent": 0.3
    },
    "signed by|body": {
     "General Consent": 0.069,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "signed|body": {
     "General Consent": 0.425,
-    "HIPAA and Privacy": 0.228
+    "HIPAA Notice & Consent": 0.228
    },
    "sincerely|body": {
     "Referral Authorization": 0.538
    },
    "site|body": {
-    "HIPAA and Privacy": 0.081,
+    "HIPAA Notice & Consent": 0.081,
     "Immunization Consent": 0.87,
     "Surgical Consent": 0.333
    },
@@ -20712,10 +20712,10 @@
    },
    "stop|body": {
     "General Consent": 0.069,
-    "HIPAA and Privacy": 0.168
+    "HIPAA Notice & Consent": 0.168
    },
    "subpoena|body": {
-    "HIPAA and Privacy": 0.323
+    "HIPAA Notice & Consent": 0.323
    },
    "subscriber|body": {
     "Consent for Treatment": 0.315,
@@ -20723,7 +20723,7 @@
     "Referral Authorization": 0.39
    },
    "substance use disorder|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "summary|body": {
     "Referral Authorization": 0.361,
@@ -20749,12 +20749,12 @@
     "Surgical Consent": 1.0
    },
    "symptoms|body": {
-    "HIPAA and Privacy": 0.137,
+    "HIPAA Notice & Consent": 0.137,
     "Immunization Consent": 0.802
    },
    "taking|body": {
     "General Consent": 0.184,
-    "HIPAA and Privacy": 0.137
+    "HIPAA Notice & Consent": 0.137
    },
    "technician|body": {
     "General Consent": 0.088
@@ -20787,7 +20787,7 @@
     "Release of Information": 0.413
    },
    "tissue|body": {
-    "HIPAA and Privacy": 0.323
+    "HIPAA Notice & Consent": 0.323
    },
    "today|body": {
     "General Consent": 0.077,
@@ -20820,7 +20820,7 @@
     "Transfusion Consent": 4.0
    },
    "transition of care|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "treatment|body": {
     "Consent for Treatment": 0.728,
@@ -20851,15 +20851,15 @@
    },
    "uses|body": {
     "Consent for Treatment": 0.202,
-    "HIPAA and Privacy": 1.138
+    "HIPAA Notice & Consent": 1.138
    },
    "uses|title": {
-    "HIPAA and Privacy": 1.0
+    "HIPAA Notice & Consent": 1.0
    },
    "us|body": {
     "Assignment of Benefits": 0.712,
     "Consent for Treatment": 0.291,
-    "HIPAA and Privacy": 0.61
+    "HIPAA Notice & Consent": 0.61
    },
    "vaccination|body": {
     "Immunization Consent": 1.389
@@ -20920,7 +20920,7 @@
    },
    "visit|body": {
     "General Consent": 0.183,
-    "HIPAA and Privacy": 0.07,
+    "HIPAA Notice & Consent": 0.07,
     "Referral Authorization": 0.645
    },
    "visual|body": {
@@ -20934,7 +20934,7 @@
    },
    "voluntary|body": {
     "Consent for Treatment": 0.833,
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "voluntary|title": {
     "Consent for Treatment": 1.0
@@ -20951,7 +20951,7 @@
     "Surgical Consent": 0.166
    },
    "withdrawal|body": {
-    "HIPAA and Privacy": 0.146
+    "HIPAA Notice & Consent": 0.146
    },
    "witness|body": {
     "Consent for Treatment": 0.541,
@@ -56212,7 +56212,7 @@
    },
    "Consent and Authorization": {
     "hipaa|title": [
-     "HIPAA and Privacy"
+     "HIPAA Notice & Consent"
     ],
     "preauthorization|title": [
      "Prior Authorization"
