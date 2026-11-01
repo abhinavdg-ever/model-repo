@@ -24,6 +24,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
+from orchestrator import run_stats
+
 from config import (
     BATCH_POOL_HEADROOM,
     BATCH_WORKERS,
@@ -912,7 +914,10 @@ def _run_batch_inner(
         index_by_future: dict[Any, int] = {}
         for _orig_index, source, name, mode, is_large, _pages in ordered_jobs:
             # Submitted (and started) in run order within each lane; N/X is that position.
+            # Worker threads do not inherit the context: carry the trigger id over.
             fut = pools[is_large].submit(
+                run_stats.in_trigger,
+                run_stats.current_trigger(),
                 _run_one_chart,
                 _orig_index,
                 total,

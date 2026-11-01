@@ -296,7 +296,10 @@ def main() -> None:
             normalize_fs_path,
         )
         from jobs.export_chart import write_chart
+        from orchestrator import run_stats
         from orchestrator.runner import ingest_and_run, run_pipeline_for_chart
+
+        print(f"trigger_id: {run_stats.new_trigger('run')}")
 
         args.local_read_path = normalize_fs_path(args.local_read_path)
         args.local_write_path = normalize_fs_path(
@@ -406,6 +409,9 @@ def main() -> None:
     if args.cmd in ("batch-run", "batch"):
         from db.paths import normalize_blob_path, normalize_fs_path
         from jobs.batch_intake import run_batch
+        from orchestrator import run_stats
+
+        print(f"trigger_id: {run_stats.new_trigger('batch-run')}")
 
         args.local_read_path = normalize_fs_path(args.local_read_path)
         args.local_write_path = normalize_fs_path(
@@ -467,10 +473,10 @@ def main() -> None:
 
         paths = run_stats.write_reports()
         rows = run_stats.hourly_rows(run_stats.read_rows())
-        print(f"{'hour':<17} {'ocr':<4} {'started':>7} {'ended':>5} {'failed':>6} {'pages':>6} "
+        print(f"{'trigger':<22} {'kind':<9} {'hour':<17} {'ocr':<4} {'started':>7} {'ended':>5} {'failed':>6} {'pages':>6} "
               f"{'docintel':>8} {'avg s/chart':>11} {'avg s/page':>10}")
         for r in rows:
-            print(f"{r['hour']:<17} {r['ocr']:<4} {r['charts_started']:>7} {r['charts_ended']:>5} "
+            print(f"{r['trigger_id']:<22} {r['trigger']:<9} {r['hour']:<17} {r['ocr']:<4} {r['charts_started']:>7} {r['charts_ended']:>5} "
                   f"{r['charts_failed']:>6} {r['pages']:>6} {r['docintel_pages']:>8} "
                   f"{r['avg_seconds_per_chart'] if r['avg_seconds_per_chart'] is not None else '-':>11} "
                   f"{r['avg_seconds_per_page'] if r['avg_seconds_per_page'] is not None else '-':>10}")

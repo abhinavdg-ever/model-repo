@@ -44,6 +44,7 @@ from db.chart_status import refresh_chart_status
 from db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
 from jobs.manifest_sweeper import run_load
 from jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
+from orchestrator import run_stats
 from orchestrator.runner import (
     STAGE_NAMES,
     ingest_and_run,
@@ -882,6 +883,7 @@ def run_chart(
             }
 
     write_to = body.output_path
+    trigger = (run_stats.new_trigger("run"), "run")
     base = {
         "status": "accepted",
         "input_type": body.input_type,
@@ -904,10 +906,11 @@ def run_chart(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(
-            _bg_pipeline_then_write, result["chart_id"], folder, body
+            run_stats.in_trigger, trigger, _bg_pipeline_then_write, result["chart_id"], folder, body
         )
         return {
             **base,
+            "trigger_id": trigger[0],
             "chart_id": result["chart_id"],
             "source": source,
             "imported": result["imported"],
@@ -915,9 +918,10 @@ def run_chart(
             "poll": f"/api/charts/{result['chart_id']}",
         }
 
-    background_tasks.add_task(_bg_run, body)
+    background_tasks.add_task(run_stats.in_trigger, trigger, _bg_run, body)
     return {
         **base,
+        "trigger_id": trigger[0],
         "source": f"{body.container_name}/{_join(body.input_path, folder)}",
         "poll": f"/api/charts/by-name/{folder}",
     }
@@ -1024,12 +1028,14 @@ def _batch_run_impl(
             sources = [x for x in sources if x[1] in finished]
         queued = min(len(sources), cap) if cap else len(sources)
 
-    background_tasks.add_task(_bg_batch, body)
+    trigger = (run_stats.new_trigger("batch-run"), "batch-run")
+    background_tasks.add_task(run_stats.in_trigger, trigger, _bg_batch, body)
     source = (
         f"{body.container_name}/{body.input_path}" if body.is_blob else body.input_path
     )
     return {
         "status": "accepted",
+        "trigger_id": trigger[0],
         "input_type": body.input_type,
         "source": source,
         "charts_found": found,

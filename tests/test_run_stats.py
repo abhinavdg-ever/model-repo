@@ -16,25 +16,33 @@ def _results(ocr=True, azure_pages=5, pages=20):
 
 def test_a_run_writes_its_line_and_both_csvs(tmp_path, monkeypatch):
     monkeypatch.setattr(run_stats, "stats_dir", lambda: tmp_path)
-    chart = {"chart_name": "c1", "id": 1}
-    run_stats.record(chart, _results(), started=T0, ended=T0 + timedelta(minutes=20), status="completed")
-    run_stats.record({"chart_name": "c2", "id": 2}, _results(ocr=False, pages=10),
-                     started=T0 + timedelta(minutes=5), ended=T0 + timedelta(minutes=6), status="completed")
-    run_stats.record({"chart_name": "c3", "id": 3}, {}, started=T0 + timedelta(hours=1),
-                     ended=T0 + timedelta(hours=1, minutes=1), status="failed", error="boom")
+    batch = ("T1", "batch-run")
+    rec = lambda *a, **k: run_stats.in_trigger(batch, run_stats.record, *a, **k)  # noqa: E731
+    rec({"chart_name": "c1", "id": 1}, _results(), started=T0, ended=T0 + timedelta(minutes=20), status="completed")
+    rec({"chart_name": "c2", "id": 2}, _results(ocr=False, pages=10),
+        started=T0 + timedelta(minutes=5), ended=T0 + timedelta(minutes=6), status="completed")
+    rec({"chart_name": "c3", "id": 3}, {}, started=T0 + timedelta(hours=1),
+        ended=T0 + timedelta(hours=1, minutes=1), status="failed", error="boom")
+    run_stats.in_trigger(("T2", "run"), run_stats.record, {"chart_name": "c4", "id": 4}, _results(pages=4),
+                         started=T0, ended=T0 + timedelta(minutes=2), status="completed")
 
     charts = list(csv.DictReader(open(tmp_path / "run_stats_charts.csv", encoding="utf-8")))
-    assert [(c["chart_name"], c["ocr"], c["pages"], c["docintel_pages"]) for c in charts] == [
-        ("c1", "yes", "20", "5"), ("c2", "no", "10", "0"), ("c3", "no", "0", "0")]
+    assert [(c["trigger_id"], c["chart_name"], c["ocr"], c["pages"], c["docintel_pages"]) for c in charts] == [
+        ("T1", "c1", "yes", "20", "5"), ("T1", "c2", "no", "10", "0"), ("T1", "c3", "no", "0", "0"),
+        ("T2", "c4", "yes", "4", "5")]
     assert charts[0]["seconds"] == "1200.0" and charts[0]["seconds_per_page"] == "60.0"
 
-    hourly = {(r["hour"], r["ocr"]): r for r in csv.DictReader(open(tmp_path / "run_stats_hourly.csv", encoding="utf-8"))}
+    rows = list(csv.DictReader(open(tmp_path / "run_stats_hourly.csv", encoding="utf-8")))
+    assert {r["trigger_id"] for r in rows} == {"T1", "T2"}
+    hourly = {(r["hour"], r["ocr"]): r for r in rows if r["trigger_id"] == "T1"}
     ten, eleven = "2026-11-01T10:00", "2026-11-01T11:00"
     assert hourly[(ten, "yes")]["charts_started"] == "1" and hourly[(ten, "yes")]["charts_ended"] == "0"
     assert hourly[(eleven, "yes")]["charts_ended"] == "1"  # c1 ended at 11:10
     assert hourly[(ten, "all")]["charts_started"] == "2" and hourly[(ten, "all")]["pages"] == "30"
     assert hourly[(ten, "all")]["docintel_pages"] == "5"
     assert hourly[(eleven, "no")]["charts_failed"] == "1"
+    total = hourly[("total", "all")]
+    assert (total["charts_started"], total["charts_ended"], total["pages"]) == ("3", "3", "30")
 
 
 def test_stats_never_raise(monkeypatch):
