@@ -1639,6 +1639,35 @@ function dosCompareRow(
   };
 }
 
+/** The comparable form of an ID: letters and digits only, lower case, leading zeros
+ * dropped ("000-12345" and "12345" are one ID). */
+function idKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
+}
+
+/** The staged Member ID list ("Key: Value" per line) against the manifest's Member ID
+ * (2026-11-01, user): the matching IDs first with "(Yes)", the rest after with "(No)".
+ * When no listed ID matches but the member stage found the manifest's ID on the page
+ * (``found``, read from any sentence), that ID leads with "(Yes)". Without a manifest
+ * Member ID the list is shown as it is. */
+export function memberIdList(
+  list: string,
+  manifestId: string | null | undefined,
+  found?: string | null,
+): string {
+  const want = idKey(manifestId ?? "");
+  if (!want) return list;
+  const lines = list.split("\n").map((line) => line.trim()).filter(Boolean);
+  const value = (line: string) => {
+    const at = line.lastIndexOf(": ");
+    return at >= 0 ? line.slice(at + 2) : line;
+  };
+  const yes = lines.filter((line) => idKey(value(line)) === want);
+  if (!yes.length && found && idKey(found) === want) yes.push(found.trim());
+  const no = lines.filter((line) => idKey(value(line)) !== want);
+  return [...yes.map((line) => `${line} (Yes)`), ...no.map((line) => `${line} (No)`)].join("\n");
+}
+
 function stagedField(
   extraction: ExtractionReviewResponse | null | undefined,
   id: string,
@@ -1716,6 +1745,8 @@ function PageDetails({
     Boolean(sections.codeable) ||
     (page.isCodeable != null && String(page.isCodeable).trim() !== "");
   const qualityKnown = sections.quality ?? sections.hw;
+  const stagedMemberIds = stagedField(extraction, "member_id")?.value;
+  const memberIdShown = stagedMemberIds ? memberIdList(stagedMemberIds, manifest?.memberId, page.memberId) : page.memberId;
   // Member and provider rows show the stages' own results (member_extraction_results /
   // the member CSV; imaging_final / provider_signature.csv), never the key/value
   // extractor's raw pick in staging — that stays in the extraction pane.
@@ -1904,7 +1935,7 @@ function PageDetails({
           }),
           // 2026-11-01 (user): every accepted, selected Member ID scored above 0.9 in
           // extraction.json, "Key: Value" one per line; else the member stage's own.
-          sameValue(fmt(stagedField(extraction, "member_id")?.value ?? page.memberId, sections.member, skip), memberConf, {
+          sameValue(fmt(memberIdShown, sections.member, skip), memberConf, {
             id: "member_id",
             label: "Member ID",
             presence: true,
