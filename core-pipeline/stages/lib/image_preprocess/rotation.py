@@ -31,12 +31,11 @@ from __future__ import annotations
 import json
 import math
 import re
-import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import cv2
+from stages.lib.image_preprocess._cv2 import cv2
 import numpy as np
 
 @dataclass
@@ -129,8 +128,11 @@ def normalize_illumination(gray: np.ndarray) -> np.ndarray:
 
 
 def apply_clahe(gray: np.ndarray) -> np.ndarray:
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    return clahe.apply(gray)
+    from stages.lib.image_preprocess._cv2 import LOCK
+
+    with LOCK:  # the CLAHE object's apply is OpenCV too
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(gray)
 
 
 def _ink_from_adaptive(gray: np.ndarray) -> np.ndarray:
@@ -1065,18 +1067,12 @@ def _clamp_near_horizontal(angle: float) -> float | None:
     return None
 
 
-# OpenCV's Canny + HoughLinesP crashed the process ("double free or corruption") with
-# several page threads of two charts in them at once (2026-10-31, VM). One at a time.
-_HOUGH_LOCK = threading.Lock()
-
-
 def hough_tilt(ink: np.ndarray, gray: np.ndarray) -> tuple[float | None, float]:
     """
     Weighted median of near-horizontal Hough segments.
     Returns (angle_clockwise_deg or None, confidence).
     """
-    with _HOUGH_LOCK:
-        edges = cv2.Canny(gray, 50, 150)
+    edges = cv2.Canny(gray, 50, 150)
     # Suppress outer border influence.
     h, w = edges.shape
     m = max(3, int(0.03 * min(h, w)))
@@ -1086,11 +1082,10 @@ def hough_tilt(ink: np.ndarray, gray: np.ndarray) -> tuple[float | None, float]:
     edges[:, -m:] = 0
 
     min_len = max(30, w // 6)
-    with _HOUGH_LOCK:
-        lines = cv2.HoughLinesP(
-            edges, 1, np.pi / 180, threshold=80,
-            minLineLength=min_len, maxLineGap=10,
-        )
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180, threshold=80,
+        minLineLength=min_len, maxLineGap=10,
+    )
     if lines is None:
         return None, 0.0
 

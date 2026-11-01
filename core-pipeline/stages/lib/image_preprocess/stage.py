@@ -49,7 +49,7 @@ def _warm_up() -> None:
         if _warmed:
             return
         try:
-            import cv2  # noqa: F401
+            from stages.lib.image_preprocess._cv2 import cv2  # noqa: F401
             import numpy  # noqa: F401
             import pytesseract  # noqa: F401
             from PIL import Image  # noqa: F401
@@ -123,7 +123,7 @@ def _review_required(quality_tag: str | None, tags: dict[str, Any]) -> bool:
 def _measure_quality(image_path: Path) -> dict[str, Any]:
     """Run the engineering quality analyzer. Never raises."""
     try:
-        import cv2
+        from stages.lib.image_preprocess._cv2 import cv2
 
         from stages.lib.image_preprocess.quality_analyzer import analyze_quality, read_embedded_dpi
 
@@ -183,7 +183,7 @@ def text_orientation(correction: float) -> float:
 
 def _detect_rotation(image_path: Path) -> dict[str, Any]:
     try:
-        import cv2
+        from stages.lib.image_preprocess._cv2 import cv2
 
         image = cv2.imread(str(image_path))
         if image is None:
@@ -392,7 +392,7 @@ def _write_corrected(
     if image is None:
         return None
     try:
-        import cv2
+        from stages.lib.image_preprocess._cv2 import cv2
 
         from stages.lib.image_preprocess.rotation import correct_image
 

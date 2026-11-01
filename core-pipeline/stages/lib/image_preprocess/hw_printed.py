@@ -442,7 +442,7 @@ def _load_model_locked(model_path: Path | str | None, device):
 
 
 def _image_bgr(image: Image.Image):
-    import cv2
+    from stages.lib.image_preprocess._cv2 import cv2
     import numpy as np
 
     rgb = np.asarray(image.convert("RGB"))
@@ -455,7 +455,7 @@ def page_marks(image_bgr) -> dict[str, float | int]:
     ``mark_fraction`` is every stroke-sized mark. ``strong_fraction`` is the
     part that is dark ink rather than pencil or show-through.
     """
-    import cv2
+    from stages.lib.image_preprocess._cv2 import cv2
     import numpy as np
 
     gray = image_bgr if image_bgr.ndim == 2 else cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
@@ -515,7 +515,7 @@ def handwriting_ink_evidence(image_bgr) -> dict[str, float | int]:
     handwriting spreads down the page, so tall components must also be
     vertically dispersed.
     """
-    import cv2
+    from stages.lib.image_preprocess._cv2 import cv2
     import numpy as np
 
     height0, width0 = image_bgr.shape[:2]

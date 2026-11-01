@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import cv2
+from stages.lib.image_preprocess._cv2 import cv2
 import numpy as np
 
 
