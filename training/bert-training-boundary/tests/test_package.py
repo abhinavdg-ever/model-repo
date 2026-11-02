@@ -16,7 +16,7 @@ def test_the_notebook_parses_and_its_files_are_here():
             source += code
     for name in ("train_pairs.py", "requirements.txt"):
         assert name in source and (HERE / name).is_file(), name
-    for name in ("encounter_pairs.jsonl", "order_pairs.jsonl"):
+    for name in ("document_pairs.jsonl", "order_pairs.jsonl"):
         assert name in source, name
 
 
