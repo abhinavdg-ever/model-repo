@@ -51,7 +51,7 @@ from stages._support import mark_completed, stage_run
 from stages.lib import confidence as conf
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
-from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets, path_of
+from stages.lib.page_classify.arbitration import FinalPage, decide_final, note_sections, packets, path_of
 from stages.lib.non_codable_credentials import only_non_codable
 from stages.lib.page_classify.taxonomy import CATEGORY
 
@@ -244,7 +244,23 @@ def review_fields(confidences: dict[str, float]) -> list[str]:
     return sorted(k for k, v in confidences.items() if conf.needs_review(v))
 
 
-def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> FinalPage:
+def page_texts(conn: Any, chart_id: int, pages: list[dict[str, Any]], quality: dict[int, Any]) -> dict[int, str]:
+    """Each page's best OCR text (Final 2, Final 1, then Tesseract), for note_sections."""
+    from db import get_ocr_texts
+    from stages._support import best_page_text
+
+    prelim = get_ocr_texts(conn, chart_id, "tesseract")
+    final1 = get_ocr_texts(conn, chart_id, "docling")
+    final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
+    return {
+        page["id"]: best_page_text(final2=final2.get(page["id"]), final1=final1.get(page["id"]),
+                                   prelim=prelim.get(page["id"]), quality_row=quality.get(page["id"]))
+        for page in pages
+    }
+
+
+def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any], *,
+                text: Optional[str] = None, signed: bool = False) -> FinalPage:
     return FinalPage(
         page_id=page_id,
         page_type=kind.get("page_type"),
@@ -261,6 +277,8 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> Fin
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
         confidence=_number(kind.get("confidence")),
+        sections=note_sections(text),
+        signed=signed,
     )
 
 
@@ -276,6 +294,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             encounters = get_encounter_map(conn, chart_id)
             sequencing = get_sequencing_map(conn, chart_id)
             continuity = get_continuity_map(conn, chart_id)
+            texts = page_texts(conn, chart_id, ctx.pages, quality)
         signatures = _signatures(provider_rows)
 
         # Each page's own DOS, Extracted page type and encounter type come
@@ -308,7 +327,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         specialty_of = encounter_specialties(documents, classification)
         final_pages = {
             page["id"]: _final_page(
-                page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {}
+                page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {},
+                text=texts.get(page["id"]), signed=bool((signatures.get(page["id"]) or {}).get("signature_present")),
             )
             for page in ctx.pages
         }

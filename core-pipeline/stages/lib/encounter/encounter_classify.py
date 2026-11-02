@@ -448,8 +448,12 @@ def decide(evidence: Evidence, canon: Canon) -> Decision:
 
 
 def encounter_family(visit: list[dict[str, Any]]) -> str:
-    """The encounter's page type: its first page's L1 family (the document's Final
-    page type), else the first page that has one."""
+    """The encounter's page type: the document's agreed family when the stage gave one
+    (``document_family``, arbitration.agree_document_type), else its first page's L1
+    family, else the first page that has one."""
+    agreed = next((str(p["document_family"]) for p in visit if p.get("document_family")), "")
+    if agreed and agreed.casefold() != "unknown":
+        return agreed
     for page in visit:
         family = str(page.get("page_family") or "").strip()
         if family and family.casefold() != "unknown":

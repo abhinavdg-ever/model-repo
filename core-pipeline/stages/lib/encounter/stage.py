@@ -35,6 +35,7 @@ from db import (
     get_blank_junk_flags,
     get_continuity_map,
     get_page_classification_map,
+    get_provider_signature_map,
     get_ocr_texts,
     get_quality_map,
     upsert_encounter,
@@ -161,6 +162,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             dos_by_page = _dos_map(conn, chart_id)
             classification = get_page_classification_map(conn, chart_id)
             continuity = get_continuity_map(conn, chart_id)
+            provider_rows = get_provider_signature_map(conn, chart_id)
 
         page_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
@@ -214,6 +216,27 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             page_input["page_family"] = "" if unsure else axes.family_of(kind)
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
+
+        # The document's type as Final will agree it (arbitration.agree_document_type, with
+        # visit_document: a document most of whose pages are Progress Notes, or that heads a
+        # whole SOAP / CHEDDAR note and ends signed, is one). Its family decides whether the
+        # encounter has a type (2026-11-02, user).
+        from stages.lib.imaging_final.stage import _final_page
+        from stages.lib.page_classify.arbitration import agree_document_type
+
+        by_document: dict[Any, list[dict[str, Any]]] = {}
+        for page_input in page_inputs:
+            if page_input["document"] is not None:
+                by_document.setdefault(page_input["document"], []).append(page_input)
+        for members in by_document.values():
+            finals = [
+                _final_page(m["page_id"], classification.get(m["page_id"]) or {}, continuity.get(m["page_id"]) or {},
+                            text=m["text"], signed=bool((provider_rows.get(m["page_id"]) or {}).get("signature_present")))
+                for m in members
+            ]
+            family, _basis = agree_document_type(finals)
+            for m in members:
+                m["document_family"] = family or ""
 
         # The encounter model's answer per page; the vote uses it only where the rules
         # found no evidence (encounter_canon.json -> model_vote).

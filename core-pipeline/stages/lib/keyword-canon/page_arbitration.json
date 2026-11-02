@@ -28,6 +28,18 @@
     "comment": "Across a continuity document every page takes the first page's L1 (sub-types stay per page). Only when the first page is Unknown or Others (neither the model nor the canon was sure), a vote of the pages' L1s weighted by page-type confidence decides, Others pages left out. The vote counts only when one L1 holds at least vote_min_share of the weight; below that the pages keep their own types and are flagged for review (no_agreement). An Others page then takes the document's L1 with the L2 the page classifier gave it there (under_l1), else <L1> / Others.",
     "vote_min_share": 0.6
   },
+  "visit_document": {
+    "comment": "2026-11-02 (user): a document whose first page is not a visit note (Progress / Operative / Procedure Note) is turned into one when 1. majority: more than min_pages - 1 of its pages are one visit family and they are more than half the document -> that family (the most pages; basis visit_majority); or 2. note sections: its pages together carry a heading from every group (a SOAP / CHEDDAR note: complaint or history, exam, assessment, plan) and its last page is signed -> 'becomes' (basis note_sections). A heading is a line that starts with the phrase followed by ':' or nothing else. Checked before demographics_summary; the encounter stage uses the same answer, so the document gets an encounter type.",
+    "families": ["Progress Note", "Operative Note", "Procedure Note"],
+    "min_pages": 4,
+    "becomes": "Progress Note",
+    "groups": {
+      "subjective": ["Chief Complaint", "CC", "History of Present Illness", "HPI", "Subjective", "Reason for Visit", "Presenting Complaint"],
+      "exam": ["Physical Exam", "Physical Examination", "Exam", "Examination", "Objective", "Review of Systems", "ROS", "Vitals", "Vital Signs"],
+      "assessment": ["Assessment", "Assessment and Plan", "Assessment & Plan", "Assessment/Plan", "A/P", "Impression", "Diagnosis", "Diagnoses"],
+      "plan": ["Plan", "Plan of Care", "Treatment Plan", "Assessment and Plan", "Assessment & Plan", "Assessment/Plan", "A/P", "Disposition", "Follow Up", "Follow-up", "Return"]
+    }
+  },
   "demographics_summary": {
     "comment": "2026-11-01 (user): a document that opens on one of these L1s and runs on over pages of other L1s (a patient-summary print: demographics, then problem list, medications, history pages joined by '(continued)') is a 'becomes' document; every page of another family takes final_placement there (Clinical Summary: Summary).",
     "opens": ["Demographics"],

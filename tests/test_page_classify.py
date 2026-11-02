@@ -18,7 +18,7 @@ if str(CORE) not in sys.path:
 
 from stages.lib.canon_store import CANON_DIR  # noqa: E402
 from stages.lib.page_classify import axes, keywords, taxonomy  # noqa: E402
-from stages.lib.page_classify.arbitration import FinalPage, decide_final  # noqa: E402
+from stages.lib.page_classify.arbitration import FinalPage, agree_document_type, decide_final, note_sections  # noqa: E402
 
 PN = "Progress Note"
 
@@ -201,6 +201,36 @@ class TestAgreedPageType:
         alone = [fp(1, "Demographics", "Patient Information", family="Demographics", seq=1),
                  fp(2, "Demographics", "Insurance", family="Demographics", seq=2, link="strong")]
         assert decide_final(alone[1], alone).page_type == "Demographics"
+
+    def test_a_document_mostly_of_progress_notes_is_one(self):
+        """2026-11-02 (user): more than 3 Progress Note pages, and more than half the document,
+        make it a Progress Note whatever its first page is."""
+        from dataclasses import replace
+
+        def pn(pid):
+            return fp(pid, PN, "Assessment and Plan", family=PN, l2="Assessment and Plan", seq=pid, link="strong")
+        opener = fp(1, "Problem List", "Problem List", family="Problem List", l2="Problem List", seq=1)
+        doc = [opener, *(pn(n) for n in (2, 3, 4, 5))]
+        assert agree_document_type(doc) == (PN, "visit_majority")
+        assert decide_final(opener, doc).page_type == PN
+        three = [opener, *(pn(n) for n in (2, 3, 4))]  # 3 is not more than 3
+        assert agree_document_type(three)[1] != "visit_majority"
+        half = [opener, *(replace(opener, page_id=n) for n in (2, 3, 4)), *(pn(n) for n in (5, 6, 7, 8))]
+        assert agree_document_type(half)[1] != "visit_majority"  # 4 of 8 is not a majority
+
+    def test_a_whole_soap_note_ending_signed_is_a_progress_note(self):
+        from dataclasses import replace
+
+        text = "Chief Complaint: cough\nHPI\n3 days\nPhysical Exam:\nclear\nAssessment:\nbronchitis\nPlan: rest"
+        assert note_sections(text) == {"subjective", "exam", "assessment", "plan"}
+        assert note_sections("the plan was discussed") == frozenset()  # not a heading
+        a = fp(1, "Patient Communication", "Patient Message", family="Patient Communication", seq=1)
+        b = fp(2, "Patient Communication", "Patient Message", family="Patient Communication", seq=2, link="strong")
+        first, second = "Chief Complaint: cough\nPhysical Exam:\nclear", "Assessment:\nbronchitis\nPlan: rest"
+        doc = [replace(a, sections=note_sections(first)), replace(b, sections=note_sections(second), signed=True)]
+        assert agree_document_type(doc) == (PN, "note_sections")
+        unsigned = [doc[0], replace(doc[1], signed=False)]
+        assert agree_document_type(unsigned)[1] != "note_sections"
 
     def test_every_progress_note_path_is_codeable(self):
         """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""

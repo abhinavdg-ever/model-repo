@@ -45,6 +45,7 @@ pages; each page keeps its own names below it.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
@@ -100,6 +101,10 @@ class FinalPage:
     link_strength: Optional[str] = None  # strong | weak (chain from the start)
     # The page type's confidence (page_classification.confidence): its vote weight.
     confidence: Optional[float] = None
+    # visit_document (2026-11-02): the note-section groups headed on the page
+    # (note_sections) and whether the page is signed.
+    sections: frozenset[str] = frozenset()
+    signed: bool = False
 
 
 @dataclass(frozen=True)
@@ -264,6 +269,9 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
     # A signature-only first page (it joined the note after it) does not set the family.
     opener = next((p for p in document if not _signature_only(p)), document[0])
     first = _family(opener)
+    visit = visit_document(document, first)
+    if visit:
+        return visit
     # A Demographics page that runs on over pages of other kinds (an EHR patient-summary
     # print joined by "(continued)") makes the document a Clinical Summary (2026-11-01, user).
     summary = _ARBITRATION.get().get("demographics_summary") or {}
@@ -291,6 +299,57 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
         return first, "vote"
     order = [_family(p) for p in document]
     return min(tied, key=order.index), "vote"
+
+
+def _visit_settings() -> dict[str, Any]:
+    return _ARBITRATION.get().get("visit_document") or {}
+
+
+def _heading_patterns() -> dict[str, re.Pattern[str]]:
+    cfg = _visit_settings()
+    key = json.dumps(cfg.get("groups") or {}, sort_keys=True)
+    cached = _HEADING_CACHE.get(key)
+    if cached is None:
+        cached = {
+            group: re.compile(
+                r"(?im)^[\s*#\-\u2022]*(?:" + "|".join(re.escape(p) for p in sorted(phrases, key=len, reverse=True))
+                + r")\s*(?::|$)"
+            )
+            for group, phrases in (cfg.get("groups") or {}).items() if phrases
+        }
+        _HEADING_CACHE.clear()
+        _HEADING_CACHE[key] = cached
+    return cached
+
+
+_HEADING_CACHE: dict[str, dict[str, re.Pattern[str]]] = {}
+
+
+def note_sections(text: Optional[str]) -> frozenset[str]:
+    """The visit_document groups the page heads: a line that starts with one of the
+    group's phrases followed by ':' or nothing else (Chief Complaint:, HPI, Plan:)."""
+    if not text:
+        return frozenset()
+    return frozenset(group for group, pattern in _heading_patterns().items() if pattern.search(text))
+
+
+def visit_document(document: Sequence[FinalPage], first: Optional[str]) -> Optional[tuple[str, str]]:
+    """A document that does not open on a visit note but is one (2026-11-02, user):
+    most of its pages are one visit family (more than min_pages - 1 and more than half),
+    or its pages head every note-section group and its last page is signed."""
+    cfg = _visit_settings()
+    families = list(cfg.get("families") or ())
+    if not families or first in families or len(document) < 2:
+        return None
+    counts = {f: sum(1 for p in document if _family(p) == f) for f in families}
+    best = max(families, key=lambda f: (counts[f], -families.index(f)))
+    if counts[best] >= int(cfg.get("min_pages", 4)) and counts[best] * 2 > len(document):
+        return best, "visit_majority"
+    groups = set((cfg.get("groups") or {}).keys())
+    found = set().union(*(p.sections for p in document))
+    if groups and groups <= found and document[-1].signed and cfg.get("becomes"):
+        return str(cfg["becomes"]), "note_sections"
+    return None
 
 
 def decide_final(
