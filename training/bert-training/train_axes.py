@@ -118,6 +118,11 @@ CLASS_WEIGHT = "sqrt"
 IGNORE = -100
 MASKED = -1e4  # not -inf: a fully masked row stays finite under mixed precision
 SEP = " > "
+# Old names still in some inputs (Training/mock/mock_pages.jsonl), v29.2 -> v29.3: read as the new name.
+RENAMES = {
+    "Consent and Authorization > HIPAA and Privacy": "Consent and Authorization > HIPAA Notice & Consent",
+    "Problem List > Diagnosis List/Index": "Problem List > Diagnosis List/Coding Summary",
+}
 TOP_PATHS = 5  # whole paths kept per page (``paths``)
 PATHS_PER_L1 = 3  # of which at most this many under one L1
 
@@ -217,13 +222,17 @@ def load_records(path: Path, taxonomy: dict[str, Any], min_chars: int) -> tuple[
             if len("".join(text.split())) < min_chars:
                 short += 1
                 continue
-            records.append({
+            record = {
                 "image": str(row.get("image") or f"line-{number}"),
                 "text": text,
                 "chart_id": _clean(row.get("chart_id")),
                 "synthetic": bool(row.get("synthetic")),
                 **{k: _clean(row.get(k)) for k in ("L1", "L2", "L3", "specialty", "codeability")},
-            })
+            }
+            renamed = RENAMES.get(f"{record['L1']}{SEP}{record['L2']}")
+            if renamed:
+                record["L1"], record["L2"] = renamed.split(SEP)
+            records.append(record)
     problems = validate(records, taxonomy)
     if problems:
         raise SystemExit("Labels not in the taxonomy — fix them in the annotation tool or rebuild "
