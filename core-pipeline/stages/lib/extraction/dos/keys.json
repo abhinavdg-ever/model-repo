@@ -29,11 +29,12 @@
     "Order Date",
     "Date of Visit",
     "Document Date",
-    "Initial Visit",
     "Date of Admission",
+    "Today's Date",
     "D.OS",
     "DIAS",
-    "Visit"
+    "Visit",
+    "Appointment"
   ],
   "admit": [
     "Admit",

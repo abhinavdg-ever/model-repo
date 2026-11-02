@@ -356,3 +356,47 @@ def test_staged_best_by_tier():
     assert page.best("dos")["value"] == "2/3/24"
     assert page.best("dos", tier="admit")["value"] == "2/1/24"
     assert page.best("dos", tier="discharge") is None
+
+
+class TestDosOtherTime:
+    """2026-11-02 (Extraction drop): a key or date that says another time than this visit is
+    never the DOS, and an admit + discharge pair beats every other date."""
+
+    @staticmethod
+    def _rows(text: str, key_words: int):
+        from stages.lib.extraction.dos.extract import extract_page
+        from stages.lib.extraction.util.keys import KeyHit
+
+        words = _page((100, text))
+        start = next(i for i, w in enumerate(words) if w.content.rstrip(":").casefold() in {"visit", "date"})
+        key = words[start: start + key_words]
+        hit = KeyHit(field="dos", key=" ".join(w.content.rstrip(":") for w in key), word_indexes=[w.index for w in key],
+                     box=key[0].box, weak=False, region="header", trusted=True,
+                     value_words=words[start + key_words:],
+                     value_text=" ".join(w.content for w in words[start + key_words:]))
+        return [row for row in extract_page([hit], words, PAGE_H) if row.accepted]
+
+    def test_a_last_or_next_visit_date_is_not_the_dos(self):
+        assert [r.value for r in self._rows("Visit Date: 06/12/2024", 2)] == ["06/12/2024"]
+        assert self._rows("Last Visit Date: 06/12/2024", 2) == []
+        assert self._rows("Next Visit Date: 07/01/2025", 2) == []
+
+    def test_an_admit_discharge_pair_beats_a_service_date(self):
+        from stages.lib.extraction.dos.extract import mark_selected
+
+        rows = [_dos_row("Date of Service", "service", "09/20/2024"), _dos_row("Admit Date", "admit", "09/21/2024"),
+                _dos_row("Discharge Date", "discharge", "09/25/2024")]
+        assert [r.key for r in mark_selected(rows) if r.selected] == ["Admit Date", "Discharge Date"]
+
+    def test_the_pair_is_kept_after_the_model_pick(self):
+        import pandas as pd
+
+        from stages.lib.extraction.dos.extract import pair_admit_discharge
+
+        log = pd.DataFrame([
+            {"field": "dos", "record_id": "r", "file_name": "1.png", "page_number": 1, "is_placeholder": 0,
+             "rule_accepted": 1, "value": v, "detail": t, "model_score": s, "model_selected": m, "model_accepted": m}
+            for v, t, s, m in (("09/20/2024", "service", 0.9, "1"), ("09/21/2024", "admit", 0.4, "0"),
+                               ("09/25/2024", "discharge", 0.3, "0"))])
+        out = pair_admit_discharge(log)
+        assert list(out["model_selected"]) == ["0", "1", "1"]

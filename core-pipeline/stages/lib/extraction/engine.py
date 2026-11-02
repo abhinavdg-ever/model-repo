@@ -125,7 +125,10 @@ def extract_chart(record_id: str, pages: list[dict[str, Any]]) -> "pipeline.Docu
     result = pipeline.extract_document(Document(record_id=record_id, pages=pages, source=""))
     from .training.model import load_version
 
-    log = load_version(version).apply(result.candidates(record_id, version))
+    from .dos.extract import pair_admit_discharge
+
+    # The model takes one DOS per page; an admit + discharge pair on the page is the DOS (a range).
+    log = pair_admit_discharge(load_version(version).apply(result.candidates(record_id, version)))
     pipeline.apply_model_selection(result, log)
     logger.info(
         "extraction %s: %d page(s) in %.1fs (model %s)",

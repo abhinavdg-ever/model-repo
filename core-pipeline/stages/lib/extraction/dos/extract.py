@@ -8,6 +8,14 @@ Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
     Report Date, ...) > printed. The best tier with a valid date wins; weak keys are only a
     fallback. A lab's Collection date ranks with the service keys and wins among them, so a
     lab page is Collected > Received > Printed.
+  - An admit + discharge pair on the page beats every other date (2026-11-02, from the
+    Extraction drop): both are selected and become a range in the record summary; the
+    discharge only ever comes from a discharge key. The same pairing is applied after the
+    trained model's pick (pair_admit_discharge).
+  - Not this visit's date: a DOS key with a past / future / amended word right before it or
+    inside it ('Last Visit Date', 'Will Visit Date', 'was admitted', 'Planned Admit Date',
+    'Amended Date') gives no candidate, and its date is never taken by another key or the
+    keyless reader; neither is a date right after 'Amended' on its line.
   - Value: single date (6/28/2024, 9/24/24, 2024-12-02, 08-19-2024, Jul 1, 2024,
     November 6, 2024; a trailing time is dropped) or a range "date - date"
     (-, –, to, thru, through). Admit + discharge on one page are both selected and
@@ -63,6 +71,19 @@ _NOTE_LABEL = re.compile(r"(?i)\b(?:note|visit|consult(?:ation)?)\b")
 _KEYLESS_NOISE = frozenset(
     {"from", "fax", "faxed", "sent", "signed", "electronically", "printed", "received"}
 )
+# Words that make a DOS key, or a date, another time than this visit: checked inside the key and
+# on the two words right before it on its line ('Last Visit Date', 'Will Visit Date', 'was
+# admitted', 'Planned Admit Date', 'Amended Date'), and before a keyless header/footer date.
+_PAST = frozenset({"last", "previous", "prior", "past", "was", "were", "been", "first", "initial"})
+_FUTURE = frozenset(
+    {"next", "future", "upcoming", "planned", "scheduled", "expected", "anticipated", "will",
+     "tentative", "projected"}
+)
+_AMENDED = frozenset({"amended", "amendment", "amend"})
+OTHER_TIME = _PAST | _FUTURE | _AMENDED
+_OTHER_TIME_BEFORE = 2
+# A date this many words after 'Amended' on its line is the amendment's date.
+_AMENDED_REACH = 6
 _MONTH_NAME = re.compile(
     r"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
     r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
@@ -323,6 +344,9 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
             for span in date_spans(segment, blocked):
                 if _TIME_AFTER.match(segment[span.end :]):
                     continue
+                # 'Next appt 07/01/2025', 'Last seen 01/02/2024', 'Amended 07/25/2024'
+                if any(part in OTHER_TIME for part in _parts_of(segment[: span.start])[-_OTHER_TIME_BEFORE:]):
+                    continue
                 window = segment[max(0, span.start - 14) : span.end + 14]
                 if _PAGE_LABEL.search(window):
                     continue
@@ -373,11 +397,18 @@ def _best(rows: list[DosHit]) -> DosHit:
 
 
 def mark_selected(rows: list[DosHit]) -> list[DosHit]:
-    """Pick one DOS per page: best tier first; with both an admit and a discharge date, both
-    are selected (the record summary makes them a range). A lab's Collection date wins over
-    the other service keys (Order Date, Date of Service) on its page."""
+    """Pick one DOS per page. An admit and a discharge date on the page are both selected (the
+    record summary makes them a range) and beat every other date; otherwise the best tier wins,
+    and a lab's Collection date wins over the other service keys (Order Date, Date of
+    Service) on its page."""
     accepted = [row for row in rows if row.accepted and row.value]
     if not accepted:
+        return rows
+    admits = [row for row in accepted if row.tier == "admit"]
+    discharges = [row for row in accepted if row.tier == "discharge"]
+    if admits and discharges:
+        _best(admits).selected = True
+        _best(discharges).selected = True
         return rows
     top = min(TIER_RANK.get(row.tier, 9) for row in accepted)
     pool = [row for row in accepted if TIER_RANK.get(row.tier, 9) == top]
@@ -392,12 +423,46 @@ def mark_selected(rows: list[DosHit]) -> list[DosHit]:
     return rows
 
 
+def pair_admit_discharge(log):
+    """After the trained model's pick: on a page with an extracted admit date and an extracted
+    discharge date, the page's DOS is that pair (the model's best of each), never another date.
+
+    The model takes one DOS per page, so without this an admit/discharge range never reaches the
+    output. Pages without both keep the model's pick (a service date when there is one)."""
+    import pandas as pd
+
+    if "model_selected" not in log.columns:
+        return log
+    dos = log[
+        (log["field"] == "dos")
+        & (log["model_selected"].astype(str) != "")
+        & (log["is_placeholder"].astype(str) != "1")
+    ]
+    if dos.empty:
+        return log
+    extracted = dos["rule_accepted"].astype(str).isin({"1", "True", "true"}) & (dos["value"].astype(str) != "")
+    tier = dos["detail"].astype(str)
+    score = pd.to_numeric(dos["model_score"], errors="coerce").fillna(0.0)
+    for _, page in dos.groupby(["record_id", "file_name", "page_number"], sort=False):
+        admits = page.index[extracted[page.index] & (tier[page.index] == "admit")]
+        discharges = page.index[extracted[page.index] & (tier[page.index] == "discharge")]
+        if admits.empty or discharges.empty:
+            continue
+        keep = [score[admits].idxmax(), score[discharges].idxmax()]
+        log.loc[page.index, "model_selected"] = "0"
+        log.loc[keep, "model_selected"] = "1"
+        log.loc[keep, "model_accepted"] = "1"
+    return log
+
+
 def _note_label_rows(hits: list[KeyHit], words: list[Word], blocked: set[str]) -> list[DosHit]:
     """A note-type label of another field followed on its line by a date: the date of that
     note ('Progress Note: Bradley R Sellers, MD 07/24/2024'). Only same-line dates count."""
     rows = []
     for hit in hits:
         if hit.field == "dos" or not hit.trusted or not _NOTE_LABEL.search(hit.key):
+            continue
+        if other_time(hit, words):  # 'Next Office Visit 07/01/2025'
             continue
         row = extract_box(hit, "service", blocked, words)
         if row.accepted and row.source.startswith("same_line"):
@@ -408,6 +473,80 @@ def _note_label_rows(hits: list[KeyHit], words: list[Word], blocked: set[str]) -
 
 def _value_indexes(row: DosHit) -> tuple[int, ...]:
     return tuple(sorted(word.index for word in getattr(row, "value_at", []) or []))
+
+
+def _parts_of(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.casefold())
+
+
+def other_time(hit: KeyHit, words: list[Word]) -> bool:
+    """The key says another time than this visit: a past / future / amended word printed in the
+    key's own words ('Last-Visit Date') or among the two words right before it on its line
+    ('Last Visit Date', 'Will Visit Date', 'was admitted', 'Planned Admit Date', 'Amended Date')."""
+    span = set(hit.word_indexes)
+    key_words = [word for word in words if word.index in span]
+    if not key_words:
+        return False
+    key_parts = set(_parts_of(hit.key))
+    if any(part in OTHER_TIME and part not in key_parts for word in key_words for part in _parts_of(word.content)):
+        return True
+    first = min(key_words, key=lambda word: word.box.left)
+    height = max(first.box.height(), 1.0)
+    left_of = sorted(
+        (
+            word for word in words
+            if word.index not in span
+            and abs(word.box.cy - first.box.cy) < 0.6 * height
+            and word.box.right <= first.box.left + 0.3 * height
+        ),
+        key=lambda word: word.box.right,
+        reverse=True,
+    )
+    before: list[str] = []
+    edge = first.box.left
+    for word in left_of[:_OTHER_TIME_BEFORE]:
+        # a wide gap, or the end of the previous sentence / label ('Patient was seen. Visit Date:')
+        if edge - word.box.right > 3.0 * height or re.search(r"[.:;|]$", word.content.strip()):
+            break
+        before.extend(reversed(_parts_of(word.content)))
+        edge = word.box.left
+    # 'Amended' only right before the key ('Amended Date'); 'Amendment for Date of Service' is a DOS.
+    return any(part in _PAST | _FUTURE for part in before[:_OTHER_TIME_BEFORE]) or any(
+        part in _AMENDED for part in before[:1]
+    )
+
+
+def _first_date_after(word: Word, words: list[Word], reach: int, stop: set[int]) -> set[int]:
+    """Word indexes of the first date in `word` or the `reach` words to its right on its line,
+    up to the first word of `stop` (another DOS key: 'Amendment for DOS 06/12/2024' is a DOS)."""
+    height = max(word.box.height(), 1.0)
+    line = sorted(
+        (other for other in words if abs(other.box.cy - word.box.cy) < 0.6 * height and other.box.left > word.box.left),
+        key=lambda other: other.box.left,
+    )[:reach]
+    cut = next((position for position, other in enumerate(line) if other.index in stop), len(line))
+    tokens, text = ordered_tokens([word, *line[:cut]])
+    for span in date_spans(text, set()):
+        covered = _span_tokens(tokens, span)
+        if covered:
+            return {token.word.index for token in covered}
+    return set()
+
+
+def other_time_dates(
+    hits: list[KeyHit], words: list[Word], tiers: dict[str, str], blocked: set[str], dos_keys: set[int]
+) -> set[int]:
+    """Word indexes of every date that is not this visit's: the date each other-time key reads,
+    and the first date after 'Amended' on its line (before any other DOS key, `dos_keys`)."""
+    out: set[int] = set()
+    for hit in hits:
+        row = extract_box(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words)
+        if row.accepted:
+            out.update(_value_indexes(row))
+    for word in words:
+        if word.index not in dos_keys and any(part in _AMENDED for part in _parts_of(word.content)):
+            out.update(_first_date_after(word, words, _AMENDED_REACH, dos_keys))
+    return out
 
 
 def drop_shared_values(rows: list[DosHit]) -> list[DosHit]:
@@ -437,12 +576,19 @@ def drop_shared_values(rows: list[DosHit]) -> list[DosHit]:
 
 
 def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[DosHit]:
-    """Keyed DOS rows (all tiers), keyless header/footer dates only if none accepted."""
+    """Keyed DOS rows (all tiers), keyless header/footer dates only if none accepted. Keys that say
+    another time than this visit give no row, and their dates (and amended dates) are no one's."""
     tiers = load_key_tiers("dos")
     blocked = _dob_values(hits)
+    dos_hits = [hit for hit in hits if hit.field == "dos"]
+    elsewhere = [hit for hit in dos_hits if other_time(hit, words)]
+    skip = {id(hit) for hit in elsewhere}
+    dos_keys = {index for hit in dos_hits if id(hit) not in skip for index in hit.word_indexes}
+    excluded = other_time_dates(elsewhere, words, tiers, blocked, dos_keys)
     rows = [
         linked(extract_box(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words), hit)
         for hit in trusted_field_hits(hits, "dos")
+        if id(hit) not in skip
     ]
     for row in rows:
         if row.tier == "printed" and row.accepted:
@@ -450,8 +596,12 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
             # its date so no other key or the keyless rule reads it as one.
             row.accepted, row.score, row.source = False, 0.0, "printed_not_dos"
     rows = drop_shared_values(rows + _note_label_rows(hits, words, blocked))
+    rows = [row for row in rows if not excluded.intersection(_value_indexes(row))]
     if not any(row.accepted for row in rows):
-        rows.extend(extract_keyless(words, page_h, blocked | printed_dates(rows)))
+        rows.extend(
+            row for row in extract_keyless(words, page_h, blocked | printed_dates(rows))
+            if not excluded.intersection(_value_indexes(row))
+        )
     return mark_selected(rows)
 
 
