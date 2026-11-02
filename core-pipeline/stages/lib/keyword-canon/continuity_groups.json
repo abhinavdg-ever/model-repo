@@ -1,0 +1,13 @@
+{
+  "comment": "2026-11-02 (user): every document type can run on over several pages, and pages of the L1s in one group can be combined into one document (a Clinical Summary print runs on into its Problem List, Medication and Demographics pages). Used by the document-continuity model (continuity/ml: clue same_group, group of each page) and its training data. A page inside a visit note (its results, medication list, questionnaire) stays part of the note whatever its L1: that comes from the reviewed documents, not from these groups. An L1 not listed is a group of its own.",
+  "groups": {
+    "visit_note": ["Progress Note", "Procedure Note", "Operative Note", "Discharge Summary"],
+    "summary": ["Clinical Summary", "Problem List", "Medication Record", "Demographics", "Immunization"],
+    "lab": ["Lab Report"],
+    "order": ["Order and Requisition"],
+    "consent": ["Consent and Authorization"],
+    "letter": ["Provider Letter", "Patient Communication"],
+    "administrative": ["Administrative", "Forms and Questionnaires"],
+    "pharmacy": ["Pharmacy Note"]
+  }
+}

@@ -60,6 +60,56 @@ def compare(stored, fresh) -> dict[str, int]:
     return out
 
 
+def train_document(a) -> int:
+    """2026-11-02 (user): every document type can run on. Target: the reviewed document breaks after
+    page n (document_pairs.csv, build_data.py), on every meeting point; clues + L1 and group of
+    both pages + same_group."""
+    import numpy as np
+    import pandas as pd
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
+
+    d = pd.read_csv(a.data)
+    X = d[NUM + ['same_group']].astype(float)
+    for col in ('L1', 'group'):
+        for v in sorted(set(d[f'{col}_n']) | set(d[f'{col}_n1'])):
+            X[f'n_{col}_{v}'] = (d[f'{col}_n'] == v).astype(int)
+            X[f'n1_{col}_{v}'] = (d[f'{col}_n1'] == v).astype(int)
+    y = d.doc_breaks.values
+    w = np.where(d.unsure == 1, 0.5, 1.0)
+    tr, te = d.split.isin(['train', 'val']).values, (d.split == 'test').values
+    model = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, max_leaf_nodes=15, l2_regularization=1.0,
+                                           early_stopping=True, validation_fraction=0.15, random_state=42)
+    model.fit(X[tr], y[tr], sample_weight=w[tr])
+    p = model.predict_proba(X[te])[:, 1]
+
+    def prf(pred):
+        pr, rc, f1, _ = precision_recall_fscore_support(y[te], pred, average='binary', zero_division=0)
+        return {'P': round(pr, 3), 'R': round(rc, 3), 'F1': round(f1, 3)}
+
+    res = {'document_break': {'test_pairs': int(te.sum()), 'breaks': int(y[te].sum()), 'auc': round(roc_auc_score(y[te], p), 4),
+                              **{f'{k}@0.5': v for k, v in prf(p >= 0.5).items()}},
+           # yardsticks on the same test points: break whenever the group changes / the L1 changes
+           'rule_group_changes': prf((d.loc[te, 'same_group'] == 0).values),
+           'rule_L1_changes': prf((d.loc[te, 'same_L1'] == 0).values)}
+    by_group = {}
+    for g in sorted(set(d.loc[te, 'group_n'])):
+        m = (d.loc[te, 'group_n'] == g).values
+        if m.sum() >= 10 and len(set(y[te][m])) == 2:
+            pr, rc, f1, _ = precision_recall_fscore_support(y[te][m], p[m] >= 0.5, average='binary', zero_division=0)
+            by_group[g] = {'pairs': int(m.sum()), 'breaks': int(y[te][m].sum()), 'F1': round(f1, 3)}
+    res['by_group_of_page_n'] = by_group
+    a.out.mkdir(parents=True, exist_ok=True)
+    (a.out / 'metrics.json').write_text(json.dumps(res, indent=1), encoding='utf-8')
+    o = d.loc[te, ['pair_id', 'group_n', 'group_n1', 'doc_breaks', 'unsure']].copy()
+    o['p_break'] = p.round(4)
+    o.to_csv(a.out / 'predictions_test.csv', index=False)
+    with (a.out / 'model.pkl').open('wb') as fh:
+        pickle.dump({'model': model, 'columns': list(X.columns), 'task': 'document'}, fh)
+    print(json.dumps(res, indent=1))
+    return 0
+
+
 def main(argv=None) -> int:
     import numpy as np
     import pandas as pd
@@ -67,11 +117,21 @@ def main(argv=None) -> int:
     from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--boundary', type=Path, required=True, help='folder with encounter_pairs.csv and pages_encounter.csv')
-    ap.add_argument('--training-data', type=Path, required=True, help='training_data.jsonl (page text and labels)')
-    ap.add_argument('--out', type=Path, default=DEFAULT_OUT)
+    ap.add_argument('--task', choices=('document', 'encounter'), default='document',
+                    help='document (2026-11-02): every document type; encounter: the E0 baseline')
+    ap.add_argument('--data', type=Path, default=HERE.parents[5] / 'training' / 'bert-training-boundary' / 'data' / 'document_pairs.csv',
+                    help='--task document: document_pairs.csv from build_data.py')
+    ap.add_argument('--boundary', type=Path, help='--task encounter: folder with encounter_pairs.csv and pages_encounter.csv')
+    ap.add_argument('--training-data', type=Path, help='--task encounter: training_data.jsonl (page text and labels)')
+    ap.add_argument('--out', type=Path)
     ap.add_argument('--stored-clues', action='store_true', help='train on the CSV clue columns instead of recomputed ones')
     a = ap.parse_args(argv)
+    if a.task == 'document':
+        a.out = a.out or DEFAULT_OUT.parent / 'doc_gbm'
+        return train_document(a)
+    if not (a.boundary and a.training_data):
+        ap.error('--task encounter needs --boundary and --training-data')
+    a.out = a.out or DEFAULT_OUT
 
     records = {}
     with a.training_data.open(encoding='utf-8') as fh:

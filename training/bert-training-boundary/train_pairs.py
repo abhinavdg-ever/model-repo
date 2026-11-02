@@ -4,9 +4,10 @@
 One encoder (Bio_ClinicalBERT by default) reads the END of page A and the START of page B as one
 input ("tail [SEP] head") and has two heads:
 
-* ``end``     -- P(the encounter ends after page A), on the meeting points whose page A is in an
-                 encounter (``encounter_pairs.jsonl``, label ``encounter_ends_after_n``; the same
-                 target as the continuity clue model). Unsure points count at half weight.
+* ``break``   -- P(the document ends after page A), on every meeting point of a chart, whatever the
+                 document type (``document_pairs.jsonl``, label ``doc_breaks``; 2026-11-02, user:
+                 every document can run on; the same target as the continuity clue model,
+                 continuity/ml/build_data.py). Unsure points count at half weight.
 * ``follows`` -- P(page B comes directly after page A) inside one document
                  (``order_pairs.jsonl``, label ``follows``; the same target as the order clue model).
 
@@ -15,10 +16,10 @@ validation AUC of the two heads is kept; test is scored once at the end, never t
 
 Writes ``--output`` (default ``output/boundary-text``):
 
-* ``model.onnx``      -- input_ids, attention_mask -> probs [batch, 2] = (p_end, p_follows), for CPU
+* ``model.onnx``      -- input_ids, attention_mask -> probs [batch, 2] = (p_break, p_follows), for CPU
 * ``tokenizer/``, ``label_space.json`` (heads, max_length, words per side), ``metrics.json``
 * ``encoder/``, ``heads.pt``  -- the PyTorch weights (to fine-tune again)
-* ``scores_end.csv`` (pair_id, p_end_text, source) and ``scores_follows.csv`` (doc_id, image_a,
+* ``scores_break.csv`` (pair_id, p_break_text, source) and ``scores_follows.csv`` (doc_id, image_a,
   image_b, p_follows_text, source): the text score of every pair, to feed the clue models as one
   more clue. With ``--folds K`` the train / val scores are out-of-fold (K models, grouped by chart),
   so the clue model never sees a score the text model learned that pair from; test scores come
@@ -46,7 +47,7 @@ os.environ.setdefault("USE_TF", "0")
 
 HERE = Path(__file__).resolve().parent
 BASE_MODEL = "emilyalsentzer/Bio_ClinicalBERT"
-HEADS = ("end", "follows")
+HEADS = ("break", "follows")
 WORDS = 150  # words kept from the end of page A and from the start of page B
 MAX_LENGTH = 384
 SEED = 42
@@ -54,7 +55,7 @@ SEED = 42
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--encounter-pairs", type=Path, default=HERE / "data" / "encounter_pairs.jsonl")
+    p.add_argument("--document-pairs", type=Path, default=HERE / "data" / "document_pairs.jsonl")
     p.add_argument("--order-pairs", type=Path, default=HERE / "data" / "order_pairs.jsonl")
     p.add_argument("--output", type=Path, default=HERE / "output" / "boundary-text")
     p.add_argument("--base-model", default=BASE_MODEL)
@@ -81,17 +82,15 @@ def _head(text: str, words: int) -> str:
     return " ".join((text or "").split()[:words])
 
 
-def load_examples(enc_path: Path, order_path: Path, words: int) -> list[dict]:
+def load_examples(doc_path: Path, order_path: Path, words: int) -> list[dict]:
     out = []
-    with enc_path.open(encoding="utf-8") as fh:
+    with doc_path.open(encoding="utf-8") as fh:
         for line in fh:
             if not line.strip():
                 continue
             r = json.loads(line)
-            if int(r.get("in_enc_n") or 0) != 1:  # the clue model's population: page A is in an encounter
-                continue
             out.append({"head": 0, "id": r["pair_id"], "chart": r["pair_id"].split("|")[0], "split": r["split"],
-                        "label": float(r["encounter_ends_after_n"]), "weight": 0.5 if int(r.get("unsure") or 0) else 1.0,
+                        "label": float(r["doc_breaks"]), "weight": 0.5 if int(r.get("unsure") or 0) else 1.0,
                         "a": _tail(r.get("tail_n"), words), "b": _head(r.get("head_n1"), words)})
     with order_path.open(encoding="utf-8") as fh:
         for line in fh:
@@ -275,7 +274,7 @@ def main(argv=None) -> int:
     from transformers import AutoTokenizer
 
     random.seed(args.seed)
-    examples = load_examples(args.encounter_pairs, args.order_pairs, args.words)
+    examples = load_examples(args.document_pairs, args.order_pairs, args.words)
     print(f"{len(examples)} pairs:", json.dumps(counts(examples)))
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
@@ -296,7 +295,7 @@ def main(argv=None) -> int:
     torch.save(model.heads.state_dict(), out / "heads.pt")
     tokenizer.save_pretrained(out / "tokenizer")
     (out / "label_space.json").write_text(json.dumps({
-        "kind": "page_pair_text", "heads": list(HEADS), "output": "probs [batch, 2] = (p_end, p_follows)",
+        "kind": "page_pair_text", "heads": list(HEADS), "output": "probs [batch, 2] = (p_break, p_follows)",
         "input": "tokenizer(tail of page A, head of page B), truncation longest_first",
         "words_per_side": args.words, "max_length": args.max_length, "base_model": args.base_model}, indent=1), encoding="utf-8")
 
@@ -322,9 +321,9 @@ def main(argv=None) -> int:
     else:
         all_probs.update(predict(model, ids, examples, trval, args.batch_size, pad_id, device))
         source.update({i: "in_sample" for i in trval})
-    with (out / "scores_end.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (out / "scores_break.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["pair_id", "p_end_text", "source"])
+        w.writerow(["pair_id", "p_break_text", "source"])
         for i, e in enumerate(examples):
             if e["head"] == 0:
                 w.writerow([e["id"], round(all_probs[i], 5), source[i]])

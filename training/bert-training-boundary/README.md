@@ -5,7 +5,7 @@ One encoder (Bio_ClinicalBERT by default) reads the end of page A and the start 
 
 | Head | Question | Trained on |
 |---|---|---|
-| `end` | Does the encounter end after page A? (page A is in an encounter) | `encounter_pairs.jsonl`, label `encounter_ends_after_n`; unsure points at half weight |
+| `break` | Does the document end after page A? Every meeting point, every document type (2026-11-02) | `document_pairs.jsonl`, label `doc_breaks` (built by `core-pipeline/stages/lib/continuity/ml/build_data.py`); unsure points at half weight |
 | `follows` | Does page B come directly after page A, inside one document? | `order_pairs.jsonl`, label `follows` |
 
 The two scores are one more clue for the tree models in
@@ -20,7 +20,7 @@ tree models train on the laptop; this is the only part that needs a GPU.
 | `page_pairs.ipynb` | Colab (or a PC) notebook that runs it, checks the ONNX copy and its CPU speed, and zips the result |
 | `requirements.txt` | |
 | `tests/test_package.py` | the notebook parses and names files that are here |
-| `data/` | `encounter_pairs.jsonl`, `order_pairs.jsonl` from `Training/boundary/` (git-ignored: page text) |
+| `data/` | `document_pairs.jsonl` (build_data.py) and `order_pairs.jsonl` (`Training/boundary/`) (git-ignored: page text) |
 | `page-pair-training.zip` | the upload for Drive: the two scripts and the two data files (git-ignored) |
 
 ## Train on Colab
@@ -32,7 +32,7 @@ tree models train on the laptop; this is the only part that needs a GPU.
    more short models, grouped by chart, so every train / val pair gets a text score from a model
    that never saw it (the tree models need that; set `FOLDS = 0` to skip it).
 4. The last cell writes `output/boundary-text.zip` on Drive: `model.onnx`, `tokenizer/`,
-   `label_space.json`, `metrics.json`, `scores_end.csv`, `scores_follows.csv`.
+   `label_space.json`, `metrics.json`, `scores_break.csv`, `scores_follows.csv`.
    Download it and unzip to `core-pipeline/models/boundary-text/`.
 
 Options of `train_pairs.py`: `--base-model`, `--epochs` (4), `--batch-size` (16; 8 if CUDA runs
