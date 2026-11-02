@@ -188,3 +188,35 @@ class TestConfidence:
         kw = leaf_canon.score_leaves(LEAVES, "hpi: cough")
         d = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.7), ("Progress Note > Others", 0.2)), kw, SETTINGS)
         assert d.confidence_why["rule"] == "model backed by keywords" and d.confidence_why["keyword_support"] == 0.7
+
+
+class TestFoldedLeaves:
+    """2026-11-02 (user): a leaf the model has no class for (too few pages) can still win: it
+    takes the model rank and probability of the class it trained as when the keywords find it."""
+
+    def test_trained_as_reads_folded_then_the_nearest_others(self):
+        space = {"leaf": ["Administrative > Others", "Progress Note > CC/HPI"],
+                 "folded": {"Administrative > Superbill": "Administrative > Others"}}
+        got = leaf.trained_as(space, LEAVES)
+        assert got["Administrative > Superbill"] == "Administrative > Others"
+        assert got["Administrative > Appointment Record"] == "Administrative > Others"  # never seen
+        assert "Progress Note > CC/HPI" not in got and "Administrative > Others" not in got
+
+    def test_a_folded_leaf_found_by_the_keywords_takes_its_class_rank(self, canon):
+        canon({"Administrative > Superbill": {"good_to_have": ["cpt code"]},
+               "Progress Note > CC/HPI": {"good_to_have": ["hpi", "chief complaint"]}})
+        kw = leaf_canon.score_leaves(LEAVES, "hpi. chief complaint. cpt code 99213")
+        model = _model(("Administrative > Others", 0.6), ("Progress Note > CC/HPI", 0.3))
+        before = leaf.decide(LEAVES, model, kw, SETTINGS)
+        assert before.path == "Progress Note > CC/HPI"  # no class for Superbill: keywords alone lose
+        model.trained_as = {"Administrative > Superbill": "Administrative > Others"}
+        after = leaf.decide(LEAVES, model, kw, SETTINGS)
+        assert (after.path, after.how) == ("Administrative > Superbill", "model")
+        assert after.confidence_why["rule"] == "model backed by keywords" and after.confidence_why["model_p"] == 0.6
+
+    def test_others_still_wins_when_the_keywords_find_no_folded_leaf(self, canon):
+        canon({"Progress Note > CC/HPI": {"good_to_have": ["hpi"]}})
+        model = _model(("Administrative > Others", 0.9))
+        model.trained_as = {"Administrative > Superbill": "Administrative > Others"}
+        d = leaf.decide(LEAVES, model, leaf_canon.score_leaves(LEAVES, "nothing here"), SETTINGS)
+        assert d.path == "Administrative > Others"

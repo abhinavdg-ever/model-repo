@@ -1,0 +1,2 @@
+# The encoder weights (433 MB, Bio_ClinicalBERT) are not in git: copy this folder onto each host.
+*.bin

@@ -1,0 +1,9 @@
+{
+  "scored_on": "test",
+  "best_epoch": 18,
+  "pages": 439,
+  "leaf_macro_f1": 0.4672,
+  "leaf_accuracy": 0.5809,
+  "top5_recall": 0.7608,
+  "l1_accuracy": 0.8064
+}

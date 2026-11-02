@@ -8,16 +8,16 @@
     "Not Available",
     "No evidence on page"
   ],
-  "base_model": "distilbert-base-uncased",
+  "base_model": "emilyalsentzer/Bio_ClinicalBERT",
   "max_length": 512,
   "head_fraction": 0.85,
   "dropout": 0.1,
   "inherited_weight": 0.5,
   "target": "page",
   "train_pages": {
-    "Outpatient (F2F)": 256,
-    "Not Available": 791,
-    "Inpatient": 60,
+    "Outpatient (F2F)": 290,
+    "Not Available": 911,
+    "Inpatient": 69,
     "Outpatient (Evisit)": 64,
     "Outpatient (Home Visit)": 53
   }

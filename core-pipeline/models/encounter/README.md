@@ -1,12 +1,12 @@
 # models/encounter/ — the encounter-type model
 
 The output folder of `training/bert-training-encounter/train_encounter.py`
-(Colab retrain 2026-10-25: page target, No-evidence pages left out, Evisit / Home Visit balanced; best epoch 9 of 20; test page accuracy 0.76): one DistilBERT encoder, one head over
+(Colab retrain 2026-11-02 on the 1 Nov encounter tags: page target, No-evidence pages left out, Evisit / Home Visit balanced; best epoch 9 of 20; test page accuracy 0.78, visit accuracy 0.76): one Bio_ClinicalBERT encoder, one head over
 Inpatient · Outpatient (F2F) · Outpatient (Evisit) · Outpatient (Home Visit) · Not Available · No evidence on page (never voted).
 
 ```
 encounter/
-├── encoder/              # DistilBERT encoder + tokenizer (model.safetensors in git LFS: git lfs pull)
+├── encoder/              # Bio_ClinicalBERT encoder + tokenizer (model.safetensors not in git: copy onto each host)
 ├── head.pt               # the one head
 ├── label_space.json      # classes and training settings
 └── metrics_summary.json  # the run's held-out scores

@@ -1,0 +1,114 @@
+leaf,train_pages,support,correct,predicted,f1
+Administrative > Appointment Record,9,1,0,0,0.0
+Administrative > Billing & Invoices,12,2,0,0,0.0
+Administrative > Patient Registration,7,1,0,0,0.0
+Administrative > Superbill,12,0,0,1,0.0
+Clinical Summary,1,0,0,0,0.0
+Clinical Summary > After-Visit Summary,26,4,1,1,0.4
+Clinical Summary > Summary,62,10,3,5,0.4
+Clinical Summary > Summary of Care (C-CDA),41,7,5,8,0.6667
+Consent and Authorization > Assignment of Benefits,4,0,0,0,0.0
+Consent and Authorization > Consent for Treatment,21,4,3,3,0.8571
+Consent and Authorization > General Consent,44,4,3,4,0.75
+Consent and Authorization > HIPAA Notice & Consent,31,5,5,6,0.9091
+Consent and Authorization > Immunization Consent,4,0,0,1,0.0
+Consent and Authorization > Others,3,0,0,0,0.0
+Consent and Authorization > Referral Authorization,9,1,1,2,0.6667
+Consent and Authorization > Release of Information,6,1,0,0,0.0
+Consent and Authorization > Surgical Consent,12,1,1,2,0.6667
+Demographics,1,0,0,0,0.0
+Demographics > Face Sheet,56,9,6,8,0.7059
+Demographics > Patient Information,34,6,4,7,0.6154
+Discharge Summary,3,0,0,0,0.0
+Discharge Summary > Consultation Note,16,1,1,1,1.0
+Discharge Summary > Depart/Discharge Note,46,8,4,6,0.5714
+Discharge Summary > Discharge Diagnosis,3,0,0,0,0.0
+Discharge Summary > Discharge Instruction,38,5,2,3,0.5
+Discharge Summary > Discharge Medication,12,2,0,0,0.0
+Discharge Summary > History and Physical,17,2,0,0,0.0
+Discharge Summary > Short Stay Summary,4,0,0,1,0.0
+Discharge Summary > Transfer of Care,6,0,0,0,0.0
+Forms and Questionnaires > Assessment,62,10,7,8,0.7778
+Forms and Questionnaires > Questionnaire,16,2,0,2,0.0
+Immunization > Immunization Record,16,3,2,2,0.8
+Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report,10,2,2,2,1.0
+Lab Report > Diagnostic Study > Cardiac Catheterization Report,21,4,2,2,0.6667
+Lab Report > Diagnostic Study > Carotid Duplex Report,4,0,0,0,0.0
+Lab Report > Diagnostic Study > Colonoscopy Report,28,6,6,13,0.6316
+Lab Report > Diagnostic Study > Echocardiogram Report,35,6,6,8,0.8571
+Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report,13,2,2,4,0.6667
+Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report,16,4,0,0,0.0
+Lab Report > Diagnostic Study > Extremity Doppler Report,6,0,0,0,0.0
+Lab Report > Diagnostic Study > Holter Monitor Report,15,1,1,1,1.0
+Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation),5,0,0,0,0.0
+Lab Report > Diagnostic Study > Optical Coherence Tomography Report,4,1,0,1,0.0
+Lab Report > Diagnostic Study > Others,13,2,0,1,0.0
+Lab Report > Diagnostic Study > Oximetry Report,3,0,0,0,0.0
+Lab Report > Diagnostic Study > Pulmonary Function Test,5,0,0,1,0.0
+Lab Report > Diagnostic Study > Sleep Study Report,10,2,2,2,1.0
+Lab Report > Diagnostic Study > Stress Test,10,1,1,1,1.0
+Lab Report > Lab Result > Allergy Testing Report,6,1,1,1,1.0
+Lab Report > Lab Result > Chemistry Report,68,11,5,8,0.5263
+Lab Report > Lab Result > Genetic Test Report,8,1,0,1,0.0
+Lab Report > Lab Result > Glucose Report,5,0,0,0,0.0
+Lab Report > Lab Result > Hematology Report,24,2,0,1,0.0
+Lab Report > Lab Result > Laboratory Flow Sheet,11,0,0,0,0.0
+Lab Report > Lab Result > Microbiology Report,17,2,2,4,0.6667
+Lab Report > Lab Result > Others,80,10,6,16,0.4615
+Lab Report > Lab Result > Urinalysis Report,5,0,0,0,0.0
+Lab Report > Pathology Report > Biopsy Report,14,3,2,2,0.8
+Lab Report > Pathology Report > Cytology Report,9,1,1,1,1.0
+Lab Report > Pathology Report > Molecular Diagnostics Report,6,0,0,1,0.0
+Lab Report > Pathology Report > Others,9,0,0,0,0.0
+Lab Report > Radiology Report > Bone Mineral Density Report,12,1,1,1,1.0
+Lab Report > Radiology Report > Brain MRI Report,3,0,0,0,0.0
+Lab Report > Radiology Report > CT Angiography Report,15,2,0,0,0.0
+Lab Report > Radiology Report > CT Scan Report,64,10,8,10,0.8
+Lab Report > Radiology Report > MRI Report,19,3,3,5,0.75
+Lab Report > Radiology Report > Mammogram Report,26,5,4,4,0.8889
+Lab Report > Radiology Report > Nuclear Medicine Report,17,4,4,4,1.0
+Lab Report > Radiology Report > Others,7,1,0,1,0.0
+Lab Report > Radiology Report > Ultrasound Report,19,3,2,3,0.6667
+Lab Report > Radiology Report > X-Ray Report,26,4,3,5,0.6667
+Medication Record > Medication List,88,14,11,15,0.7586
+Medication Record > Others,21,4,3,4,0.75
+Operative Note > Anesthesia Record,11,2,0,2,0.0
+Operative Note > Implant Record,5,0,0,0,0.0
+Operative Note > Intra-operative Record,22,2,0,0,0.0
+Operative Note > Post-operative,19,2,0,0,0.0
+Operative Note > Pre-operative,73,7,3,9,0.375
+Operative Note > Surgery Report,26,5,3,3,0.75
+Operative Note > Triage Report,8,1,1,1,1.0
+Order and Requisition > Laboratory Requisition,6,0,0,0,0.0
+Order and Requisition > Medication Order,6,1,1,1,1.0
+Order and Requisition > Others,5,0,0,2,0.0
+Order and Requisition > Physician Order,62,9,3,4,0.4615
+Order and Requisition > Referral Order,14,3,1,1,0.5
+Patient Communication,3,0,0,0,0.0
+Patient Communication > Patient Education Material,55,9,8,8,0.9412
+Patient Communication > Patient Message,11,2,0,0,0.0
+Patient Communication > Telephone Encounter,27,5,4,7,0.6667
+Pharmacy Note > Others,3,0,0,0,0.0
+Problem List > Diagnosis List/Coding Summary,7,1,0,0,0.0
+Problem List > Problem List,39,6,4,8,0.5714
+Procedure Note > Cardiac Procedure,11,1,0,2,0.0
+Procedure Note > Injection Visit,6,1,0,0,0.0
+Procedure Note > Knee Procedure,11,0,0,0,0.0
+Procedure Note > Lumbar Procedure,7,0,0,0,0.0
+Procedure Note > Office Procedure,6,1,0,0,0.0
+Procedure Note > Others,12,2,0,1,0.0
+Procedure Note > Therapy Session,4,0,0,1,0.0
+Progress Note > Assessment and Plan,93,14,4,10,0.3333
+Progress Note > CC/HPI,70,12,3,14,0.2308
+Progress Note > Lab and Imaging Results,12,1,0,0,0.0
+Progress Note > Others,693,104,76,132,0.6441
+Progress Note > Patient Instructions,9,1,0,0,0.0
+Progress Note > Physical Exam,30,6,2,4,0.4
+Progress Note > Signature,26,5,3,4,0.6667
+Progress Note > Summary,185,29,13,28,0.4561
+Progress Note > Visit Diagnosis,10,1,0,1,0.0
+Progress Note > Vitals,10,0,0,0,0.0
+Provider Letter > Consultation Letter,25,3,0,2,0.0
+Provider Letter > Others,5,0,0,0,0.0
+Provider Letter > Records Request,13,1,0,0,0.0
+Provider Letter > Referral Letter,3,0,0,0,0.0

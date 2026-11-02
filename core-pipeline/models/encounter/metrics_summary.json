@@ -1,36 +1,37 @@
 {
   "scored_on": "test",
   "pages": {
-    "n": 283,
-    "accuracy": 0.7597173144876325,
-    "macro_f1": 0.6373674409487405
+    "n": 313,
+    "accuracy": 0.7763578274760383,
+    "macro_f1": 0.5992100812843847
   },
   "page_recall": {
-    "Inpatient": 0.4,
-    "Outpatient (F2F)": 0.5741,
-    "Outpatient (Evisit)": 0.6,
+    "Inpatient": 0.36,
+    "Outpatient (F2F)": 0.6721,
+    "Outpatient (Evisit)": 0.8,
     "Outpatient (Home Visit)": 0.3333,
-    "Not Available": 0.9357,
+    "Not Available": 0.9227,
     "No evidence on page": 0.0
   },
   "visits": {
-    "n": 51,
-    "accuracy": 0.7058823529411765,
-    "macro_f1": 0.43166666666666664
+    "n": 49,
+    "accuracy": 0.7551020408163265,
+    "macro_f1": 0.46769230769230774
   },
   "visit_recall": {
-    "Inpatient": 0.5,
-    "Outpatient (F2F)": 0.7674,
-    "Outpatient (Evisit)": 0.3333,
-    "Outpatient (Home Visit)": 0.3333,
+    "Inpatient": 0.0,
+    "Outpatient (F2F)": 0.8095,
+    "Outpatient (Evisit)": 0.6667,
+    "Outpatient (Home Visit)": 0.5,
     "Not Available": 0.0,
     "No evidence on page": 0.0
   },
   "page_accuracy_by_basis": {
-    "stated": 0.4737,
-    "prior": 0.9357,
-    "inferred": 0.5952,
-    "field": 0.4118
+    "prior": 0.9227,
+    "field": 0.4194,
+    "inferred": 0.7429,
+    "stated": 0.5714,
+    "hand-labelled": 0.0
   },
   "default_rows_predicted": {},
   "best_epoch": 9

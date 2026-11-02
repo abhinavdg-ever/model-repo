@@ -1,0 +1,978 @@
+{
+  "kind": "leaf",
+  "taxonomy_version": "v29.3",
+  "leaf": [
+    "Administrative > Appointment Record",
+    "Administrative > Billing & Invoices",
+    "Administrative > Patient Registration",
+    "Administrative > Superbill",
+    "Clinical Summary",
+    "Clinical Summary > After-Visit Summary",
+    "Clinical Summary > Summary",
+    "Clinical Summary > Summary of Care (C-CDA)",
+    "Consent and Authorization > Assignment of Benefits",
+    "Consent and Authorization > Consent for Treatment",
+    "Consent and Authorization > General Consent",
+    "Consent and Authorization > HIPAA Notice & Consent",
+    "Consent and Authorization > Immunization Consent",
+    "Consent and Authorization > Others",
+    "Consent and Authorization > Referral Authorization",
+    "Consent and Authorization > Release of Information",
+    "Consent and Authorization > Surgical Consent",
+    "Demographics",
+    "Demographics > Face Sheet",
+    "Demographics > Patient Information",
+    "Discharge Summary",
+    "Discharge Summary > Consultation Note",
+    "Discharge Summary > Depart/Discharge Note",
+    "Discharge Summary > Discharge Diagnosis",
+    "Discharge Summary > Discharge Instruction",
+    "Discharge Summary > Discharge Medication",
+    "Discharge Summary > History and Physical",
+    "Discharge Summary > Short Stay Summary",
+    "Discharge Summary > Transfer of Care",
+    "Forms and Questionnaires > Assessment",
+    "Forms and Questionnaires > Questionnaire",
+    "Immunization > Immunization Record",
+    "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report",
+    "Lab Report > Diagnostic Study > Cardiac Catheterization Report",
+    "Lab Report > Diagnostic Study > Carotid Duplex Report",
+    "Lab Report > Diagnostic Study > Colonoscopy Report",
+    "Lab Report > Diagnostic Study > Echocardiogram Report",
+    "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report",
+    "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+    "Lab Report > Diagnostic Study > Extremity Doppler Report",
+    "Lab Report > Diagnostic Study > Holter Monitor Report",
+    "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)",
+    "Lab Report > Diagnostic Study > Optical Coherence Tomography Report",
+    "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Oximetry Report",
+    "Lab Report > Diagnostic Study > Pulmonary Function Test",
+    "Lab Report > Diagnostic Study > Sleep Study Report",
+    "Lab Report > Diagnostic Study > Stress Test",
+    "Lab Report > Lab Result > Allergy Testing Report",
+    "Lab Report > Lab Result > Chemistry Report",
+    "Lab Report > Lab Result > Genetic Test Report",
+    "Lab Report > Lab Result > Glucose Report",
+    "Lab Report > Lab Result > Hematology Report",
+    "Lab Report > Lab Result > Laboratory Flow Sheet",
+    "Lab Report > Lab Result > Microbiology Report",
+    "Lab Report > Lab Result > Others",
+    "Lab Report > Lab Result > Urinalysis Report",
+    "Lab Report > Pathology Report > Biopsy Report",
+    "Lab Report > Pathology Report > Cytology Report",
+    "Lab Report > Pathology Report > Molecular Diagnostics Report",
+    "Lab Report > Pathology Report > Others",
+    "Lab Report > Radiology Report > Bone Mineral Density Report",
+    "Lab Report > Radiology Report > Brain MRI Report",
+    "Lab Report > Radiology Report > CT Angiography Report",
+    "Lab Report > Radiology Report > CT Scan Report",
+    "Lab Report > Radiology Report > MRI Report",
+    "Lab Report > Radiology Report > Mammogram Report",
+    "Lab Report > Radiology Report > Nuclear Medicine Report",
+    "Lab Report > Radiology Report > Others",
+    "Lab Report > Radiology Report > Ultrasound Report",
+    "Lab Report > Radiology Report > X-Ray Report",
+    "Medication Record > Medication List",
+    "Medication Record > Others",
+    "Operative Note > Anesthesia Record",
+    "Operative Note > Implant Record",
+    "Operative Note > Intra-operative Record",
+    "Operative Note > Post-operative",
+    "Operative Note > Pre-operative",
+    "Operative Note > Surgery Report",
+    "Operative Note > Triage Report",
+    "Order and Requisition > Laboratory Requisition",
+    "Order and Requisition > Medication Order",
+    "Order and Requisition > Others",
+    "Order and Requisition > Physician Order",
+    "Order and Requisition > Referral Order",
+    "Patient Communication",
+    "Patient Communication > Patient Education Material",
+    "Patient Communication > Patient Message",
+    "Patient Communication > Telephone Encounter",
+    "Pharmacy Note > Others",
+    "Problem List > Diagnosis List/Coding Summary",
+    "Problem List > Problem List",
+    "Procedure Note > Cardiac Procedure",
+    "Procedure Note > Injection Visit",
+    "Procedure Note > Knee Procedure",
+    "Procedure Note > Lumbar Procedure",
+    "Procedure Note > Office Procedure",
+    "Procedure Note > Others",
+    "Procedure Note > Therapy Session",
+    "Progress Note > Assessment and Plan",
+    "Progress Note > CC/HPI",
+    "Progress Note > Lab and Imaging Results",
+    "Progress Note > Others",
+    "Progress Note > Patient Instructions",
+    "Progress Note > Physical Exam",
+    "Progress Note > Signature",
+    "Progress Note > Summary",
+    "Progress Note > Visit Diagnosis",
+    "Progress Note > Vitals",
+    "Provider Letter > Consultation Letter",
+    "Provider Letter > Others",
+    "Provider Letter > Records Request",
+    "Provider Letter > Referral Letter"
+  ],
+  "paths": {
+    "Administrative > Appointment Record": {
+      "L1": "Administrative",
+      "L2": "Appointment Record",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Administrative > Billing & Invoices": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Administrative > Patient Registration": {
+      "L1": "Administrative",
+      "L2": "Patient Registration",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Administrative > Superbill": {
+      "L1": "Administrative",
+      "L2": "Superbill",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Clinical Summary": {
+      "L1": "Clinical Summary",
+      "L2": "",
+      "L3": "",
+      "codeability": ""
+    },
+    "Clinical Summary > After-Visit Summary": {
+      "L1": "Clinical Summary",
+      "L2": "After-Visit Summary",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Clinical Summary > Summary": {
+      "L1": "Clinical Summary",
+      "L2": "Summary",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Clinical Summary > Summary of Care (C-CDA)": {
+      "L1": "Clinical Summary",
+      "L2": "Summary of Care (C-CDA)",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Assignment of Benefits": {
+      "L1": "Consent and Authorization",
+      "L2": "Assignment of Benefits",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Consent for Treatment": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > General Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "General Consent",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > HIPAA Notice & Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "HIPAA Notice & Consent",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Immunization Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "Immunization Consent",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Others": {
+      "L1": "Consent and Authorization",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Referral Authorization": {
+      "L1": "Consent and Authorization",
+      "L2": "Referral Authorization",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Release of Information": {
+      "L1": "Consent and Authorization",
+      "L2": "Release of Information",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Consent and Authorization > Surgical Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "Surgical Consent",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Demographics": {
+      "L1": "Demographics",
+      "L2": "",
+      "L3": "",
+      "codeability": ""
+    },
+    "Demographics > Face Sheet": {
+      "L1": "Demographics",
+      "L2": "Face Sheet",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Demographics > Patient Information": {
+      "L1": "Demographics",
+      "L2": "Patient Information",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "",
+      "L3": "",
+      "codeability": ""
+    },
+    "Discharge Summary > Consultation Note": {
+      "L1": "Discharge Summary",
+      "L2": "Consultation Note",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Depart/Discharge Note": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Discharge Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Discharge Instruction": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Instruction",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Discharge Medication": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Medication",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > History and Physical": {
+      "L1": "Discharge Summary",
+      "L2": "History and Physical",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Short Stay Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Short Stay Summary",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Discharge Summary > Transfer of Care": {
+      "L1": "Discharge Summary",
+      "L2": "Transfer of Care",
+      "L3": "",
+      "codeability": "discharge"
+    },
+    "Forms and Questionnaires > Assessment": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Forms and Questionnaires > Questionnaire": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Questionnaire",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Immunization > Immunization Record": {
+      "L1": "Immunization",
+      "L2": "Immunization Record",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Audiogram and Hearing Loss Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Cardiac Catheterization Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Cardiac Catheterization Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Carotid Duplex Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Carotid Duplex Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Colonoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Colonoscopy Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Echocardiogram Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Echocardiogram Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Electrocardiogram (EKG/ECG) Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Esophagogastroduodenoscopy (EGD) Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Extremity Doppler Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Extremity Doppler Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Holter Monitor Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Holter Monitor Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Optical Biometry (IOL Calculation)",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Optical Coherence Tomography Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Optical Coherence Tomography Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Others": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Others",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Oximetry Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Oximetry Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Pulmonary Function Test": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Pulmonary Function Test",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Sleep Study Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Sleep Study Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Diagnostic Study > Stress Test": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Stress Test",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Allergy Testing Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Allergy Testing Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Chemistry Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Chemistry Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Genetic Test Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Genetic Test Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Glucose Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Glucose Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Hematology Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Hematology Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Laboratory Flow Sheet": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Laboratory Flow Sheet",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Microbiology Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Microbiology Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Others": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Others",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Lab Result > Urinalysis Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Urinalysis Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Pathology Report > Biopsy Report": {
+      "L1": "Lab Report",
+      "L2": "Pathology Report",
+      "L3": "Biopsy Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Pathology Report > Cytology Report": {
+      "L1": "Lab Report",
+      "L2": "Pathology Report",
+      "L3": "Cytology Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Pathology Report > Molecular Diagnostics Report": {
+      "L1": "Lab Report",
+      "L2": "Pathology Report",
+      "L3": "Molecular Diagnostics Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Pathology Report > Others": {
+      "L1": "Lab Report",
+      "L2": "Pathology Report",
+      "L3": "Others",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Bone Mineral Density Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Bone Mineral Density Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Brain MRI Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Brain MRI Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > CT Angiography Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "CT Angiography Report",
+      "codeability": "codeable"
+    },
+    "Lab Report > Radiology Report > CT Scan Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "CT Scan Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > MRI Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "MRI Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Mammogram Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Mammogram Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Nuclear Medicine Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Nuclear Medicine Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Others": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Others",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > Ultrasound Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Ultrasound Report",
+      "codeability": "non_codeable"
+    },
+    "Lab Report > Radiology Report > X-Ray Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "X-Ray Report",
+      "codeability": "non_codeable"
+    },
+    "Medication Record > Medication List": {
+      "L1": "Medication Record",
+      "L2": "Medication List",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Medication Record > Others": {
+      "L1": "Medication Record",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Operative Note > Anesthesia Record": {
+      "L1": "Operative Note",
+      "L2": "Anesthesia Record",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Implant Record": {
+      "L1": "Operative Note",
+      "L2": "Implant Record",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Intra-operative Record": {
+      "L1": "Operative Note",
+      "L2": "Intra-operative Record",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Post-operative": {
+      "L1": "Operative Note",
+      "L2": "Post-operative",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Pre-operative": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Surgery Report": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Operative Note > Triage Report": {
+      "L1": "Operative Note",
+      "L2": "Triage Report",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Order and Requisition > Laboratory Requisition": {
+      "L1": "Order and Requisition",
+      "L2": "Laboratory Requisition",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Order and Requisition > Medication Order": {
+      "L1": "Order and Requisition",
+      "L2": "Medication Order",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Order and Requisition > Others": {
+      "L1": "Order and Requisition",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Order and Requisition > Physician Order": {
+      "L1": "Order and Requisition",
+      "L2": "Physician Order",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Order and Requisition > Referral Order": {
+      "L1": "Order and Requisition",
+      "L2": "Referral Order",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Patient Communication": {
+      "L1": "Patient Communication",
+      "L2": "",
+      "L3": "",
+      "codeability": ""
+    },
+    "Patient Communication > Patient Education Material": {
+      "L1": "Patient Communication",
+      "L2": "Patient Education Material",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Patient Communication > Patient Message": {
+      "L1": "Patient Communication",
+      "L2": "Patient Message",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Patient Communication > Telephone Encounter": {
+      "L1": "Patient Communication",
+      "L2": "Telephone Encounter",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Pharmacy Note > Others": {
+      "L1": "Pharmacy Note",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Problem List > Diagnosis List/Coding Summary": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Problem List > Problem List": {
+      "L1": "Problem List",
+      "L2": "Problem List",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Procedure Note > Cardiac Procedure": {
+      "L1": "Procedure Note",
+      "L2": "Cardiac Procedure",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Injection Visit": {
+      "L1": "Procedure Note",
+      "L2": "Injection Visit",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Knee Procedure": {
+      "L1": "Procedure Note",
+      "L2": "Knee Procedure",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Lumbar Procedure": {
+      "L1": "Procedure Note",
+      "L2": "Lumbar Procedure",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Office Procedure": {
+      "L1": "Procedure Note",
+      "L2": "Office Procedure",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Others": {
+      "L1": "Procedure Note",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Procedure Note > Therapy Session": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Assessment and Plan": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > CC/HPI": {
+      "L1": "Progress Note",
+      "L2": "CC/HPI",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Lab and Imaging Results": {
+      "L1": "Progress Note",
+      "L2": "Lab and Imaging Results",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Others": {
+      "L1": "Progress Note",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Patient Instructions": {
+      "L1": "Progress Note",
+      "L2": "Patient Instructions",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Physical Exam": {
+      "L1": "Progress Note",
+      "L2": "Physical Exam",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Signature": {
+      "L1": "Progress Note",
+      "L2": "Signature",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Summary": {
+      "L1": "Progress Note",
+      "L2": "Summary",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Visit Diagnosis": {
+      "L1": "Progress Note",
+      "L2": "Visit Diagnosis",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Progress Note > Vitals": {
+      "L1": "Progress Note",
+      "L2": "Vitals",
+      "L3": "",
+      "codeability": "codeable"
+    },
+    "Provider Letter > Consultation Letter": {
+      "L1": "Provider Letter",
+      "L2": "Consultation Letter",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Provider Letter > Others": {
+      "L1": "Provider Letter",
+      "L2": "Others",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Provider Letter > Records Request": {
+      "L1": "Provider Letter",
+      "L2": "Records Request",
+      "L3": "",
+      "codeability": "non_codeable"
+    },
+    "Provider Letter > Referral Letter": {
+      "L1": "Provider Letter",
+      "L2": "Referral Letter",
+      "L3": "",
+      "codeability": "non_codeable"
+    }
+  },
+  "folded": {
+    "Clinical Summary > Index Page": "Clinical Summary",
+    "Consent and Authorization > General Authorization": "Consent and Authorization > Others",
+    "Consent and Authorization > Prior Authorization": "Consent and Authorization > Others",
+    "Demographics > Others": "Demographics",
+    "Discharge Summary > Interim Summary": "Discharge Summary",
+    "Discharge Summary > Others": "Discharge Summary",
+    "Lab Report > Diagnostic Study > Corneal Topography": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Electromyography and Nerve Conduction": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Pacemaker Device Report": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Plethysmography Report": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Videonystagmography Report": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Diagnostic Study > Visual Field Report": "Lab Report > Diagnostic Study > Others",
+    "Lab Report > Lab Result > Coagulation Report": "Lab Report > Lab Result > Others",
+    "Lab Report > Lab Result > FISH Report": "Lab Report > Lab Result > Others",
+    "Lab Report > Pathology Report > Cytometry Report": "Lab Report > Pathology Report > Others",
+    "Medication Record > Prescription Page": "Medication Record > Others",
+    "Medication Record > Refill Record": "Medication Record > Others",
+    "Patient Communication > Notice": "Patient Communication",
+    "Patient Communication > Others": "Patient Communication",
+    "Procedure Note > Dialysis Record": "Procedure Note > Others",
+    "Procedure Note > Wound Care": "Procedure Note > Others",
+    "Progress Note > Procedure List": "Progress Note > Others"
+  },
+  "specialty": [
+    "Anesthesia",
+    "Audiology",
+    "Behavioral Health",
+    "Cardiology",
+    "Dermatology",
+    "Emergency",
+    "Gastroenterology",
+    "Home Health",
+    "Nephrology",
+    "Neurology",
+    "Nursing",
+    "Nutrition",
+    "Obstetrics and Gynecology",
+    "Oncology",
+    "Ophthalmology",
+    "Orthopedics",
+    "Others",
+    "Pain Management",
+    "Pathology",
+    "Podiatry",
+    "Primary Care",
+    "Pulmonology",
+    "Radiology",
+    "Rehabilitation",
+    "Sleep Study",
+    "Surgery",
+    "Unknown",
+    "Urology",
+    "Wound Care"
+  ],
+  "train_pages": {
+    "leaf": {
+      "Administrative > Appointment Record": 9,
+      "Administrative > Billing & Invoices": 12,
+      "Administrative > Patient Registration": 7,
+      "Administrative > Superbill": 12,
+      "Clinical Summary": 1,
+      "Clinical Summary > After-Visit Summary": 26,
+      "Clinical Summary > Summary": 62,
+      "Clinical Summary > Summary of Care (C-CDA)": 41,
+      "Consent and Authorization > Assignment of Benefits": 4,
+      "Consent and Authorization > Consent for Treatment": 21,
+      "Consent and Authorization > General Consent": 44,
+      "Consent and Authorization > HIPAA Notice & Consent": 31,
+      "Consent and Authorization > Immunization Consent": 4,
+      "Consent and Authorization > Others": 3,
+      "Consent and Authorization > Referral Authorization": 9,
+      "Consent and Authorization > Release of Information": 6,
+      "Consent and Authorization > Surgical Consent": 12,
+      "Demographics": 1,
+      "Demographics > Face Sheet": 56,
+      "Demographics > Patient Information": 34,
+      "Discharge Summary": 3,
+      "Discharge Summary > Consultation Note": 16,
+      "Discharge Summary > Depart/Discharge Note": 46,
+      "Discharge Summary > Discharge Diagnosis": 3,
+      "Discharge Summary > Discharge Instruction": 38,
+      "Discharge Summary > Discharge Medication": 12,
+      "Discharge Summary > History and Physical": 17,
+      "Discharge Summary > Short Stay Summary": 4,
+      "Discharge Summary > Transfer of Care": 6,
+      "Forms and Questionnaires > Assessment": 62,
+      "Forms and Questionnaires > Questionnaire": 16,
+      "Immunization > Immunization Record": 16,
+      "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report": 10,
+      "Lab Report > Diagnostic Study > Cardiac Catheterization Report": 21,
+      "Lab Report > Diagnostic Study > Carotid Duplex Report": 4,
+      "Lab Report > Diagnostic Study > Colonoscopy Report": 28,
+      "Lab Report > Diagnostic Study > Echocardiogram Report": 35,
+      "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report": 13,
+      "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report": 16,
+      "Lab Report > Diagnostic Study > Extremity Doppler Report": 6,
+      "Lab Report > Diagnostic Study > Holter Monitor Report": 15,
+      "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)": 5,
+      "Lab Report > Diagnostic Study > Optical Coherence Tomography Report": 4,
+      "Lab Report > Diagnostic Study > Others": 13,
+      "Lab Report > Diagnostic Study > Oximetry Report": 3,
+      "Lab Report > Diagnostic Study > Pulmonary Function Test": 5,
+      "Lab Report > Diagnostic Study > Sleep Study Report": 10,
+      "Lab Report > Diagnostic Study > Stress Test": 10,
+      "Lab Report > Lab Result > Allergy Testing Report": 6,
+      "Lab Report > Lab Result > Chemistry Report": 68,
+      "Lab Report > Lab Result > Genetic Test Report": 8,
+      "Lab Report > Lab Result > Glucose Report": 5,
+      "Lab Report > Lab Result > Hematology Report": 24,
+      "Lab Report > Lab Result > Laboratory Flow Sheet": 11,
+      "Lab Report > Lab Result > Microbiology Report": 17,
+      "Lab Report > Lab Result > Others": 80,
+      "Lab Report > Lab Result > Urinalysis Report": 5,
+      "Lab Report > Pathology Report > Biopsy Report": 14,
+      "Lab Report > Pathology Report > Cytology Report": 9,
+      "Lab Report > Pathology Report > Molecular Diagnostics Report": 6,
+      "Lab Report > Pathology Report > Others": 9,
+      "Lab Report > Radiology Report > Bone Mineral Density Report": 12,
+      "Lab Report > Radiology Report > Brain MRI Report": 3,
+      "Lab Report > Radiology Report > CT Angiography Report": 15,
+      "Lab Report > Radiology Report > CT Scan Report": 64,
+      "Lab Report > Radiology Report > MRI Report": 19,
+      "Lab Report > Radiology Report > Mammogram Report": 26,
+      "Lab Report > Radiology Report > Nuclear Medicine Report": 17,
+      "Lab Report > Radiology Report > Others": 7,
+      "Lab Report > Radiology Report > Ultrasound Report": 19,
+      "Lab Report > Radiology Report > X-Ray Report": 26,
+      "Medication Record > Medication List": 88,
+      "Medication Record > Others": 21,
+      "Operative Note > Anesthesia Record": 11,
+      "Operative Note > Implant Record": 5,
+      "Operative Note > Intra-operative Record": 22,
+      "Operative Note > Post-operative": 19,
+      "Operative Note > Pre-operative": 73,
+      "Operative Note > Surgery Report": 26,
+      "Operative Note > Triage Report": 8,
+      "Order and Requisition > Laboratory Requisition": 6,
+      "Order and Requisition > Medication Order": 6,
+      "Order and Requisition > Others": 5,
+      "Order and Requisition > Physician Order": 62,
+      "Order and Requisition > Referral Order": 14,
+      "Patient Communication": 3,
+      "Patient Communication > Patient Education Material": 55,
+      "Patient Communication > Patient Message": 11,
+      "Patient Communication > Telephone Encounter": 27,
+      "Pharmacy Note > Others": 3,
+      "Problem List > Diagnosis List/Coding Summary": 7,
+      "Problem List > Problem List": 39,
+      "Procedure Note > Cardiac Procedure": 11,
+      "Procedure Note > Injection Visit": 6,
+      "Procedure Note > Knee Procedure": 11,
+      "Procedure Note > Lumbar Procedure": 7,
+      "Procedure Note > Office Procedure": 6,
+      "Procedure Note > Others": 12,
+      "Procedure Note > Therapy Session": 4,
+      "Progress Note > Assessment and Plan": 93,
+      "Progress Note > CC/HPI": 70,
+      "Progress Note > Lab and Imaging Results": 12,
+      "Progress Note > Others": 693,
+      "Progress Note > Patient Instructions": 9,
+      "Progress Note > Physical Exam": 30,
+      "Progress Note > Signature": 26,
+      "Progress Note > Summary": 185,
+      "Progress Note > Visit Diagnosis": 10,
+      "Progress Note > Vitals": 10,
+      "Provider Letter > Consultation Letter": 25,
+      "Provider Letter > Others": 5,
+      "Provider Letter > Records Request": 13,
+      "Provider Letter > Referral Letter": 3
+    }
+  },
+  "base_model": "emilyalsentzer/Bio_ClinicalBERT",
+  "max_length": 512,
+  "head_fraction": 0.85,
+  "dropout": 0.1,
+  "top_k": 5,
+  "per_l1": 3,
+  "min_prob": 0.01
+}

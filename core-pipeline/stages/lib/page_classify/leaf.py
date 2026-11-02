@@ -35,7 +35,7 @@ import threading
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from stages.lib import confidence as conf
 from stages.lib.page_classify import axes, leaf_canon
@@ -168,7 +168,8 @@ def _load() -> Optional[dict[str, Any]]:
             return None
         if space.get("taxonomy_version") != tax.version():
             logger.warning("Page leaf: model taxonomy %s, pipeline %s", space.get("taxonomy_version"), tax.version())
-        _loaded = {"model": model, "tokenizer": tokenizer, "space": space, "torch": torch}
+        _loaded = {"model": model, "tokenizer": tokenizer, "space": space, "torch": torch,
+                   "trained_as": trained_as(space, taxonomy_leaves())}
         logger.info("Page leaf: %d leaf classes from %s", len(space["leaf"]), folder)
         return _loaded
 
@@ -180,6 +181,30 @@ class ModelSide:
     probs: dict[str, float] = field(default_factory=dict)  # leaf or node -> probability
     specialty: Optional[tuple[str, float]] = None
     axes_raw: Optional[tuple[dict[str, Any], dict[str, Any]]] = None
+    # A leaf the model has no class for (folded: too few pages, or never seen) -> the class
+    # it trained as (its parent's Others, or the parent). That class's rank and probability
+    # stand for the leaf when the keywords find it (2026-11-02, user).
+    trained_as: dict[str, str] = field(default_factory=dict)
+
+
+def trained_as(space: dict[str, Any], leaves: Iterable[str]) -> dict[str, str]:
+    """Leaf -> the model class that stands for it, for every taxonomy leaf without a class
+    of its own: ``label_space.json -> folded`` first, else the nearest ancestor's Others
+    class, else the nearest ancestor that is a class."""
+    classes = {renamed(c) for c in space.get("leaf") or []}
+    out = {renamed(leaf): renamed(cls) for leaf, cls in (space.get("folded") or {}).items()}
+    for leaf in leaves:
+        if leaf in classes or leaf in out:
+            continue
+        for node in leaf_canon.ancestors(leaf)[1:]:
+            others = f"{node}{SEP}{OTHERS}"
+            if others in classes and others != leaf:
+                out[leaf] = others
+                break
+            if node in classes:
+                out[leaf] = node
+                break
+    return {leaf: cls for leaf, cls in out.items() if leaf != cls}
 
 
 def model_side(text: str, k: int, per_l1: int) -> ModelSide:
@@ -196,7 +221,7 @@ def model_side(text: str, k: int, per_l1: int) -> ModelSide:
         probs = {renamed(name): p for name, p in row["leaf_probs"].items()}
         cands = [{"path": renamed(leaf["leaf"]), "score": leaf["score"]} for leaf in row["leaves"]]
         spec = (row["specialty"], row["specialty_confidence"]) if row.get("specialty") else None
-        return ModelSide(LEAF_MODEL, cands, probs, spec)
+        return ModelSide(LEAF_MODEL, cands, probs, spec, trained_as=loaded["trained_as"])
     found = axes.model_raw(text)
     if found is None:
         return ModelSide()
@@ -233,9 +258,14 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     # Others leaf, else for the node itself.
     model_rank_raw = ranked({c["path"]: c["score"] for c in model.candidates}, k, per_l1)
     model_rank: dict[str, int] = {}
+    keyword_rank = ranked({leaf: s for leaf, s in kw.scores.items() if leaf in eligible}, k, per_l1)
+    stood_for: dict[str, list[str]] = {}
+    for leaf, cls in model.trained_as.items():
+        stood_for.setdefault(cls, []).append(leaf)
     for path, rank in model_rank_raw.items():
         if path in leaves:
-            targets = [path]
+            # A class that stands for folded / unseen leaves ranks those the keywords ranked too.
+            targets = [path, *(leaf for leaf in stood_for.get(path, ()) if leaf in keyword_rank)]
         else:
             targets = [leaf for leaf in leaves if under(leaf, path) and leaf in kw.scores]
             if not targets:
@@ -246,7 +276,6 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
         for leaf in targets:
             if leaf not in model_rank or rank < model_rank[leaf]:
                 model_rank[leaf] = rank
-    keyword_rank = ranked({leaf: s for leaf, s in kw.scores.items() if leaf in eligible}, k, per_l1)
 
     # Deciding: the best-scored node with a Deciding word that still has an eligible leaf.
     deciding = overruled = None
@@ -282,12 +311,12 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
 
     model_first = min(model_rank_raw, key=model_rank_raw.get) if model_rank_raw else None
     keyword_first = min(keyword_rank, key=keyword_rank.get) if keyword_rank else None
-    model_has = any(under(winner, path) for path in model_rank_raw)
+    model_has = any(stands_for(model, winner, path) for path in model_rank_raw)
     if deciding and under(winner, deciding):
         how = "deciding"
-    elif model_first and keyword_first and under(winner, model_first) and winner == keyword_first:
+    elif model_first and keyword_first and stands_for(model, winner, model_first) and winner == keyword_first:
         how = "agree"
-    elif model_first and under(winner, model_first):
+    elif model_first and stands_for(model, winner, model_first):
         how = "model"
     elif winner in kw.scores:
         how = "keywords"
@@ -324,7 +353,7 @@ def keyword_support(winner: str, kw: leaf_canon.LeafKeywords, keyword_rank: dict
 
 def _margin(model: ModelSide, winner: str, model_first: Optional[str]) -> Optional[float]:
     """The gap between the model's first and second leaf, when the winner is its first."""
-    if not model_first or not under(winner, model_first):
+    if not model_first or not stands_for(model, winner, model_first):
         return None
     scores = sorted((c["score"] for c in model.candidates), reverse=True)
     return scores[0] - scores[1] if len(scores) > 1 else None
@@ -382,11 +411,20 @@ def leaf_confidence(*, p: float, support: float, model_ranked: bool, model_ranke
 
 
 def _prob(model: ModelSide, path: str) -> float:
-    """The model's probability for ``path``: its own, else the closest ancestor's."""
+    """The model's probability for ``path``: its own, else the class it trained as (a
+    folded or unseen leaf), else the closest ancestor's."""
+    if path not in model.probs and model.trained_as.get(path) in model.probs:
+        return float(model.probs[model.trained_as[path]])
     for node in leaf_canon.ancestors(path):
         if node in model.probs:
             return float(model.probs[node])
     return 0.0
+
+
+def stands_for(model: ModelSide, leaf: str, path: str) -> bool:
+    """True when the model's ``path`` covers ``leaf``: the leaf itself, a node above it, or
+    the class the leaf trained as."""
+    return under(leaf, path) or model.trained_as.get(leaf) == path
 
 
 # --- One page -----------------------------------------------------------------------------------------
