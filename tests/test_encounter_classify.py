@@ -278,7 +278,7 @@ def test_an_empty_default_leaves_the_visit_unresolved(canon):
     assert (rows[0]["encounter_type"], rows[0]["decided_by"]) == ("", "unresolved")
 
 
-# --- applies_to: Progress Note / Discharge Summary only ------------------
+# --- applies_to: Progress / Procedure / Operative Notes only (2026-11-02) ---
 
 
 def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
@@ -290,13 +290,16 @@ def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
     assert all((r["encounter_type"], r["decided_by"]) == ("not_applicable", "not_applicable") for r in rows)
     only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report", "document": 1} for n in (1, 2)]
     rows = classify_pages(only_labs, entries=canon)
-    assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Available") for r in rows)
+    assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "") for r in rows)  # blank (2026-11-02)
     assert rows[0]["matched_keyword"] == "Lab Report"
 
 
-def test_progress_notes_and_discharge_summaries_are_classified(canon):
+def test_progress_procedure_and_operative_notes_are_classified_the_rest_not(canon):
     for family, text, expected in (("Progress Note", "telehealth visit", "outpatient_tele"),
-                                   ("Discharge Summary", "", "inpatient"),
+                                   ("Procedure Note", "", "outpatient_f2f"),
+                                   ("Operative Note", "", "inpatient"),
+                                   ("Discharge Summary", "hospital course", "not_applicable"),
+                                   ("Problem List", "office visit", "not_applicable"),
                                    ("Progress Note", "", "outpatient_f2f")):
         rows = classify_pages([{**page(1, text), "page_family": family}], entries=canon)
         assert rows[0]["encounter_type"] == expected
@@ -352,8 +355,8 @@ def test_a_lab_document_is_not_applicable_whatever_its_pages_vote(canon):
     assert (row["encounter_type"], row["decided_by"]) == ("not_applicable", "not_applicable")
 
 
-def test_discharge_summary_and_operative_note_are_always_inpatient(canon):
-    for family in ("Discharge Summary", "Operative Note"):
+def test_an_operative_note_is_always_inpatient(canon):
+    for family in ("Operative Note",):
         pages = _doc({**page(1, "telehealth visit"), "page_family": family},
                      {**page(2, "office visit"), "page_family": "Progress Note"})
         rows = classify_pages(pages, entries=canon)
@@ -365,14 +368,14 @@ def test_an_emergency_note_is_not_hard_coded(canon):
 
 
 def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
-    pages = _doc({**page(1, ""), "page_family": "Discharge Summary"},
+    pages = _doc({**page(1, ""), "page_family": "Procedure Note"},
                  {**page(2, ""), "page_family": "Progress Note"},
                  {**page(3, ""), "page_family": "Lab Report"})
     log: list = []
     rows = classify_pages(pages, entries=canon, visit_log=log)
     assert [(v["setting"], v["by"]) for v in log[0]["votes"]] == [
-        ("inpatient", "family_default"), ("outpatient_f2f", "family_default"), ("not_applicable", "not_applicable")]
-    assert rows[0]["encounter_type"] == "inpatient"
+        ("outpatient_f2f", "family_default"), ("outpatient_f2f", "family_default"), ("not_applicable", "not_applicable")]
+    assert rows[0]["encounter_type"] == "outpatient_f2f"
 
 
 # --- the encounter model's vote (model_vote) -------------------------------

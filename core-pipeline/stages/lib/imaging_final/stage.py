@@ -109,6 +109,12 @@ def _iso(value: Any) -> Optional[str]:
     return str(value) if value else None
 
 
+def _visit_setting(setting: Any) -> Optional[str]:
+    """The encounter type Final shows: blank for a document encounter type does not apply
+    to (2026-11-02, user: only Progress, Procedure and Operative Notes carry one)."""
+    return None if not setting or setting == "not_applicable" else setting
+
+
 def _number(value: Any) -> Optional[float]:
     return None if value is None else float(value)
 
@@ -223,7 +229,8 @@ def final_confidences(
         out["specialty"] = _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence"))
     if dos_page is not None:
         out["dos"] = _number((dos.get(dos_page) or {}).get("confidence"))
-    out["encounter_type"] = _number((encounters.get(encounter_page) or {}).get("confidence"))
+    encounter = encounters.get(encounter_page) or {}
+    out["encounter_type"] = _number(encounter.get("confidence")) if _visit_setting(encounter.get("encounter_type")) else None
     out["member"] = _number((members.get(page_id) or {}).get("confidence"))
     out["provider"] = provider_confidence
     # Every page's verdict, Main included: a page kept Main on a weak verdict is flagged too.
@@ -287,7 +294,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "page_type": kind.get("page_type"),
                 "page_subtype": kind.get("page_subtype"),
                 "names": axes.names_of(kind),
-                "encounter_type": (encounters.get(page["id"]) or {}).get("encounter_type"),
+                "encounter_type": _visit_setting((encounters.get(page["id"]) or {}).get("encounter_type")),
             }
         junk_pages = frozenset(
             pid for pid, row in blank_junk.items() if (row or {}).get("blank_junk_flag") in ("blank", "junk", "duplicate")

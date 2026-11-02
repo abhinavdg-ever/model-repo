@@ -2800,7 +2800,7 @@ def test_encounter_grouping_is_written_for_production_mode():
 
     rows = classify_pages([
         {"page_id": 1, "page_name": "1.jpg", "page_number": 1, "text": "", "document": 1, "page_family": "Lab Report"},
-        {"page_id": 2, "page_name": "2.jpg", "page_number": 2, "text": "", "document": 2, "page_family": "Discharge Summary"},
+        {"page_id": 2, "page_name": "2.jpg", "page_number": 2, "text": "", "document": 2, "page_family": "Operative Note"},
     ])
     assert [(r["encounter_seq"], r["decided_by"]) for r in rows] == [(1, "not_applicable"), (2, "family")]
     store = MemoryStore()

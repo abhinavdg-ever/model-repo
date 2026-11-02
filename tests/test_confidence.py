@@ -73,7 +73,7 @@ def test_final_values_take_the_deciding_pages_confidence_and_flag_the_low_ones()
     out = final_confidences(
         2, page_type="Progress Note", decider=1, type_pages=[1, 2], specialty_page=1, dos_page=1,
         encounter_page=1, classification=classification, dos={1: {"confidence": 0.91}},
-        encounters={1: {"confidence": 0.68}}, members={2: {"confidence": 0.84}}, provider_confidence=None,
+        encounters={1: {"encounter_type": "outpatient_f2f", "confidence": 0.68}}, members={2: {"confidence": 0.84}}, provider_confidence=None,
         blank_junk={2: {"blank_junk_flag": "not_blank_junk", "confidence": 0.42}}, quality={2: {"hw_confidence": 0.97}},
     )
     # Page 2 is sure it is a Lab Report: the document's Progress Note reads 0.9 x conflict.
@@ -81,6 +81,14 @@ def test_final_values_take_the_deciding_pages_confidence_and_flag_the_low_ones()
                    "encounter_type": 0.68, "member": 0.84, "blank_junk": 0.42, "handwriting": 0.97}
     # A page kept Main on a weak verdict is flagged too.
     assert review_fields(out) == ["blank_junk", "specialty"]
+    # 2026-11-02 (user): a document encounter type does not apply to is blank, confidence too.
+    blank = final_confidences(
+        2, page_type="Problem List", decider=1, type_pages=[1, 2], specialty_page=1, dos_page=1,
+        encounter_page=1, classification=classification, dos={1: {"confidence": 0.91}},
+        encounters={1: {"encounter_type": "not_applicable", "confidence": 0.9}}, members={}, provider_confidence=None,
+        blank_junk={}, quality={},
+    )
+    assert blank.get("encounter_type") is None
 
 
 def test_not_found_has_a_confidence():

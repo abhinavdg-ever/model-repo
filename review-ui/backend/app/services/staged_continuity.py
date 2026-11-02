@@ -67,7 +67,7 @@ _LABELS = {
     "outpatient_tele": "Outpatient (Tele)",
     "inpatient": "Inpatient",
     "home": "Home",
-    "not_applicable": "Not Available",
+    "not_applicable": "",  # 2026-11-02 (user): not a visit document -> blank
 }
 
 

@@ -229,7 +229,7 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
     return Canon(
         labels={
             **{k: str(v["label"]) for k, v in settings.items()},
-            na_setting: str(na.get("label") or "Not Applicable"),
+            na_setting: str(na.get("label") if na.get("label") is not None else "Not Applicable"),
         },
         priority={k: int(v["priority"]) for k, v in settings.items()},
         confidence={k: float(v) for k, v in raw["confidence"].items() if k != "note"},

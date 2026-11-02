@@ -32,16 +32,15 @@
   "applies_to": {
     "families": [
       "Progress Note",
-      "Discharge Summary",
+      "Procedure Note",
       "Operative Note"
     ],
     "not_applicable": {
       "setting": "not_applicable",
-      "label": "Not Available"
+      "label": ""
     },
-    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available. 2026-10-25 (user): the encounter's document type decides first: a family in 'always' is that setting whatever its pages say (Discharge Summary, Operative Note -> Inpatient); a family not listed is Not Applicable for the whole encounter, even when one of its pages votes a setting.",
+    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available. 2026-10-25 (user): the encounter's document type decides first: a family in 'always' is that setting whatever its pages say (Discharge Summary, Operative Note -> Inpatient); a family not listed is Not Applicable for the whole encounter, even when one of its pages votes a setting. 2026-11-02 (user): encounter type matters only for Progress Notes (and the pages joined to them), Procedure Notes and Operative Notes; every other document (Problem List, Demographics, Discharge Summary, labs, orders...) is left blank (Final and review-ui show nothing).",
     "always": {
-      "Discharge Summary": "inpatient",
       "Operative Note": "inpatient"
     }
   },
@@ -340,7 +339,7 @@
     "first_page_weight": 2,
     "family_defaults": {
       "Progress Note": "outpatient_f2f",
-      "Discharge Summary": "inpatient"
+      "Procedure Note": "outpatient_f2f"
     },
     "confidence_note": "2026-10-25 (user: a percentage, model probability penalised, one scale: >= 0.80 good, 0.50-0.80 passable, < 0.50 review). Each page's vote: the encounter model's probability for the setting (normalised over the settings), lifted by the keyword support behind it (tier 1 page type 1.0, tier 2 phrase 0.8, 0.8 / 0.6 with a conflict on the page, a confirm word 0.5), x keywords_disagree (0.7) when the model's own answer (>= 0.5) is another setting or the vote overrode a phrase; a family default (Progress Note -> F2F): the model's probability for it x fallback (0.6); Not Applicable: the model's probability backed fully by the page type. Without a model answer: the support x no_model (0.85). The encounter's: the first page's own when it decides (x conflict 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it. Penalties: keyword-canon/confidence_canon.json."
   },

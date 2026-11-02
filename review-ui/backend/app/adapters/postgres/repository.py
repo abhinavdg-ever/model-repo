@@ -1215,7 +1215,7 @@ class PostgresFolderRepository(FolderRepository):
                     "outpatient_tele": "Outpatient (Tele)",
                     "inpatient": "Inpatient",
                     "home": "Home",
-                    "not_applicable": "Not Available",
+                    "not_applicable": "",  # 2026-11-02 (user): not a visit document -> blank
                 }
                 for page_name, et, conf in rows["encounter_type"] or []:
                     fields = _ensure(str(page_name))
