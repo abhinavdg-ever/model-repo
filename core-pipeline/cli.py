@@ -271,6 +271,10 @@ def main() -> None:
     p_api = sub.add_parser("serve", help="Start FastAPI server")
 
     args = parser.parse_args()
+    # --skip-ocr is a resume (force off), as in the API (RunRequest.force): with the
+    # default force=true the runner ignored it, cleared ocr/ and re-ran OCR.
+    if getattr(args, "skip_ocr", None) and hasattr(args, "force"):
+        args.force = False
 
     # The CLI runs the same stages in-process, so it wants the same logging:
     # our progress lines visible, the Azure SDK request/response dump not.
