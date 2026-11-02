@@ -6815,9 +6815,12 @@ input {
   background: var(--surface, transparent);
   color: inherit;
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 0.3rem 0.7rem;
   cursor: pointer;
-  font: inherit;
+  /* The same size as the imaging tabs above (.output-tabs button), not the page's. */
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 .rejection-subtabs button.active {
   background: var(--accent-bg, #e9eef5);
