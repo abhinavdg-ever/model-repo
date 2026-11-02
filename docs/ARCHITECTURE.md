@@ -4,7 +4,8 @@ The shape of the system, the data model, and **what every file in the repository
 is for**.
 
 Companion documents: [FLOW.md](FLOW.md) (what runs when), [API.md](API.md) (how to run
-and call it).
+and call it), [MODELS_AND_CONFIDENCE.md](MODELS_AND_CONFIDENCE.md) (models, the
+shared confidence formula, proposed LLM fallback).
 
 ---
 
