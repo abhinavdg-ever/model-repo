@@ -1,5 +1,0 @@
-# Colab keeps its own torch / transformers; on a PC install the CUDA build of PyTorch first.
-torch>=2.1
-transformers>=4.48
-scikit-learn>=1.3
-onnx>=1.15
