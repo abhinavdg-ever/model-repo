@@ -90,5 +90,12 @@
   "Plan No",
   "Plan No.",
   "Plan #",
-  "Plan#"
+  "Plan#",
+  "Encounter #",
+  "Requisition #",
+  "Customer #",
+  "Hospital Account",
+  "Group No",
+  "Group Number",
+  "Exam ID"
 ]

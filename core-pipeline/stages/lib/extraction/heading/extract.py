@@ -81,7 +81,7 @@ def heading_fields() -> list[str]:
 COMMON_HEADINGS_FILE = Path(__file__).with_name("common_headings.txt")
 # Shorter keys (HPI, EKG, Plan) must match exactly; longer ones may differ by OCR / spelling slips.
 _FUZZY_MIN_CHARS = 6
-_FUZZY_RATIO = 0.7
+_FUZZY_RATIO = 0.88  # 2026-11-02 (Extraction drop): was 0.7, too loose for the common-heading list
 _FILLER = frozenset({"and", "of", "the", "for", "to"})
 
 
