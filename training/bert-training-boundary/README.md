@@ -6,7 +6,7 @@ One encoder (Bio_ClinicalBERT by default) reads the end of page A and the start 
 | Head | Question | Trained on |
 |---|---|---|
 | `break` | Does the document end after page A? Every meeting point, every document type (2026-11-02) | `document_pairs.jsonl`, label `doc_breaks` (built by `core-pipeline/stages/lib/continuity/ml/build_data.py`); unsure points at half weight |
-| `follows` | Does page B come directly after page A, inside one document? | `order_pairs.jsonl`, label `follows` |
+| `follows` | Does page B come directly after page A? Pages at most 5 places apart in one date-of-service block (2026-11-02) | `order_pairs.jsonl`, label `follows` (built by `Training/boundary/local/build_local_order_data.py` as `order_pairs_local.jsonl`; `doc_id` = the DOS block) |
 
 The two scores are one more clue for the tree models in
 `core-pipeline/stages/lib/continuity/ml/` and `core-pipeline/stages/lib/sequencing/ml/`. Those
@@ -20,7 +20,7 @@ tree models train on the laptop; this is the only part that needs a GPU.
 | `page_pairs.ipynb` | Colab (or a PC) notebook that runs it, checks the ONNX copy and its CPU speed, and zips the result |
 | `requirements.txt` | |
 | `tests/test_package.py` | the notebook parses and names files that are here |
-| `data/` | `document_pairs.jsonl` (build_data.py) and `order_pairs.jsonl` (`Training/boundary/`) (git-ignored: page text) |
+| `data/` | `document_pairs.jsonl` (build_data.py) and `order_pairs.jsonl` (the ±5 / same-DOS pairs from `Training/boundary/local/`) (git-ignored: page text) |
 | `page-pair-training.zip` | the upload for Drive: the two scripts and the two data files (git-ignored) |
 
 ## Train on Colab

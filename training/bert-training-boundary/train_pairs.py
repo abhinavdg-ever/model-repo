@@ -8,8 +8,9 @@ input ("tail [SEP] head") and has two heads:
                  document type (``document_pairs.jsonl``, label ``doc_breaks``; 2026-11-02, user:
                  every document can run on; the same target as the continuity clue model,
                  continuity/ml/build_data.py). Unsure points count at half weight.
-* ``follows`` -- P(page B comes directly after page A) inside one document
-                 (``order_pairs.jsonl``, label ``follows``; the same target as the order clue model).
+* ``follows`` -- P(page B comes directly after page A), for pages at most 5 places apart in one DOS block
+                 (``order_pairs.jsonl`` = Training/boundary/local/order_pairs_local.jsonl, label ``follows``;
+                 ``doc_id`` holds the DOS block id; the same target as the local order clue model, 2026-11-02).
 
 Both files are split by chart already (``split``: train / val / test). The best epoch by mean
 validation AUC of the two heads is kept; test is scored once at the end, never tuned on.
