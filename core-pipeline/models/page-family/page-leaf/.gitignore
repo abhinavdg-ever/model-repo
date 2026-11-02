@@ -1,2 +1,3 @@
-# The encoder weights (433 MB, Bio_ClinicalBERT) are not in git: copy this folder onto each host.
+# The encoder (encoder/model.safetensors, 433 MB, Bio_ClinicalBERT) is in git LFS since
+# 2026-11-02: run `git lfs install` and `git lfs pull` on each host.
 *.bin

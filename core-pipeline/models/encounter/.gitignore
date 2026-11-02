@@ -1,4 +1,3 @@
-# The encoder weights (265 MB, DistilBERT) are in git LFS since 2026-10-25 (user):
-# encoder/model.safetensors is tracked through .gitattributes. Run `git lfs install`
-# and `git lfs pull` on each host. Other weight files stay out of git.
+# The encoder (encoder/model.safetensors, 433 MB, Bio_ClinicalBERT) is in git LFS since
+# 2026-11-02: run `git lfs install` and `git lfs pull` on each host.
 *.bin

@@ -27,3 +27,8 @@ Dockerfile  text eol=lf
 *.woff2 binary
 
 # No git LFS (2026-10-26, user): model weights are copied onto each host.
+
+# Model encoders in git LFS (2026-11-02, user: one-time push for the VM). Hosts: git lfs install && git lfs pull.
+core-pipeline/models/page-family/page-leaf/encoder/model.safetensors filter=lfs diff=lfs merge=lfs -text
+core-pipeline/models/page-family/page-axes/encoder/model.safetensors filter=lfs diff=lfs merge=lfs -text
+core-pipeline/models/encounter/encoder/model.safetensors filter=lfs diff=lfs merge=lfs -text
