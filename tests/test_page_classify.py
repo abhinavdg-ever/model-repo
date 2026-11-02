@@ -232,6 +232,22 @@ class TestAgreedPageType:
         unsigned = [doc[0], replace(doc[1], signed=False)]
         assert agree_document_type(unsigned)[1] != "note_sections"
 
+    def test_a_long_record_document_is_a_clinical_summary(self):
+        """2026-11-02 (user): Demographics / Problem List / Medication Record / Immunization
+        running to 5 pages or more over more than one L1 becomes Clinical Summary > Summary."""
+        def pl(pid):
+            return fp(pid, "Problem List", "Problem List", family="Problem List", l2="Problem List", seq=pid,
+                      link="strong" if pid > 1 else None)
+        meds = fp(5, "Medication Record", "Medication List", family="Medication Record", l2="Medication List",
+                  seq=5, link="strong")
+        doc = [*(pl(n) for n in range(1, 5)), meds]
+        assert agree_document_type(doc) == ("Clinical Summary", "long_summary")
+        assert [(f.page_type, f.page_subtype) for f in (decide_final(p, doc) for p in doc)] == [
+            ("Clinical Summary", "Summary")] * 5
+        assert agree_document_type(doc[:4]) == ("Problem List", "first_page")  # 4 pages
+        same = [pl(n) for n in range(1, 7)]  # long, but one L1 only
+        assert agree_document_type(same) == ("Problem List", "first_page")
+
     def test_every_progress_note_path_is_codeable(self):
         """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""
         space = taxonomy.label_space()

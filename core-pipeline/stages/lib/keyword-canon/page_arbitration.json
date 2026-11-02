@@ -45,6 +45,12 @@
     "opens": ["Demographics"],
     "becomes": "Clinical Summary"
   },
+  "long_summary": {
+    "comment": "2026-11-02 (user): a document that opens on one of these record L1s and runs to min_pages pages or more over pages of more than one L1 is a 'becomes' document: every page takes final_placement there (Clinical Summary: Summary). Checked after visit_document and demographics_summary.",
+    "opens": ["Demographics", "Problem List", "Medication Record", "Immunization"],
+    "min_pages": 5,
+    "becomes": "Clinical Summary"
+  },
   "last_page_documents": {
     "comment": "2026-10-25 (user): a short packet whose LAST page is one of these L1s takes that L1 on every page (a consent: notice / intake pages, then the signed consent page). Post-processing for the Final page type only (DOS and encounter keep continuity's documents): 1. a document whose last page is a listed L1 absorbs the documents right before it while the packet stays within max_pages and their pages are all of the joins L1s; 2. in a document of at most max_pages pages ending in a listed L1, every page takes that L1 (continuation_rule agreed_last_page); its L2 is the one the page classifier gave it there (under_l1), else its own name when that L1 has it, else Others.",
     "families": {

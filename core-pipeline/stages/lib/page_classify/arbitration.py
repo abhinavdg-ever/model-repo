@@ -281,6 +281,16 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
         and summary.get("becomes")
     ):
         return str(summary["becomes"]), "demographics_summary"
+    # A record document (demographics, problem list, medications, immunizations) that runs
+    # long over pages of more than one L1 is a summary print (2026-11-02, user).
+    long_run = _ARBITRATION.get().get("long_summary") or {}
+    if (
+        first in set(long_run.get("opens") or ())
+        and len(document) >= int(long_run.get("min_pages", 5))
+        and len({_family(p) for p in document if _agreeable(_family(p))}) > 1
+        and long_run.get("becomes")
+    ):
+        return str(long_run["becomes"]), "long_summary"
     if _agreeable(first):
         return first, "first_page"
     weights: dict[str, float] = {}
