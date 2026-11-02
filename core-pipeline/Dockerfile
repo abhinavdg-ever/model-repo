@@ -36,14 +36,13 @@ RUN pip install --no-cache-dir -r requirements-basic.txt \
 COPY . /app/core-pipeline
 WORKDIR /app/core-pipeline
 
-# Fail the build if junk keywords / clinical short-circuit did not land in the
-# image (same logic as local / Windows — stages/lib/keyword-canon/junk_keywords_canon.json + text_utils).
+# Fail the build if the blank/junk keyword canon did not land in the image: a clinical page
+# with a fax confidentiality footer must score clinical over junk (stages/lib/blank_junk/method.py,
+# keyword-canon). The regex classify_text this used to call was removed on 2026-11-01.
 RUN python -c "\
-import sys; \
-sys.path.insert(0, 'stages/lib/blank_junk'); \
-from classify import CODE_MAIN, classify_text; \
-from kw import rules; \
-assert rules().letter_fax and rules().invoice_keywords; \
+import stages.lib.blank_junk.stage; \
+from stages.lib.blank_junk.method import canon, score_text; \
+assert canon().groups, 'blank/junk canon empty'; \
 text = ( \
     'Progress Note\\n' \
     'Reason for Appointment: 6 month follow up.\\n' \
@@ -53,9 +52,9 @@ text = ( \
     'CONFIDENTIALITY NOTICE: This transmission is intended only ' \
     'for the intended recipient and may contain confidential medical records.\\n' \
 ); \
-code, reason = classify_text(text); \
-assert code == CODE_MAIN and reason == 'clinical_content', (code, reason); \
-print('junk clinical short-circuit ok')"
+s = score_text(text); \
+assert s.clinical > s.junk, (s.clinical, s.junk); \
+print('blank/junk canon ok')"
 
 # Fail the build if stage 1 cannot judge orientation, or if the canons from
 # this checkout did not land: OSD data, the reading vocabulary, the stored
