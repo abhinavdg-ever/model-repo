@@ -339,6 +339,79 @@ def _kind(final: Optional[dict[str, Any]]) -> str:
     return {"blank": "blank", "junk": "junk", "duplicate": "duplicate"}.get(flag, "main")
 
 
+# A junk page inside a Progress Note made Main again carries this, then its junk subtype.
+UNJUNK_MARK = "unjunked_in_progress_note:"
+# Junk that stays junk inside a note: blank / tiny (R1, R2), short page (R6), contained, cards.
+_KEEP_JUNK = ("R1", "R2", "R6", "short_page_contained_in_page_id:")
+
+
+def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:
+    """The junk subtype of a page an earlier run unjunked inside a Progress Note."""
+    reason = str((final or {}).get("reason") or "")
+    if not reason.startswith(UNJUNK_MARK):
+        return None
+    return reason[len(UNJUNK_MARK):].split(" (", 1)[0].strip() or "Others"
+
+
+def _unjunk_inside_notes(
+    chart_id: int,
+    chart_name: str,
+    inputs: list[PageInput],
+    rows: list[dict[str, Any]],
+    bj: dict[int, dict[str, Any]],
+    rules: Any,
+    texts: Optional[dict[int, str]] = None,
+) -> list[dict[str, Any]]:
+    """2026-11-03 (user): a junk page whose nearest Main pages before and after it are in one
+    document that opens on a Progress Note is a Main page again, unless it is a short page
+    (R1 / R2 blank or tiny, R6 short page, contained in a nearby page) or a card. Re-checked
+    every run: a page no longer inside a note is junk again, with its subtype."""
+    document = [row.get("document_seq") if row.get("segment_kind") == "main" else None for row in rows]
+    first_type: dict[Any, str] = {}
+    for item, doc in zip(inputs, document):
+        if doc is not None and doc not in first_type:
+            first_type[doc] = item.page_type or ""
+
+    def inside_note(i: int) -> bool:
+        before = next((document[k] for k in range(i - 1, -1, -1) if document[k] is not None), None)
+        after = next((document[k] for k in range(i + 1, len(inputs)) if document[k] is not None), None)
+        return before is not None and before == after and first_type.get(before) == "Progress Note"
+
+    unjunk, rejunk = [], []
+    for i, item in enumerate(inputs):
+        final = bj.get(item.page_id) or {}
+        earlier = _unjunked(final)
+        if item.kind == "junk" and earlier is None:
+            reason = str(final.get("reason") or "")
+            if item.junk_subtype == "Cards" or reason.startswith(_KEEP_JUNK):
+                continue
+            if inside_note(i):
+                unjunk.append((item, item.junk_subtype or "Others"))
+        elif earlier is not None and not inside_note(i):
+            rejunk.append((item, earlier))
+    if not (unjunk or rejunk):
+        return rows
+    with connect() as conn:
+        for item, subtype in unjunk:
+            revise_blank_junk_final(
+                conn, item.page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=None,
+                reason=f"{UNJUNK_MARK}{subtype} (junk inside a Progress Note, not a short page -> Main)",
+            )
+            item.kind, item.junk_subtype = "main", ""
+            item.text = (texts or {}).get(item.page_id) or item.text
+            item.lines = item.lines or text_lines(item.text)
+        for item, subtype in rejunk:
+            revise_blank_junk_final(
+                conn, item.page_id, blank_junk_flag="junk", duplicate_of_page_id=None,
+                reason=f"re-checked: no longer inside a Progress Note -> Junk / {subtype}", junk_subtype=subtype,
+            )
+            item.kind, item.junk_subtype = "junk", subtype
+        _rewrite_junk_csv(conn, chart_id, chart_name)
+    logger.info("continuity chart=%s junk inside a Progress Note: %d -> Main, %d back to junk",
+                chart_name, len(unjunk), len(rejunk))
+    return assign(inputs, rules)
+
+
 def _carried_copy(final: Optional[dict[str, Any]]) -> bool:
     """A page an earlier run's duplicate check made a plain Main page (carried-forward content)."""
     return duplicates.CARRIED_MARK in str((final or {}).get("reason") or "")
@@ -384,7 +457,7 @@ def _review_duplicates(
         if (_content_copy(bj.get(item.page_id)) and item.page_id not in result.demote)
         or (_carried_copy(bj.get(item.page_id)) and item.page_id not in result.release)
     ]
-    if not (result.promote or result.demote or result.release or restored):
+    if not (result.promote or result.demote or result.release or result.partial or restored):
         return rows
     by_id = {item.page_id: item for item in inputs}
     with connect() as conn:
@@ -424,6 +497,21 @@ def _review_duplicates(
                 item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
                 item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
                 item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
+        for page_id, (original, overlap) in result.partial.items():
+            # The same encounter, not a 100% match (2026-11-03, user): a Partial -- a Main page
+            # naming the page it nearly copies, with its original's values for grouping.
+            revise_blank_junk_final(
+                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=original,
+                reason=f"partial_duplicate_of_page_id:{original} (overlap={overlap:.4f}: the same "
+                       f"encounter, not a 100% match)",
+            )
+            item, source = by_id[page_id], by_id.get(original)
+            item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
+            item.lines = item.lines or text_lines(item.text)
+            if source is not None:
+                item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
+                item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
+                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
         for item in restored:
             original = bj[item.page_id].get("duplicate_of_page_id") or _carried_original(bj[item.page_id])
             if not original:
@@ -435,8 +523,8 @@ def _review_duplicates(
         _rewrite_junk_csv(conn, chart_id, chart_name)
     logger.info(
         "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content, "
-        "%d duplicate -> carried-forward Main",
-        chart_name, len(result.promote), len(result.demote), len(result.release),
+        "%d duplicate -> carried-forward Main, %d same-encounter duplicate -> Partial",
+        chart_name, len(result.promote), len(result.demote), len(result.release), len(result.partial),
     )
     return assign(inputs, rules)
 
@@ -544,6 +632,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         # The short page contained in a nearby page is junked in blank / junk pass 2 since
         # 2026-11-03 (user); continuity reads it as any junk page.
+        # 2026-11-03 (user): a junk page inside a Progress Note that is not a short page is Main.
+        rows = _unjunk_inside_notes(chart_id, ctx.chart_name, inputs, rows, bj, rules, own_texts)
         scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
 
         csv_rows: list[dict[str, Any]] = []
