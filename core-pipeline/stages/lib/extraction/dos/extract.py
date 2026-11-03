@@ -15,7 +15,9 @@ Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
   - Not this visit's date: a DOS key with a past / future / amended word right before it or
     inside it ('Last Visit Date', 'Will Visit Date', 'was admitted', 'Planned Admit Date',
     'Amended Date') gives no candidate, and its date is never taken by another key or the
-    keyless reader; neither is a date right after 'Amended' on its line.
+    keyless reader; neither is a date right after 'Amended' on its line. A qualifier that is
+    a word of the key itself does not count: 'Provider Initial Contact Time' (an ED note's
+    time seen, date usually on the line below) is this visit, 'Initial Visit Date' is not.
   - Value: single date (6/28/2024, 9/24/24, 2024-12-02, 08-19-2024, Jul 1, 2024,
     November 6, 2024; a trailing time is dropped) or a range "date - date"
     (-, –, to, thru, through). Admit + discharge on one page are both selected and

@@ -1,0 +1,139 @@
+# Words that are never part of a person's name: a member (patient) name or a signer (provider)
+# name stops at them ("John Smith Provider Dr Jones" -> "John Smith"), and a signer name skips them
+# when they come first ("Attending Physician John Smith, MD" -> "John Smith, MD").
+# One word per line, any case; '#' starts a comment. Credentials (MD, NP, RN ...) are in
+# Electronic_Signature/suffixes.txt, not here.
+# Leave out words that are also common surnames or first names (Ward, Dean, King, Best, Young,
+# Bell, Will, Page ...): a name containing them would be cut short.
+
+# roles
+provider
+providers
+physician
+physicians
+doctor
+doctors
+clinician
+practitioner
+nurse
+therapist
+technician
+technologist
+tech
+radiologist
+pathologist
+surgeon
+anesthesiologist
+psychologist
+psychiatrist
+optometrist
+ophthalmologist
+dermatologist
+cardiologist
+oncologist
+neurologist
+urologist
+pharmacist
+dietitian
+resident
+intern
+assistant
+scribe
+staff
+author
+
+# role adjectives
+attending
+referring
+ordering
+rendering
+treating
+consulting
+supervising
+admitting
+discharging
+interpreting
+performing
+reviewing
+signing
+dictating
+transcribing
+cosigning
+primary
+secondary
+covering
+
+# people / relationship labels
+patient
+member
+client
+guardian
+insured
+subscriber
+beneficiary
+responsible
+party
+emergency
+contact
+spouse
+mother
+father
+parent
+caregiver
+relationship
+
+# system users
+system
+admin
+administrator
+user
+interface
+automated
+
+# document actions and words
+signed
+cosigned
+electronically
+digitally
+reviewed
+approved
+verified
+dictated
+transcribed
+finalized
+final
+preliminary
+amended
+addendum
+performed
+ordered
+entered
+created
+modified
+updated
+printed
+report
+note
+notes
+signature
+name
+
+# describing words
+pleasant
+elderly
+alert
+oriented
+established
+existing
+current
+former
+previous
+prior
+deceased
+unknown
+years
+year
+old
+yo
+clinical
+entry

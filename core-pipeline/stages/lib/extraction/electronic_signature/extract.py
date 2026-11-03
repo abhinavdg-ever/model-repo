@@ -5,7 +5,9 @@ Rules from Data/examp/esign.csv:
   - The signer is returned as printed, from the first name word to the last credential:
     "Agati, Alicia, APRN.CNP", "LAUBERT CNP, MATTHEW". Any credential from
     provider_name/suffixes.txt is also returned on its own as the designation ("APRN.CNP", "CNP").
-  - Name right after the key: credential optional (any key).
+  - Name right after the key: credential optional (any key). Role words before it are
+    skipped ("Signed by: Attending Physician John Smith, MD").
+  - A name stops at a word that is never part of a name (util/not_name_words.txt).
   - Name right before the key (nothing usable after it): credential optional for
     strong keys ("... by", "Electronically/Digitally ..."), required for weak keys.
   - Name elsewhere in the box: credential required.
@@ -21,6 +23,7 @@ from ..util.dates import find_dates, normalize_date
 from ..util.keys import KeyHit, extract_field_keys
 from ..util.geometry import is_edge_region, median_height, region_priority
 from ..util.model import predict
+from ..util.names import is_not_name
 from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
 from ..util.window import expand_for_key
 
@@ -86,7 +89,7 @@ def _is_name_word(text: str) -> bool:
     if not _NAME_WORD.match(text):
         return False
     bare = text.rstrip(".")
-    return len(bare) == 1 or bare.casefold() not in _NOT_NAME
+    return len(bare) == 1 or (bare.casefold() not in _NOT_NAME and not is_not_name(bare))
 
 
 def _next_meaningful(tokens: list[Token], index: int, stop: int) -> int | None:
@@ -163,7 +166,15 @@ def split_name_designation(printed: str) -> tuple[str, str]:
 
 def _after_key(tokens: list[Token], key_last: int, line_h: float) -> _Name | None:
     index = key_last + 1
-    while index < len(tokens) and tokens[index].text.casefold() in _CONNECTORS:
+    # Connectors and role words before the name: 'Signed by: Attending Physician John Smith, MD'.
+    while index < len(tokens) and (
+        tokens[index].text.casefold() in _CONNECTORS
+        or _PUNCT_ONLY.match(tokens[index].text)
+        or (
+            is_not_name(tokens[index].text)
+            and abs(tokens[index].word.box.cy - tokens[key_last].word.box.cy) <= 0.6 * line_h
+        )
+    ):
         index += 1
     if index >= len(tokens):
         return None

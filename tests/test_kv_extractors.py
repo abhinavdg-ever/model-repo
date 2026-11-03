@@ -483,3 +483,34 @@ def test_a_registration_heading_alone_is_not_patient_registration():
     data = json.loads(leaf_canon.PATH.read_text(encoding="utf-8"))
     deciding = [t.casefold() for t in data["nodes"]["Administrative > Patient Registration"]["deciding"]]
     assert "registration" not in deciding and "patient registration" in deciding
+
+
+class TestExtractionDrop20261103:
+    """Rules from the 2026-11-03 Extraction drop."""
+
+    def test_a_system_code_on_an_id_is_dropped(self):
+        from stages.lib.extraction.member_id.extract import _id_token
+
+        assert _id_token("3502776450(EV)") == "3502776450"
+
+    def test_a_bare_ten_digit_number_is_an_id_but_a_printed_phone_is_not(self):
+        from stages.lib.extraction.member_id.extract import _PHONE
+
+        assert not _PHONE.match("3502262043")
+        assert _PHONE.match("(330) 376-7416") and _PHONE.match("330-376-7416")
+
+    def test_a_number_after_a_phone_label_is_not_an_id(self):
+        from stages.lib.extraction.member_id.extract import nearest
+
+        assert nearest("MRN Phone: 5055493103", (0, 3))[0] == ""
+
+    def test_role_words_are_never_part_of_a_name(self):
+        from stages.lib.extraction.util.names import is_not_name
+
+        assert is_not_name("Provider") and is_not_name("ATTENDING") and is_not_name("Physician:")
+        assert not is_not_name("Smith")
+
+    def test_provider_initial_contact_time_is_a_service_key(self):
+        from stages.lib.extraction.util.keys import load_key_tiers
+
+        assert load_key_tiers("dos")["provider initial contact time"] == "service"

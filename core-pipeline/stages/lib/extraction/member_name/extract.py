@@ -7,8 +7,9 @@ Rules from Data/examp/mname.csv:
   - Keyed: name right after the key on its line, else the column-aligned name just below
     (table headers). Keyed "Last + initial" ("Anderson S") is allowed. Mid-page keyed names
     need NER support.
-  - The name stops at a line end, a digit, "(", a word ending in ":", or a word that belongs
-    to another key on the page ("Thomas David | Admil Dale").
+  - The name stops at a line end, a digit, "(", a word ending in ":", a word that belongs
+    to another key on the page ("Thomas David | Admil Dale"), or a word that is never part of
+    a name (Util/not_name_words.txt: "John Smith Provider" -> "John Smith").
   - Last Name + First Name keys on one page combine into one name.
   - Insured Name only wins when no patient-type key gave a name.
   - Keyless (header/footer only, beside a DOB/ID key): the name must sit right before the
@@ -25,6 +26,7 @@ from dataclasses import dataclass, field
 from ..electronic_signature.extract import is_credential
 from ..member_id.extract import is_member_id_value
 from ..util.keys import KeyHit, linked
+from ..util.names import is_not_name
 from ..util.model import predict
 from ..util.geometry import (
     FOOTER_FRAC,
@@ -135,7 +137,7 @@ def _is_name_word(text: str) -> bool:
     bare = text.rstrip(".")
     if len(bare) == 1:
         return True
-    return bare.casefold() not in _NOT_NAME and not is_credential(text)
+    return bare.casefold() not in _NOT_NAME and not is_not_name(bare) and not is_credential(text)
 
 
 def _parse(
