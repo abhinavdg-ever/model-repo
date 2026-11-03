@@ -22,7 +22,8 @@ def _chart(copied_pages, family="Progress Note"):
         source = pid - 9 if pid >= 10 else None
         dup = pid in copied_pages
         pages.append(_page(pid, "duplicate" if dup else "main", family, source if dup else None))
-        rows.append({"segment_kind": "main", "document_seq": 1 if dup else doc})
+        # A duplicate is in no document (continuity's rows: segment_kind None).
+        rows.append({"segment_kind": None if dup else "main", "document_seq": None if dup else doc})
         texts[pid] = _words(f"p{source}x") if source and (dup or pid in copied_pages) else _words(f"p{pid}x")
     for pid in copied_pages:
         texts[pid] = _words(f"p{pid - 9}x")
@@ -69,14 +70,15 @@ class TestStringsAndCarriedForward:
             doc = 1 if pid <= 6 else 2 if pid >= 13 else 100 + pid
             dup = pid - 13 in copied
             pages.append(_page(pid, "duplicate" if dup else "main", "Progress Note", pid - 12 if dup else None))
-            rows.append({"segment_kind": "main", "document_seq": doc})
+            rows.append({"segment_kind": None if dup else "main", "document_seq": None if dup else doc})
             texts[pid] = _words(f"p{pid - 12}x") if dup else _words(f"p{pid}x")
         return pages, rows, texts
 
-    def test_a_string_of_more_than_3_copied_pages_stays_a_duplicate(self):
+    def test_a_string_of_copied_pages_is_judged_page_by_page(self):
+        """2026-11-03 (user): only a whole copied encounter stays a duplicate; no string rule."""
         pages, rows, texts = self._long_chart({1, 2, 3, 4})  # pages 14-17 copy 2-5
         result = duplicates.review(pages, rows, texts, partial_of={})
-        assert not result.demote and not result.release
+        assert result.demote.keys() == {14, 15, 16, 17} and not result.release
 
     def test_a_string_of_3_or_fewer_is_judged_page_by_page(self):
         pages, rows, texts = self._long_chart({1, 2, 3})  # pages 14-16 copy 2-4
@@ -89,7 +91,27 @@ class TestStringsAndCarriedForward:
         result = duplicates.review(pages, rows, texts, partial_of={})
         assert result.release.keys() == {11} and not result.demote
 
-    def test_other_families_now_checked(self):
-        for family in ("Operative Note", "Clinical Summary"):
+    def test_the_note_families(self):
+        """2026-11-03 (user): Progress, Operative, Procedure Notes, Discharge and Clinical Summaries."""
+        for family in ("Operative Note", "Procedure Note", "Discharge Summary", "Clinical Summary"):
             pages, rows, texts = _chart({11}, family=family)
             assert duplicates.review(pages, rows, texts, partial_of={}).demote.keys() == {11}
+        pages, rows, texts = _chart({11}, family="Demographics")
+        assert not duplicates.review(pages, rows, texts, partial_of={}).demote  # stays a Duplicate
+
+    def test_a_copied_encounter_with_other_dates_is_not_a_duplicate(self):
+        pages, rows, texts = _chart({10, 11, 12})  # document 2 (pages 10-12) copies document 1
+        assert not duplicates.review(pages, rows, texts, partial_of={}).demote  # a whole copy
+        dos = {pid: frozenset({"2024-03-15"}) for pid in (1, 2, 3)} | {10: frozenset({"2025-01-02"})}
+        result = duplicates.review(pages, rows, texts, partial_of={}, extracted_dos=dos)
+        assert {11, 12} <= result.demote.keys()  # dates differ: each page judged on its own
+
+
+def test_a_same_encounter_copy_is_a_duplicate_at_100_and_a_partial_below():
+    """2026-11-03 (user): within one encounter, 100% = Duplicate, 95-99.9% = Partial."""
+    pages, rows, texts = _chart({11})
+    pages[10].duplicate_of = 9  # page 11 copies page 9, two pages away: the same encounter
+    texts[11] = texts[9]
+    assert not duplicates.review(pages, rows, texts, partial_of={}).partial  # 100%: stays
+    texts[11] = texts[9] + " one more"
+    assert duplicates.review(pages, rows, texts, partial_of={}).partial.keys() == {11}

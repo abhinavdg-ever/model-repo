@@ -1,12 +1,13 @@
 """Duplicates checked encounter against encounter, once continuity knows the documents.
 
-2026-10-29 (user). The blank / junk stage marks a page a duplicate on its own words. A
-Progress Note, Discharge Summary, Operative Note or Clinical Summary page (the last two
-2026-11-02, user) that is a copy of a page far away is only a duplicate when its whole
-encounter is a copy of its original's:
+2026-10-29 / 11-03 (user). The blank / junk stage marks a page a duplicate on its own words
+(pass 1: an exact copy within 3 pages; pass 2: >= 98%, contained or < 8 words different, lengths
+within 10%). A copy of a Progress Note, Operative Note, Procedure Note, Discharge Summary or Clinical
+Summary page is then checked encounter against encounter:
 
-* **The same encounter stays a duplicate**: the copy within ``NEAR_PAGES`` (3) pages of
-  its original, or both pages with the same extracted (kv_extract) DOS.
+* **The same encounter** (the copy within ``NEAR_PAGES`` (3) pages of its original, in the same
+  document, or both pages with the same extracted DOS; 2026-11-03, user): a 100% match (the
+  same distinct words) stays a duplicate; anything less (95-99.9%) is a **Partial**.
 * **Other page types stay duplicates**: only an original whose family is
   ``ENCOUNTER_FAMILIES`` is checked.
 * **Otherwise the two encounters are compared.** The copy's encounter is the document it
@@ -15,21 +16,15 @@ encounter is a copy of its original's:
   blank pages around it. The anchor is the original's document. Each page of the copy's
   encounter scores its best distinct-word overlap against the anchor's pages (a page
   whose words are all on one scores 1.0), and the scores are averaged.
-* **Average above 98%**: the whole encounter is a duplicate -- its duplicates stay and
-  its partial duplicates (95-98%) of anchor pages become duplicates. A page that is
-  neither stays as it is.
-* **98% or less** (2026-11-02 / 11-03, user): pages copied, not the whole encounter.
-  - **A string of more than ``STRING_PAGES`` (3) copied pages stays a duplicate**: pages in a
-    row, each a duplicate of the page after its neighbour's original (the original's pages
-    in the same order).
-  - Any other copied page is judged on its own:
-  - **A page that matches 100%** (the same distinct words) is a Main page again,
-    "No (Duplicate Content)": its blank / junk row keeps ``duplicate_of_page_id`` and its
-    reason starts ``duplicate_content_of_page_id:<id>`` -- the later page is duplicate
-    content of the earlier one.
-  - **A page that is not a 100% match** (doctors keep adding to the older note:
-    carried-forward content) is a plain Main page, "No": no ``duplicate_of_page_id``, its
-    reason starts ``carried_forward_of_page_id:<id>``.
+* **Average 98% or more, and no date differs** (the dates kv_extract read on the two
+  encounters' pages): the whole encounter is a duplicate -- its duplicates stay and its
+  partial duplicates (95-98%) of anchor pages become duplicates.
+* **Otherwise** each copied page is judged on its own:
+  - **the same distinct words (100%)**: a Main page again, "Repeated Content (to Pg X)": its
+    blank / junk row keeps ``duplicate_of_page_id`` and its reason starts
+    ``duplicate_content_of_page_id:<id>`` -- the later page repeats the earlier one;
+  - **not a 100% match** (carried-forward content): a plain Main page, "No": no
+    ``duplicate_of_page_id``, its reason starts ``carried_forward_of_page_id:<id>``.
 """
 from __future__ import annotations
 
@@ -49,15 +44,15 @@ from classify import DUPLICATE_SIMILARITY_THRESHOLD, word_overlap  # noqa: E402
 NEAR_PAGES = 3
 # The page families (L1) whose copies are checked encounter against encounter.
 # 2026-11-02 (user): Operative Note and Clinical Summary too.
-ENCOUNTER_FAMILIES = frozenset({"Progress Note", "Discharge Summary", "Operative Note", "Clinical Summary"})
+# 2026-11-03 (user): Progress, Operative, Procedure Notes, Discharge and Clinical Summaries
+# (Demographics is not one).
+ENCOUNTER_FAMILIES = frozenset({"Progress Note", "Operative Note", "Procedure Note", "Discharge Summary", "Clinical Summary"})
 # The reason a copied page carries when its encounter is not a copy.
 CONTENT_MARK = "duplicate_content_of_page_id:"
 # The reason a copied page carries when it is carried-forward content, not a 100% copy.
 CARRIED_MARK = "carried_forward_of_page_id:"
 # Duplicate content is a 100% match (2026-11-02, user).
 CONTENT_MIN_OVERLAP = 1.0
-# A run of copied pages longer than this stays a duplicate (2026-11-03, user).
-STRING_PAGES = 3
 
 
 @dataclass
@@ -67,6 +62,9 @@ class Review:
     # page id -> (original page id, encounter average): duplicates that are Main pages
     # again (duplicate content).
     demote: dict[int, tuple[int, float]] = field(default_factory=dict)
+    # page id -> (original page id, similarity): same-encounter duplicates that are not a 100%
+    # match, Partial (a Main page naming the page it nearly copies; 2026-11-03, user).
+    partial: dict[int, tuple[int, float]] = field(default_factory=dict)
     # page id -> (original page id, encounter average): duplicates that are plain Main pages
     # again (a single page, not a 100% match: carried-forward content).
     release: dict[int, tuple[int, float]] = field(default_factory=dict)
@@ -128,22 +126,6 @@ def review(
             return [o]
         return [k for k in range(len(pages)) if k not in mine and (k == o or (main(k) and document[k] == doc))] or [o]
 
-    def string_length(k: int) -> int:
-        """Pages in the run of copies around k whose originals run in the same order."""
-        def linked(a: int, b: int) -> bool:  # b copies the page after a's original
-            if not (0 <= a < len(pages) and 0 <= b < len(pages)):
-                return False
-            if pages[a].kind != "duplicate" or pages[b].kind != "duplicate":
-                return False
-            oa, ob = index.get(pages[a].duplicate_of), index.get(pages[b].duplicate_of)
-            return oa is not None and ob is not None and ob == oa + 1
-        start, end = k, k
-        while linked(start - 1, start):
-            start -= 1
-        while linked(end, end + 1):
-            end += 1
-        return end - start + 1
-
     averages: dict[tuple[Any, Any], float] = {}
     for i, page in enumerate(pages):
         if page.kind != "duplicate":
@@ -152,12 +134,15 @@ def review(
         if o is None:
             continue
         original = pages[o]
-        if abs(i - o) <= NEAR_PAGES:
-            continue  # the same encounter
-        mine, theirs = dos.get(page.page_id), dos.get(original.page_id)
-        if mine and theirs and mine == theirs:
-            continue  # the same DOS: the same encounter
         if original.page_type not in ENCOUNTER_FAMILIES:
+            continue
+        mine, theirs = dos.get(page.page_id), dos.get(original.page_id)
+        same_document = document[i] is not None and document[i] == document[o]
+        if abs(i - o) <= NEAR_PAGES or same_document or (mine and theirs and mine == theirs):
+            # The same encounter: a 100% match stays a duplicate, anything less is a Partial.
+            overlap = word_overlap(texts.get(page.page_id) or "", texts.get(original.page_id) or "").overlap
+            if overlap < CONTENT_MIN_OVERLAP:
+                out.partial[page.page_id] = (original.page_id, overlap)
             continue
         key, encounter = encounter_of(i)
         members = set(encounter)
@@ -174,7 +159,11 @@ def review(
         average = averages[pair]
         anchor_ids = {pages[a].page_id for a in anchor}
         out.checked[page.page_id] = (original.page_id, average)
-        if average > DUPLICATE_SIMILARITY_THRESHOLD:
+        # 2026-11-03 (user): a copied encounter also has the same dates as its original.
+        copy_dates = frozenset().union(*(dos.get(pages[k].page_id) or frozenset() for k in encounter))
+        anchor_dates = frozenset().union(*(dos.get(pages[a].page_id) or frozenset() for a in anchor))
+        same_dates = not (copy_dates and anchor_dates and copy_dates != anchor_dates)
+        if average >= DUPLICATE_SIMILARITY_THRESHOLD and same_dates:
             for k in encounter:
                 pid = pages[k].page_id
                 if partial_of.get(pid) in anchor_ids:
@@ -183,12 +172,10 @@ def review(
             for k in encounter:
                 if pages[k].kind != "duplicate" or pages[k].duplicate_of not in anchor_ids:
                     continue
-                if string_length(k) > STRING_PAGES:
-                    continue  # a string of more than 3 copied pages stays a duplicate
                 pid, orig = pages[k].page_id, pages[k].duplicate_of
                 exact = word_overlap(texts.get(pid) or "", texts.get(orig) or "").overlap >= CONTENT_MIN_OVERLAP
                 (out.demote if exact else out.release)[pid] = (orig, average)
     # A page demoted or released by one check is never promoted by another.
-    for pid in [*out.demote, *out.release]:
+    for pid in [*out.demote, *out.release, *out.partial]:
         out.promote.pop(pid, None)
     return out

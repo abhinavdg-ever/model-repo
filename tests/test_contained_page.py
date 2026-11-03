@@ -30,3 +30,18 @@ def test_a_signed_page_or_one_with_its_own_words_stays(monkeypatch):
     assert rows[2]["flag"] == "not_blank_junk"
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " addendum newword"})
     assert rows[2]["flag"] == "not_blank_junk"
+
+
+def test_pass_1_marks_an_exact_copy_within_3_pages_the_later_page(monkeypatch):
+    """2026-11-03 (user): pass 1 tags the second of two pages with the same distinct words."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.5, "p_junk": 0.1}})
+    page = HEADER + BODY + FOOTER
+    texts = {1: page, 2: page, 3: HEADER + " other " + BODY,
+             **{n: HEADER + f" filler{n} " + BODY for n in (4, 5, 6)}, 7: page}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=1) for i in texts}
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs,
+                                                       find_duplicates=False, exact_near=True)}
+    assert rows[2]["flag"] == "duplicate" and rows[2]["duplicate_of"] == 1
+    assert rows[1]["flag"] != "duplicate" and rows[3]["flag"] != "duplicate"
+    assert rows[7]["flag"] != "duplicate"  # 6 places from page 1, 5 from page 2: not within 3

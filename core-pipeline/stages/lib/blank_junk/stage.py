@@ -34,9 +34,8 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   (15) distinct words different: a partial duplicate -- the page stays Main with
   ``duplicate_of_page_id`` set; UI "Partial (To Page N)".
 * The similarity is stored as ``confidence`` on both kinds of row.
-* On a match the page with **less on it** (fewer distinct words, then less text) is the
-  duplicate (or partial duplicate); the later page when the two are level (2026-10-29,
-  user).
+* On a match the **later page** is the duplicate (or partial duplicate) (2026-11-03, user;
+  was the page with less on it).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
 * A signature or ending page (kv_extract's Electronic Signature in pass 2, or
   ``duplicates.signature_terms`` on the page) is not a duplicate of a look-alike with a
@@ -268,6 +267,8 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
 SIGNED_COPY_MIN_WORDS = 100
 # The reason a contained page carries (2026-11-03: in pass 2; the same mark continuity used).
 CONTAINED_MARK = "short_page_contained_in_page_id:"
+# Pass 1 marks exact copies this close (2026-11-03, user).
+EXACT_NEAR_PAGES = 3
 CONTAINED_CONFIDENCE = 0.90
 
 
@@ -283,6 +284,7 @@ def _classify(
     signed_ids: Optional[set[int]] = None,
     dos_by_id: Optional[dict[int, frozenset[str]]] = None,
     find_duplicates: bool = True,
+    exact_near: bool = False,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -385,8 +387,10 @@ def _classify(
             }
 
     n = len(pages)
-    window = duplicate_window(n)
-    comparable = [find_duplicates and _comparable(page["id"]) for page in pages]
+    # Pass 1 (2026-11-03, user): only exact copies (the same distinct words, lengths within
+    # 10%) within EXACT_NEAR_PAGES pages; the later page is the duplicate.
+    window = EXACT_NEAR_PAGES if exact_near else duplicate_window(n)
+    comparable = [(find_duplicates or exact_near) and _comparable(page["id"]) for page in pages]
     length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
               for page, ok in zip(pages, comparable) if ok}
     for i, page in enumerate(pages):
@@ -428,7 +432,11 @@ def _classify(
             # inside a much longer one is a partial at most.
             len_a, len_b = length[pid], length[nid]
             similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
-            if similar_length and (
+            if exact_near:
+                if not (similar_length and words.different == 0):
+                    continue
+                kind, orig, dup = "duplicate", pid, nid  # the later page is the copy
+            elif similar_length and (
                 is_contained
                 or sim >= DUPLICATE_SIMILARITY_THRESHOLD
                 or (counts and words.different < rules["duplicate_below_words"])
@@ -440,11 +448,9 @@ def _classify(
                 kind = "partial"
             else:
                 continue
-            # 2026-10-29 (user): the page with less on it is the duplicate -- fewer
-            # distinct words, then less text; the later page when the two are level.
-            if (words.words_a, len_a) < (words.words_b, len_b):
-                orig, dup = nid, pid
-            else:
+            if not exact_near:
+                # 2026-11-03 (user): the later page is always the duplicate (was: the page
+                # with less on it, 2026-10-29); the earlier page keeps its values.
                 orig, dup = pid, nid
             if kind == "partial":
                 if sim > partial_sim.get(dup, 0.0) or dup not in partial_of:
@@ -1051,6 +1057,7 @@ def _run_pass(
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
             signed_ids=signed_ids, dos_by_id=dos_by_id,
             find_duplicates=pass_no == 2,
+            exact_near=pass_no == 1,
         )
 
         with connect() as conn:
