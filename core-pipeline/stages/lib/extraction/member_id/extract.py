@@ -313,6 +313,27 @@ def select_per_key(rows: list[IdHit]) -> list[IdHit]:
     return rows
 
 
+def one_per_value(rows: list[IdHit]) -> list[IdHit]:
+    """2026-11-03 (user): two keys that read the same ID ('Acct #' and 'Account No' both
+    23-4567) are one ID: only the best of them stays selected (header / footer first, then
+    the higher score). Every row is kept; only ``selected`` changes."""
+    best: dict[str, IdHit] = {}
+    for row in rows:
+        if not (row.selected and row.value):
+            continue
+        value = re.sub(r"[\s\-./]", "", _normalize(row.value)).casefold()
+        current = best.get(value)
+        if current is None or (region_priority(row.region), float(row.score or 0)) > (
+            region_priority(current.region), float(current.score or 0)
+        ):
+            if current is not None:
+                current.selected = False
+            best[value] = row
+        else:
+            row.selected = False
+    return rows
+
+
 def confirmed_repeats(hits: list[KeyHit], rows: list[IdHit], words: list[Word] | None) -> list[IdHit]:
     """Untrusted keys whose ID is one a trusted key already read on the page: a lone mid-page
     '(MRN 20766549)' repeats the header's MRN."""
@@ -329,4 +350,4 @@ def confirmed_repeats(hits: list[KeyHit], rows: list[IdHit], words: list[Word] |
 
 def extract_page(hits: list[KeyHit], words: list[Word] | None = None) -> list[IdHit]:
     rows = extract_field_keys(hits, "member_id", lambda hit: extract_box(hit, hits, words))
-    return select_per_key(rows + confirmed_repeats(hits, rows, words))
+    return one_per_value(select_per_key(rows + confirmed_repeats(hits, rows, words)))

@@ -400,3 +400,25 @@ class TestDosOtherTime:
                                ("09/25/2024", "discharge", 0.3, "0"))])
         out = pair_admit_discharge(log)
         assert list(out["model_selected"]) == ["0", "1", "1"]
+
+
+def test_two_keys_reading_the_same_member_id_keep_one():
+    """2026-11-03 (user): 'Acct #' and 'Account No' reading the same ID are one ID."""
+    from stages.lib.extraction.member_id.extract import IdHit, one_per_value
+
+    a = IdHit(key="Acct #", region="header", sentence="", value="23-4567", score=0.8, accepted=True, selected=True)
+    b = IdHit(key="Account No", region="body", sentence="", value="234567", score=0.9, accepted=True, selected=True)
+    c = IdHit(key="MRN", region="body", sentence="", value="998877", score=0.7, accepted=True, selected=True)
+    one_per_value([a, b, c])
+    assert (a.selected, b.selected, c.selected) == (True, False, True)  # header wins; MRN differs
+
+
+def test_review_ui_lists_each_member_id_value_once():
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.services.extraction_review import member_id_rows, member_id_text
+
+    rows = [{"key": "Acct #", "value": "23-4567", "score": 0.95, "selected": True, "accepted": True},
+            {"key": "Account No", "value": "234567", "score": 0.97, "selected": True, "accepted": True},
+            {"key": "MRN", "value": "998877", "score": 0.96, "selected": True, "accepted": True}]
+    assert member_id_text(member_id_rows(rows)) == "Account No: 234567\nMRN: 998877"

@@ -221,3 +221,8 @@ def apply_model_selection(result: DocumentResult, log: pd.DataFrame) -> None:
                 hit.model_score = float(score) if score else None
                 hit.selected = chosen == "1"
                 hit.accepted = accepted == "1" or hit.selected
+            if field_id == "member_id":
+                # 2026-11-03 (user): two keys that read the same ID stay one ID.
+                from .member_id.extract import one_per_value
+
+                one_per_value(hits)

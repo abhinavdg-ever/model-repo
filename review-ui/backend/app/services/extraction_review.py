@@ -133,8 +133,21 @@ def member_id_rows(rows: object) -> list[dict]:
     chosen = [hit for hit in _chosen(rows) if str(hit.get("value") or "").strip()]
     sure = [hit for hit in chosen if _row_score(hit) > MEMBER_ID_MIN_SCORE]
     if sure:
-        return sure
+        return _one_per_value(sure)
     return [max(chosen, key=_row_score)] if chosen else []
+
+
+def _one_per_value(rows: list[dict]) -> list[dict]:
+    """2026-11-03 (user): two keys that read the same ID ('Acct #' and 'Account No') show
+    once, under the better-scored key (core-pipeline member_id.one_per_value does the same
+    when it extracts)."""
+    best: dict[str, dict] = {}
+    for hit in rows:
+        value = re.sub(r"[\s\-./]", "", str(hit.get("value") or "")).casefold()
+        if value not in best or _row_score(hit) > _row_score(best[value]):
+            best[value] = hit
+    kept = {id(hit) for hit in best.values()}
+    return [hit for hit in rows if id(hit) in kept]
 
 
 def member_id_text(rows: list[dict]) -> str:
