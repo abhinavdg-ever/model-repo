@@ -2319,7 +2319,7 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
 function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed: boolean }) {
   if (!processed) return <div className="ocr-empty">{YET_TO_PROCESS}</div>;
   if (rows.length === 0) {
-    return <div className="ocr-empty">No page is not visible or low quality (the algorithm's own grade, before any downgrade).</div>;
+    return <div className="ocr-empty">No page is not visible or low quality.</div>;
   }
   return (
     <div className="member-rejection">
