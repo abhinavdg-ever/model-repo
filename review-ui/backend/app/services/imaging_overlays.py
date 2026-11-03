@@ -459,9 +459,18 @@ _PROVIDER_ROLE = re.compile(
 )
 
 
+# 2026-11-02 (user): a leading By / Street / Road is never part of a name (core-pipeline
+# stages/lib/names.py NAME_PREFIX_WORDS; rows written before it still have them).
+_NAME_PREFIX = re.compile(r"^(?:(?:by|street|road)(?![A-Za-z])[\s:.,;\-]*)+", re.IGNORECASE)
+
+
+def without_name_prefix(name: str) -> str:
+    return _NAME_PREFIX.sub("", (name or "").strip()).strip(" ,;:-")
+
+
 def without_role_words(name: str) -> str:
     text = re.sub(r"\s{2,}", " ", _PROVIDER_ROLE.sub(" ", name or "")).strip()
-    return re.sub(r"\s+,", ",", text).strip(" ,;:")
+    return without_name_prefix(re.sub(r"\s+,", ",", text).strip(" ,;:"))
 
 
 def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str]:

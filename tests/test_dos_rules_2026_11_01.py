@@ -187,3 +187,14 @@ class TestStrongLabelsAndEdges:
         assert _pages(loose, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == ""
         single = f"{self.FILL} DOS: 04/02/2024 {self.FILL}"
         assert _pages(single, page_families={"1.jpg": "Progress Note"})[0]["dos_from_iso"] == ""
+
+
+def test_a_leading_by_street_or_road_is_not_part_of_a_name():
+    """2026-11-02 (user): member and provider names lose a leading By / Street / Road."""
+    from stages.lib.names import trim_name, trim_provider_name
+
+    assert trim_name("By John Smith") == "John Smith"
+    assert trim_name("Street: Mary Jones") == "Mary Jones"
+    assert trim_name("ROAD Jane Doe") == "Jane Doe"
+    assert trim_provider_name("Legal Authenticator By Jane Doe") == "Jane Doe"
+    assert trim_name("Byron Smith") == "Byron Smith" and trim_name("John Street") == "John Street"

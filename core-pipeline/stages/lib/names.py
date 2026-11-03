@@ -2,7 +2,8 @@
 
 "→ Sameera T Raza", "- John Smith:", "(Mary Jones)" -> "Sameera T Raza", "John Smith",
 "Mary Jones". Letters and digits are kept at both ends, and one closing period after a
-short word -- an initial or a suffix ("Bridgett A.", "Smith Jr.").
+short word -- an initial or a suffix ("Bridgett A.", "Smith Jr."). A leading By / Street /
+Road ("By John Smith") is taken off (2026-11-02, user).
 """
 from __future__ import annotations
 
@@ -13,10 +14,17 @@ _LEADING = re.compile(r"^[\W_]+", re.UNICODE)
 _TRAILING = re.compile(r"[^\w.]+$|_+$", re.UNICODE)
 
 
+# 2026-11-02 (user): words a reader picks up in front of a name ("By John Smith", "Street
+# Mary Jones", "Road ...") are never part of it, member or provider.
+NAME_PREFIX_WORDS = ("by", "street", "road")
+_PREFIX = re.compile(r"^(?:(?:" + "|".join(NAME_PREFIX_WORDS) + r")(?![A-Za-z])[\s:.,;\-]*)+", re.IGNORECASE)
+
+
 def trim_name(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     text = _TRAILING.sub("", _LEADING.sub("", str(value).strip()))
+    text = _TRAILING.sub("", _LEADING.sub("", _PREFIX.sub("", text)))
     while text.endswith(".") and len(text.rstrip(".").split()[-1] if text.rstrip(".").split() else "") > 3:
         text = text[:-1]
     text = re.sub(r"\.{2,}$", ".", text)
