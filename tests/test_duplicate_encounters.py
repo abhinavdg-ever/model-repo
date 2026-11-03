@@ -53,3 +53,43 @@ def test_near_or_same_dos_or_other_types_are_not_checked():
     assert not duplicates.review(pages, rows, texts, partial_of={}, extracted_dos=same).demote
     pages, rows, texts = _chart({11}, family="Lab Report")
     assert not duplicates.review(pages, rows, texts, partial_of={}).demote
+
+
+class TestStringsAndCarriedForward:
+    """2026-11-02 / 11-03 (user): a whole encounter copy or a string of more than 3 copied pages
+    stays a duplicate; any other copied page is duplicate content at a 100% match, else
+    carried-forward content (No)."""
+
+    @staticmethod
+    def _long_chart(copied):
+        """Pages 1-6: document 1. Pages 7-12: other documents. Pages 13-20: document 2, in
+        which page 13 + c copies page 1 + c for every c in ``copied``."""
+        pages, rows, texts = [], [], {}
+        for pid in range(1, 21):
+            doc = 1 if pid <= 6 else 2 if pid >= 13 else 100 + pid
+            dup = pid - 13 in copied
+            pages.append(_page(pid, "duplicate" if dup else "main", "Progress Note", pid - 12 if dup else None))
+            rows.append({"segment_kind": "main", "document_seq": doc})
+            texts[pid] = _words(f"p{pid - 12}x") if dup else _words(f"p{pid}x")
+        return pages, rows, texts
+
+    def test_a_string_of_more_than_3_copied_pages_stays_a_duplicate(self):
+        pages, rows, texts = self._long_chart({1, 2, 3, 4})  # pages 14-17 copy 2-5
+        result = duplicates.review(pages, rows, texts, partial_of={})
+        assert not result.demote and not result.release
+
+    def test_a_string_of_3_or_fewer_is_judged_page_by_page(self):
+        pages, rows, texts = self._long_chart({1, 2, 3})  # pages 14-16 copy 2-4
+        result = duplicates.review(pages, rows, texts, partial_of={})
+        assert result.demote.keys() == {14, 15, 16} and not result.release
+
+    def test_a_single_page_not_matching_100_percent_is_carried_forward(self):
+        pages, rows, texts = _chart({11})
+        texts[11] = texts[11] + " added today"
+        result = duplicates.review(pages, rows, texts, partial_of={})
+        assert result.release.keys() == {11} and not result.demote
+
+    def test_other_families_now_checked(self):
+        for family in ("Operative Note", "Clinical Summary"):
+            pages, rows, texts = _chart({11}, family=family)
+            assert duplicates.review(pages, rows, texts, partial_of={}).demote.keys() == {11}

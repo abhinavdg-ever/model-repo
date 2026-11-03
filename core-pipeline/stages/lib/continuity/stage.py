@@ -334,11 +334,23 @@ def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str,
 
 def _kind(final: Optional[dict[str, Any]]) -> str:
     flag = (final or {}).get("blank_junk_flag") or "not_blank_junk"
-    if _content_copy(final):
-        return "duplicate"  # an earlier run's duplicate content: checked again
+    if _content_copy(final) or _carried_copy(final):
+        return "duplicate"  # an earlier run's duplicate content / carried-forward page: checked again
     if _short_junk(final):
         return "main"  # an earlier run's short-page junk: checked again
     return {"blank": "blank", "junk": "junk", "duplicate": "duplicate"}.get(flag, "main")
+
+
+def _carried_copy(final: Optional[dict[str, Any]]) -> bool:
+    """A page an earlier run's duplicate check made a plain Main page (carried-forward content)."""
+    return duplicates.CARRIED_MARK in str((final or {}).get("reason") or "")
+
+
+def _carried_original(final: Optional[dict[str, Any]]) -> Optional[int]:
+    import re as _re
+
+    found = _re.search(_re.escape(duplicates.CARRIED_MARK) + r"(\d+)", str((final or {}).get("reason") or ""))
+    return int(found.group(1)) if found else None
 
 
 def _content_copy(final: Optional[dict[str, Any]]) -> bool:
@@ -378,9 +390,10 @@ def _review_duplicates(
     result = duplicates.review(inputs, rows, texts, partial_of, dos)
     restored = [
         item for item in inputs
-        if _content_copy(bj.get(item.page_id)) and item.page_id not in result.demote
+        if (_content_copy(bj.get(item.page_id)) and item.page_id not in result.demote)
+        or (_carried_copy(bj.get(item.page_id)) and item.page_id not in result.release)
     ]
-    if not (result.promote or result.demote or restored):
+    if not (result.promote or result.demote or result.release or restored):
         return rows
     by_id = {item.page_id: item for item in inputs}
     with connect() as conn:
@@ -407,16 +420,32 @@ def _review_duplicates(
                 item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
                 item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
                 item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
+        for page_id, (original, average) in result.release.items():
+            revise_blank_junk_final(
+                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=None,
+                reason=f"{duplicates.CARRIED_MARK}{original} (a single page, not a 100% copy, in another "
+                       f"encounter: carried-forward content, not a duplicate)",
+            )
+            item, source = by_id[page_id], by_id.get(original)
+            item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
+            item.lines = item.lines or text_lines(item.text)
+            if source is not None:
+                item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
+                item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
+                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
         for item in restored:
-            original = bj[item.page_id]["duplicate_of_page_id"]
+            original = bj[item.page_id].get("duplicate_of_page_id") or _carried_original(bj[item.page_id])
+            if not original:
+                continue
             revise_blank_junk_final(
                 conn, item.page_id, blank_junk_flag="duplicate", duplicate_of_page_id=original,
                 reason=f"duplicate_of_page_id:{original} (re-checked: a duplicate)",
             )
         _rewrite_junk_csv(conn, chart_id, chart_name)
     logger.info(
-        "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content",
-        chart_name, len(result.promote), len(result.demote),
+        "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content, "
+        "%d duplicate -> carried-forward Main",
+        chart_name, len(result.promote), len(result.demote), len(result.release),
     )
     return assign(inputs, rules)
 
@@ -548,13 +577,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     junk_confidence=(
                         float(final["confidence"]) if kind == "junk" and (final or {}).get("confidence") is not None else None
                     ),
-                    duplicate_of=(final or {}).get("duplicate_of_page_id") if kind == "duplicate" else None,
+                    duplicate_of=(
+                        (final or {}).get("duplicate_of_page_id") or _carried_original(final)
+                    ) if kind == "duplicate" else None,
                     visual=kind == "main" and text_is_visual(page_type(quality.get(page_id)), text),
                 )
             )
 
         rows = assign(inputs, rules)
-        # 2026-10-29 (user): a far copy in a Progress Note / Discharge Summary is a
+        # 2026-10-29 (user): a far copy in a Progress Note / Discharge Summary / Operative Note / Clinical Summary is a
         # duplicate only when its whole encounter is a copy.
         rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         # 2026-11-01 (user): a short page contained in a nearby page is junk.

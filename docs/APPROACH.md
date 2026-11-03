@@ -117,7 +117,7 @@ document (described, not changed: this document changes no code).
 | b | **Duplicate pages** written up (4A): found in pass 2 only (pass 1 marks none, exact copies included); the 98% / contained / word-count rules and partials; never across different dates or a signature page apart | `blank_junk/stage._classify` |
 | c | The page with **less content** is the duplicate (fewer distinct words, then less text; the later page when level). Was: the later page, unless a contained pair's larger page added more than 10 words | `blank_junk/stage._classify` |
 | d | A duplicate is **not junk**: Blank / Junk "No", Duplicate "Duplicate (To Page N)"; it takes its original's values in `imaging_final` | `blank_junk/classify.py`, review-ui `duplicateLabel.ts` |
-| e | **Continuity checks a far copy encounter against encounter** (Progress Note / Discharge Summary originals only): above 98% the encounter is a duplicate and its partials become duplicates; 98% or below the copies are Main pages again, "No (Duplicate Content, Page N)", filling empty values from the original | `continuity/duplicates.review`, `continuity/stage._review_duplicates`, `imaging_final.run` |
+| e | **Continuity checks a far copy encounter against encounter** (Progress Note / Discharge Summary / Operative Note / Clinical Summary originals; the last two since 2026-11-02): above 98% the encounter is a duplicate and its partials become duplicates; 98% or below the copies are Main pages again, "No (Duplicate Content, Page N)", filling empty values from the original | `continuity/duplicates.review`, `continuity/stage._review_duplicates`, `imaging_final.run` |
 | f | 6.1: a duplicate-content page is not skipped by the encounter stage; 8: DOS confidences added to the per-module table | `encounter/stage.run`, `dos/dos_logic.py` |
 | g | `imaging_final.is_duplicate` is false on a duplicate-content page (the page type row's `duplicate_flag` was written before continuity; fixed) | `imaging_final.run` (4A.5) |
 
@@ -1699,7 +1699,7 @@ docstring), `blank_junk/classify.py: word_overlap`, settings
         ▼
  later stages skip duplicates (page type copies its original's, no DOS, no encounter)
         ▼
- continuity: a far copy of a Progress Note / Discharge Summary page
+ continuity: a far copy of a Progress Note / Discharge Summary / Operative Note / Clinical Summary page
              ── its encounter averages > 98% against the original's document → a duplicate encounter
                                                                              (partials become duplicates)
              ── ≤ 98%  → Main page again: "No (Duplicate Content, Page N)"
