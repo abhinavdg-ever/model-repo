@@ -2362,35 +2362,60 @@ function isoOf(value: string | null | undefined): string {
   return iso.startsWith("2222") ? "" : iso;
 }
 
-type ServicePage = { page: ImagingPageResult; from: string; to: string; status: "in" | "out" | "none" };
+/** One encounter (continuity document) of Main pages: its pages and its date of service. */
+type ServiceEncounter = {
+  encounter: number | null;
+  startPage: number;
+  endPage: number;
+  from: string;
+  to: string;
+  status: "in" | "out" | "none";
+};
 type ServiceReview = {
   from: string | null;
   to: string | null;
   words: string | null;
   measure: string | null;
-  rows: ServicePage[];
+  rows: ServiceEncounter[];
   verdict: "in" | "out_of_time_frame" | "requested_dos_missing" | "no_window";
 };
 
-/** Service Date (2026-11-01, user): each Main page's Final DOS (else its Extracted DOS)
- * against the requested window the service note gives. Out of Time Frame: pages are dated
- * but none inside the window. Requested DOS Missing: no page has a date. */
+/** Service Date (2026-11-01, user; per encounter 2026-11-03): each encounter of Main pages
+ * (its continuity document; a Main page in none stands alone) against the requested window
+ * the service note gives. The encounter's DOS is its Final DOS, else its first dated page's
+ * (Final, then Extracted). Out of Time Frame: encounters are dated but none is inside;
+ * Requested DOS Missing: no encounter has a date; no window: Not Available, every encounter
+ * passes. */
 export function serviceDateReview(pages: ImagingPageResult[], manifest?: ImagingManifestDetails | null): ServiceReview {
   const from = manifest?.serviceFrom ?? null;
   const to = manifest?.serviceTo ?? null;
-  const rows: ServicePage[] = [];
-  for (const page of pages) {
+  const groups: { encounter: number | null; pages: ImagingPageResult[] }[] = [];
+  const byDocument = new Map<number, ImagingPageResult[]>();
+  for (const page of [...pages].sort((a, b) => a.pageNumber - b.pageNumber)) {
     if (isBlankJunkPage(page) || page.isDuplicate === true) continue;
-    const start = isoOf(page.finalDosFrom) || isoOf(page.dosFrom);
-    const end = isoOf(page.finalDosTo) || isoOf(page.dosTo) || start;
-    if (!start) {
-      rows.push({ page, from: "", to: "", status: "none" });
+    if (page.documentSeq == null) {
+      groups.push({ encounter: null, pages: [page] });
       continue;
     }
-    // No requested window (2026-11-01, user): Not Available, every page passes.
-    const inside = !from || !to || (end >= from && start <= to);
-    rows.push({ page, from: start, to: end, status: inside ? "in" : "out" });
+    let members = byDocument.get(page.documentSeq);
+    if (!members) {
+      members = [];
+      byDocument.set(page.documentSeq, members);
+      groups.push({ encounter: page.documentSeq, pages: members });
+    }
+    members.push(page);
   }
+  const rows: ServiceEncounter[] = groups.map(({ encounter, pages: members }) => {
+    const dated = members.find((page) => isoOf(page.finalDosFrom) || isoOf(page.dosFrom));
+    const start = dated ? isoOf(dated.finalDosFrom) || isoOf(dated.dosFrom) : "";
+    const end = dated ? isoOf(dated.finalDosTo) || isoOf(dated.dosTo) || start : "";
+    const startPage = members[0].pageNumber;
+    const endPage = members[members.length - 1].pageNumber;
+    if (!start) return { encounter, startPage, endPage, from: "", to: "", status: "none" };
+    // No requested window (2026-11-01, user): Not Available, every encounter passes.
+    const inside = !from || !to || (end >= from && start <= to);
+    return { encounter, startPage, endPage, from: start, to: end, status: inside ? "in" : "out" };
+  });
   const dated = rows.filter((r) => r.status !== "none");
   const verdict: ServiceReview["verdict"] = !from || !to ? "no_window"
     : dated.length === 0 ? "requested_dos_missing"
@@ -2402,7 +2427,7 @@ const SERVICE_VERDICT: Record<ServiceReview["verdict"], string> = {
   in: "In time frame",
   out_of_time_frame: "Reject: Missing Service Note/DOS — Out of Time Frame",
   requested_dos_missing: "Reject: Missing Service Note/DOS — Requested DOS Missing",
-  no_window: "Service date range: Not Available — every page passes",
+  no_window: "Service date range: Not Available — every encounter passes",
 };
 
 function ServiceDateTable({ review, processed }: { review: ServiceReview; processed: boolean }) {
@@ -2418,22 +2443,28 @@ function ServiceDateTable({ review, processed }: { review: ServiceReview; proces
       </p>
       <p className={`member-rejection-verdict${review.verdict === "in" || review.verdict === "no_window" ? "" : " reject"}`}>
         <strong>{SERVICE_VERDICT[review.verdict]}</strong>
-        {review.verdict !== "no_window" ? ` — ${inside.length} page(s) inside, ${outside.length} outside, ${review.rows.length - inside.length - outside.length} without a date.` : ""}
+        {review.verdict !== "no_window" ? ` — ${inside.length} encounter(s) inside, ${outside.length} outside, ${review.rows.length - inside.length - outside.length} without a date.` : ""}
       </p>
       <table className="imaging-summary-table imaging-rejection-table">
         <thead>
           <tr>
-            <th scope="col">Page</th>
-            <th scope="col">DOS</th>
+            <th scope="col">Encounter</th>
+            <th scope="col">Page start</th>
+            <th scope="col">Page end</th>
+            <th scope="col">DOS from</th>
+            <th scope="col">DOS to</th>
             <th scope="col">Service window</th>
           </tr>
         </thead>
         <tbody>
-          {review.rows.map(({ page, from, to, status }) => (
-            <tr key={`${page.pageNumber}-${page.fileName}`} className={status === "out" ? "row-reject" : undefined}>
-              <td>{page.pageNumber}</td>
-              <td>{from ? (to && to !== from ? `${displayIsoDates(from)} – ${displayIsoDates(to)}` : displayIsoDates(from)) : NOT_FOUND}</td>
-              <td>{review.verdict === "no_window" ? "Pass (no range)" : status === "in" ? "Inside" : status === "out" ? "Out of Time Frame" : "No DOS"}</td>
+          {review.rows.map(({ encounter, startPage, endPage, from, to, status }) => (
+            <tr key={`${encounter ?? "p"}-${startPage}`} className={status === "out" ? "row-reject" : undefined}>
+              <td>{encounter ?? "—"}</td>
+              <td>{startPage}</td>
+              <td>{endPage}</td>
+              <td>{from ? displayIsoDates(from) : NOT_FOUND}</td>
+              <td>{to ? displayIsoDates(to) : NOT_FOUND}</td>
+              <td>{review.verdict === "no_window" ? "Pass (no range)" : status === "in" ? "In Time Frame" : status === "out" ? "Out of Time Frame" : "No DOS"}</td>
             </tr>
           ))}
         </tbody>
