@@ -445,3 +445,21 @@ def test_the_word_provider_is_not_part_of_a_provider_name():
 
     assert trim_provider_name("Provider Dianne Kreptowski") == "Dianne Kreptowski"
     assert trim_provider_name("Providence Smith") == "Providence Smith"
+
+
+def test_local_mode_manual_review_reads_every_staged_member_id(tmp_path):
+    import json
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
+    from app.services.excel_compare.database_algo import with_every_member_id
+
+    staging = tmp_path / "chart1" / "staging"
+    staging.mkdir(parents=True)
+    rows = [{"key": "MRN", "value": "998877", "accepted": True, "selected": True},
+            {"key": "Acct #", "value": "23-4567", "accepted": True, "selected": True}]
+    (staging / "extraction.json").write_text(json.dumps({"pages": {"1.jpg": {"fields": {"member_id": rows}}}}), encoding="utf-8")
+    doc = ImagingDocumentResponse.model_construct(pages=[ImagingPageResult(pageNumber=1, fileName="1.jpg", memberId="998877")])
+    out = with_every_member_id(doc, tmp_path, "chart1")
+    assert out.pages[0].memberId == "998877 | 23-4567"
+    assert with_every_member_id(doc, tmp_path, "missing").pages[0].memberId == "998877"

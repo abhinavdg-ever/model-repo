@@ -11,6 +11,8 @@ Sure" codability, sequencing), so they match what the chart view shows.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from datetime import datetime
 
 from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
@@ -134,6 +136,32 @@ def all_member_ids(chosen: str | None, rows: object) -> str | None:
             seen.add(key)
             ids.append(value)
     return " | ".join(ids) or chosen
+
+
+def with_every_member_id(doc, data_root, folder_id: str):
+    """Local Mode (2026-11-03, user): the chart view's pages with every member ID each page
+    carries (staging/extraction.json, the member_id rows), as all_member_ids gives them in
+    Production Mode. A chart without the file keeps its pages as they were."""
+    import json
+
+    from app.services.extraction_review import _folder_dir, _page_fields, _page_for
+
+    from fastapi import HTTPException
+
+    try:
+        path = _folder_dir(Path(data_root), folder_id) / "staging" / "extraction.json"
+        payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    except (HTTPException, OSError, ValueError):
+        payload = None
+    staged = payload.get("pages") if isinstance(payload, dict) else None
+    if not isinstance(staged, dict) or doc is None:
+        return doc
+    pages = [
+        page.model_copy(update={"memberId": all_member_ids(
+            page.memberId, _page_fields(_page_for(staged, page.fileName or f"{page.pageNumber}.jpg")).get("member_id"))})
+        for page in doc.pages
+    ]
+    return doc.model_copy(update={"pages": pages})
 
 
 def _hw_label(value: object) -> str | None:

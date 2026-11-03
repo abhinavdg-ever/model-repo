@@ -1225,6 +1225,8 @@ class _PipelineCharts:
                 doc = self._repo.get_imaging(pdf_id)
             except HTTPException:
                 doc = None  # no such chart, or no imaging output yet
+            # Every member ID each page carries, as Production Mode compares them (2026-11-03).
+            doc = excel_compare.database_algo.with_every_member_id(doc, self._data_root(), pdf_id)
         return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
 
     def last_run(self, pdf_id: str) -> str | None:
