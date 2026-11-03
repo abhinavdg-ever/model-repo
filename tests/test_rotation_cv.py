@@ -1,5 +1,5 @@
 """2026-11-03 (user): rotation_cv is a second opinion on the coarse turn. OSD and it agreeing
-on a quarter-turn turn the page; otherwise the reading rule decides, as before."""
+(0 included) decide the turn; otherwise the reading rule decides, as before."""
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,5 +55,5 @@ def test_agreeing_on_a_turn_turns_the_page(monkeypatch, tmp_path):
 def test_disagreeing_goes_through_the_reading_rule(monkeypatch, tmp_path):
     out, reading = _run(monkeypatch, tmp_path, 90, 0)
     assert reading and out["method"] == "readability" and out["orientation_angle"] == 0.0
-    out, reading = _run(monkeypatch, tmp_path, 0, 0)  # both 0: the reading rule, as before
-    assert reading
+    out, reading = _run(monkeypatch, tmp_path, 0, 0)  # both 0: stays 0, no reading search
+    assert (out["orientation_angle"], out["method"], reading) == (0.0, "osd_cv_agree", False)

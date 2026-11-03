@@ -222,10 +222,11 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # empty sheet has nothing to read and keeps OSD's answer.
         orientation, mirrored = float(proposed), False
         # 2026-11-03 (user): a second opinion from the page's letter shapes (rotation_cv).
-        # OSD and it agreeing on a quarter-turn turn the page by it; any other answer (they
-        # disagree, or both say 0) goes through the reading rule as before.
+        # OSD and it agreeing decide the turn, 0 included (both 0: the page stays as it is,
+        # no reading search -- so a mirrored scan both call 0 is not flipped); when they
+        # disagree the reading rule decides as before.
         cv_turn = _cv_rotation(image)
-        agreed = osd is not None and cv_turn is not None and cv_turn == proposed and proposed in (90, 180, 270)
+        agreed = osd is not None and cv_turn is not None and cv_turn == proposed
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
         small = None
         if tags.get("document_type") != "blank":
