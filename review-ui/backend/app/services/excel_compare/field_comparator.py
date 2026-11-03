@@ -409,6 +409,13 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         elif field_name in TEXT_CLASSIFICATION_FIELDS and clean_text(gt_raw) in _UNSCORED_TYPE_LABELS:
             # "-" / NA / Not Available page type: not scored, as on the Accuracy tab.
             is_match = True
+        elif (
+            field_name == BLANK_OR_JUNK_FIELD
+            and normalize_labelled_yes_no(gt_raw) == "yes"
+            and normalize_labelled_yes_no(_raw_value(system_row, "Duplicate")) == "yes"
+        ):
+            # A full duplicate the reviewer called junk or blank: a match (2026-11-03, user).
+            is_match = True
         elif presence in ("yes", "no"):
             # "Is a member ID on the page?" -- found or not, not the value.
             # An algo "-" or "N/A" is "none found", as a blank is.

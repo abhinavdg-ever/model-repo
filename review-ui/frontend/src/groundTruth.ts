@@ -238,11 +238,14 @@ function blankJunkMark(
   gt: PageGroundTruth,
   pipeline: string | null | undefined,
   known: boolean,
+  duplicate = false,
 ): GtBit[] {
   const expected = blankJunkTruth(gt);
   if (!expected) return [];
   if (!known || missing(pipeline)) return bit(expected, "unknown");
   const left = fold(expected);
+  // A full duplicate the reviewer called junk or blank: right either way (2026-11-03, user).
+  if (duplicate && left.startsWith("yes")) return bit(expected, "match");
   const right = fold(pipeline);
   // Blank against Junk (or one junk subtype against another) is still a match: both say
   // Yes, and the page is out of the record either way.
@@ -567,6 +570,8 @@ export function groundTruthBits(input: {
   dosTo: string | null | undefined;
   dosKnown: boolean;
   blankOrJunk: string | null | undefined;
+  /** A full duplicate: the ground truth's Yes (Junk / Blank) is a match (2026-11-03, user). */
+  isDuplicate?: boolean | null;
   junkKnown: boolean;
   pageType: string | null | undefined;
   /** The type inside the family, "Discharge Note" of "Discharge (Discharge Note)". */
@@ -602,7 +607,7 @@ export function groundTruthBits(input: {
     rotation: rotationMark(gt.rotation, input.orientationAngle, input.rotationKnown),
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
-    blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
+    blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown, input.isDuplicate === true),
     // The ground-truth page type lives in the Encounter Type column; the Page
     // Type cell is the fallback when Encounter Type is empty.
     pageType: pageTypeMark(

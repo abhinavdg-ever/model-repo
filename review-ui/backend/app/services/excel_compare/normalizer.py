@@ -143,9 +143,12 @@ def normalize_labelled_yes_no(value):
     if match:
         return match.group(1)
 
-    # The screen's Duplicate column: "Duplicate (To Page 4)" is a Yes.
+    # The screen's Duplicate column: "Duplicate (To Page 4)" is a Yes; "Repeated Content (To
+    # Page 4)" a No (a Main page that repeats another, 2026-11-03).
     if re.fullmatch(r"duplicate(\s*\(.*\))?", text):
         return "yes"
+    if re.fullmatch(r"repeated content(\s*\(.*\))?", text):
+        return "no"
 
     return normalize_yes_no(value)
 

@@ -3,7 +3,7 @@
  * 2026-10-22 (user): a duplicate — ``isDuplicate`` — reads "Duplicate (To Page N)" here
  * and, since 2026-10-29, "No" under Blank / Junk (not junk); a partial duplicate —
  * ``isPartialDuplicate`` — reads "Partial (To Page N)" and stays a Main page. A copied page
- * whose encounter is not a copy — ``isDuplicateContent`` — reads "No (Duplicate Content,
+ * whose encounter is not a copy — ``isDuplicateContent`` — reads "Repeated Content (To
  * Page N)". */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
@@ -75,7 +75,8 @@ export function formatDuplicateLabel(
   const withTarget = (state: string) => (target ? `${state} (To ${target})` : state);
   if (isDuplicate) return withTarget("Duplicate");
   if (labels.isPartial) return withTarget("Partial");
-  if (labels.isContent) return target ? `No (Duplicate Content, ${target})` : "No (Duplicate Content)";
+  // 2026-11-03 (user): a page repeating another 100% that the encounter check kept: "Repeated Content".
+  if (labels.isContent) return target ? `Repeated Content (To ${target})` : "Repeated Content";
   return "No";
 }
 

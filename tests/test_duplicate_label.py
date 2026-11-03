@@ -80,3 +80,13 @@ def test_a_pair_flagged_on_its_word_count_below_the_cut_reads_50_percent():
     # A short page: 4 distinct words different (a duplicate) at 90% overlap.
     assert duplicate_display_confidence(True, 0.9, False, 0.90) == 0.5
     assert duplicate_display_confidence(False, 0.9, True, 0.93) == 0.5
+
+
+def test_repeated_content_label_reads_as_no_in_manual_review():
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.services.duplicate_label import format_duplicate_label
+    from app.services.excel_compare.normalizer import normalize_labelled_yes_no
+
+    assert format_duplicate_label(False, None, is_content=True) == "Repeated Content"
+    assert normalize_labelled_yes_no("Repeated Content (To Page 4)") == "no"

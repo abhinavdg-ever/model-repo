@@ -368,7 +368,7 @@ class ImagingPageResult(BaseModel):
     # True: 95-98% alike -- a partial duplicate; the page keeps its own verdict (Main or junk).
     isPartialDuplicate: bool | None = None
     # True: a copy of another page whose encounter is not a copy of that page's (the
-    # continuity stage's check, 2026-10-29): a Main page, "No (Duplicate Content, Page N)".
+    # continuity stage's check, 2026-10-29): a Main page, "Repeated Content (To Page N)".
     isDuplicateContent: bool | None = None
     # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
     duplicateOf: str | None = None

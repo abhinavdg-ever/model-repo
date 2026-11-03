@@ -226,7 +226,7 @@ export type ImagingPageResult = {
   /** 95–98% alike: a partial duplicate; the page keeps its own verdict (Main or junk). */
   isPartialDuplicate?: boolean | null;
   /** A copied page whose encounter is not a copy (continuity, 2026-10-29): a Main page,
-   * "No (Duplicate Content, Page N)". */
+   * "Repeated Content (To Page N)". */
   isDuplicateContent?: boolean | null;
   /** The page's highest duplicate similarity (0–1), whatever its verdict. */
   duplicateConfidence?: number | null;

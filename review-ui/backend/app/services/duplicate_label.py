@@ -61,8 +61,8 @@ def format_duplicate_label(
     is_partial: bool | None = None,
     is_content: bool | None = None,
 ) -> str:
-    """Duplicate for a duplicate; Partial for a partial duplicate; "No (Duplicate
-    Content)" for a copied page whose encounter is not a copy (2026-10-29); No otherwise."""
+    """Duplicate for a duplicate; Partial for a partial duplicate; "Repeated Content" for a page
+    repeating another 100% whose encounter is not a copy (2026-10-29 / 11-03); No otherwise."""
     del confidence  # the pipeline's flag decides; kept for callers' signature
     if is_duplicate is None:
         return "NA"
@@ -71,5 +71,5 @@ def format_duplicate_label(
     if is_partial:
         return "Partial"
     if is_content:
-        return "No (Duplicate Content)"
+        return "Repeated Content"  # 2026-11-03 (user); was "No (Duplicate Content)"
     return "No"

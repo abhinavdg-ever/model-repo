@@ -373,6 +373,7 @@ function pageScores(
     dosTo: pipelineDate(page.dosTo) || null,
     dosKnown: sections.dos,
     blankOrJunk: page.blankOrJunk,
+    isDuplicate: page.isDuplicate,
     junkKnown: sections.junk,
     pageType: parts.family,
     pageSubtype: parts.subtype,
