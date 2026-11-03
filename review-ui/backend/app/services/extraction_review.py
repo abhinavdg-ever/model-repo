@@ -150,11 +150,21 @@ def _one_per_value(rows: list[dict]) -> list[dict]:
     return [hit for hit in rows if id(hit) in kept]
 
 
+# 2026-11-03 (user): a key as the catalog spells it ("id #", "mrn") reads in capitals.
+_KEY_ACRONYMS = re.compile(r"(?i)(?<![a-z])(id|mrn|ssn|mbi|hicn|fin|csn|dob|pcp)(?![a-z])")
+
+
+def display_key(key: str) -> str:
+    """'id #' -> 'ID #', 'mrn' -> 'MRN', 'acct no' -> 'Acct no'."""
+    text = _KEY_ACRONYMS.sub(lambda m: m.group(1).upper(), key)
+    return text[:1].upper() + text[1:] if text else text
+
+
 def member_id_text(rows: list[dict]) -> str:
     """"Key: Value", one per line, each pair once."""
     lines: list[str] = []
     for hit in rows:
-        key = str(hit.get("key") or "").strip()
+        key = display_key(str(hit.get("key") or "").strip())
         value = str(hit.get("value") or "").strip()
         line = f"{key}: {value}" if key else value
         if line and line not in lines:

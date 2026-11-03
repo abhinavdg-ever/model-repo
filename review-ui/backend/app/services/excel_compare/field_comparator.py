@@ -418,6 +418,12 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             is_match = not has_value(system_raw)
         else:
             is_match = _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized)
+            if is_match and field_name == "Member ID" and len(_parts(system_raw)) > 1:
+                # The page's IDs (2026-11-03, user): show the one that matched.
+                system_raw = next(
+                    (found for found in _parts(system_raw) for gt in _parts(gt_raw) if identifiers_match(gt, found)),
+                    system_raw,
+                )
             alternate = _alternate(system_row, field_name)
             if not is_match and alternate:
                 # The pipeline's Extracted value is right: a match, as on the Accuracy tab.

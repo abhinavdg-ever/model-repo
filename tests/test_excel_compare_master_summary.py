@@ -292,21 +292,21 @@ def test_database_algo_row_carries_document_type():
         columns += char == "," and depth == 0
     row = [None] * columns
     row[0], row[1], row[2] = "100", 4, "4.png"
-    row[-4], row[-3] = "visual", "printed"
+    row[-5], row[-4] = "visual", "printed"  # the last column is the member_id rows (2026-11-03)
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == ("Visual", "Printed")
-    row[-4], row[-3] = None, "handwritten"
+    row[-5], row[-4] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
-    # The second-last column: this Main page names the page it nearly copies (Partial);
+    # The third-last column: this Main page names the page it nearly copies (Partial);
     # with the duplicate-content reason it is a copy whose encounter is not (2026-10-29).
-    row[8], row[-2] = "not_blank_junk", True
+    row[8], row[-3] = "not_blank_junk", True
     assert database_algo._page(tuple(row)).isPartialDuplicate is True
-    row[-1] = "duplicate_content_of_page_id:3 (...)"
+    row[-2] = "duplicate_content_of_page_id:3 (...)"
     content = database_algo._page(tuple(row))
     assert (content.isPartialDuplicate, content.isDuplicateContent) == (False, True)
-    row[-1] = None
-    row[8], row[-2] = "duplicate", True
+    row[-2] = None
+    row[8], row[-3] = "duplicate", True
     page = database_algo._page(tuple(row))
     assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "No")
 

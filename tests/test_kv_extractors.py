@@ -422,3 +422,26 @@ def test_review_ui_lists_each_member_id_value_once():
             {"key": "Account No", "value": "234567", "score": 0.97, "selected": True, "accepted": True},
             {"key": "MRN", "value": "998877", "score": 0.96, "selected": True, "accepted": True}]
     assert member_id_text(member_id_rows(rows)) == "Account No: 234567\nMRN: 998877"
+
+
+def test_member_id_keys_read_in_capitals_and_manual_review_sees_every_id():
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.services.excel_compare.database_algo import all_member_ids
+    from app.services.excel_compare.field_comparator import _values_match
+    from app.services.extraction_review import display_key
+
+    assert display_key("id #") == "ID #" and display_key("mrn") == "MRN"
+    rows = [{"key": "MRN", "value": "998877", "accepted": True, "selected": True},
+            {"key": "Acct #", "value": "23-4567", "accepted": True, "selected": True},
+            {"key": "Account No", "value": "23 4567", "accepted": True, "selected": True}]
+    shown = all_member_ids("998877", rows)
+    assert shown.split(" | ")[0] == "998877" and len(shown.split(" | ")) == 2
+    assert _values_match("Member ID", "234567", shown, "234567", shown)
+
+
+def test_the_word_provider_is_not_part_of_a_provider_name():
+    from stages.lib.names import trim_provider_name
+
+    assert trim_provider_name("Provider Dianne Kreptowski") == "Dianne Kreptowski"
+    assert trim_provider_name("Providence Smith") == "Providence Smith"

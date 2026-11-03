@@ -451,6 +451,8 @@ _PROVIDER_ROLE_WORDS = (
     "legal authenticator", "legal authority", "signing authority", "signing authenticator",
     "authenticator", "authenticated by", "authenticated", "authority", "authorized by",
     "legal", "signing", "signed by", "e-signed by", "electronically signed by", "signer",
+    # 2026-11-03 (user): "Provider Dianne Kreptowski".
+    "rendering provider", "attending provider", "provider name", "provider",
 )
 _PROVIDER_ROLE = re.compile(
     r"(?<![A-Za-z])(?:" + "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in

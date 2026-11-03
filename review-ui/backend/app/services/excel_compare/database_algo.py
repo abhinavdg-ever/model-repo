@@ -35,7 +35,8 @@ SELECT c.chart_name,
        f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials',
        to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version',
        to_jsonb(q) ->> 'document_type', q.printed_or_handwritten,
-       b.duplicate_of_page_id IS NOT NULL, b.reason
+       b.duplicate_of_page_id IS NOT NULL, b.reason,
+       a.extraction_fields -> 'fields' -> 'member_id'
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -45,6 +46,7 @@ SELECT c.chart_name,
   LEFT JOIN imaging_final f ON f.page_id = p.id
   LEFT JOIN page_sequencing_results s ON s.page_id = p.id
   LEFT JOIN ocr_quality_results q ON q.page_id = p.id
+  LEFT JOIN additional_page_details a ON a.page_id = p.id
  WHERE c.chart_name = ANY(%s)
  ORDER BY c.chart_name, 2
 """
@@ -66,8 +68,9 @@ def _page(row: tuple) -> ImagingPageResult:
         sequenced, current_seq, actual_seq,
         provider, signed, credentials, signers, version,
         document_type, printed_or_handwritten,
-        names_original, bj_reason,
+        names_original, bj_reason, *extra,
     ) = row
+    id_rows = extra[0] if extra else None  # additional_page_details member_id rows (2026-11-03)
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -86,7 +89,7 @@ def _page(row: tuple) -> ImagingPageResult:
         fileName=_text(page_name) or f"{page_number}.jpg",
         memberName=_text(name),
         memberDob=_fmt_date(dob),
-        memberId=_text(member_id),
+        memberId=all_member_ids(_text(member_id), id_rows),
         dosFrom=_fmt_date(dos_from),
         dosTo=_fmt_date(dos_to),
         blankOrJunk=blank,
@@ -113,6 +116,24 @@ def _page(row: tuple) -> ImagingPageResult:
         documentType=page_type_fields(document_type, None, None).get("documentType"),
         handwrittenOrPrinted=_hw_label(printed_or_handwritten),
     )
+
+
+def all_member_ids(chosen: str | None, rows: object) -> str | None:
+    """2026-11-03 (user): every member ID the page carries, the member stage's own first, each
+    value once, joined with " | " -- Manual Review matches the ground truth against any of them
+    (field_comparator._values_match) and shows the one that matched."""
+    from app.services.excel_compare.normalizer import _identifier_core
+    from app.services.extraction_review import _chosen
+
+    ids: list[str] = []
+    seen: set[str] = set()
+    for value in [chosen or "", *(str(r.get("value") or "") for r in _chosen(rows))]:
+        value = value.strip()
+        key = _identifier_core(value) or value.casefold()
+        if value and value.upper() not in ("N/A", "NA", "-") and key not in seen:
+            seen.add(key)
+            ids.append(value)
+    return " | ".join(ids) or chosen
 
 
 def _hw_label(value: object) -> str | None:
