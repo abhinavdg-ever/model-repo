@@ -50,6 +50,13 @@
     "text_dates_note": "Two pages whose own text differs in any date (dates compared in ISO form, so 5/3/2024 = 05/03/2024) are never duplicates or partials, in pass 1 and pass 2 (2026-10-27, user).",
     "signed_copy_note": "A signature / ending page apart from its look-alike (a Main page between) is not a duplicate, unless the two are exact copies (the same distinct words, lengths within 10%) of more than 100 words each: then it is (2026-10-27, user)."
   },
+  "fax_unsigned": {
+    "note": "2026-11-02 (user): pass 2, after every other rule: a page kept as content (Main) whose header band (zones.header_band, the top 12%; the first 5 text lines when there are no word boxes) has one of fax_terms, and that has no signature -- no Electronic Signature from kv_extract and none of signature_terms anywhere on the page -- is Junk / Letter/Fax (rule FAX). A signed faxed page stays Main.",
+    "enabled": true,
+    "fax_terms": ["fax", "faxed", "fax to", "fax from", "facsimile"],
+    "signature_terms": ["signature", "signed", "e-signed", "esigned", "cosigned", "attestation", "attested"],
+    "header_lines_without_boxes": 5
+  },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,

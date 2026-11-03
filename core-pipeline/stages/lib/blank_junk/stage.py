@@ -934,6 +934,18 @@ def _run_pass(
                 # pass 2 does not judge it again.
                 reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)
                 kept = [pid for pid in ctx.todo if method.is_final_keep(reasons.get(pid))]
+                # 2026-11-02 (user): a final keep with Fax in its header and no signature is
+                # judged again, so the fax rule (method.fax_unsigned) can junk it.
+                from stages.lib.continuity.signature import signed_page_names
+
+                signed_now = signed_page_names(ctx.chart_name)
+                names = {page["id"]: page["page_name"] for page in ctx.pages}
+                kept = [
+                    pid for pid in kept
+                    if not method.fax_unsigned(method.PageInputs(
+                        text=texts.get(pid) or "", pass_no=2, signed=names.get(pid) in signed_now,
+                        prelim_text=prelim_texts.get(pid) or "" if isinstance(prelim_texts, dict) else ""))
+                ]
                 mark_skipped(conn, ctx, kept, "final_keep_pass1")
                 # A page typed Blank with no text is judged (R1: Blank, 2026-10-27, user);
                 # any other page without final OCR text waits for it.

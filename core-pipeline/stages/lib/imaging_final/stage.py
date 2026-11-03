@@ -296,6 +296,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             continuity = get_continuity_map(conn, chart_id)
             texts = page_texts(conn, chart_id, ctx.pages, quality)
         signatures = _signatures(provider_rows)
+        # 2026-11-02 (user): a page junked after page type / DOS / member ran on it (continuity's
+        # short page contained in a nearby page) shows what any blank / junk page shows:
+        # none of those stages' values.
+        for pid in [pid for pid, row in blank_junk.items() if (row or {}).get("blank_junk_flag") in ("blank", "junk")]:
+            for values in (classification, dos, members, encounters):
+                values.pop(pid, None)
 
         # Each page's own DOS, Extracted page type and encounter type come
         # first; continuity grouped the pages from them; then every page of a

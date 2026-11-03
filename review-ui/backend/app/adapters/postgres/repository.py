@@ -1128,11 +1128,17 @@ class PostgresFolderRepository(FolderRepository):
                             k: float(v) for k, v in measured.items() if isinstance(v, (int, float))
                         }
 
+            # 2026-11-02 (user): a blank / junk page shows only what blank / junk reports, even
+            # when a later stage wrote a row for it (continuity junks a short page contained in a
+            # nearby page after page type, DOS and member ran on it).
+            junk_pages: set[str] = set()
             with _skip_on_error("blank_junk", folder_id):
                 # Blank/junk — v7 stamps exactly one final row per page,
                 # so precedence is not re-derived here any more.
                 for page_name, flag, subtype, conf, duplicate_of, best, reason in rows["blank_junk"] or []:
                     fields = _ensure(str(page_name))
+                    if (flag or "").strip().lower() in ("blank", "junk"):
+                        junk_pages.add(str(page_name))
                     blank, dup, page_type = _blank_junk_ui(flag, subtype)
                     fields["blankOrJunk"] = blank
                     fields["isDuplicate"] = dup
@@ -1154,7 +1160,7 @@ class PostgresFolderRepository(FolderRepository):
             with _skip_on_error("member", folder_id):
                 # Member extraction
                 for page_name, name, dob, mid, conf, member_status, other_names in rows["member"] or []:
-                    if not page_name:
+                    if not page_name or str(page_name) in junk_pages:
                         continue
                     fields = _ensure(str(page_name))
                     fields["memberName"] = name
@@ -1170,6 +1176,8 @@ class PostgresFolderRepository(FolderRepository):
                 # DOS (Extracted): the DOS stage's own row per page, the same values it
                 # writes to <chart>_dos.csv. schema/v1.sql is the only schema.
                 for page_name, d_from, d_to, doc_from, doc_to, conf in rows["dos"] or []:
+                    if str(page_name) in junk_pages:
+                        continue
                     fields = _ensure(str(page_name))
                     fields["dosFrom"] = _fmt_date(d_from)
                     fields["dosTo"] = _fmt_date(d_to)
@@ -1181,6 +1189,8 @@ class PostgresFolderRepository(FolderRepository):
             with _skip_on_error("page_classification", folder_id):
                 # Codable / non-codable / discharge (page_classification)
                 for page_name, subtype, cat, conf, page_type, specialty, specialty_conf, axes_json in rows["page_classification"] or []:
+                    if str(page_name) in junk_pages:
+                        continue
                     fields = _ensure(str(page_name))
                     if isinstance(axes_json, dict):
                         sub = subtype_confidence(axes_json.get("l2"), axes_json.get("l2_confidence"),
@@ -1218,6 +1228,8 @@ class PostgresFolderRepository(FolderRepository):
                     "not_applicable": "",  # 2026-11-02 (user): not a visit document -> blank
                 }
                 for page_name, et, conf in rows["encounter_type"] or []:
+                    if str(page_name) in junk_pages:
+                        continue
                     fields = _ensure(str(page_name))
                     key = str(et or "").strip()
                     fields["encounterType"] = enc_display.get(key, key)

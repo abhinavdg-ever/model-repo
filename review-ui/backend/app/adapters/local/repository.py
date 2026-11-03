@@ -1747,7 +1747,15 @@ class LocalFolderRepository(FolderRepository):
             chart_name=chart,
         )
 
-        imaging_pages = overlay_fields(imaging_pages, index_dos_rows(dos_rows, chart))
+        # 2026-11-02 (user): a blank / junk page shows only what blank / junk reports, even when
+        # a later stage wrote a row for it (continuity's short page contained in a nearby page).
+        junk_index = index_junk_rows(junk_rows, chart)
+        junk_keys = {k for k, v in junk_index.items() if str(v.get("blankOrJunk") or "").startswith("Yes")}
+
+        def not_junk(index: dict) -> dict:
+            return {k: v for k, v in index.items() if k not in junk_keys}
+
+        imaging_pages = overlay_fields(imaging_pages, not_junk(index_dos_rows(dos_rows, chart)))
         imaging_pages = overlay_fields(imaging_pages, index_hw_rows(hw_rows, chart))
         imaging_pages = overlay_fields(
             imaging_pages, index_rotation_rows(rotation_rows, chart)
@@ -1756,18 +1764,18 @@ class LocalFolderRepository(FolderRepository):
             imaging_pages, index_quality_rows(quality_rows, chart)
         )
         imaging_pages = overlay_fields(
-            imaging_pages, index_member_extraction_rows(member_rows, chart)
+            imaging_pages, not_junk(index_member_extraction_rows(member_rows, chart))
         )
-        imaging_pages = overlay_fields(imaging_pages, index_junk_rows(junk_rows, chart))
+        imaging_pages = overlay_fields(imaging_pages, junk_index)
         imaging_pages = overlay_fields(
             imaging_pages,
             index_duplicate_scores(Path(self.data_root) / chart / "staging" / "blank_junk.json"),
         )
         imaging_pages = overlay_fields(
-            imaging_pages, index_codeable_rows(codeable_rows, chart)
+            imaging_pages, not_junk(index_codeable_rows(codeable_rows, chart))
         )
         imaging_pages = overlay_fields(
-            imaging_pages, index_encounter_rows(encounter_rows, chart)
+            imaging_pages, not_junk(index_encounter_rows(encounter_rows, chart))
         )
         imaging_pages = overlay_fields(
             imaging_pages, index_sequencing_rows(sequencing_rows, chart)

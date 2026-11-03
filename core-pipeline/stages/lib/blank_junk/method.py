@@ -105,7 +105,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -695,11 +695,62 @@ def decide(inputs: PageInputs) -> Verdict:
     )
 
 
+def _terms(words: list[str]) -> Optional[re.Pattern[str]]:
+    words = [w for w in (words or []) if str(w).strip()]
+    if not words:
+        return None
+    return re.compile(r"(?<![A-Za-z])(?:" + "|".join(re.escape(str(w)).replace(r"\ ", r"\s+")
+                                                     for w in sorted(words, key=len, reverse=True)) + r")(?![A-Za-z])",
+                      re.IGNORECASE)
+
+
+def fax_unsigned(inputs: PageInputs) -> Optional[str]:
+    """2026-11-02 (user): the fax word the page's header band prints when the page has no
+    signature at all (canon ``fax_unsigned``); None otherwise or outside pass 2."""
+    cfg = canon().raw.get("fax_unsigned") or {}
+    if inputs.pass_no != 2 or not cfg.get("enabled", True) or inputs.signed:
+        return None
+    fax = _terms(cfg.get("fax_terms") or [])
+    signature = _terms(cfg.get("signature_terms") or [])
+    if fax is None:
+        return None
+    if inputs.lines:
+        header_band = float(canon().raw["zones"]["header_band"])
+        header = "\n".join(line.text for line in inputs.lines if line.top < header_band)
+    else:
+        rows = [row for row in (inputs.text or "").splitlines() if row.strip()]
+        header = "\n".join(rows[: int(cfg.get("header_lines_without_boxes", 5))])
+    found = fax.search(header)
+    if not found:
+        return None
+    if signature is not None and (signature.search(inputs.text or "") or signature.search(inputs.prelim_text or "")):
+        return None
+    return found.group(0)
+
+
 def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
     """Rules after the ladder (2026-10-26, user): in pass 2 a page with an Electronic
     Signature or provider details (name / credentials) extracted by kv_extract is never
     junk, whatever rule junked it (R4's p(junk) overrule included). Blank stays Blank.
-    A DOS alone does not keep a page (removed 2026-10-26, user: it caught every date)."""
+    A DOS alone does not keep a page (removed 2026-10-26, user: it caught every date).
+    Then (2026-11-02, user) a Main page with Fax in its header and no signature is
+    Junk / Letter/Fax (``fax_unsigned``)."""
+    verdict = _keep_content(verdict, inputs)
+    word = fax_unsigned(inputs) if verdict.code == CODE_MAIN else None
+    if word is None:
+        return verdict
+    bert = inputs.bert or {}
+    p_keep = float(bert["p_keep"]) if bert else None
+    p_junk = float(bert["p_junk"]) if bert else None
+    verdict.votes["fax_unsigned"] = word
+    verdict.votes["rule"] = "FAX"
+    return Verdict(CODE_LETTER_FAX, rule_confidence(CODE_LETTER_FAX, "FAX", p_keep, p_junk), "FAX",
+                   f"{verdict.reason}; '{word}' in the header and no signature on the page -> Junk / Letter/Fax",
+                   verdict.votes)
+
+
+def _keep_content(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """In pass 2 a page with an Electronic Signature or provider details extracted is never junk."""
     found = [name for name, hit in (("Provider Signature", inputs.signed),
                                      ("provider details", inputs.provider)) if hit]
     if inputs.pass_no != 2 or not found or verdict.code in (CODE_MAIN, CODE_BLANK):

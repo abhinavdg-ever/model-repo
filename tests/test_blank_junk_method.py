@@ -300,7 +300,16 @@ class TestPostProcess:
             assert method.post_process(verdict, inputs) is verdict
 
     def test_signed_or_provider_pages_are_never_junk(self):
-        for extra in ({"signed": True}, {"provider": True}):
-            inputs = PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99), **extra)
-            verdict = method.post_process(decide(inputs), inputs)
-            assert verdict.code == classify.CODE_MAIN and "never junk" in verdict.reason
+        inputs = PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99), signed=True)
+        verdict = method.post_process(decide(inputs), inputs)
+        assert verdict.code == classify.CODE_MAIN and "never junk" in verdict.reason
+        # Provider details alone keep a page, except one with Fax in its header and no
+        # signature (2026-11-02, user: fax_unsigned).
+        plain = "Invoice\nAmount due $40\nPlease remit payment\n"
+        inputs = PageInputs(text=plain, pass_no=2, bert=bert(0.99), provider=True)
+        verdict = method.post_process(decide(inputs), inputs)
+        assert verdict.code == classify.CODE_MAIN and "never junk" in verdict.reason
+        inputs = PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99), provider=True)
+        verdict = method.post_process(decide(inputs), inputs)
+        if method.fax_unsigned(inputs):
+            assert verdict.rule == "FAX"
