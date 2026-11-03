@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from src.explainability.evidence import explain_page
 from src.features.ocr_features import top_evidence
-from src.models.classifiers import FlatClassifier
+from src.models.bert_classifier import BertPageClassifier
 from src.models.decision import DecisionConfig, decide_from_proba
 from src.preprocessing.page_subclass import (
     JUNK_SUBTYPES,
     assign_blank_subtype,
+    admin_page_reason,
     assign_junk_subtype,
     end_record_reason,
+    clinical_words,
     invoice_page_reason,
     shell_page_reason,
     junk_trigger_groups,
@@ -69,7 +70,7 @@ def _best_junk_label(labels: list[str], proba) -> str | None:
 class PageClassifierService:
     def __init__(
         self,
-        model: FlatClassifier,
+        model: BertPageClassifier,
         *,
         model_version: str,
         decision: DecisionConfig | None = None,
@@ -82,7 +83,7 @@ class PageClassifierService:
         self.min_dictionary_words = min_dictionary_words
         self.route_short_pages = route_short_pages
 
-    def predict_one(
+    def _predict_one(
         self,
         page_id: str,
         ocr_text: str,
@@ -103,7 +104,7 @@ class PageClassifierService:
             # Retention safeguards still win over blank routing
             if hit.retain_clinical_image:
                 flag = "KEEP"
-                audit = "KEEP_CLINICAL_IMAGE"
+                audit = hit.audit_tag or "KEEP_CLINICAL_IMAGE"
                 review = False
             elif hit.retain_demographic:
                 flag = "KEEP"
@@ -171,9 +172,7 @@ class PageClassifierService:
             ocr_text=ocr_text,
             config=self.decision,
         )
-        evidence = explain_page(self.model, ocr_text, decision.flag)
-        if not evidence:
-            evidence = top_evidence(ocr_text)
+        evidence = top_evidence(ocr_text)
         if decision.protocol_evidence:
             evidence = list(decision.protocol_evidence) + evidence
 
@@ -192,6 +191,17 @@ class PageClassifierService:
         invoice_reason = None if clinical_image else invoice_page_reason(ocr_text)
         shell = None if clinical_image or invoice_reason else shell_page_reason(ocr_text)
         closer = None if clinical_image or invoice_reason or shell else end_record_reason(ocr_text)
+        rule_hit = invoice_reason or (shell and shell[1]) or closer
+        if (
+            rule_hit
+            and flag != "JUNK"
+            and decision.p_keep >= self.decision.rule_veto_keep_prob
+            and len(clinical_words(ocr_text)) >= self.decision.rule_veto_min_clinical_words
+        ):
+            review = True
+            reason = f"{reason}+rule_vetoed_by_model"
+            evidence = [f"rule_vetoed:{rule_hit}"] + evidence
+            invoice_reason = shell = closer = None
         if invoice_reason and flag != "JUNK":
             flag = "JUNK"
             review = True
@@ -242,6 +252,34 @@ class PageClassifierService:
             p_junk=round(decision.p_junk, 4),
             subclass=subclass,
             subclass_reason=subclass_reason,
+        )
+
+    def predict_one(
+        self,
+        page_id: str,
+        ocr_text: str,
+        *,
+        content_meta: dict[str, Any] | None = None,
+    ) -> InferenceResult:
+        result = self._predict_one(page_id, ocr_text, content_meta=content_meta)
+        if result.flag != "KEEP":
+            return result
+        # Never-junk pages (clinical images, patient forms, letters, signatures) stay KEEP.
+        if analyze_protocol(ocr_text).retain_clinical_image:
+            return result
+        admin = admin_page_reason(ocr_text)
+        if admin is None:
+            return result
+        subtype, why = admin
+        return replace(
+            result,
+            flag="JUNK",
+            review_required=True,
+            audit_tag=subtype,
+            subclass=subtype,
+            subclass_reason=f"rule:{why}",
+            decision_reason=f"{result.decision_reason}+admin_rule:{why}",
+            top_evidence=f"admin_rule:{why}",
         )
 
     def predict_batch(self, pages: list[dict[str, Any]]) -> list[InferenceResult]:

@@ -1,0 +1,63 @@
+{
+  "paths": {
+    "raw_jsonl": "data/raw/ehr_pages_v0.3.jsonl",
+    "label_map": "data/labels/label_map_v0.3.json",
+    "processed_dir": "data/processed",
+    "models_dir": "models",
+    "reports_dir": "reports"
+  },
+  "model_version": "bjc-ocr-v0.3.1",
+  "routing": {
+    "min_dictionary_words": 2,
+    "empty_ocr_flag": "KEEP"
+  },
+  "training": {
+    "require_train_eligible": true,
+    "include_medium_keep": true,
+    "retain_delete_cost_ratio": 50.0
+  },
+  "decision": {
+    "min_flag_confidence": 0.70,
+    "junk_blank_min_confidence": 0.85,
+    "keep_veto_prob": 0.10,
+    "enforce_retention_safeguards": true,
+    "demographic_override_labels": ["JUNK_RECORD_REQUEST", "JUNK_INSTRUCTIONS", "JUNK_LETTER_FAX", "JUNK_COVER_PAGE", "JUNK_INVOICE"],
+    "demographic_override_min_prob": 0.95,
+    "demographic_override_needs_trigger": true,
+    "demographic_override_no_trigger_labels": ["JUNK_INVOICE"],
+    "require_confident_subtype": true
+  },
+  "taxonomy": {
+    "flags": ["KEEP", "BLANK", "JUNK"],
+    "protocol": "blank_junk_elimination_v1"
+  },
+  "bert": {
+    "base_model": "distilbert-base-uncased",
+    "model_dir": "models/bert_page",
+    "synthetic_clean": ["synthetic_v2/clean.jsonl"],
+    "annotated_jsonl": "data/raw/annotated_pages.jsonl",
+    "max_length": 512,
+    "head_share": 0.75,
+    "epochs": 4,
+    "batch_size": 8,
+    "learning_rate": 3e-5,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "keep_weight": 3.0,
+    "real_copies": 3,
+    "decide_short_pages": true,
+    "seed": 42,
+    "continue": {
+      "use_synthetic": true,
+      "class_target": 400,
+      "max_copies": 4,
+      "keep_share": null,
+      "max_class_weight": 1.0,
+      "holdout_share": 0.2,
+      "keep_lost_cost": 3.0,
+      "epochs": 2,
+      "learning_rate": 1e-5,
+      "keep_weight": 3.0
+    }
+  }
+}

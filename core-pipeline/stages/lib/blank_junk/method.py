@@ -109,6 +109,8 @@ RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONT
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
+# Pass 1 junks no page under this many words unless it is blank (2026-11-03, user).
+PASS1_MIN_JUNK_WORDS = 20
 MIN_TEXT_CHARS = 15
 BLANK_WORD_MAX_CHARS = 30
 BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
@@ -570,12 +572,16 @@ def decide(inputs: PageInputs) -> Verdict:
     p_junk = float(bert["p_junk"]) if bert else None
     p_keep = float(bert["p_keep"]) if bert else None
     subtype = MODEL_SUBTYPE.get((bert or {}).get("top_junk_label") or "", "Others")
+    # b_jnk v3's PageClassifierService verdict (2026-11-03, user): flag, subclass,
+    # confidence, review, decision_reason; None when the model is unavailable.
+    service = (bert or {}).get("service")
     votes: dict[str, Any] = {
         "pass": inputs.pass_no,
         "bert": (
             {"p_keep": round(p_keep, 4), "p_junk": round(p_junk, 4), "label": (bert or {}).get("top_junk_label") or ""}
             if bert else {"note": "unavailable"}
         ),
+        "service": service or "none",
         "visual_source": "page_tags" if inputs.page_tags else "none",
         "signature_source": ("kv_extract" if inputs.signature_known else "kv_extract_missing") if pass2 else "not_in_pass_1",
         "hw_area": inputs.hw_area_pct if inputs.hw_area_pct is not None else "none",
@@ -600,9 +606,21 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text")
     if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
         return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters")
+    # 2026-11-03 (user): pass 1 junks no page under 20 words unless it is blank (R1) or
+    # left blank on purpose (R2); such a page waits for the Final OCR and pass 2.
+    short_in_pass1 = not pass2 and words < PASS1_MIN_JUNK_WORDS
+
+    def wait_for_pass2() -> Verdict:
+        votes["deferred"] = True
+        return ruled(CODE_MAIN, "P1", f"pass 1: {words} words < {PASS1_MIN_JUNK_WORDS}, not blank -> "
+                     "Main for now, judged in pass 2 on the final OCR",
+                     conf.score(p_keep) if p_keep is not None else conf.score(0.5, "degraded"))
+
     if not visual and chars < MIN_TEXT_CHARS:
         cover = sum(scores.group("junk", g.name) for g in prof.groups.values() if g.context == "junk" and g.subtype == "Cover Page")
         tiny = "Cover Page" if cover > 0 else "Others"
+        if short_in_pass1:
+            return wait_for_pass2()
         return ruled(_junk_code(tiny), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / {tiny}")
     # R2 placeholder: a page left blank on purpose is Blank, not junk.
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
@@ -613,6 +631,8 @@ def decide(inputs: PageInputs) -> Verdict:
     card = detect_card(text) if inputs.document_type in CARD_DOCUMENT_TYPES else None
     if card is not None and card.is_card:
         votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
+        if card.confidence == CARD_JUNK_CONFIDENCE and short_in_pass1:
+            return wait_for_pass2()
         if card.confidence == CARD_JUNK_CONFIDENCE:
             return ruled(
                 CODE_CARDS, "R3",
@@ -632,6 +652,8 @@ def decide(inputs: PageInputs) -> Verdict:
         # pass 2's R4 / R6 / R5 would junk too, as R4 is overruled at the same p(junk)).
         # Everything else waits for the Final OCR and pass 2.
         limit = t["pass1_final_keep_above"]
+        if service is not None:
+            return _pass1_by_service(service, inputs, t, prof, short_in_pass1, wait_for_pass2, ruled, votes)
         if p_keep is not None and p_keep > limit:
             return ruled(
                 CODE_MAIN, "R5",
@@ -641,6 +663,8 @@ def decide(inputs: PageInputs) -> Verdict:
         junk_limit = t["pass1_final_junk_above"]
         hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
         handwritten = inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit
+        if p_junk is not None and p_junk > junk_limit and not handwritten and short_in_pass1:
+            return wait_for_pass2()
         if p_junk is not None and p_junk > junk_limit and not handwritten:
             return ruled(
                 _junk_code(subtype), "R5",
@@ -669,7 +693,9 @@ def decide(inputs: PageInputs) -> Verdict:
     if short_page:
         return ruled(CODE_OTHERS, "R6", short_page)
 
-    # R5 DistilBERT alone.
+    # R5: b_jnk v3's PageClassifierService (2026-11-03, user), else DistilBERT alone.
+    if service is not None:
+        return _pass2_by_service(service, inputs, prof, ruled, votes)
     if p_junk is None:
         votes["review_required"] = True
         return ruled(CODE_MAIN, "R5", "R5: DistilBERT unavailable -> Main (review)", conf.score(0.5, "degraded"))
@@ -695,6 +721,59 @@ def decide(inputs: PageInputs) -> Verdict:
         f"R5 DistilBERT p(junk) {p_junk:.3f} in [{review_at}, {junk_at}) -> Junk / {subtype} (review)",
         conf.under_bar(p_junk, junk_at),
     )
+
+
+def _service_subtype(service: dict[str, Any]) -> str:
+    return MODEL_SUBTYPE.get(service.get("subclass") or "", "Others")
+
+
+def _service_why(service: dict[str, Any]) -> str:
+    probs = " ".join(f"{k}={service[k]:.3f}" for k in ("p_keep", "p_blank", "p_junk") if service.get(k) is not None)
+    return f"{service['flag']} {service['confidence']:.3f} ({service.get('decision_reason') or 'argmax'}{'; ' + probs if probs else ''})"
+
+
+def _handwritten(inputs: PageInputs, prof: Any) -> bool:
+    hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
+    return inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit
+
+
+def _pass1_by_service(service, inputs, t, prof, short_in_pass1, wait_for_pass2, ruled, votes) -> Verdict:
+    """Pass 1 settles only what the service is sure of; the rest waits for pass 2."""
+    why, conf_ = _service_why(service), float(service["confidence"])
+    flag = service["flag"]
+    if flag == "KEEP" and not service.get("review_required") and conf_ > t["pass1_final_keep_above"]:
+        return ruled(CODE_MAIN, "R5", f"{FINAL_KEEP}: service {why} -> Main; pass 2 skipped", conf.score(conf_))
+    if flag in ("JUNK", "BLANK") and conf_ > t["pass1_final_junk_above"]:
+        if flag == "JUNK" and short_in_pass1:
+            return wait_for_pass2()
+        if flag == "JUNK" and _handwritten(inputs, prof):
+            votes["veto"] = "handwritten"
+        else:
+            code = CODE_BLANK if flag == "BLANK" else _junk_code(_service_subtype(service))
+            label = "Blank" if flag == "BLANK" else f"Junk / {_service_subtype(service)}"
+            return ruled(code, "R5", f"{FINAL_JUNK}: service {why} -> {label}; pass 2 and Final OCR 2 skipped",
+                         conf.score(conf_))
+    votes["deferred"] = True
+    return ruled(CODE_MAIN, "P1", f"pass 1: service {why} -> Main for now, judged in pass 2 on the final OCR",
+                 conf.score(conf_ if flag == "KEEP" else 1.0 - conf_))
+
+
+def _pass2_by_service(service, inputs, prof, ruled, votes) -> Verdict:
+    """The service's flag decides; a page more than 30% handwritten is never junked."""
+    why, conf_ = _service_why(service), float(service["confidence"])
+    if service.get("review_required"):
+        votes["review_required"] = True
+    if service["flag"] == "KEEP":
+        return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(conf_))
+    if service["flag"] == "BLANK":
+        return ruled(CODE_BLANK, "R5", f"R5 service {why} -> Blank", conf.score(conf_))
+    if _handwritten(inputs, prof):
+        votes["veto"] = "handwritten"
+        votes["review_required"] = True
+        return ruled(CODE_MAIN, "R5", f"R5 service {why}, but {inputs.hw_area_pct:g}% handwritten -> Main (review)",
+                     conf.score(1.0 - conf_))
+    subtype = _service_subtype(service)
+    return ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}", conf.score(conf_))
 
 
 def _terms(words: list[str]) -> Optional[re.Pattern[str]]:

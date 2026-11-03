@@ -44,6 +44,9 @@ INVOICE_WEAK = (
     "bill to", "ship to", "unit price", "charge description", "payments received",
     "revenue reconciliation",
 )
+# Fields on a registration or consent form ("billing address", "billing
+# information"), not a bill.
+BILLING_FIELD_RE = r"(?![A-Za-z]*\s+(?i:address|information|info|questions?|department|office|contact|phone))"
 # "accept" is a stamp on a short separator. On a long note it is the verb "accepted".
 COVER_ANY_LENGTH = ("cover page", "cover sheet")
 COVER_SHORT_ONLY = ("accept", "unaccept")
@@ -77,6 +80,12 @@ FAX_FORM_RE = re.compile(
     re.I,
 )
 FAX_FORM_MIN_FIELDS = 4
+# Confidentiality footer and fax header. Lab reports and every faxed chart page
+# carry them, so on their own they never make a page junk; with a filled-in fax
+# form they do.
+FAX_STAMP = frozenset({
+    "facsimile", "this fax", "intended recipient", "this message is intended", "if you have received this",
+})
 # A fax form alone (no cover wording) is a cover only on a short page or one with no
 # clinical wording: a faxed note can open with the sender's form block.
 FAX_FORM_MAX_WORDS = 150
@@ -130,6 +139,24 @@ NOTE_CONTENT_RE = re.compile(
     r"(?:consult|progress|clinical|nursing|physician|visit|office)\s+notes)(?![a-z])",
     re.I,
 )
+# A lab report, requisition, or specimen sheet.
+LAB_CONTENT_RE = re.compile(
+    r"(?<![a-z])(specimens?|collect(?:ed|ion)|reference\s+(?:range|interval)|tests?\s+(?:ordered|requested)|"
+    r"panel|urinalysis|culture|hemoglobin|glucose|creatinine|sodium|potassium|cbc|cmp|tsh|lipid|"
+    r"patient report|lab(?:oratory)?\s+report)(?![a-z])"
+    r"|\b\d+(?:\.\d+)?\s?(?:mg/dl|g/dl|mmol/l|meq/l|u/l|iu/l|uiu/ml|ng/ml|pg/ml)\b",
+    re.I,
+)
+
+
+def has_clinical_content(text: str) -> bool:
+    return bool(NOTE_CONTENT_RE.search(text or "") or LAB_CONTENT_RE.search(text or ""))
+
+
+def clinical_words(text: str) -> set[str]:
+    """Distinct clinical-note and lab words on the page."""
+    found = (*NOTE_CONTENT_RE.finditer(text or ""), *LAB_CONTENT_RE.finditer(text or ""))
+    return {" ".join(m.group(0).lower().split()) for m in found}
 
 MODEL_TAG_TO_SUBTYPE: dict[str, str] = {
     **{s: s for s in JUNK_SUBTYPES},
@@ -174,6 +201,7 @@ MATCHERS: dict[str, re.Pattern[str]] = {
         *(q for v in TRIGGERS.values() for q in v),
     )
 }
+MATCHERS["billing"] = re.compile(MATCHERS["billing"].pattern + BILLING_FIELD_RE)
 
 
 def word_count(text: str) -> int:
@@ -271,21 +299,23 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
 
     A cover sheet says cover page or cover sheet at any length. Accept and
     unaccept count only on a short page. A letter or fax says one of the
-    letter phrases. A page with clinical content is left alone: a faxed note
-    carries "this fax" and "intended recipient" in its header and footer, and
-    a consult letter opens with "Dear Dr.". A page that names itself a cover
+    letter phrases. A confidentiality footer ("intended recipient", "if you
+    have received this") counts only on a filled-in fax form. A page with
+    clinical or lab content is left alone: a consult letter opens with
+    "Dear Dr.". A page that names itself a cover
     (or fax cover), or is a filled-in fax cover form, is junk anyway. A fax
     form ("Fax To: / From: / Pages: / Re:") is a cover even with no cover
     wording, when the page is short or has no clinical wording.
     """
+    fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
+    fax_form = len(fields) >= FAX_FORM_MIN_FIELDS and any(f.startswith("fax") for f in fields)
     chosen = {
-        subtype: hits
+        subtype: [phrase for phrase in hits if fax_form or phrase not in FAX_STAMP]
         for subtype, hits in _candidate_hits(text).items()
         if subtype in {"JUNK_COVER_PAGE", "JUNK_LETTER_FAX"}
     }
-    fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
-    fax_form = len(fields) >= FAX_FORM_MIN_FIELDS and any(f.startswith("fax") for f in fields)
-    clinical = NOTE_CONTENT_RE.search(text or "")
+    chosen = {subtype: hits for subtype, hits in chosen.items() if hits}
+    clinical = has_clinical_content(text)
     if not chosen:
         if fax_form and (not clinical or word_count(text) <= FAX_FORM_MAX_WORDS):
             return "JUNK_LETTER_FAX", "fax form"
@@ -305,6 +335,11 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
 def junk_trigger_groups(text: str) -> list[str]:
     """Junk subtypes whose triggers fire on the page (for reviewing KEEP pages)."""
     return list(_candidate_hits(text))
+
+
+def junk_trigger_hits(text: str) -> dict[str, list[str]]:
+    """Junk subtypes whose triggers fire, with the phrases that fired."""
+    return _candidate_hits(text)
 
 
 def _word_index(text: str, phrase: str) -> int:
@@ -413,3 +448,329 @@ def assign_blank_subtype(text: str, *, structurally_empty: bool = False) -> Subc
     if re.search(r"[A-Za-z]{3,}", text):
         return Subclass("BLANK_HEADER_FOOTER_ONLY", "letterhead_or_footer_words")
     return Subclass("BLANK_TECHNICAL", "marks_only")
+
+
+# ---------------------------------------------------------------------------
+# Administrative pages that carry a patient's name: the model and the
+# demographic hold keep them, but nothing on them is chart content.
+# Both checks look at the page's structure, not at one vendor's wording.
+# ---------------------------------------------------------------------------
+
+# Words that only label header / footer fields.
+HEADER_VOCAB = frozenset("""
+patient name names date dates birth dob sex gender age years yrs old encounter encounters admit admitted
+discharge disch admitting account acct number mrn fin chart page pages printed print report request requested
+time phone fax address city state zip document id service services provider location facility of and the for
+by on at to from with generated software record records reviewed signed electronically contact emergency
+relation relationship guarantor partner life
+""".split())
+# Lines that are page furniture whatever words they use.
+FURNITURE_RE = re.compile(
+    r"generated\s+(?:by|for)|printed\s*(?:by|on|at|:)|print\s+date|report\s+(?:date|request)|page\s+\d+\s+of\s+\d+"
+    r"|electronically\s+signed\s+and\s+reviewed|confidential|https?://|www\.|\S+@\S+",
+    re.I,
+)
+LOWER_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
+HEADER_ONLY_MAX_CONTENT_WORDS = 1
+HEADER_ONLY_MAX_CLINICAL_WORDS = 3
+HEADER_ONLY_MAX_WORDS = 150
+# Field labels of a filled data page (face sheet, registration, insurance coverage).
+# A header carries a few of them; a data page carries many.
+DATA_FIELD_RE = re.compile(
+    r"address|phone|e-?mail|emergency\s+contact|guarantor|insurance|insured|subscriber|payor|payer|policy"
+    r"|group|employer|member\s+id|effective|marital|race|ethnicity|language|ssn|social\s+security"
+    r"|primary\s+care|pharmacy|gender|sex\b|occupation|copay|deductible|eligibility|relationship|religion",
+    re.I,
+)
+DATA_PAGE_MIN_FIELDS = 8
+# A page titled as a data document is one even with few fields filled in.
+DATA_PAGE_TITLE_RE = re.compile(
+    r"demographic|face\s*sheet|registration|patient\s+information\s+(?:sheet|form)|activation\s+form"
+    r"|insurance\s+(?:information|coverage)|coverage\s+information|member\s+verification",
+    re.I,
+)
+ICD_CODE_RE = re.compile(r"\b[A-TV-Z]\d{2}(?:\.\d{1,4})?\b(?=[\s),;]|$)")
+
+
+def body_words(text: str) -> list[str]:
+    """Lower-case prose words that are not page furniture. Chart content is written in
+    sentences and phrases; headers, titles, and field labels are not."""
+    words: list[str] = []
+    for line in (text or "").splitlines():
+        # A short furniture line goes whole; in a long line (OCR often returns a page
+        # as one line) only the furniture phrase goes, so note text next to it counts.
+        if FURNITURE_RE.search(line):
+            if len(line.split()) <= 15:
+                continue
+            line = FURNITURE_RE.sub(" ", line)
+        tokens = line.split()
+        # A legend such as "*=Abnormal C=Critical L=Low" is furniture too.
+        if tokens and sum("=" in t for t in tokens) * 2 >= len(tokens):
+            continue
+        words += [w for w in LOWER_WORD_RE.findall(line) if w not in HEADER_VOCAB]
+    return words
+
+
+# Header fields: a line with one of these labels is the page header or footer.
+HEADER_LABEL_RE = re.compile(
+    r"patient\s*(?:name|id)?\s*:|\bdob\b|date\s+of\s+birth|birth\s*date|\bmrn\b|\bmr#|\bfin\s*:|encounter\s+(?:id|date)"
+    r"|\badmit\s*:|\bdisch(?:arge)?\s*:|\bacct\b|account\s*(?:#|no|number)|\bage\s*:|\bsex\s*:|\bgender\s*:"
+    r"|\bid\s*#|report\s+id|chart\s*#|\bssn\b",
+    re.I,
+)
+ADDRESS_RE = re.compile(r"\baddress\s*:?\s*\d|\b[A-Z]{2}[\s-]+\d{5}(?:-\d{4})?\b|^\s*\d{2,6}\s+[A-Za-z]|\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b")
+# The patient line of a header: a capitalised name (two words), then a date within 40 characters.
+# Table rows ("fecal occult blood test kit 02/11/2021") are lower case and do not match.
+NAME_DATE_LINE_RE = re.compile(r"^[\W\d]*[A-Z][A-Za-z'\-]*,?\s+[A-Z][A-Za-z'\-]*[^\n]{0,40}\d{1,2}/\d{1,2}/\d{2,4}[^\n]{0,30}$")
+SIGNATURE_LINE_RE = re.compile(
+    r"(?:electronically\s+)?signed\s+(?:electronically\s+)?by\b(?!.*print)|\bsigned\s+date\s*:|\bauthenticated\s+by"
+    r"|\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|PA|OD|DPM|RN|LPN|PT|DPT|DNP|APRN|FNP)\b|physician\s+assistant|\blicense\s*#",
+)
+HEADER_ONLY_MAX_LINES = 2
+# A line that only says a section is empty: "No of Injections 0", "No results found",
+# "None recorded". ("No known allergies" is content and does not match.)
+EMPTY_SECTION_RE = re.compile(
+    r"^\W*(?:no\.?\s+of\s+[a-z ]{3,30}?\s*:?\s*0"
+    r"|no\s+(?:results?|records?|data|entries|documents?|items?|orders?|injections?|visits?)\s+"
+    r"(?:found|available|on\s+file|recorded|to\s+display)"
+    r"|none\s+(?:recorded|on\s+file|found|documented|available))\W*$",
+    re.I,
+)
+HEADER_ONLY_MAX_LINE_WORDS = 6
+WORD_SHAPE_RE = re.compile(r"^(?=[A-Za-z]*[aeiouyAEIOUY])(?![A-Za-z]*([A-Za-z])\1\1)[A-Za-z]{4,}$")
+
+
+def is_ocr_noise(line: str) -> bool:
+    """Faint print or specks read as letters: no token looks like a word of 4+ letters
+    (has a vowel, no letter three times in a row)."""
+    return not any(WORD_SHAPE_RE.match(t.strip(".,;:()[]'\"")) for t in line.split())
+
+
+def content_lines(text: str) -> list[str]:
+    """Lines that are not page furniture: not the patient header, address, print or page
+    footer, a one-line flag legend, a column-heading row, or scan specks. The first line is
+    letterhead and only counts when it is something more."""
+    out: list[str] = []
+    for n, line in enumerate((text or "").splitlines()):
+        line = line.strip()
+        words = re.findall(r"[A-Za-z]{3,}", line)
+        if not words:
+            continue
+        if FURNITURE_RE.search(line) and len(line.split()) <= 25:
+            continue
+        # A long line is page text that OCR ran together, not a header.
+        if len(tokens := line.split()) <= 20 and (HEADER_LABEL_RE.search(line) or NAME_DATE_LINE_RE.match(line)):
+            continue
+        if ADDRESS_RE.search(line) and len(words) <= 10:
+            continue
+        if sum("=" in t and len(t) > 1 for t in tokens) * 2 >= len(tokens):
+            continue  # a one-line legend such as "*=Abnormal C=Critical L=Low"
+        if all(w.lower() in HEADER_VOCAB for w in words):
+            continue  # a column-heading row
+        if EMPTY_SECTION_RE.match(line) or is_ocr_noise(line):
+            continue
+        if n == 0 and len(tokens) <= 12 and not re.search(r"signed|[a-z]{3,}\s+[a-z]{3,}", line):
+            continue  # letterhead: a name or title, not a sentence
+        out.append(line)
+    return out
+
+
+LIST_ENTRY_RE = re.compile(
+    r"^\W*(?-i:[A-Z])[A-Za-z0-9 /&()_.'-]{1,40}?:?\s+(?:"
+    r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AP]M)?)?"  # label + date[time]
+    r"|\.{0,40}\s*(?:pages?\s*)?\d+\s*(?:to|-|thru)\s*\d+"  # label + page range
+    r")\W*$",
+    re.I,
+)
+STOP_LOWER = {"and", "of", "the", "for", "to", "in", "on", "by", "with", "or", "a", "an", "at"}
+
+
+def is_heading_row(line: str) -> bool:
+    """A title or column-heading row: no digits, every word capitalised (small words aside)."""
+    words = re.findall(r"[A-Za-z][A-Za-z'&/-]*", line)
+    if not words or re.search(r"\d", line):
+        return False
+    return all(w[0].isupper() or w.lower() in STOP_LOWER for w in words)
+
+
+# A page that only points to where its content is.
+POINTER_RE = re.compile(
+    r"(?:content|report|results?|document|text|note|images?)s?\s+(?:is\s+|are\s+)?(?:on|follows?\s+on|continued\s+on)\s+"
+    r"(?:the\s+)?(?:following|next|subsequent)\s+pages?"
+    r"|see\s+(?:the\s+)?(?:following|next|attached)\s+pages?"
+    r"|(?:report|results?|content)\s+to\s+follow",
+    re.I,
+)
+POINTER_MAX_PROSE_WORDS = 12
+
+
+def placeholder_page_reason(text: str) -> str | None:
+    """A cover that says the content is on the next page ("*** Content on Following Page ***"),
+    with only the header, the report's index fields and the footer around it."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    if not POINTER_RE.search(text or "") or CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text):
+        return None
+    prose = body_words(POINTER_RE.sub(" ", text))
+    if len(prose) > POINTER_MAX_PROSE_WORDS:
+        return None
+    # Instructions, follow-up, diagnoses, a signer: real content around the pointer.
+    if re.search(r"instructions?\s*:|follow[\s-]*up\s*:|diagnos\w*\s*:|impression\s*:|sign\w*\s+information", text, re.I):
+        return None
+    return "placeholder_page"
+
+
+# Section labels of the C-CDA document header (the "Document Information" block every EMR
+# prints when it exports a continuity-of-care document).
+CCDA_LABEL_RE = re.compile(
+    r"document\s+information|custodian(?:\s+organization)?|legal\s+authenticator|service\s+providers?"
+    r"|document\s+coverage\s+dates?|encounter\s+providers?|information\s+recipients?|data\s+enterer"
+    r"|documentation\s+of|\bauthor(?:s|ing\s+device)?\s*:?\s*$|\binformants?\b|\bauthenticators?\b",
+    re.I | re.M,
+)
+CCDA_MIN_LABELS = 2
+PROSE_LINE_RE = re.compile(r"(?:(?<![A-Za-z@.])[a-z]{3,}(?![A-Za-z@])[^\n]*){4}")
+
+
+def metadata_page_reason(text: str) -> str | None:
+    """Only the document header of an exported record: providers, custodian, authenticator,
+    their NPIs, phones, addresses and specialties. No clinical lines, values, codes or prose."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    labels = {re.sub(r"\W+", " ", m.group(0).lower()).strip() for m in CCDA_LABEL_RE.finditer(text or "")}
+    if len(labels) < CCDA_MIN_LABELS:
+        return None
+    if CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text) or len(clinical_words(text)) > 2:
+        return None
+    for line in (text or "").splitlines():
+        if PROSE_LINE_RE.search(re.sub(r"\S+@\S+|https?://\S+", " ", line)):
+            return None  # a sentence: content, not a contact block
+    return "document_metadata"
+
+
+def contents_page_reason(text: str) -> str | None:
+    """A table of contents or index: 3+ lines that are only a label with a date or a page
+    range; everything else is header, short labels, or headings. No sentences, no values."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    if not (text or "").strip() or CLINICAL_VALUE_RE.search(text):
+        return None
+    entries = 0
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if LIST_ENTRY_RE.match(line) and not HEADER_LABEL_RE.search(line) and not re.search(
+            r"phone|mobile|cell|fax|tel\b|e-?mail|code|ssn", line, re.I
+        ):
+            rng = re.search(r"(\d+)\s*(?:to|-|thru)\s*(\d+)\W*$", line, re.I)
+            if rng and not re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", line) and int(rng.group(1)) > int(rng.group(2)):
+                return None  # a phone number or code, not a page range
+            entries += 1
+            continue
+        tokens = line.split()
+        lower = re.findall(r"(?<![A-Za-z])[a-z]{3,}", line)
+        if FURNITURE_RE.search(line) or HEADER_LABEL_RE.search(line) or ADDRESS_RE.search(line):
+            continue
+        if len(tokens) <= 4 and len(lower) <= 1:
+            continue  # a short label: "CONTENTS", "TRI_Full Exam", "Page(s)"
+        if is_heading_row(line):
+            continue
+        if re.match(r"^\W*note\s*:", line, re.I) and len(tokens) <= 30:
+            continue  # "Note: There may be certain notes which are not made available ..."
+        return None
+    return "contents_page" if entries >= 3 else None
+
+
+def header_only_reason(text: str) -> str | None:
+    """A page with a header, a section title, or a footer, and no body under it: at most two
+    short title lines, no signature or provider, no clinical values or codes."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    if not (text or "").strip() or word_count(text) > HEADER_ONLY_MAX_WORDS:
+        return None
+    if CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text) or DATA_PAGE_TITLE_RE.search(text):
+        return None
+    lines = content_lines(text)
+    # Column headings with no rows under them ("Medication Order  MAR Action  Dose  Rate").
+    last = lines[-1] if lines else ""
+    if is_heading_row(last) and len(last.split()) >= 3 and not re.search(r"[:=<>#*%$]", last):
+        lines = lines[:-1]
+    if len(lines) > HEADER_ONLY_MAX_LINES:
+        return None
+    if any(len(line.split()) > HEADER_ONLY_MAX_LINE_WORDS or SIGNATURE_LINE_RE.search(line) for line in lines):
+        return None
+    # A line written as a sentence ("No known allergies") is content; titles are capitalised.
+    if any(len(re.findall(r"(?<![A-Za-z])[a-z]{3,}", line)) >= 2 for line in lines):
+        return None
+    if len(clinical_words(text)) > HEADER_ONLY_MAX_CLINICAL_WORDS:
+        return None
+    return "header_only"
+
+
+# Signs of record-retrieval paperwork: (pattern, weight). A strong sign is 1, a weak one 0.5.
+RETRIEVAL_CUES: tuple[tuple[str, float], ...] = (
+    (r"chart\s*(?:review|retrieval|request|pull)", 1),
+    (r"(?:record|chart)s?\s*retrieval|retrieval\s*(?:method|option|process|effort|only)", 1),
+    (r"retrieved\s*by|record(?:s)?\s*collected\s*from", 1),
+    (r"risk\s*adjustment", 1),
+    (r"(?:chart|chase|outreach|site|project)\s*(?:id|name)\b", 1),
+    (r"pull\s*(?:list|chart)", 1),
+    (r"required\s*dos|measure\s*/\s*dates\s*of\s*service", 1),
+    (r"true\s*and\s*accurate\s*cop", 1),
+    (r"custodian\s*of\s*(?:medical\s*)?records", 1),
+    (r"signature\s*log", 1),
+    (r"medical\s*record\s*request|records?\s*request(?:ed)?\s*:", 1),
+    (r"total\s*(?:charts|pages)\b", 1),
+    (r"e-?request|request\s*id\b|requestor\s*(?:name|type)", 1),
+    # Cover sheet of a released records packet.
+    (r"confidential\W{1,5}medical\s*records|medical\s*records\W{1,5}confidential", 1),
+    (r"this\s*(?:document|packet|package|fax)\s*(?:contains|may\s*contain)\s*(?:the\s*following\s*)?(?:records|information)", 1),
+    (r"(?:forward|release[ds]?|send(?:ing)?)\s*(?:these|the\s*enclosed|the\s*attached)\s*records", 1),
+    (r"records\s*of\s*the\s*patient", 1),
+    (r"date\s*range\s*:?\s*\d", 0.5),
+    (r"\{\{\s*\w+", 1),
+    (r"\b\d+\s*to\s*\d+\b[\s\S]{0,80}\b\d+\s*to\s*\d+\b", 1),  # page ranges of an index sheet
+    (r"member\s*id|health\s*plan|plan\s*members?", 0.5),
+    (r"dates?\s*of\s*service", 0.5),
+    (r"provider\s*(?:support|portal|group)|secure\s*(?:provider\s*)?portal|upload", 0.5),
+    (r"on\s*behalf\s*of", 0.5),
+    (r"\bcms\b|medicare\s*advantage", 0.5),
+)
+_RETRIEVAL = [(re.compile(p, re.I), w) for p, w in RETRIEVAL_CUES]
+RETRIEVAL_MIN_SCORE = 2.0
+
+
+def retrieval_page_reason(text: str) -> tuple[str, str] | None:
+    """Record-request paperwork: (subtype, cues). Needs two independent strong signs,
+    or one strong and two weak, and no filled clinical values."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    hits = [(m.group(0).lower(), w) for p, w in _RETRIEVAL if (m := p.search(text or ""))]
+    score = sum(w for _, w in hits)
+    if score < RETRIEVAL_MIN_SCORE or not any(w >= 1 for _, w in hits):
+        return None
+    if len({" ".join(m.group(0).split()) for m in CLINICAL_VALUE_RE.finditer(text or "")}) >= 2:
+        return None
+    # Request letters and pull lists ask for records; index and packet cover sheets only
+    # sit on top of records being sent.
+    asks = re.search(r"chart\s*(?:review|request|retrieval)|retrieval\s*option|please\s*(?:send|provide|submit|upload)"
+                     r"|requested\s*members|required\s*dos|pull\s*list|chase|signature\s*log|\{\{", text or "", re.I)
+    subtype = "JUNK_RECORD_REQUEST" if asks else "JUNK_OTHERS"
+    return subtype, "+".join(" ".join(h.split())[:20] for h, _ in hits[:4])
+
+
+def admin_page_reason(text: str) -> tuple[str, str] | None:
+    """Retrieval paperwork, or a page with no body: (subtype, reason)."""
+    found = retrieval_page_reason(text)
+    if found:
+        return found
+    if header_only_reason(text):
+        return "JUNK_OTHERS", "header_only"
+    if contents_page_reason(text):
+        return "JUNK_OTHERS", "contents_page"
+    if placeholder_page_reason(text):
+        return "JUNK_OTHERS", "placeholder_page"
+    if metadata_page_reason(text):
+        return "JUNK_OTHERS", "document_metadata"
+    return None

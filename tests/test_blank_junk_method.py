@@ -222,10 +222,13 @@ class TestDistilBertLadder:
         assert not verdict.reason.startswith(FINAL_JUNK) and verdict.votes["veto"] == "handwritten"
 
     def test_pass_1_takes_r1_and_r3_card_junk(self):
-        assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "R1"
-        # 2026-11-01 (user): a strong card is junk in pass 1 too.
+        # 2026-11-03 (user): under 20 words, R1 tiny and R3 card wait for pass 2.
+        assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "P1"
+        assert run("Page 3 of 7", pass_no=2, bert=bert(0.0)).rule == "R1"
+        # 2026-11-01 (user): a strong card is junk in pass 1 too (20+ words).
         verdict = run(CARD_TEXT, pass_no=1, document_type="visual", bert=bert(0.0))
-        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_CARDS)
+        expected = "P1" if method._word_count(CARD_TEXT) < 20 else "R3"
+        assert verdict.rule == expected
 
     def test_pass_2_junk_cut_offs(self):
         sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
@@ -314,3 +317,60 @@ class TestPostProcess:
         verdict = method.post_process(decide(inputs), inputs)
         if method.fax_unsigned(inputs):
             assert verdict.rule == "FAX"
+
+
+class TestPass1ShortPages:
+    """2026-11-03 (user): pass 1 junks no page under 20 words unless it is blank."""
+
+    def test_a_short_page_sure_junk_waits_for_pass_2(self):
+        v = run("Invoice number 4411 amount due now", pass_no=1, bert=bert(0.99))
+        assert (v.code, v.rule) == (method.CODE_MAIN, "P1")
+
+    def test_a_tiny_page_waits_for_pass_2(self):
+        v = run("Fax", pass_no=1, bert=bert(0.99))
+        assert (v.code, v.rule) == (method.CODE_MAIN, "P1")
+
+    def test_blank_and_intentionally_blank_are_still_blank_in_pass_1(self):
+        assert run("", pass_no=1).code == method.CODE_BLANK
+        assert run("This page intentionally left blank", pass_no=1).code == method.CODE_BLANK
+
+    def test_a_long_page_is_still_junked_in_pass_1(self):
+        assert run(JUNK_TEXT, pass_no=1, bert=bert(0.99)).code != method.CODE_MAIN
+
+    def test_pass_2_still_junks_a_short_page(self):
+        assert run("Fax", pass_no=2, bert=bert(0.99)).code != method.CODE_MAIN
+
+
+def svc(flag: str, confidence: float, subclass: str = "", review: bool = False, reason: str = "argmax") -> dict:
+    p_keep = confidence if flag == "KEEP" else 1.0 - confidence
+    p_junk = confidence if flag == "JUNK" else 0.0
+    return {"p_keep": p_keep, "p_junk": 1.0 - p_keep, "top_junk_label": subclass,
+            "service": {"flag": flag, "subclass": subclass, "confidence": confidence, "review_required": review,
+                        "decision_reason": reason, "audit_tag": "", "p_keep": p_keep,
+                        "p_blank": 0.0, "p_junk": p_junk}}
+
+
+class TestPageClassifierService:
+    """2026-11-03 (user): b_jnk v3's PageClassifierService replaces DistilBERT alone in R5."""
+
+    def test_pass_1_settles_a_sure_junk(self):
+        v = run(JUNK_TEXT, pass_no=1, bert=svc("JUNK", 0.99, "JUNK_INVOICE"))
+        assert (v.code, v.rule) == (classify.CODE_INVOICE, "R5") and method.FINAL_JUNK in v.reason
+
+    def test_pass_1_settles_a_sure_keep_unless_review(self):
+        assert method.FINAL_KEEP in run(CLINICAL_TEXT, pass_no=1, bert=svc("KEEP", 0.99)).reason
+        v = run(CLINICAL_TEXT, pass_no=1, bert=svc("KEEP", 0.99, review=True, reason="keep_veto"))
+        assert v.rule == "P1"
+
+    def test_pass_1_defers_an_unsure_page(self):
+        assert run(JUNK_TEXT, pass_no=1, bert=svc("JUNK", 0.90, "JUNK_INVOICE")).rule == "P1"
+
+    def test_pass_2_follows_the_service_flag(self):
+        assert run(JUNK_TEXT, bert=svc("JUNK", 0.86, "JUNK_LETTER_FAX")).code == classify.CODE_LETTER_FAX
+        # The service's keep veto / demographic hold wins over a high p(junk).
+        kept = run(JUNK_TEXT, bert=svc("KEEP", 0.60, review=True, reason="protocol_retain_demographic"))
+        assert kept.code == classify.CODE_MAIN and kept.votes.get("review_required")
+
+    def test_pass_2_never_junks_a_handwritten_page(self):
+        v = run(JUNK_TEXT, bert=svc("JUNK", 0.99, "JUNK_INVOICE"), hw_area_pct=60.0)
+        assert v.code == classify.CODE_MAIN and v.votes["veto"] == "handwritten"

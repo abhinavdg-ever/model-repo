@@ -1,7 +1,7 @@
 """BERT page classifier: 8 labels (KEEP, BLANK, six JUNK subtypes).
 
-torch / transformers are imported lazily so the TF-IDF path keeps working
-without them installed.
+torch / transformers are imported lazily, so the word rules and scripts that
+only read text import without them.
 """
 
 from __future__ import annotations
@@ -32,6 +32,9 @@ def pick_device(preference: str = "auto"):
         return torch.device(preference)
     if torch.cuda.is_available():
         return torch.device("cuda")
+    # Intel Arc / Iris Xe GPUs (PyTorch 2.5+ with Intel GPU support).
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        return torch.device("xpu")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
@@ -63,9 +66,7 @@ def encode_head_tail(tokenizer, texts: list[str], max_length: int, head_share: f
 
 
 class BertPageClassifier:
-    """Same interface as FlatClassifier where inference needs it."""
-
-    bundle = None  # no TF-IDF coefficients to explain
+    """Page classifier used by scripts/infer.py."""
 
     def __init__(self, model, tokenizer, *, labels: list[str], max_length: int, head_share: float, device, meta: dict):
         self.model = model

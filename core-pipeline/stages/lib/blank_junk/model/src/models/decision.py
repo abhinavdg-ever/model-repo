@@ -10,13 +10,22 @@ Nothing is deleted from the packet by this module — flags + audit tags only.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
 
-from src.preprocessing.page_subclass import junk_trigger_groups
+from src.preprocessing.page_subclass import FAX_STAMP, LAB_CONTENT_RE, PROXIMITY_NAME, junk_trigger_hits
 from src.preprocessing.protocol import ProtocolHit, analyze_protocol, must_retain
 from src.preprocessing.taxonomy import Flag, to_flag
+
+
+CARD_OR_BILLING_RE = re.compile(
+    r"member\s*(?:id|#|no)|subscriber|group\s*(?:#|no\.?|number)\b|\brx\s*(?:bin|grp|pcn)\b|\bcopay|policy\s*(?:#|no|number)"
+    r"|driver'?s?\s+licen[cs]e|\bclass\s*:|\bexpires?\b|\bcharges?\b|\bamount\b|\bbalance\b|\bpayment|\bstatement\b"
+    r"|\bcpt\b|\bclaims?\b|\$\s*\d|social\s+security|identification\s+card|\bdl\s+[a-z]?\d|\bexp\b|\biss\b",
+    re.I,
+)
 
 
 @dataclass
@@ -46,6 +55,13 @@ class DecisionConfig:
     # junk_blank_min_confidence must be met by one label, not by several junk subtypes
     # together; a page the model cannot place stays KEEP for review.
     require_confident_subtype: bool = True
+    # A word rule (billing, fax, cover, end of record) does not make a page JUNK
+    # when the model is this sure it is KEEP and the page has at least this many
+    # different clinical or lab words: a lab report carries "Bill Type", a faxed
+    # note a fax header. One word is not enough: a fax cover's footer can name
+    # the attached "Radiology Report".
+    rule_veto_keep_prob: float = 0.95
+    rule_veto_min_clinical_words: int = 3
 
 
 @dataclass
@@ -125,10 +141,23 @@ def decide_from_proba(
         ((label_probs[lab], lab) for lab in config.demographic_override_labels if lab in label_probs),
         default=(0.0, None),
     )
+    # "records" near "request" is not enough: a patient's signed authorization says
+    # "I authorize Dr. X to request medical records". On a lab report, neither is
+    # the confidentiality footer every lab report carries.
+    lab_page = bool(LAB_CONTENT_RE.search(ocr_text or ""))
+    phrases = [
+        p for p in junk_trigger_hits(ocr_text).get(override_label or "", [])
+        if p != PROXIMITY_NAME and not (lab_page and p in FAX_STAMP)
+    ]
+    # A label that needs no phrase still needs the page to look like one: an ID or
+    # insurance card, or a billing field, not just a name and a date of birth.
+    no_trigger_ok = override_label in config.demographic_override_no_trigger_labels and bool(
+        CARD_OR_BILLING_RE.search(ocr_text or "")
+    )
     trigger_ok = (
         not config.demographic_override_needs_trigger
-        or override_label in config.demographic_override_no_trigger_labels
-        or override_label in junk_trigger_groups(ocr_text)
+        or no_trigger_ok
+        or bool(phrases)
     )
     model_over_demographic = (
         flag == "JUNK"
@@ -187,7 +216,7 @@ def decide_from_proba(
     # If we forced KEEP via retention, stamp the retention audit tag
     if reason.startswith("protocol_retain"):
         audit = (
-            "KEEP_CLINICAL_IMAGE"
+            (hit.audit_tag or "KEEP_CLINICAL_IMAGE")
             if hit.retain_clinical_image
             else "KEEP_DEMOGRAPHIC"
         )

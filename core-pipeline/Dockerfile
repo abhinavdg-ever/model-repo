@@ -56,6 +56,18 @@ s = score_text(text); \
 assert s.clinical > s.junk, (s.clinical, s.junk); \
 print('blank/junk canon ok')"
 
+# Fail the build if b_jnk v3's PageClassifierService (blank/junk R5 since 2026-11-03) or
+# its decision settings did not land. No weights needed: the modules import and the
+# config builds a DecisionConfig.
+RUN cd stages/lib/blank_junk/model && python -c "\
+import json; \
+from src.inference.predict import PageClassifierService; \
+from src.models.decision import DecisionConfig; \
+cfg = json.load(open('configs/default.json', encoding='utf-8')); \
+DecisionConfig(**cfg['decision']); \
+assert cfg['routing']['min_dictionary_words'] >= 0; \
+print('blank/junk PageClassifierService ok')"
+
 # Fail the build if stage 1 cannot judge orientation, or if the canons from
 # this checkout did not land: OSD data, the reading vocabulary, the stored
 # text-orientation convention, the page taxonomy's label space (any version) and the

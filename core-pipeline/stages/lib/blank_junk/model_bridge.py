@@ -11,8 +11,11 @@ reports ``engine: keywords`` so a degraded run is visible. TF-IDF
 (``tfidf_flat.joblib``) is no longer read.
 
 Wired like b_jnk v3 ``scripts/infer.py``: a Docling page goes in through
-``extract_docling_page``, plain OCR text through ``clean_ocr_text``. The vendored
-``src.*`` modules go on ``sys.path`` only while loading.
+``extract_docling_page``, plain OCR text through ``clean_ocr_text``, and the page is
+judged by v3's ``PageClassifierService`` (2026-11-03, user: the teammate's routing,
+retention, keep veto, thresholds and word rules), configured from the vendored
+``model/configs/default.json``. The vendored ``src.*`` modules go on ``sys.path`` only
+while loading.
 """
 from __future__ import annotations
 
@@ -58,12 +61,17 @@ def _bert_runtime_installed() -> bool:
 _lock = threading.Lock()
 _infer_lock = threading.Lock()
 _model: Any = None
+_service: Any = None
 _model_version: str | None = None
 # Vendored helpers, bound at load time (``src`` leaves sys.path afterwards).
 _extract_docling_page: Any = None
 _clean_ocr_text: Any = None
 _load_failed = False
 _load_error: str | None = None
+
+
+# The decision settings travel with the code (in git), so every host judges alike.
+_SERVICE_CONFIG = _VENDOR / "configs" / "default.json"
 
 
 def _model_version_from_config() -> str | None:
@@ -98,7 +106,7 @@ def model_status() -> dict[str, Any]:
 
 
 def _load_model() -> Any:
-    global _model, _model_version, _load_failed, _load_error
+    global _model, _service, _model_version, _load_failed, _load_error
     global _extract_docling_page, _clean_ocr_text
     if _model is not None or _load_failed:
         return _model
@@ -118,9 +126,20 @@ def _load_model() -> Any:
             from src.models.bert_classifier import BertPageClassifier
             from src.preprocessing.docling_page import extract_docling_page
             from src.preprocessing.tesseract_txt import clean_ocr_text
+            from src.inference.predict import PageClassifierService
+            from src.models.decision import DecisionConfig
 
             model = BertPageClassifier.load(_bert_dir())
-            _model_version = f"{_model_version_from_config() or 'bjc-ocr'}+bert"
+            cfg = json.loads(_SERVICE_CONFIG.read_text(encoding="utf-8"))
+            _model_version = f"{cfg.get('model_version') or _model_version_from_config() or 'bjc-ocr'}+bert"
+            # As scripts/infer.py builds it.
+            _service = PageClassifierService(
+                model,
+                model_version=_model_version,
+                decision=DecisionConfig(**cfg["decision"]),
+                min_dictionary_words=cfg["routing"]["min_dictionary_words"],
+                route_short_pages=not cfg.get("bert", {}).get("decide_short_pages", False),
+            )
             _extract_docling_page = extract_docling_page
             _clean_ocr_text = clean_ocr_text
             _model = model
@@ -141,18 +160,24 @@ def _load_model() -> Any:
         return _model
 
 
-def _model_input(text: str, docling: Any) -> str:
-    """What v3 infer.py feeds the model: a Docling page's text, else cleaned OCR text."""
+def _model_input(text: str, docling: Any) -> tuple[str, dict[str, Any] | None]:
+    """What v3 infer.py feeds the service: a Docling page's text and its structure,
+    else cleaned OCR text with no structure."""
     if docling is not None:
-        return _extract_docling_page(docling).text
-    return _clean_ocr_text(text or "")
+        content = _extract_docling_page(docling)
+        return content.text, content.to_meta()
+    return _clean_ocr_text(text or ""), None
 
 
 def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
     """DistilBERT's raw probabilities for one page, for the voters in method.py.
 
-    ``{"bert": {"p_keep", "p_junk", "top_junk_label"} | None}``. p_junk is every JUNK_*
-    label plus BLANK. A model that is not loaded, or that raises, is None: its voter
+    ``{"bert": {"p_keep", "p_junk", "top_junk_label", "service"} | None}``. p_junk is every
+    JUNK_* label plus BLANK (method.py's thresholds); ``service`` is v3's
+    ``PageClassifierService`` verdict as infer.py writes it: flag, subclass, confidence,
+    review_required, decision_reason, and p_keep / p_blank / p_junk with JUNK alone.
+    A page the service routes before the model (empty or unreadable OCR) has no
+    probabilities. A model that is not loaded, or that raises, is None: its voter
     abstains and the verdict records it as unavailable.
     """
     from method import bucket
@@ -162,16 +187,37 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
     if model is None:
         return out
     try:
-        model_text = _model_input(text, docling)
+        model_text, meta = _model_input(text, docling)
         if not model_text.strip():
             return out
         # One call at a time: the shared tokenizer is not safe across threads (two
         # charts' blank / junk passes at once; 2026-11-01).
         with _infer_lock:
-            probs = [float(p) for p in model.predict_proba([model_text])[0]]
+            result = _service.predict_one("page", model_text, content_meta=meta) if _service is not None else None
+            if result is not None and result.p_keep is not None:
+                p_blank = float(result.p_blank or 0.0)
+                p_keep, p_junk = float(result.p_keep), float(result.p_junk or 0.0) + p_blank
+                # The service's junk subtype (a KEEP page has none, and needs none).
+                top = result.subclass if (result.subclass or "").startswith("JUNK_") else ""
+            else:
+                # Routed before the model (or no service): the model's own numbers still
+                # feed R4 / R6 and blank_junk.json.
+                probs = [float(p) for p in model.predict_proba([model_text])[0]]
+                p_keep, p_junk, top = bucket(list(model.labels), probs)
     except Exception:
         logger.exception("Blank/junk BERT predict failed")
         return out
-    p_keep, p_junk, top = bucket(list(model.labels), probs)
-    out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "top_junk_label": top}
+    out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "top_junk_label": top, "service": None}
+    if result is not None:
+        out["bert"]["service"] = {
+            "flag": result.flag,
+            "subclass": result.subclass or "",
+            "confidence": float(result.confidence),
+            "review_required": bool(result.review_required),
+            "decision_reason": result.decision_reason or "",
+            "audit_tag": result.audit_tag or "",
+            "p_keep": result.p_keep,
+            "p_blank": result.p_blank,
+            "p_junk": result.p_junk,
+        }
     return out
