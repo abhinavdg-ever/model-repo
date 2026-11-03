@@ -105,7 +105,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -602,6 +602,9 @@ def decide(inputs: PageInputs) -> Verdict:
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
     if inputs.no_ink:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink")
+    # 2026-11-04 (user): stage 1 calls the page blank -> Yes (Blank), never junk.
+    if inputs.document_type == "blank":
+        return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank")
     if not visual and chars == 0:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text")
     if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
@@ -814,16 +817,50 @@ def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
     Junk / Letter/Fax (``fax_unsigned``)."""
     verdict = _keep_content(verdict, inputs)
     word = fax_unsigned(inputs) if verdict.code == CODE_MAIN else None
-    if word is None:
+    if word is not None:
+        bert = inputs.bert or {}
+        p_keep = float(bert["p_keep"]) if bert else None
+        p_junk = float(bert["p_junk"]) if bert else None
+        verdict.votes["fax_unsigned"] = word
+        verdict.votes["rule"] = "FAX"
+        verdict = Verdict(CODE_LETTER_FAX, rule_confidence(CODE_LETTER_FAX, "FAX", p_keep, p_junk), "FAX",
+                          f"{verdict.reason}; '{word}' in the header and no signature on the page -> Junk / Letter/Fax",
+                          verdict.votes)
+    return _keep_lab(verdict, inputs)
+
+
+def lab_result_words(inputs: PageInputs) -> Optional[list[str]]:
+    """2026-11-04 (user): the words that make a page a lab result -- one term of every group
+    in canon ``lab_keep.all_of`` (Lab, Reference Range, Value) -- or None."""
+    cfg = canon().raw.get("lab_keep") or {}
+    if not cfg.get("enabled", True):
+        return None
+    text = f"{inputs.text or ''}\n{inputs.prelim_text or ''}"
+    found: list[str] = []
+    for group in cfg.get("all_of") or []:
+        pattern = _terms(group)
+        hit = pattern.search(text) if pattern is not None else None
+        if hit is None:
+            return None
+        found.append(hit.group(0))
+    return found or None
+
+
+def _keep_lab(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """The last rule, both passes: a junk page with Lab, Reference Range and Value on it is a lab
+    result -> Main. Blank stays Blank."""
+    if verdict.code in (CODE_MAIN, CODE_BLANK):
         return verdict
+    found = lab_result_words(inputs)
+    if not found:
+        return verdict
+    verdict.votes["lab_kept"] = verdict.reason
+    verdict.votes["rule"] = "LAB"
     bert = inputs.bert or {}
     p_keep = float(bert["p_keep"]) if bert else None
     p_junk = float(bert["p_junk"]) if bert else None
-    verdict.votes["fax_unsigned"] = word
-    verdict.votes["rule"] = "FAX"
-    return Verdict(CODE_LETTER_FAX, rule_confidence(CODE_LETTER_FAX, "FAX", p_keep, p_junk), "FAX",
-                   f"{verdict.reason}; '{word}' in the header and no signature on the page -> Junk / Letter/Fax",
-                   verdict.votes)
+    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "LAB", p_keep, p_junk), "LAB",
+                   f"{verdict.reason}; lab result ({' / '.join(found)}) -> Main (never junk)", verdict.votes)
 
 
 def _keep_content(verdict: Verdict, inputs: PageInputs) -> Verdict:

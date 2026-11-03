@@ -374,3 +374,24 @@ class TestPageClassifierService:
     def test_pass_2_never_junks_a_handwritten_page(self):
         v = run(JUNK_TEXT, bert=svc("JUNK", 0.99, "JUNK_INVOICE"), hw_area_pct=60.0)
         assert v.code == classify.CODE_MAIN and v.votes["veto"] == "handwritten"
+
+
+class TestBlankFromStage1AndLabKeep:
+    """2026-11-04 (user)."""
+
+    def test_a_page_stage_1_calls_blank_is_blank_not_junk(self):
+        for pass_no in (1, 2):
+            v = run("x .", pass_no=pass_no, document_type="blank", bert=bert(0.99))
+            assert (v.code, v.rule) == (method.CODE_BLANK, "R1")
+
+    def test_a_lab_result_is_never_junk(self):
+        lab = ("Quest Lab report. Test Value Reference Range Units. Glucose 98 70-99 mg/dL. "
+               "Invoice number 4411 amount due now. " + FILLER)
+        for pass_no in (1, 2):
+            v = method.post_process(run(lab, pass_no=pass_no, bert=bert(0.99)), PageInputs(text=lab, pass_no=pass_no))
+            assert (v.code, v.rule) == (method.CODE_MAIN, "LAB")
+
+    def test_all_three_words_are_needed(self):
+        no_range = "Lab report. Test Value Units. Invoice number 4411 amount due now. " + FILLER
+        v = method.post_process(run(no_range, bert=bert(0.99)), PageInputs(text=no_range, pass_no=2))
+        assert v.code != method.CODE_MAIN
