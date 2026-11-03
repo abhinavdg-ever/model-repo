@@ -670,7 +670,8 @@ def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional
         from stages.lib.image_preprocess.hw_printed import _image_bgr, page_marks
 
         short = method.canon().raw["short_page"]
-        top, bottom = (float(v) for v in short["body_ink_band"])
+        zones = method.canon().raw["zones"]
+        top, bottom = float(zones["header_band"]), 1.0 - float(zones["footer_band"])
         with Image.open(page_image_path(chart_name, page_name)) as image:
             width, height = image.size
             band = image.convert("RGB").crop((0, int(top * height), width, int(bottom * height)))
@@ -730,7 +731,7 @@ def _page_inputs(
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
-    top = float(method.canon().raw["short_page"]["top_fraction"])
+    top = float(method.canon().raw["zones"]["header_band"])
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
         pid = page["id"]

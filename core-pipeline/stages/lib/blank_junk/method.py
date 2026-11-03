@@ -269,7 +269,7 @@ def lines_from_words(words: list[dict[str, Any]], height: float) -> list[Line]:
 def content_bottom(lines: list[Line]) -> Optional[float]:
     """Where the page's content ends (fraction of height), footers and stamps left out."""
     prof = canon()
-    footer = float(prof.raw["short_page"]["ignore_footer_band"])
+    footer = float(prof.raw["zones"]["footer_band"])
     kept = [
         line for line in lines
         if line.top < 1.0 - footer and not any(p.search(line.text.strip()) for p in prof.ignore_lines)
@@ -512,7 +512,7 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
     ``votes.short_page`` either way. Not measured (no word boxes, unreadable image) never
     fires; nor does a page DistilBERT is sure to keep (p(keep) > ``skip_keep_above``)."""
     cfg = canon().raw["short_page"]
-    top = float(cfg["top_fraction"])
+    top = float(canon().raw["zones"]["header_band"])
     if inputs.content_bottom is None:
         votes["short_page"] = "no_geometry"
         return None

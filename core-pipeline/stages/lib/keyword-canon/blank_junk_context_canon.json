@@ -18,7 +18,7 @@
     "demographic": 3
   },
   "zones": {
-    "header_band": 0.12,
+    "header_band": 0.15,
     "footer_band": 0.08
   },
   "duplicates": {
@@ -63,16 +63,10 @@
     "signature_terms": ["signature", "signed", "e-signed", "esigned", "cosigned", "attestation", "attested"]
   },
   "short_page": {
-    "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
-    "top_fraction": 0.15,
+    "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the header band (zones.header_band, 15%) of the page height, the footer band (zones.footer_band, 8%) and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
     "skip_keep_above": 0.9,
-    "ignore_footer_band": 0.06,
-    "body_ink_band": [
-      0.17,
-      0.94
-    ],
     "body_ink_max_fraction": 0.005,
-    "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band; it starts 2% below top_fraction) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R6 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
+    "note_body_ink": "Ink below the short band = the share of the band between the header and footer bands (15%-92%; 2026-11-03, user: one header band, one footer band in blank / junk) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R6 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
     "ignore_line_patterns": [
       "\\b(?:page|pg|pge)\\.?\\s*#?\\s*\\d+\\s*(?:of|/)\\s*\\d+\\b",
       "^\\s*\\d{1,4}\\s*$",
