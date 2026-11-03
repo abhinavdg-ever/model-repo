@@ -197,6 +197,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             page_for_reading,
             orientation_that_reads,
             read_page,
+            STRONG_READ_ENGLISH,
             tilt_on_upright,
             tilt_that_reads,
         )
@@ -222,9 +223,10 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # empty sheet has nothing to read and keeps OSD's answer.
         orientation, mirrored = float(proposed), False
         # 2026-11-03 (user): a second opinion from the page's letter shapes (rotation_cv).
-        # OSD and it agreeing decide the turn, 0 included (both 0: the page stays as it is,
-        # no reading search -- so a mirrored scan both call 0 is not flipped); when they
-        # disagree the reading rule decides as before.
+        # OSD and it agreeing decide the turn, 0 included (no reading search); when they
+        # disagree the reading rule decides as before. Both 0 on a page that does not read
+        # well: only the mirror is tried, at 0, and kept when the flipped page reads and
+        # reads more English (a face-down scan; 2026-11-03, user).
         cv_turn = _cv_rotation(image)
         agreed = osd is not None and cv_turn is not None and cv_turn == proposed
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
@@ -234,6 +236,10 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             if agreed:
                 chosen_read = read_page(small, proposed)
                 method = "osd_cv_agree"
+                if proposed == 0 and not (chosen_read.reads and chosen_read.english >= STRONG_READ_ENGLISH):
+                    flipped = read_page(small, 0, mirrored=True)
+                    if flipped.reads and flipped.english > chosen_read.english:
+                        mirrored, chosen_read, method = True, flipped, "readability"
             else:
                 turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
                 orientation = float(turn)
