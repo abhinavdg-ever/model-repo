@@ -1655,13 +1655,25 @@ export function memberIdList(
   manifestId: string | null | undefined,
   found?: string | null,
 ): string {
-  const want = idKey(manifestId ?? "");
-  if (!want) return list;
-  const lines = list.split("\n").map((line) => line.trim()).filter(Boolean);
   const value = (line: string) => {
     const at = line.lastIndexOf(": ");
     return at >= 0 ? line.slice(at + 2) : line;
   };
+  // One line per ID (2026-11-03, user): two keys that read the same ID ("Account Number" and
+  // "ACCOUNT NO.") show once, and a key's own colon is not doubled ("Account Number::").
+  const seen = new Set<string>();
+  const lines = list
+    .split("\n")
+    .map((line) => line.trim().replace(/:{2,}\s*/, ": "))
+    .filter(Boolean)
+    .filter((line) => {
+      const key = idKey(value(line)) || line;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const want = idKey(manifestId ?? "");
+  if (!want) return lines.join("\n");
   const yes = lines.filter((line) => idKey(value(line)) === want);
   if (!yes.length && found && idKey(found) === want) yes.push(found.trim());
   const no = lines.filter((line) => idKey(value(line)) !== want);

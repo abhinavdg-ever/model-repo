@@ -155,8 +155,9 @@ _KEY_ACRONYMS = re.compile(r"(?i)(?<![a-z])(id|mrn|ssn|mbi|hicn|fin|csn|dob|pcp)
 
 
 def display_key(key: str) -> str:
-    """'id #' -> 'ID #', 'mrn' -> 'MRN', 'acct no' -> 'Acct no'."""
-    text = _KEY_ACRONYMS.sub(lambda m: m.group(1).upper(), key)
+    """'id #' -> 'ID #', 'mrn' -> 'MRN', 'acct no' -> 'Acct no'; a key printed with its own
+    colon ('Account Number:') loses it, so the line reads 'Account Number: 36403', not '::'."""
+    text = _KEY_ACRONYMS.sub(lambda m: m.group(1).upper(), key.strip().rstrip(":").strip())
     return text[:1].upper() + text[1:] if text else text
 
 

@@ -463,3 +463,23 @@ def test_local_mode_manual_review_reads_every_staged_member_id(tmp_path):
     out = with_every_member_id(doc, tmp_path, "chart1")
     assert out.pages[0].memberId == "998877 | 23-4567"
     assert with_every_member_id(doc, tmp_path, "missing").pages[0].memberId == "998877"
+
+
+def test_member_id_key_colon_is_not_doubled():
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.services.extraction_review import display_key, member_id_text
+
+    assert display_key("Account Number:") == "Account Number"
+    assert member_id_text([{"key": "Account Number:", "value": "36403"}]) == "Account Number: 36403"
+
+
+def test_a_registration_heading_alone_is_not_patient_registration():
+    """2026-11-03 (user): the MMSE's REGISTRATION section made a page Patient Registration."""
+    import json
+
+    from stages.lib.page_classify import leaf_canon
+
+    data = json.loads(leaf_canon.PATH.read_text(encoding="utf-8"))
+    deciding = [t.casefold() for t in data["nodes"]["Administrative > Patient Registration"]["deciding"]]
+    assert "registration" not in deciding and "patient registration" in deciding

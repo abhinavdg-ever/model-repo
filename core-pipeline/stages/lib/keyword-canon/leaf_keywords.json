@@ -2620,7 +2620,14 @@
         "3-word recall",
         "patient-completed",
         "please circle",
-        "yes/no"
+        "yes/no",
+        "attention and calculation",
+        "total possible score",
+        "serial 7",
+        "close your eyes",
+        "intersecting pentagons",
+        "3-stage command",
+        "registration"
       ],
       "shared": [
         "completed",
@@ -2905,8 +2912,7 @@
       "deciding": [
         "Patient Registration",
         "registration form",
-        "new patient registration",
-        "registration"
+        "new patient registration"
       ]
     },
     "Administrative > Superbill": {
