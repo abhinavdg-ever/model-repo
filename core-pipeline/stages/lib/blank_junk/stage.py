@@ -103,6 +103,7 @@ from classify import (  # noqa: E402
     CODE_DUPLICATE,
     CODE_JUNK,
     CODE_MAIN,
+    CODE_OTHERS,
     duplicate_window,
     DUPLICATE_PARTIAL_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD,
@@ -111,6 +112,7 @@ from classify import (  # noqa: E402
     duplicate_char_count,
     page_dates,
     text_is_comparable,
+    unique_words,
     word_count,
     word_overlap,
 )
@@ -264,6 +266,9 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
 # A signature / ending page apart from its look-alike is still a duplicate when the two are
 # exact copies of more than this many words (2026-10-27, user).
 SIGNED_COPY_MIN_WORDS = 100
+# The reason a contained page carries (2026-11-03: in pass 2; the same mark continuity used).
+CONTAINED_MARK = "short_page_contained_in_page_id:"
+CONTAINED_CONFIDENCE = 0.90
 
 
 def _classify(
@@ -517,6 +522,48 @@ def _classify(
         )
         partial.add(page_id)
 
+    # 2026-11-03 (user): a page whose distinct words are all on a longer Main page within 3
+    # pages, and at most half its length, adds nothing: Junk / Others (a report's "page 2 of 2"
+    # that only repeats the header block and footer). Here in pass 2, so no later stage reads
+    # it (it used to run in continuity).
+    contained: set[int] = set()
+    if find_duplicates:
+        cfg = method.canon().raw.get("contained_page", {})
+        near = int(cfg.get("near_pages", 3))
+        share = float(cfg.get("max_share_of_container", 0.5))
+        min_words = int(cfg.get("min_words", 3))
+        order = [page["id"] for page in pages]
+        mains = [i for i, pid in enumerate(order)
+                 if pid not in dup_of and _main(pid) and (texts.get(pid) or "").strip()]
+        page_words = {i: unique_words(texts.get(order[i]) or "") for i in mains}
+        page_len = {i: duplicate_char_count(texts.get(order[i]) or "") for i in mains}
+        for i in mains:
+            pid = order[i]
+            mine = page_words[i]
+            if len(mine) < min_words or _signature_page(pid):
+                continue
+            container = next(
+                (k for k in sorted((k for k in mains if k != i and abs(k - i) <= near), key=lambda k: (abs(k - i), k))
+                 if page_len[k] > page_len[i] and page_len[i] <= share * page_len[k] and mine <= page_words[k]),
+                None,
+            )
+            if container is None:
+                continue
+            other = page_by_id[order[container]]
+            note = (
+                f"{CONTAINED_MARK}{order[container]} (all {len(mine)} distinct words on page "
+                f"{other.get('page_number')}, {page_len[i]} characters <= {share:.0%} of its "
+                f"{page_len[container]}) -> Junk / Others"
+            )
+            own = by_id.get(pid) or {}
+            earlier = own.get("votes")
+            by_id[pid] = _row_for(
+                page_by_id[pid], code=CODE_OTHERS, reason=note, confidence=CONTAINED_CONFIDENCE,
+                votes={**earlier, "contained_page": note} if earlier else None,
+            )
+            partial.discard(pid)
+            contained.add(pid)
+
     named: dict[int, dict[str, Any]] = {}
     for page_id, match in best.items():
         other = page_by_id.get(match["page_id"]) or {}
@@ -541,7 +588,7 @@ def _classify(
         pid = page["id"]
         if pid in emitted or pid not in by_id:
             continue
-        if pid in dup_of or pid in partial:
+        if pid in dup_of or pid in partial or pid in contained:
             rows.append(by_id[pid])
     return rows
 
@@ -682,6 +729,7 @@ def _page_inputs(
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
+    headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
     top = float(method.canon().raw["short_page"]["top_fraction"])
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
@@ -702,6 +750,7 @@ def _page_inputs(
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
         )
         if pass_no == 2:
+            inputs.headings = headings.get(page["page_name"], ())
             inputs.lines = _page_lines(
                 (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
             )
@@ -714,6 +763,20 @@ def _page_inputs(
             if not page_blocks_prelim(q):
                 inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
+    return out
+
+
+def section_heading_texts(chart_name: str) -> dict[str, tuple[str, ...]]:
+    """Each page's section header texts (stage 6, in the Final OCR JSON): Final OCR 2's when the
+    page has them, else Final OCR 1's (2026-11-03, user: the fax rule reads these)."""
+    from stages.lib.continuity.layout import load_pages, section_headers
+
+    out: dict[str, tuple[str, ...]] = {}
+    for engine in ("final1", "final2"):  # final2 last: it wins where it has headers
+        for name, page in load_pages(chart_name, engine).items():
+            texts = tuple(h["text"] for h in section_headers(page) if h.get("text"))
+            if texts:
+                out[name] = texts
     return out
 
 
@@ -940,11 +1003,13 @@ def _run_pass(
 
                 signed_now = signed_page_names(ctx.chart_name)
                 names = {page["id"]: page["page_name"] for page in ctx.pages}
+                headings_now = section_heading_texts(ctx.chart_name)
                 kept = [
                     pid for pid in kept
                     if not method.fax_unsigned(method.PageInputs(
                         text=texts.get(pid) or "", pass_no=2, signed=names.get(pid) in signed_now,
-                        prelim_text=prelim_texts.get(pid) or "" if isinstance(prelim_texts, dict) else ""))
+                        prelim_text=prelim_texts.get(pid) or "" if isinstance(prelim_texts, dict) else "",
+                        headings=headings_now.get(names.get(pid) or "", ())))
                 ]
                 mark_skipped(conn, ctx, kept, "final_keep_pass1")
                 # A page typed Blank with no text is judged (R1: Blank, 2026-10-27, user);

@@ -31,8 +31,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     p(junk) > 0.95 (a signed records-request letter is still junk)
     R6 short page   the content ends in the top 15% and the band below has < 0.5% ink ->
                     Junk / Others, unless DistilBERT p(keep) > 0.90
-    R5 DistilBERT   p(junk) >= 0.85 -> Junk (DistilBERT's subtype); 0.50 - 0.85 -> Junk for
-                    review; below 0.50 -> Main
+    R5 DistilBERT   p(junk) >= 0.70 -> Junk (DistilBERT's subtype); below -> Main (2026-11-03,
+                    user: no review band; canon junk_at = review_junk_at = 0.7)
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
 After the ladder (``post_process``, 2026-10-26, user):
@@ -451,6 +451,8 @@ class PageInputs:
     body_ink_fraction: Optional[float] = None  # the share of that band that is ink
     # Pass 2: the page's Tesseract text, read for junk terms only (score_text also_junk).
     prelim_text: str = ""
+    # Pass 2: the page's section headers (stage 6, in the Final OCR JSON), for the fax rule.
+    headings: tuple[str, ...] = ()
 
 
 @dataclass
@@ -494,8 +496,8 @@ def _thresholds() -> dict[str, float]:
     return {
         "pass1_final_keep_above": float(cfg.get("pass1_final_keep_above", 0.95)),
         "pass1_final_junk_above": float(cfg.get("pass1_final_junk_above", 0.95)),
-        "junk_at": float(cfg.get("junk_at", 0.85)),
-        "review_junk_at": float(cfg.get("review_junk_at", 0.50)),
+        "junk_at": float(cfg.get("junk_at", 0.70)),
+        "review_junk_at": float(cfg.get("review_junk_at", 0.70)),
         "signature_overruled_above": float(cfg.get("signature_overruled_above", 0.95)),
     }
 
@@ -714,13 +716,9 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     signature = _terms(cfg.get("signature_terms") or [])
     if fax is None:
         return None
-    if inputs.lines:
-        header_band = float(canon().raw["zones"]["header_band"])
-        header = "\n".join(line.text for line in inputs.lines if line.top < header_band)
-    else:
-        rows = [row for row in (inputs.text or "").splitlines() if row.strip()]
-        header = "\n".join(rows[: int(cfg.get("header_lines_without_boxes", 5))])
-    found = fax.search(header)
+    # The page's section headers (stage 6), not a band of the page (2026-11-03, user).
+    header = "\n".join(inputs.headings)
+    found = fax.search(header) if header else None
     if not found:
         return None
     if signature is not None and (signature.search(inputs.text or "") or signature.search(inputs.prelim_text or "")):

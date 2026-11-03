@@ -977,9 +977,10 @@ class TestCardRule:
         verdict = self._decide(medium)
         assert verdict.code != classify.CODE_CARDS and verdict.votes["review_required"]
 
-    def test_clinical_headings_block_a_card(self):
+    def test_visit_headings_no_longer_block_a_card(self):
+        """2026-11-03 (user): the user's card_rules.py has no visit-heading exclusions."""
         note = self.CARD + " Allergies: none. Plan: follow up"
-        assert self._decide(note).code != classify.CODE_CARDS
+        assert self._decide(note).code == classify.CODE_CARDS
 
     def test_a_provider_name_does_not_keep_a_card(self):
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", provider=True)

@@ -2,7 +2,8 @@
 
 The blank / junk rule R3 (method.decide; both passes since 2026-11-01, user): on a page the page-tag
 model calls printed or visual, a card found here is Junk / Cards. Near misses (card words
-with form / letter / clinical words) are not junk; the ladder goes on.
+with form / letter / clinical words) are not junk; the ladder goes on. The rules are the user's
+card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 
 A page is a card only when words from two different card groups are on it, and no
 form / letter / clinical words are on it. A card photocopied on an A4 sheet still
@@ -193,17 +194,6 @@ BLOCKERS: dict[str, list[re.Pattern]] = {
         r"\bmedication\s*list\b",
         r"\bplan\s*of\s*care\b",
         r"\bprogress\s*note\b",
-        # 2026-10-31: the headings a short visit, telephone or medication note carries.
-        r"\ballerg(?:y|ies)\b",
-        r"\bmedications?\s*:",
-        r"\bcurrent\s*medications\b",
-        r"\bvitals?\b|\bvital\s*signs\b",
-        r"\bimpression\b",
-        r"(?:^|\n)\s*plan\s*:",
-        r"\bsubjective\b",
-        r"\bobjective\b",
-        r"\b(?:physical\s*)?exam(?:ination)?\s*:",
-        r"\bchief\s*concern\b",
     ),
 }
 

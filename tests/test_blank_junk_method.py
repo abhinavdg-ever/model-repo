@@ -230,9 +230,10 @@ class TestDistilBertLadder:
     def test_pass_2_junk_cut_offs(self):
         sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
         assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "R5") and "review" not in sure.reason
-        unsure = run(FILLER, bert=bert(0.60))
-        assert unsure.code == classify.CODE_INVOICE and unsure.votes["review_required"]
-        assert run(FILLER, bert=bert(0.49)).code == classify.CODE_MAIN
+        # 2026-11-03 (user): p(junk) >= 0.70 is junk, below is Main; no review band.
+        at = run(FILLER, bert=bert(0.70))
+        assert at.code == classify.CODE_INVOICE and not at.votes.get("review_required")
+        assert run(FILLER, bert=bert(0.69)).code == classify.CODE_MAIN
 
     def test_keywords_no_longer_decide(self):
         # Invoice wording, DistilBERT keeps: Main. Clinical wording, DistilBERT junks: Junk.
