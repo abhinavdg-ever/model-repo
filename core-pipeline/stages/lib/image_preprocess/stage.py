@@ -196,6 +196,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         from stages.lib.image_preprocess.rotation import (
             page_for_reading,
             orientation_that_reads,
+            read_page,
             tilt_on_upright,
             tilt_that_reads,
         )
@@ -220,14 +221,25 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # reads best is kept, and a page nothing reads keeps OSD's turn. An
         # empty sheet has nothing to read and keeps OSD's answer.
         orientation, mirrored = float(proposed), False
+        # 2026-11-03 (user): a second opinion from the page's letter shapes (rotation_cv).
+        # OSD and it agreeing on a quarter-turn turn the page by it; any other answer (they
+        # disagree, or both say 0) goes through the reading rule as before.
+        cv_turn = _cv_rotation(image)
+        agreed = osd is not None and cv_turn is not None and cv_turn == proposed and proposed in (90, 180, 270)
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
         small = None
         if tags.get("document_type") != "blank":
             small = page_for_reading(image)
-            turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
-            orientation = float(turn)
-            if turn != proposed or mirrored:
-                method = "readability"
+            if agreed:
+                chosen_read = read_page(small, proposed)
+                method = "osd_cv_agree"
+            else:
+                turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
+                orientation = float(turn)
+                if turn != proposed or mirrored:
+                    method = "readability"
+        elif agreed:
+            method = "osd_cv_agree"
 
         # Tilt is measured on the page as it will be saved: after the turn and
         # after the flip, which reverses the direction of any lean. The
@@ -265,6 +277,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "rotation_applied": False,
             "method": method,
             "osd_confidence": osd_confidence,
+            "cv_rotation": cv_turn,
             # Kept so the correction can be applied at full resolution without
             # re-reading the file. Not persisted.
             "_image": image,
@@ -290,6 +303,21 @@ def _stand_in() -> float:
     return conf.score(0.5, "degraded", module="image_preprocess")
 
 
+def _cv_rotation(image: Any) -> Optional[int]:
+    """rotation_cv's clockwise turn (0 / 90 / 180 / 270), or None when it has too few
+    letters to tell or fails (it is only a second opinion)."""
+    try:
+        from stages.lib.image_preprocess.rotation_cv import detect_rotation
+
+        result = detect_rotation(image)
+    except Exception as exc:  # noqa: BLE001 - the reading rule still decides
+        logger.debug("rotation_cv failed: %s", exc)
+        return None
+    if result.note:
+        return None
+    return int(result.rotation) % 360
+
+
 def _rotation_confidences(
     method: str, osd_confidence: float, read: Any, tilt: float
 ) -> tuple[Optional[float], Optional[float]]:
@@ -307,7 +335,10 @@ def _rotation_confidences(
     scale = float(conf.settings_for("image_preprocess", {"osd_scale": 3.0})["osd_scale"])
     osd_p = 1.0 - math.exp(-max(0.0, osd_confidence) / scale) if osd_confidence else None
     share = float(read.share) if read is not None and read.tokens else None
-    if method == "osd":
+    if method == "osd_cv_agree":
+        # Two independent readers agree: OSD's own confidence, fully backed.
+        turn = conf.score(conf.backed(osd_p or 0.0, 1.0), module="image_preprocess")
+    elif method == "osd":
         turn = conf.backed(osd_p or 0.0, share or 0.0) if share is not None else osd_p
         turn = conf.score(turn, module="image_preprocess")
     elif method == "readability":
