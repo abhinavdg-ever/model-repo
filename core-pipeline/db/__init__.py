@@ -53,16 +53,37 @@ def _mem(conn: Any) -> bool:
     return isinstance(conn, MemoryStore)
 
 
+# Writes that run inside their own savepoint (2026-11-04, user: one bad page must not sink a
+# chart). A failed write rolls back only itself, so the caller can record the page's error
+# and go on with the same connection; without it Postgres refuses every later statement of
+# the transaction ("current transaction is aborted").
+_WRITE_PREFIXES = ("upsert_", "insert_", "set_", "mark_", "revise_", "delete_", "clear_", "replace_", "record_")
+_SAVEPOINT = "page_write"
+
+
 def _dispatch(fn):
-    """Route to MemoryStore.<same name> when conn is the in-memory backend."""
+    """Route to MemoryStore.<same name> when conn is the in-memory backend; run a Postgres
+    write inside its own savepoint."""
     import functools
+
+    is_write = fn.__name__.startswith(_WRITE_PREFIXES)
 
     @functools.wraps(fn)
     def wrapper(conn, *args, **kwargs):
         if _mem(conn):
             method = getattr(conn, fn.__name__)
             return method(*args, **kwargs)
-        return fn(conn, *args, **kwargs)
+        if not is_write or not hasattr(conn, "execute"):
+            return fn(conn, *args, **kwargs)
+        conn.execute(f"SAVEPOINT {_SAVEPOINT}")
+        try:
+            result = fn(conn, *args, **kwargs)
+        except Exception:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {_SAVEPOINT}")
+            conn.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
+            raise
+        conn.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
+        return result
 
     return wrapper
 

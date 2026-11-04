@@ -84,6 +84,7 @@ from stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     mark_completed,
+    mark_failed,
     mark_skipped,
     pass1_ruled_out,
     stage_run,
@@ -1136,19 +1137,26 @@ def _run_pass(
                 row_source = ocr_source
                 if pass_no == 2:
                     row_source = sources.get(row["page_id"], ocr_source)
-                upsert_blank_junk(
-                    conn,
-                    chart_id=chart_id,
-                    page_id=row["page_id"],
-                    pass_no=pass_no,
-                    blank_junk_flag=row["flag"],
-                    ocr_source=row_source,
-                    junk_subtype=row["subtype"],
-                    duplicate_of_page_id=row["duplicate_of"],
-                    confidence=row["confidence"],
-                    reason=row["reason"],
-                    duplicate_confidence=row.get("duplicate_confidence"),
-                )
+                try:
+                    upsert_blank_junk(
+                        conn,
+                        chart_id=chart_id,
+                        page_id=row["page_id"],
+                        pass_no=pass_no,
+                        blank_junk_flag=row["flag"],
+                        ocr_source=row_source,
+                        junk_subtype=row["subtype"],
+                        duplicate_of_page_id=row["duplicate_of"],
+                        confidence=row["confidence"],
+                        reason=row["reason"],
+                        duplicate_confidence=row.get("duplicate_confidence"),
+                    )
+                except Exception as exc:  # one bad page must not sink the chart (2026-11-04, user)
+                    page_name = str(row.get("page_name") or row["page_id"])
+                    logger.exception("blank/junk pass %s: page %s not written", pass_no, page_name)
+                    if row["page_id"] in ctx.todo:
+                        mark_failed(conn, ctx, row["page_id"], f"blank/junk write failed: {exc}"[:500], page_name)
+                    continue
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
