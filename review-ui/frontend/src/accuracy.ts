@@ -249,7 +249,7 @@ export function memberTruth(value: string | null | undefined): MemberSide | null
 /** The pipeline's side: its value is the manifest member's (Yes), someone else's (No), or
  * there is none (Not Found). ``matches`` says whether the value is the member's. */
 export function memberPipeline(value: string | null | undefined, matches: boolean, skipped = false): MemberSide {
-  // A blank / junk page: the member stage skipped it, as a Skipped label says (2026-10-28).
+  // A blank / junk page with nothing read: Skipped, as its label says (2026-10-28 / 11-04).
   if (skipped) return "skipped";
   if (!found(value)) return "not_found";
   return matches ? "yes" : "no";
@@ -263,7 +263,11 @@ function memberCall(
   const nameIsMember = !manifest?.member || nameMatchesManifest(page.memberName, manifest.member);
   const dobIsMember = !manifest?.dob || dobMatchesManifest(page.memberDob, manifest.dob);
   const truth = [memberTruth(gt?.memberName), memberTruth(gt?.memberDob)];
-  const skipped = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  // A blank / junk page is scored on the member values read on it (2026-11-04, user); it is
+  // Skipped only when nothing was read.
+  const blankJunk = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  const read = [page.memberName, page.memberDob, page.memberId].some((v) => (v ?? "").toString().trim() !== "");
+  const skipped = blankJunk && !read;
   const piped = [
     memberPipeline(page.memberName, nameIsMember, skipped),
     memberPipeline(page.memberDob, dobIsMember, skipped),

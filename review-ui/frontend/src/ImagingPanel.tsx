@@ -221,7 +221,7 @@ function isBlankJunkPage(page: ImagingPageResult): boolean {
 }
 
 /** Member fields on a blank / junk page: the values read are shown (2026-11-04, user); Skipped
- * only when nothing was read. Scoring still treats the page as skipped. */
+ * only when nothing was read. Scored the same way (accuracy.ts). */
 function memberSkip(page: ImagingPageResult): { skipped: true } | undefined {
   if (!isBlankJunkPage(page)) return undefined;
   const read = [page.memberName, page.memberDob, page.memberId].some((v) => (v ?? "").toString().trim() !== "");
@@ -1755,7 +1755,7 @@ function PageDetails({
     (truth: string): "match" | "mismatch" | null => {
       const side = memberTruth(truth);
       if (!side) return null;
-      return side === memberPipeline(read, Boolean((member ?? "").trim()), skipped) ? "match" : "mismatch";
+      return side === memberPipeline(read, Boolean((member ?? "").trim()), Boolean(memberShownSkip)) ? "match" : "mismatch";
     };
   const encounterKnown =
     Boolean(sections.encounter) ||
