@@ -9,8 +9,11 @@ HEADERS = ("FAX COVER SHEET", "Progress Note")
 
 def _verdict(text, **kw):
     kw.setdefault("headings", HEADERS)
-    inputs = m.PageInputs(text=text, pass_no=kw.pop("pass_no", 2), **kw)
-    return m.post_process(m.Verdict(m.CODE_MAIN, 0.9, "R4", "kept"), inputs)
+    keep = {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax",
+            "p_keep": 0.9, "p_blank": 0.0, "p_junk": 0.1}
+    inputs = m.PageInputs(text=text, pass_no=kw.pop("pass_no", 2),
+                          bert={"p_keep": 0.9, "p_junk": 0.1, "p_blank": 0.0, "service": keep}, **kw)
+    return m.post_process(m.decide(inputs), inputs)
 
 
 def test_an_unsigned_page_with_fax_in_a_section_header_is_junk():

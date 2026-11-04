@@ -330,7 +330,9 @@ def _classify(
         text = texts.get(page_id) or ""
         page_inputs = (inputs or {}).get(page_id) or method.PageInputs(text=text, pass_no=1)
         page_inputs.text = text
-        scores = model_scores(text, docling=(docling_pages or {}).get(page_id)) if text.strip() else {}
+        # 2026-11-04 (user): pass 1 is rules only; the model runs in pass 2.
+        scores = (model_scores(text, docling=(docling_pages or {}).get(page_id))
+                  if text.strip() and page_inputs.pass_no == 2 else {})
         page_inputs.bert = scores.get("bert")
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
         by_id[page_id] = _row_for(
@@ -594,15 +596,15 @@ def _classify(
         )
         partial.add(page_id)
 
-    # 2026-11-03 (user): a page whose distinct words are all on a longer Main page within 3
-    # pages, and at most half its length, adds nothing: Junk / Others (a report's "page 2 of 2"
-    # that only repeats the header block and footer). Here in pass 2, so no later stage reads
-    # it (it used to run in continuity).
+    # 2026-11-04 (user): a short page -- its content ends in the top 20% of the page -- whose
+    # distinct words are all on a longer Main page within 3 pages adds nothing: Junk / Others
+    # (a report's "page 2 of 2" that only repeats the header block). Replaces R6 and the
+    # 2026-11-03 half-the-length rule. A page without line positions is never short.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         near = int(cfg.get("near_pages", 3))
-        share = float(cfg.get("max_share_of_container", 0.5))
+        top = float(cfg.get("top_fraction", 0.20))
         min_words = int(cfg.get("min_words", 3))
         order = [page["id"] for page in pages]
         mains = [i for i, pid in enumerate(order)
@@ -612,20 +614,20 @@ def _classify(
         for i in mains:
             pid = order[i]
             mine = page_words[i]
-            if len(mine) < min_words or _signature_page(pid):
+            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
+            if len(mine) < min_words or _signature_page(pid) or bottom is None or bottom > top:
                 continue
             container = next(
                 (k for k in sorted((k for k in mains if k != i and abs(k - i) <= near), key=lambda k: (abs(k - i), k))
-                 if page_len[k] > page_len[i] and page_len[i] <= share * page_len[k] and mine <= page_words[k]),
+                 if page_len[k] > page_len[i] and mine <= page_words[k]),
                 None,
             )
             if container is None:
                 continue
             other = page_by_id[order[container]]
             note = (
-                f"{CONTAINED_MARK}{order[container]} (all {len(mine)} distinct words on page "
-                f"{other.get('page_number')}, {page_len[i]} characters <= {share:.0%} of its "
-                f"{page_len[container]}) -> Junk / Others"
+                f"{CONTAINED_MARK}{order[container]} (content ends at {bottom:.0%} <= {top:.0%} of the page; "
+                f"all {len(mine)} distinct words on page {other.get('page_number')}) -> Junk / Others"
             )
             own = by_id.get(pid) or {}
             earlier = own.get("votes")

@@ -12,12 +12,15 @@ BODY = " ".join(f"finding{i} meniscus ligament effusion impression" for i in ran
 def _run(texts, signed=()):
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    # 2026-11-04 (user): a short page's content ends in the top 20%.
+    for i in texts:
+        inputs[i].content_bottom = 0.9 if len(texts[i]) > 400 else 0.12
     rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed), find_duplicates=True)
     return {row["page_id"]: row for row in rows}
 
 
 def test_a_page_of_only_the_header_and_footer_is_junk(monkeypatch):
-    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1}})
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER + "1 2", 2: HEADER + FOOTER + "2"})
     assert rows[2]["flag"] == "junk" and rows[2]["subtype"] == "Others"
     assert rows[2]["reason"].startswith(stage.CONTAINED_MARK + "1")
@@ -25,7 +28,7 @@ def test_a_page_of_only_the_header_and_footer_is_junk(monkeypatch):
 
 
 def test_a_signed_page_or_one_with_its_own_words_stays(monkeypatch):
-    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1}})
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}, signed={2})
     assert rows[2]["flag"] == "not_blank_junk"
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " addendum newword"})

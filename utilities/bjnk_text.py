@@ -6,7 +6,7 @@
 
 Runs the pipeline's own path (stages/lib/blank_junk/model_bridge.py): clean_ocr_text, the b_jnk
 v3 PageClassifierService on the weights in core-pipeline/models/blank-junk/bert/, then the
-ladder (method.decide) as pass 1 would on Tesseract text. Page-image rules (no ink, visual,
+ladder (method.decide) as pass 2 would on this text (pass 1 is rules only since 2026-11-04). Page-image rules (no ink, visual,
 short page, signature) need the pipeline and are not applied here.
 
 Prints, per page:
@@ -14,7 +14,7 @@ Prints, per page:
   service   the teammate's PageClassifierService on top (routing, retention / demographic
             override, keep veto, thresholds, word rules): p_keep / p_blank / p_junk, flag,
             subtype, confidence, review and decision_reason;
-  ladder    our pass-1 verdict (R1-R5, post_process) from it. Never the page text. Run from the repo root with the
+  ladder    our pass-2 verdict from the text alone (card, signed phrase, service, LAB). Never the page text. Run from the repo root with the
 core-pipeline venv:  core-pipeline/.venv/bin/python utilities/bjnk_text.py page.txt
 (Windows: core-pipeline\\.venv\\Scripts\\python utilities\\bjnk_text.py page.txt)
 """
@@ -74,8 +74,8 @@ def main() -> int:
             bert = model_scores(text)["bert"] if text.strip() else None
             service = (bert or {}).get("service") or {}
             verdict = method.post_process(
-                method.decide(method.PageInputs(text=text, pass_no=1, bert=bert)),
-                method.PageInputs(text=text, pass_no=1, bert=bert),
+                method.decide(method.PageInputs(text=text, pass_no=2, bert=bert)),
+                method.PageInputs(text=text, pass_no=2, bert=bert),
             )
             label = CLASSIFICATION_LABELS.get(verdict.code, str(verdict.code))
             print(f"{name}: words {method._word_count(text)}")
@@ -91,7 +91,7 @@ def main() -> int:
                       f"confidence {_fmt(service.get('confidence'))}"
                       f"{' (review)' if service.get('review_required') else ''} "
                       f"reason {service.get('decision_reason') or '-'}")
-            print(f"  ladder (pass 1): {label} by {verdict.rule}, confidence {_fmt(verdict.confidence)}")
+            print(f"  ladder (pass 2, text only): {label} by {verdict.rule}, confidence {_fmt(verdict.confidence)}")
     return 0
 
 

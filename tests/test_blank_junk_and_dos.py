@@ -607,8 +607,12 @@ class TestPass1SureJunk:
 class TestOnlyMainPagesAreCompared:
     """2026-10-22 (user): only Main pages take part in the duplicate check."""
 
-    JUNK = {"bert": {"p_keep": 0.02, "p_junk": 0.98, "top_junk_label": "JUNK_FAX_TRANSMISSION"}}
-    KEEP = {"bert": {"p_keep": 0.98, "p_junk": 0.02, "top_junk_label": ""}}
+    JUNK = {"bert": {"p_keep": 0.02, "p_junk": 0.98, "top_junk_label": "JUNK_LETTER_FAX",
+                     "service": {"flag": "JUNK", "subclass": "JUNK_LETTER_FAX", "confidence": 0.98,
+                                 "decision_reason": "argmax", "p_keep": 0.02, "p_blank": 0.0, "p_junk": 0.98}}}
+    KEEP = {"bert": {"p_keep": 0.98, "p_junk": 0.02, "top_junk_label": "",
+                     "service": {"flag": "KEEP", "subclass": "", "confidence": 0.98,
+                                 "decision_reason": "argmax", "p_keep": 0.98, "p_blank": 0.0, "p_junk": 0.02}}}
 
     def _run(self, monkeypatch, texts, junk_ids):
         import method
@@ -979,10 +983,6 @@ class TestCardRule:
         verdict = self._decide(form)
         assert verdict.rule != "R3" and verdict.votes.get("card_near_miss")
 
-    def test_pass_one_junks_a_strong_card_too(self):
-        # 2026-11-01 (user): one card rule, both passes.
-        verdict = self._decide(self.CARD, pass_no=1)
-        assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3")
 
     def test_a_medium_card_is_flagged_not_junked(self):
         medium = "Member ID: 912345678 Group Number: 70123"  # two groups only

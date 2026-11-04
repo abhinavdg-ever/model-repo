@@ -42,7 +42,7 @@ def pass1_ruled_out(conn: Any, chart_id: int) -> set[int]:
     Azure call skip them, and so do section headers, kv_extract, pass 2 and every stage
     after (continuity reads them from Tesseract only). Handwritten and low-quality pages
     are never settled in pass 1."""
-    from db import get_blank_junk_flags, get_blank_junk_reasons, get_ocr_texts, low_quality_page_ids, non_printed_page_ids
+    from db import get_blank_junk_flags, low_quality_page_ids, non_printed_page_ids
 
     judged_in_pass2 = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(conn, chart_id)
     settled = {
@@ -50,14 +50,6 @@ def pass1_ruled_out(conn: Any, chart_id: int) -> set[int]:
         for page_id, flag in get_blank_junk_flags(conn, chart_id, pass_no=1).items()
         if flag in BJ_EXCLUDE and page_id not in judged_in_pass2
     }
-    # 2026-11-03 (user): Tesseract can miss "Signed". A page pass 1 junked on DistilBERT alone
-    # (R5) whose Final OCR 1 text has a signature word is not settled: Final OCR 2, kv_extract
-    # and pass 2 see it, and a signature keeps it (R4 / post_process).
-    reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)
-    model_junk = {pid for pid in settled if str(reasons.get(pid) or "").startswith("R5")}
-    if model_junk:
-        final1 = get_ocr_texts(conn, chart_id, "docling")
-        settled -= {pid for pid in model_junk if SIGNATURE_WORD.search(unwrap_ocr_content(final1.get(pid)))}
     return settled
 
 
