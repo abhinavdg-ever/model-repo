@@ -4,7 +4,8 @@
       "order",
       "request",
       "requisition",
-      "transaction"
+      "transaction",
+      "encounter"
     ]
   }
 }

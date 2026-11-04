@@ -514,3 +514,11 @@ class TestExtractionDrop20261103:
         from stages.lib.extraction.util.keys import load_key_tiers
 
         assert load_key_tiers("dos")["provider initial contact time"] == "service"
+
+
+def test_encounter_id_is_not_a_member_id_key():
+    """2026-11-04 (user): 'Encounter ID' is not read as the member ID."""
+    from stages.lib.extraction.util.keys import load_key_blocklist
+
+    before, _after = load_key_blocklist("member_id")["id"]
+    assert "encounter" in before
