@@ -38,7 +38,7 @@ def _run(monkeypatch, tmp_path, osd_turn, cv_turn, reads=None):
         return 0, False, SimpleNamespace(share=0.9, tokens=10, reads=True, english=10)
 
     monkeypatch.setattr(osd_module, "detect_rotation", lambda image: {"rotation": osd_turn, "confidence": 5.0})
-    monkeypatch.setattr(stage, "_cv_rotation", lambda image: cv_turn)
+    monkeypatch.setattr(stage, "_cv_result", lambda image: (cv_turn, {"rotation": cv_turn}))
     monkeypatch.setattr(stage, "_classify_hw", lambda p: ("printed", 0.9, "model", {"document_type": "printed"}))
     monkeypatch.setattr(rotation, "orientation_that_reads", reading_rule)
     def read_page(small, deg, mirrored=False, **kw):
@@ -74,3 +74,21 @@ def test_both_zero_tries_the_mirror_only_when_the_page_reads_badly(monkeypatch, 
     # Neither reads: stays as it is.
     out, _ = _run(monkeypatch, tmp_path, 0, 0, reads={False: (0.1, 40), True: (0.2, 40)})
     assert out["mirrored"] is False
+
+
+def test_rotation_log_lists_only_turned_pages(tmp_path, monkeypatch):
+    """2026-11-04 (user): logs/rotation.log, one line per page OSD or OpenCV turns."""
+    from stages.lib.image_preprocess import stage
+
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+
+    def item(name, osd, cv):
+        return {"page_name": name, "rot": {"debug": {
+            "osd": {"rotation": osd, "confidence": 3.2}, "opencv": {"rotation": cv},
+            "agree": osd == cv, "decision": {"turn": osd or 0, "mirrored": False, "method": "osd"}}}}
+
+    stage._append_rotation_log("c1", [item("1.jpg", 0, 0), item("2.jpg", 90, 90), item("3.jpg", 0, 180)])
+    lines = (tmp_path / "rotation.log").read_text(encoding="utf-8").splitlines()
+    assert [line.split("\t")[2] for line in lines] == ["page=2.jpg", "page=3.jpg"]
+    assert "osd=90" in lines[0] and "opencv=90" in lines[0] and "agree=yes" in lines[0]
+    assert "opencv=180" in lines[1] and "agree=no" in lines[1]

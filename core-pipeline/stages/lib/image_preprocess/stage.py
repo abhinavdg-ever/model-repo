@@ -227,7 +227,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # disagree the reading rule decides as before. Both 0 on a page that does not read
         # well: only the mirror is tried, at 0, and kept when the flipped page reads and
         # reads more English (a face-down scan; 2026-11-03, user).
-        cv_turn = _cv_rotation(image)
+        cv_turn, cv_detail = _cv_result(image)
         agreed = osd is not None and cv_turn is not None and cv_turn == proposed
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
         small = None
@@ -268,6 +268,25 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         orientation_conf, tilt_conf = _rotation_confidences(
             method, osd_confidence, chosen_read if small is not None else None, tilt
         )
+        # 2026-11-04 (user): both detectors' own answers, for staging/rotation.json.
+        debug = {
+            "osd": (
+                {"rotation": int(osd["rotation"]), "confidence": round(float(osd["confidence"]), 3),
+                 "script": osd.get("script")}
+                if osd is not None else {"rotation": None, "note": "no OSD answer"}
+            ),
+            "opencv": cv_detail,
+            "agree": bool(agreed),
+            "read": (
+                {"english_words": chosen_read.english, "tokens": chosen_read.tokens,
+                 "english_share": round(chosen_read.share, 3), "reads": bool(chosen_read.reads)}
+                if small is not None else {"note": "blank page: not read"}
+            ),
+            "decision": {
+                "turn": int(orientation) % 360, "mirrored": bool(mirrored), "tilt": round(float(tilt), 2),
+                "method": method, "confidence": orientation_conf,
+            },
+        }
         return {
             "orientation_angle": orientation,
             "tilt_angle": tilt,
@@ -285,6 +304,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "method": method,
             "osd_confidence": osd_confidence,
             "cv_rotation": cv_turn,
+            "debug": debug,
             # Kept so the correction can be applied at full resolution without
             # re-reading the file. Not persisted.
             "_image": image,
@@ -313,16 +333,30 @@ def _stand_in() -> float:
 def _cv_rotation(image: Any) -> Optional[int]:
     """rotation_cv's clockwise turn (0 / 90 / 180 / 270), or None when it has too few
     letters to tell or fails (it is only a second opinion)."""
+    return _cv_result(image)[0]
+
+
+def _cv_result(image: Any) -> tuple[Optional[int], dict[str, Any]]:
+    """(rotation_cv's turn or None, its full answer for staging/rotation.json)."""
     try:
         from stages.lib.image_preprocess.rotation_cv import detect_rotation
 
         result = detect_rotation(image)
     except Exception as exc:  # noqa: BLE001 - the reading rule still decides
         logger.debug("rotation_cv failed: %s", exc)
-        return None
+        return None, {"rotation": None, "note": f"failed: {exc}"}
+    detail = {
+        "rotation": int(result.rotation) % 360,
+        "sideways_score": float(result.sideways_score),
+        "flip_score": float(result.flip_score),
+        "letters": int(result.letters),
+        "lines": int(result.lines),
+        **({"note": result.note} if result.note else {}),
+        "details": result.details,
+    }
     if result.note:
-        return None
-    return int(result.rotation) % 360
+        return None, {**detail, "rotation": None}
+    return int(result.rotation) % 360, detail
 
 
 def _rotation_confidences(
@@ -661,12 +695,96 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             rot_path, hw_path, quality_path = _rewrite_csvs(
                 conn, chart_id, ctx.chart_name
             )
+        rotation_json = _write_rotation_json(ctx.chart_name, measured)
+        _append_rotation_log(ctx.chart_name, measured)
 
         return {
             "chart_id": chart_id,
             "rotation_csv": str(rot_path),
             "hw_csv": str(hw_path),
             "quality_csv": str(quality_path),
+            "rotation_json": str(rotation_json) if rotation_json else None,
             "pages_done": ctx.done,
             "errors": ctx.errors,
         }
+
+
+def _write_rotation_json(chart_name: str, measured: list[dict[str, Any]]) -> Optional[Path]:
+    """2026-11-04 (user): ``staging/rotation.json``: per page, Tesseract OSD's answer, the
+    OpenCV letter-shape detector's answer (rotation_cv), whether they agree, how the chosen
+    turn reads, and the decision. Pages of an earlier run that this run did not measure stay."""
+    import json
+    from datetime import datetime, timezone
+
+    from config import staging_dir
+
+    path = staging_dir(chart_name) / "rotation.json"
+    try:
+        old = json.loads(path.read_text(encoding="utf-8")).get("pages") or {} if path.is_file() else {}
+    except (OSError, ValueError):
+        old = {}
+    pages = dict(old)
+    for item in measured:
+        if item.get("error"):
+            pages[item["page_name"]] = {"page_number": item.get("page_number"), "error": item["error"]}
+            continue
+        rot = item.get("rot") or {}
+        pages[item["page_name"]] = {
+            "page_number": item.get("page_number"),
+            **(rot.get("debug") or {"note": f"no detector output ({rot.get('method')})"}),
+        }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "version": 1,
+            "chart_name": chart_name,
+            "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "pages": dict(sorted(pages.items(), key=lambda kv: (kv[1].get("page_number") or 0, kv[0]))),
+        }, indent=2, default=str), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("staging/rotation.json not written for %s: %s", chart_name, exc)
+        return None
+    return path
+
+
+_ROTATION_LOG_LOCK = __import__("threading").Lock()
+
+
+def _rotation_log_line(chart_name: str, item: dict[str, Any], stamp: str) -> Optional[str]:
+    """One line for a page where OSD or OpenCV turns it (not 0); None otherwise."""
+    debug = (item.get("rot") or {}).get("debug") or {}
+    osd, cv, decision = debug.get("osd") or {}, debug.get("opencv") or {}, debug.get("decision") or {}
+    osd_turn, cv_turn = osd.get("rotation"), cv.get("rotation")
+    if not ((osd_turn not in (None, 0)) or (cv_turn not in (None, 0))):
+        return None
+    osd_text = f"{osd_turn} (conf {osd.get('confidence')})" if osd_turn is not None else "none"
+    cv_text = (f"{cv_turn} (sideways {cv.get('sideways_score')}, flip {cv.get('flip_score')})"
+               if cv_turn is not None else f"none ({cv.get('note', '')})")
+    return "\t".join([
+        stamp, f"chart={chart_name}", f"page={item.get('page_name')}",
+        f"osd={osd_text}", f"opencv={cv_text}", f"agree={'yes' if debug.get('agree') else 'no'}",
+        f"decision={decision.get('turn')}", f"mirrored={'yes' if decision.get('mirrored') else 'no'}",
+        f"method={decision.get('method')}", f"confidence={decision.get('confidence')}",
+    ])
+
+
+def _append_rotation_log(chart_name: str, measured: list[dict[str, Any]]) -> None:
+    """2026-11-04 (user): ``<LOG_DIR>/rotation.log``, appended on every run: one line per page
+    where Tesseract OSD or the OpenCV detector gives a turn other than 0, with both angles
+    and the decision."""
+    from datetime import datetime, timezone
+
+    from logging_setup import resolve_log_dir
+
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    lines = [line for item in measured if not item.get("error")
+             if (line := _rotation_log_line(chart_name, item, stamp))]
+    if not lines:
+        return
+    try:
+        path = resolve_log_dir() / "rotation.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _ROTATION_LOG_LOCK, path.open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError as exc:
+        logger.warning("rotation.log not written for %s: %s", chart_name, exc)

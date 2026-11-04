@@ -270,11 +270,6 @@ CONTAINED_MARK = "short_page_contained_in_page_id:"
 # Pass 1 marks exact copies this close (2026-11-03, user).
 EXACT_NEAR_PAGES = 3
 
-
-def _bands() -> tuple[float, float]:
-    """(header band, footer band) as page-height fractions: canon ``zones`` (15% / 8%)."""
-    zones = method.canon().raw["zones"]
-    return float(zones["header_band"]), float(zones["footer_band"])
 CONTAINED_CONFIDENCE = 0.90
 
 
@@ -402,17 +397,6 @@ def _classify(
     comparable = [(find_duplicates or exact_near) and _comparable(page["id"]) for page in pages]
     length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
               for page, ok in zip(pages, comparable) if ok}
-    header_band, footer_band = _bands()
-
-    def _body_dates(page_id: int) -> frozenset[str]:
-        """2026-11-04 (user): the dates written in the page body. A date in the header or footer
-        band (an EMR print banner's Encounter Date, a print stamp) does not split two copies.
-        Without line positions (pass 1), every date on the page."""
-        lines = getattr((inputs or {}).get(page_id), "lines", None)
-        if not lines:
-            return page_dates(texts.get(page_id) or "")
-        body = "\n".join(line.text for line in lines if line.top >= header_band and line.bottom <= 1.0 - footer_band)
-        return page_dates(body)
 
     for i, page in enumerate(pages):
         pid = page["id"]
@@ -434,7 +418,9 @@ def _classify(
             if dates_a and dates_b and dates_a != dates_b:
                 _blocked("different DOS")
                 continue  # different dates of service: different visits (any date differs)
-            if _body_dates(pid) != _body_dates(nid):
+            # Every date on the page, the banner's Encounter Date included: copies printed under
+            # different encounters are not duplicates (2026-11-04, user).
+            if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
                 _blocked("different written dates")
                 continue  # a date written on one page and not the other (2026-10-27, user)
             if (_signature_page(pid) or _signature_page(nid)) and any(
