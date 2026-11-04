@@ -172,15 +172,15 @@ def _model_input(text: str, docling: Any) -> tuple[str, dict[str, Any] | None]:
 def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
     """DistilBERT's raw probabilities for one page, for the voters in method.py.
 
-    ``{"bert": {"p_keep", "p_junk", "top_junk_label", "service"} | None}``. p_junk is every
-    JUNK_* label plus BLANK (method.py's thresholds); ``service`` is v3's
+    ``{"bert": {"p_keep", "p_junk", "p_blank", "top_junk_label", "service"} | None}``. p_junk is
+    the JUNK_* labels only, BLANK apart in p_blank (2026-11-04, user); ``service`` is v3's
     ``PageClassifierService`` verdict as infer.py writes it: flag, subclass, confidence,
     review_required, decision_reason, and p_keep / p_blank / p_junk with JUNK alone.
     A page the service routes before the model (empty or unreadable OCR) has no
     probabilities. A model that is not loaded, or that raises, is None: its voter
     abstains and the verdict records it as unavailable.
     """
-    from method import bucket
+    from method import blank_probability, bucket
 
     out: dict[str, Any] = {"bert": None}
     model = _load_model()
@@ -196,7 +196,7 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
             result = _service.predict_one("page", model_text, content_meta=meta) if _service is not None else None
             if result is not None and result.p_keep is not None:
                 p_blank = float(result.p_blank or 0.0)
-                p_keep, p_junk = float(result.p_keep), float(result.p_junk or 0.0) + p_blank
+                p_keep, p_junk = float(result.p_keep), float(result.p_junk or 0.0)
                 # The service's junk subtype (a KEEP page has none, and needs none).
                 top = result.subclass if (result.subclass or "").startswith("JUNK_") else ""
             else:
@@ -204,10 +204,11 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
                 # feed R4 / R6 and blank_junk.json.
                 probs = [float(p) for p in model.predict_proba([model_text])[0]]
                 p_keep, p_junk, top = bucket(list(model.labels), probs)
+                p_blank = blank_probability(list(model.labels), probs)
     except Exception:
         logger.exception("Blank/junk BERT predict failed")
         return out
-    out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "top_junk_label": top, "service": None}
+    out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "p_blank": p_blank, "top_junk_label": top, "service": None}
     if result is not None:
         out["bert"]["service"] = {
             "flag": result.flag,

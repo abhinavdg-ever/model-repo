@@ -418,18 +418,24 @@ def score_text(
 
 
 def bucket(labels: list[str], probs: list[float]) -> tuple[float, float, str]:
-    """(p_keep, p_junk, top junk label): p_junk = every JUNK_* label plus BLANK."""
+    """(p_keep, p_junk, top junk label): p_junk = the JUNK_* labels only. BLANK is not junk
+    (2026-11-04, user: as the teammate's service counts it); see blank_probability."""
     p_keep = p_junk = 0.0
     best: tuple[float, str] = (-1.0, "")
     for label, p in zip(labels, probs):
         p = max(0.0, float(p))
         if label.startswith("KEEP"):
             p_keep += p
-        elif label.startswith("JUNK") or label.startswith("BLANK"):
+        elif label.startswith("JUNK"):
             p_junk += p
-            if label.startswith("JUNK") and p > best[0]:
+            if p > best[0]:
                 best = (p, label)
     return p_keep, p_junk, best[1]
+
+
+def blank_probability(labels: list[str], probs: list[float]) -> float:
+    """The BLANK label's probability (kept apart from p_junk since 2026-11-04)."""
+    return sum(max(0.0, float(p)) for label, p in zip(labels, probs) if label.startswith("BLANK"))
 
 
 # --- the decision --------------------------------------------------------------------

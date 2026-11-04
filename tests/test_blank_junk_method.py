@@ -395,3 +395,11 @@ class TestBlankFromStage1AndLabKeep:
         no_range = "Lab report. Test Value Units. Invoice number 4411 amount due now. " + FILLER
         v = method.post_process(run(no_range, bert=bert(0.99)), PageInputs(text=no_range, pass_no=2))
         assert v.code != method.CODE_MAIN
+
+
+def test_p_blank_is_never_part_of_p_junk():
+    """2026-11-04 (user)."""
+    labels = ["KEEP", "BLANK", "JUNK_INVOICE", "JUNK_OTHERS"]
+    p_keep, p_junk, top = method.bucket(labels, [0.10, 0.60, 0.20, 0.10])
+    assert (round(p_keep, 4), round(p_junk, 4), top) == (0.10, 0.30, "JUNK_INVOICE")
+    assert round(method.blank_probability(labels, [0.10, 0.60, 0.20, 0.10]), 4) == 0.60
