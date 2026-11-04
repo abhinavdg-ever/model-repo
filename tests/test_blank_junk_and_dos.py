@@ -988,3 +988,31 @@ class TestCardRule:
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", provider=True)
         verdict = method.post_process(method.decide(inputs), inputs)
         assert verdict.code == classify.CODE_CARDS
+
+
+class TestHeaderDatesAndBestMatch:
+    """2026-11-04 (user): an EMR banner's date does not split two copies; the closest page is
+    recorded even when a rule stops the pair."""
+
+    def _inputs(self, banner_date: str):
+        body = _body(8) + " Collected 04/30/2026 Reported 05/01/2026"
+        lines = [method.Line(f"Encounter Date: {banner_date}", 0.03, 0.05)] + [
+            method.Line(body, 0.30, 0.60)]
+        return body, lines
+
+    def test_copies_with_different_banner_dates_are_duplicates(self):
+        body_a, lines_a = self._inputs("02/11/2026")
+        body_b, lines_b = self._inputs("03/17/2026")
+        texts = {1: f"Encounter Date: 02/11/2026\n{body_a}", 2: f"Encounter Date: 03/17/2026\n{body_b}"}
+        inputs = {1: method.PageInputs(text=texts[1], pass_no=2, lines=lines_a),
+                  2: method.PageInputs(text=texts[2], pass_no=2, lines=lines_b)}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, inputs=inputs)
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
+    def test_a_different_body_date_still_splits_and_the_closest_page_is_recorded(self):
+        texts = {1: _body(8) + " Collected 04/30/2026", 2: _body(8) + " Collected 05/30/2026"}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        by_id = {r["page_id"]: r for r in rows}
+        assert by_id[2]["flag"] == "not_blank_junk"
+        assert by_id[2]["best_match"]["page_id"] == 1
+        assert by_id[2]["best_match"]["blocked_by"] == "different written dates"

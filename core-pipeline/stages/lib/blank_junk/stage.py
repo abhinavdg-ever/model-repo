@@ -269,6 +269,12 @@ SIGNED_COPY_MIN_WORDS = 100
 CONTAINED_MARK = "short_page_contained_in_page_id:"
 # Pass 1 marks exact copies this close (2026-11-03, user).
 EXACT_NEAR_PAGES = 3
+
+
+def _bands() -> tuple[float, float]:
+    """(header band, footer band) as page-height fractions: canon ``zones`` (15% / 8%)."""
+    zones = method.canon().raw["zones"]
+    return float(zones["header_band"]), float(zones["footer_band"])
 CONTAINED_CONFIDENCE = 0.90
 
 
@@ -371,7 +377,8 @@ def _classify(
     best: dict[int, dict[str, Any]] = {}
     rules = _duplicate_rules()
 
-    def _note_best(page_id: int, other_id: int, words: Any, score: float, contained: bool) -> None:
+    def _note_best(page_id: int, other_id: int, words: Any, score: float, contained: bool,
+                   blocked_by: str = "") -> None:
         if score > best.get(page_id, {}).get("similarity", -1.0):
             mine, theirs = (words.words_a, words.words_b) if page_id == pid else (words.words_b, words.words_a)
             best[page_id] = {
@@ -384,6 +391,8 @@ def _classify(
                 "other_distinct_words": theirs,
                 "shared_words": words.shared,
                 "different_words": words.different,
+                # 2026-11-04 (user): why this closest page is not a duplicate / partial ('' = judged).
+                "blocked_by": blocked_by,
             }
 
     n = len(pages)
@@ -393,6 +402,18 @@ def _classify(
     comparable = [(find_duplicates or exact_near) and _comparable(page["id"]) for page in pages]
     length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
               for page, ok in zip(pages, comparable) if ok}
+    header_band, footer_band = _bands()
+
+    def _body_dates(page_id: int) -> frozenset[str]:
+        """2026-11-04 (user): the dates written in the page body. A date in the header or footer
+        band (an EMR print banner's Encounter Date, a print stamp) does not split two copies.
+        Without line positions (pass 1), every date on the page."""
+        lines = getattr((inputs or {}).get(page_id), "lines", None)
+        if not lines:
+            return page_dates(texts.get(page_id) or "")
+        body = "\n".join(line.text for line in lines if line.top >= header_band and line.bottom <= 1.0 - footer_band)
+        return page_dates(body)
+
     for i, page in enumerate(pages):
         pid = page["id"]
         if not comparable[i]:
@@ -401,12 +422,21 @@ def _classify(
             if not comparable[j]:
                 continue
             nid = pages[j]["id"]
+            words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
+            pair_sim = 1.0 if words.contained >= rules["contained_at"] else words.overlap
+
+            def _blocked(why: str) -> None:
+                # The closest page is recorded even when a rule stops the pair (2026-11-04, user).
+                _note_best(pid, nid, words, pair_sim, words.contained >= rules["contained_at"], why)
+                _note_best(nid, pid, words, pair_sim, words.contained >= rules["contained_at"], why)
+
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
             if dates_a and dates_b and dates_a != dates_b:
+                _blocked("different DOS")
                 continue  # different dates of service: different visits (any date differs)
-            if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
+            if _body_dates(pid) != _body_dates(nid):
+                _blocked("different written dates")
                 continue  # a date written on one page and not the other (2026-10-27, user)
-            words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             if (_signature_page(pid) or _signature_page(nid)) and any(
                 _main(pages[k]["id"]) for k in range(i + 1, j)
             ):
@@ -417,6 +447,7 @@ def _classify(
                 )
                 if not (exact and min(word_count(texts.get(pid) or ""), word_count(texts.get(nid) or ""))
                         > SIGNED_COPY_MIN_WORDS):
+                    _blocked("signature page apart")
                     continue
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
