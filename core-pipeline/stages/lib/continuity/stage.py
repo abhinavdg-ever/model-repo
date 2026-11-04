@@ -339,10 +339,9 @@ def _kind(final: Optional[dict[str, Any]]) -> str:
     return {"blank": "blank", "junk": "junk", "duplicate": "duplicate"}.get(flag, "main")
 
 
-# A junk page inside a Progress Note made Main again carries this, then its junk subtype.
+# 2026-11-03 a junk page inside a Progress Note was made Main again with this mark; the rule
+# was undone on 2026-11-04 (user). Pages that carry it go back to junk (_restore_unjunked).
 UNJUNK_MARK = "unjunked_in_progress_note:"
-# Junk that stays junk inside a note: blank / tiny (R1, R2), short page (R6), contained, cards.
-_KEEP_JUNK = ("R1", "R2", "R6", "short_page_contained_in_page_id:")
 
 
 def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:
@@ -353,62 +352,28 @@ def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:
     return reason[len(UNJUNK_MARK):].split(" (", 1)[0].strip() or "Others"
 
 
-def _unjunk_inside_notes(
+def _restore_unjunked(
     chart_id: int,
     chart_name: str,
     inputs: list[PageInput],
     rows: list[dict[str, Any]],
     bj: dict[int, dict[str, Any]],
     rules: Any,
-    texts: Optional[dict[int, str]] = None,
 ) -> list[dict[str, Any]]:
-    """2026-11-03 (user): a junk page whose nearest Main pages before and after it are in one
-    document that opens on a Progress Note is a Main page again, unless it is a short page
-    (R1 / R2 blank or tiny, R6 short page, contained in a nearby page) or a card. Re-checked
-    every run: a page no longer inside a note is junk again, with its subtype."""
-    document = [row.get("document_seq") if row.get("segment_kind") == "main" else None for row in rows]
-    first_type: dict[Any, str] = {}
-    for item, doc in zip(inputs, document):
-        if doc is not None and doc not in first_type:
-            first_type[doc] = item.page_type or ""
-
-    def inside_note(i: int) -> bool:
-        before = next((document[k] for k in range(i - 1, -1, -1) if document[k] is not None), None)
-        after = next((document[k] for k in range(i + 1, len(inputs)) if document[k] is not None), None)
-        return before is not None and before == after and first_type.get(before) == "Progress Note"
-
-    unjunk, rejunk = [], []
-    for i, item in enumerate(inputs):
-        final = bj.get(item.page_id) or {}
-        earlier = _unjunked(final)
-        if item.kind == "junk" and earlier is None:
-            reason = str(final.get("reason") or "")
-            if item.junk_subtype == "Cards" or reason.startswith(_KEEP_JUNK):
-                continue
-            if inside_note(i):
-                unjunk.append((item, item.junk_subtype or "Others"))
-        elif earlier is not None and not inside_note(i):
-            rejunk.append((item, earlier))
-    if not (unjunk or rejunk):
+    """2026-11-04 (user): the Progress Note unjunk rule is undone. A page an earlier run made
+    Main by it is Junk / its subtype again."""
+    back = [(item, subtype) for item in inputs if (subtype := _unjunked(bj.get(item.page_id))) is not None]
+    if not back:
         return rows
     with connect() as conn:
-        for item, subtype in unjunk:
-            revise_blank_junk_final(
-                conn, item.page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=None,
-                reason=f"{UNJUNK_MARK}{subtype} (junk inside a Progress Note, not a short page -> Main)",
-            )
-            item.kind, item.junk_subtype = "main", ""
-            item.text = (texts or {}).get(item.page_id) or item.text
-            item.lines = item.lines or text_lines(item.text)
-        for item, subtype in rejunk:
+        for item, subtype in back:
             revise_blank_junk_final(
                 conn, item.page_id, blank_junk_flag="junk", duplicate_of_page_id=None,
-                reason=f"re-checked: no longer inside a Progress Note -> Junk / {subtype}", junk_subtype=subtype,
+                reason=f"Progress Note unjunk rule undone (2026-11-04) -> Junk / {subtype}", junk_subtype=subtype,
             )
             item.kind, item.junk_subtype = "junk", subtype
         _rewrite_junk_csv(conn, chart_id, chart_name)
-    logger.info("continuity chart=%s junk inside a Progress Note: %d -> Main, %d back to junk",
-                chart_name, len(unjunk), len(rejunk))
+    logger.info("continuity chart=%s Progress Note unjunk undone: %d page(s) back to junk", chart_name, len(back))
     return assign(inputs, rules)
 
 
@@ -632,8 +597,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         # The short page contained in a nearby page is junked in blank / junk pass 2 since
         # 2026-11-03 (user); continuity reads it as any junk page.
-        # 2026-11-03 (user): a junk page inside a Progress Note that is not a short page is Main.
-        rows = _unjunk_inside_notes(chart_id, ctx.chart_name, inputs, rows, bj, rules, own_texts)
+        # The 2026-11-03 rule (junk inside a Progress Note -> Main) was undone 2026-11-04 (user).
+        rows = _restore_unjunked(chart_id, ctx.chart_name, inputs, rows, bj, rules)
         scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
 
         csv_rows: list[dict[str, Any]] = []
