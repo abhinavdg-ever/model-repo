@@ -2739,7 +2739,7 @@ class TestCredentialListCopy:
 class TestNoModelWeightsInGit:
     """Model weights are copied onto each host, never committed. The page-axes and
     encounter encoders were in git LFS from 2026-10-25, taken out on 2026-10-26, and the
-    2026-11-02 encoders (page-leaf, page-axes, encounter) went into LFS once (user). Small files that ship on purpose (tfidf_flat.joblib,
+    2026-11-02 encoders (page-leaf, page-axes, encounter) went into LFS once and came out on 2026-11-04 (user). Small files that ship on purpose (tfidf_flat.joblib,
     image_type_classification.pkl, configs, tokenizers) are not weights in this sense."""
 
     WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")
@@ -2747,12 +2747,8 @@ class TestNoModelWeightsInGit:
     # The encoders they sit on (encoder/model.safetensors, 265 MB each) are never committed.
     ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt", "core-pipeline/models/encounter/head.pt",
                "core-pipeline/models/page-family/page-leaf/heads.pt"}
-    # The three encoders, in git LFS since 2026-11-02 (user: a one-time push for the VM).
-    LFS: set[str] = {
-        "core-pipeline/models/page-family/page-leaf/encoder/model.safetensors",
-        "core-pipeline/models/page-family/page-axes/encoder/model.safetensors",
-        "core-pipeline/models/encounter/encoder/model.safetensors",
-    }
+    # The three encoders were in git LFS 2026-11-02 to 2026-11-04 (user); nothing is now.
+    LFS: set[str] = set()
     MAX_TRACKED_BYTES = 20 * 1024 * 1024
 
     @staticmethod
