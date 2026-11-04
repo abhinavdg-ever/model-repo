@@ -389,11 +389,16 @@ def _carried_original(final: Optional[dict[str, Any]]) -> Optional[int]:
     return int(found.group(1)) if found else None
 
 
+# Blank / junk pass 2's same content under different encounters (2026-11-04): already decided,
+# never re-checked here.
+SAME_CONTENT_NOTE = "same content, different encounter"
+
+
 def _content_copy(final: Optional[dict[str, Any]]) -> bool:
     """A page an earlier run's duplicate check made a Main page with duplicate content."""
-    return bool((final or {}).get("duplicate_of_page_id")) and duplicates.CONTENT_MARK in str(
-        (final or {}).get("reason") or ""
-    )
+    reason = str((final or {}).get("reason") or "")
+    return (bool((final or {}).get("duplicate_of_page_id")) and duplicates.CONTENT_MARK in reason
+            and SAME_CONTENT_NOTE not in reason)
 
 
 def _review_duplicates(

@@ -849,7 +849,9 @@ class TestSignaturePageApartIsNotADuplicate:
         body = _body()
         pages = [page(1, 1), page(2, 2), page(3, 3)]
         rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3}, signed_ids={3})
-        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        # 2026-11-04 (user): the same content under different dates is Repeated Content.
+        assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
     def test_signature_wording_apart(self):
         body = _body() + " Electronically signed by the attending."
@@ -881,7 +883,9 @@ class TestDuplicatesInPassTwoOnly:
 
     def test_pass_one_finds_no_duplicates(self):
         rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2}, find_duplicates=False)
-        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        # 2026-11-04 (user): the same content under different dates is Repeated Content.
+        assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
     def test_pass_two_finds_exact_and_near_copies(self):
         rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2})
@@ -897,19 +901,25 @@ class TestDifferentDosIsNotADuplicate:
         texts = {1: _words(), 2: _words(swap="changed")}
         dos = {1: frozenset({"2024-03-15"}), 2: frozenset({"2024-04-02"})}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
-        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        # 2026-11-04 (user): the same content under different dates is Repeated Content.
+        assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
     def test_any_different_date_is_not_a_duplicate(self):
         texts = {1: _words(), 2: _words(swap="changed")}
         dos = {1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15", "2024-04-02"})}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
-        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        # 2026-11-04 (user): the same content under different dates is Repeated Content.
+        assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
     def test_a_different_date_in_the_text_is_not_a_duplicate(self):
         """2026-10-27 (user): the words that differ must not be dates either."""
         texts = {1: _words() + " seen 03/15/2024", 2: _words() + " seen 04/02/2024"}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
-        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        # 2026-11-04 (user): the same content under different dates is Repeated Content.
+        assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
     def test_the_same_date_written_two_ways_still_duplicates(self):
         texts = {1: _words() + " seen 3/5/2024", 2: _words(swap="changed") + " seen 03/05/2024"}
@@ -1018,3 +1028,24 @@ class TestHeaderDatesAndBestMatch:
         assert by_id[2]["flag"] == "not_blank_junk"
         assert by_id[2]["best_match"]["page_id"] == 1
         assert by_id[2]["best_match"]["blocked_by"] == "different written dates"
+
+
+class TestSameContentDifferentEncounter:
+    """2026-11-04 (user): pages kept apart by their dates are Repeated Content when >= 98% alike
+    or fewer than 7 distinct words different."""
+
+    def test_same_content_under_different_dates_is_repeated_content(self):
+        texts = {1: _body(8) + " Collected 04/30/2026", 2: _body(8) + " Collected 05/30/2026"}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        by_id = {r["page_id"]: r for r in rows}
+        assert by_id[2]["flag"] == "not_blank_junk"
+        assert by_id[2]["duplicate_of"] == 1
+        assert "duplicate_content_of_page_id:1" in by_id[2]["reason"]
+        assert "same content, different encounter" in by_id[2]["reason"]
+        assert by_id[1]["duplicate_of"] is None
+
+    def test_different_content_under_different_dates_is_not(self):
+        other = " ".join(f"word{i}" for i in range(40))
+        texts = {1: _body(8) + " Collected 04/30/2026", 2: _body(8) + other + " Collected 05/30/2026"}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        assert "duplicate_content_of_page_id" not in ({r["page_id"]: r for r in rows}[2]["reason"] or "")

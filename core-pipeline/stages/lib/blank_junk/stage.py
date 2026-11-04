@@ -269,6 +269,12 @@ SIGNED_COPY_MIN_WORDS = 100
 CONTAINED_MARK = "short_page_contained_in_page_id:"
 # Pass 1 marks exact copies this close (2026-11-03, user).
 EXACT_NEAR_PAGES = 3
+# 2026-11-04 (user): pages of different encounters with the same content are "Repeated
+# Content": >= 98% alike, or fewer than 7 distinct words different. review-ui reads the mark.
+SAME_CONTENT_SIMILARITY = 0.98
+SAME_CONTENT_BELOW_WORDS = 7
+SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
+SAME_CONTENT_NOTE = "same content, different encounter"
 
 CONTAINED_CONFIDENCE = 0.90
 
@@ -366,6 +372,10 @@ def _classify(
     # [PARTIAL, THRESHOLD): the page's closest near-copy, applied after duplicates.
     partial_of: dict[int, int] = {}
     partial_sim: dict[int, float] = {}
+    # 2026-11-04 (user): the later of two pages kept apart by their dates (different
+    # encounters) that are still the same content -> Repeated Content, Main.
+    content_of: dict[int, int] = {}
+    content_score: dict[int, tuple[float, int]] = {}
     # Each page's highest match among the neighbors it was compared with, any score,
     # for blank_junk.json and duplicate_confidence: which page, its overlap and how
     # much of the smaller page is on the other.
@@ -414,14 +424,32 @@ def _classify(
                 _note_best(pid, nid, words, pair_sim, words.contained >= rules["contained_at"], why)
                 _note_best(nid, pid, words, pair_sim, words.contained >= rules["contained_at"], why)
 
+            def _same_content() -> None:
+                """Pages of different encounters with the same content: >= 98% alike or fewer
+                than 7 distinct words different, lengths within 10% (2026-11-04, user)."""
+                if exact_near or not find_duplicates:
+                    return
+                la, lb = length[pid], length[nid]
+                if min(la, lb) < rules["duplicate_min_length_ratio"] * max(la, lb):
+                    return
+                if not (pair_sim >= SAME_CONTENT_SIMILARITY
+                        or (words.overlap >= rules["count_rule_min_overlap"]
+                            and words.different < SAME_CONTENT_BELOW_WORDS)):
+                    return
+                if pair_sim > content_score.get(nid, (-1.0, 0))[0]:
+                    content_of[nid] = pid
+                    content_score[nid] = (pair_sim, words.different)
+
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
             if dates_a and dates_b and dates_a != dates_b:
                 _blocked("different DOS")
+                _same_content()
                 continue  # different dates of service: different visits (any date differs)
             # Every date on the page, the banner's Encounter Date included: copies printed under
             # different encounters are not duplicates (2026-11-04, user).
             if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
                 _blocked("different written dates")
+                _same_content()
                 continue  # a date written on one page and not the other (2026-10-27, user)
             if (_signature_page(pid) or _signature_page(nid)) and any(
                 _main(pages[k]["id"]) for k in range(i + 1, j)
@@ -514,6 +542,27 @@ def _classify(
             duplicate_of=orig_id,
             confidence=sim,
             votes={**earlier, "duplicate": reason} if earlier else None,
+        )
+
+    # Same content under different encounters (2026-11-04, user): Main, pointing at the earlier
+    # page, read as "Repeated Content" by review-ui. A Duplicate or Partial of another page wins.
+    for page_id, orig_id in content_of.items():
+        if page_id in dup_of or page_id in partial_of:
+            continue
+        sim, different = content_score[page_id]
+        note = (
+            f"{SAME_CONTENT_MARK}{orig_id} ({SAME_CONTENT_NOTE}; overlap={sim:.4f}, "
+            f"{different} distinct words different)"
+        )
+        own = by_id.get(page_id) or {}
+        earlier = own.get("votes")
+        by_id[page_id] = _row_for(
+            page_by_id[page_id],
+            code=own.get("code", CODE_MAIN),
+            reason=f"{own['reason']}; {note}" if own.get("reason") else note,
+            duplicate_of=orig_id,
+            confidence=own.get("confidence", sim),
+            votes={**earlier, "same_content": note} if earlier else None,
         )
 
     # Partial duplicates stay Main (their own reason first, so pass 2 still reads a
@@ -814,8 +863,6 @@ def votes_path(chart_name: str) -> Path:
 
 # Every pass's full ballots (DistilBERT, rules, the best duplicate match), for debugging.
 DETAIL_FILE = "blank_junk_detail.json"
-# blank_junk.json lists a page's closest neighbor only from this similarity up.
-CLOSEST_FROM = 0.70
 
 
 def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
@@ -824,14 +871,19 @@ def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
     status = (
         "Duplicate" if entry.get("verdict") == "Duplicate"
         else "Partial" if "partial_duplicate_of_page_id:" in reason
+        else "Repeated Content" if SAME_CONTENT_MARK in reason
         else "No"
     )
     out: dict[str, Any] = {"status": status}
     match = entry.get("best_match") or {}
     similarity = match.get("similarity")
-    if similarity is not None and similarity >= CLOSEST_FROM:
+    # 2026-11-04 (user): the closest page at any similarity, and what stopped the pair.
+    if similarity is not None:
         out["closest_page"] = match.get("page_name")
         out["similarity"] = similarity
+        out["different_words"] = match.get("different_words")
+        if match.get("blocked_by"):
+            out["blocked_by"] = match["blocked_by"]
     return out
 
 
