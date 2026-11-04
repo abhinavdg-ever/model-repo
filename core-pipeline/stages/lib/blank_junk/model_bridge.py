@@ -160,6 +160,24 @@ def _load_model() -> Any:
         return _model
 
 
+# 2026-11-04 (user): a lab results table ("Oxygen Saturation 99 % 90- 100% <date>") is not an
+# index: v3's admin rule (contents_page) reads "label + range" / "label + date" rows as index
+# entries. Any admin-rule junk on a page with lab results is overruled to KEEP.
+import re as _re
+
+_LAB_RESULT = _re.compile(
+    r"(?<![a-z])(?:reference\s+(?:range|interval)|ref\.?\s+range|normal\s+range)(?![a-z])"
+    r"|\b\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*%"
+    r"|\b\d+(?:\.\d+)?\s?(?:mg/dl|g/dl|mmol/l|meq/l|u/l|iu/l|uiu/ml|ng/ml|pg/ml|k/ul|m/ul|fl|pg)\b",
+    _re.IGNORECASE,
+)
+
+
+def lab_result_signs(text: str) -> bool:
+    """Lab results on the page: a reference range / interval, lab units, or a 'n - m %' range."""
+    return bool(_LAB_RESULT.search(text or ""))
+
+
 def _model_input(text: str, docling: Any) -> tuple[str, dict[str, Any] | None]:
     """What v3 infer.py feeds the service: a Docling page's text and its structure,
     else cleaned OCR text with no structure."""
@@ -209,6 +227,16 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
         logger.exception("Blank/junk BERT predict failed")
         return out
     out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "p_blank": p_blank, "top_junk_label": top, "service": None}
+    if (result is not None and result.flag == "JUNK" and "admin_rule" in (result.decision_reason or "")
+            and lab_result_signs(model_text)):
+        from dataclasses import replace
+
+        result = replace(
+            result, flag="KEEP", subclass="", review_required=False,
+            confidence=float(result.p_keep if result.p_keep is not None else result.confidence),
+            decision_reason=f"{result.decision_reason}+overruled:lab_results",
+        )
+        top = ""
     if result is not None:
         out["bert"]["service"] = {
             "flag": result.flag,

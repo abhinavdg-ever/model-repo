@@ -403,3 +403,13 @@ def test_p_blank_is_never_part_of_p_junk():
     p_keep, p_junk, top = method.bucket(labels, [0.10, 0.60, 0.20, 0.10])
     assert (round(p_keep, 4), round(p_junk, 4), top) == (0.10, 0.30, "JUNK_INVOICE")
     assert round(method.blank_probability(labels, [0.10, 0.60, 0.20, 0.10]), 4) == 0.60
+
+
+def test_lab_results_overrule_the_admin_rule():
+    """2026-11-04 (user): a lab table is not an index (v3 admin rule: contents_page)."""
+    import model_bridge
+
+    assert model_bridge.lab_result_signs("Component Value Unit Reference Range\nOxygen Saturation 90- 100%")
+    assert model_bridge.lab_result_signs("Oxygen Saturation 90- 100%")
+    assert model_bridge.lab_result_signs("Glucose 98 mg/dL")
+    assert not model_bridge.lab_result_signs("CONTENTS\nOffice Visit 01/02/2024\nRadiology pages 3 - 9")
