@@ -245,9 +245,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         with connect() as conn:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             final1 = get_ocr_texts(conn, chart_id, "docling")
-            # Pages pass 1 settled as blank / junk / duplicate are not read after Final OCR 1.
-            ruled_out = pass1_ruled_out(conn, chart_id)
-            mark_skipped(conn, ctx, sorted(ruled_out & ctx.todo), "blank_junk_pass1")
+            # 2026-11-04 (user): pass-1 blank / junk pages are read too (Final OCR 1 word boxes),
+            # so member name, ID and DOB are extracted on them; only a pass-1 duplicate (it
+            # takes its original's values) is skipped.
+            from db import get_blank_junk_flags
+
+            pass1_flags = get_blank_junk_flags(conn, chart_id, pass_no=1)
+            ruled_out = {pid for pid in pass1_ruled_out(conn, chart_id) if pass1_flags.get(pid) == "duplicate"}
+            mark_skipped(conn, ctx, sorted(ruled_out & ctx.todo), "duplicate_pass1")
 
         # The whole chart is extracted together, whichever pages are still to do.
         pages: list[dict[str, Any]] = []

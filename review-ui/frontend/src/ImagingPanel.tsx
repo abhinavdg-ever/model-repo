@@ -220,6 +220,14 @@ function isBlankJunkPage(page: ImagingPageResult): boolean {
   return pt === "blank" || pt === "duplicate";
 }
 
+/** Member fields on a blank / junk page: the values read are shown (2026-11-04, user); Skipped
+ * only when nothing was read. Scoring still treats the page as skipped. */
+function memberSkip(page: ImagingPageResult): { skipped: true } | undefined {
+  if (!isBlankJunkPage(page)) return undefined;
+  const read = [page.memberName, page.memberDob, page.memberId].some((v) => (v ?? "").toString().trim() !== "");
+  return read ? undefined : { skipped: true };
+}
+
 function fmt(
   value: string | number | boolean | null | undefined,
   processed = true,
@@ -1730,7 +1738,8 @@ function PageDetails({
 
   const skipped = isBlankJunkPage(page);
   const skip = skipped ? { skipped: true } : undefined;
-  const memberConf = fmtConfidence(page.memberConfidence, sections.member, skip);
+  const memberShownSkip = memberSkip(page);
+  const memberConf = fmtConfidence(page.memberConfidence, sections.member, memberShownSkip);
   // Scored against the manifest: a name or DOB that is not the member's counts as none
   // (2026-10-27, user). The values shown stay as read.
   const scoredPage = asManifestMember(page, manifest);
@@ -1931,7 +1940,7 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(withMemberMatch(fmt(page.memberName && memberDisplayName(page.memberName), sections.member, skip), page.memberName, scoredPage.memberName), memberConf, {
+          sameValue(withMemberMatch(fmt(page.memberName && memberDisplayName(page.memberName), sections.member, memberShownSkip), page.memberName, scoredPage.memberName), memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
@@ -1939,7 +1948,7 @@ function PageDetails({
             key: true,
             compare: memberMark(scoredPage.memberName, page.memberName),
           }),
-          sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, skip)), page.memberDob, scoredPage.memberDob), memberConf, {
+          sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, memberShownSkip)), page.memberDob, scoredPage.memberDob), memberConf, {
             id: "dob",
             label: "Member DOB",
             truth: bits.memberDob,
@@ -1949,7 +1958,7 @@ function PageDetails({
           }),
           // 2026-11-01 (user): every accepted, selected Member ID scored above 0.9 in
           // extraction.json, "Key: Value" one per line; else the member stage's own.
-          sameValue(fmt(memberIdShown, sections.member, skip), memberConf, {
+          sameValue(fmt(memberIdShown, sections.member, memberShownSkip), memberConf, {
             id: "member_id",
             label: "Member ID",
             presence: true,
@@ -2821,6 +2830,7 @@ function DocSummary({
         <tbody>
           {rows.map((p) => {
             const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+            const mskip = memberSkip(p);
             const bits = pageBits(p, sections);
             const pageParts = splitPageType(p.pageType);
             const typeKnown = Boolean(sections.junk || sections.codeable);
@@ -2829,13 +2839,13 @@ function DocSummary({
               <td>{p.pageNumber}</td>
               <td className="imaging-mono">{p.fileName}</td>
               <td>
-                <GtCell text={fmt(p.memberName && memberDisplayName(p.memberName), sections.member, skip)} bits={bits.memberName} />
-                <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, skip)} />
+                <GtCell text={fmt(p.memberName && memberDisplayName(p.memberName), sections.member, mskip)} bits={bits.memberName} />
+                <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, mskip)} />
               </td>
               <td>
-                <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
+                <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, mskip))} bits={bits.memberDob} />
               </td>
-              <td>{fmt(p.memberId, sections.member, skip)}</td>
+              <td>{fmt(p.memberId, sections.member, mskip)}</td>
               <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
               <td>{fmtHandwrittenArea(p.handwrittenAreaPct, sections.hw)}</td>
               <td>{fmtVisibility(p.isVisible, sections.hw)}</td>

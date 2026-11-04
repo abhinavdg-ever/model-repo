@@ -1763,8 +1763,9 @@ class LocalFolderRepository(FolderRepository):
         imaging_pages = overlay_fields(
             imaging_pages, index_quality_rows(quality_rows, chart)
         )
+        # Blank / junk pages show their member name, ID and DOB too (2026-11-04, user).
         imaging_pages = overlay_fields(
-            imaging_pages, not_junk(index_member_extraction_rows(member_rows, chart))
+            imaging_pages, index_member_extraction_rows(member_rows, chart)
         )
         imaging_pages = overlay_fields(imaging_pages, junk_index)
         imaging_pages = overlay_fields(

@@ -1160,7 +1160,8 @@ class PostgresFolderRepository(FolderRepository):
             with _skip_on_error("member", folder_id):
                 # Member extraction
                 for page_name, name, dob, mid, conf, member_status, other_names in rows["member"] or []:
-                    if not page_name or str(page_name) in junk_pages:
+                    # Blank / junk pages are read too since 2026-11-04 (user): shown, not verified.
+                    if not page_name:
                         continue
                     fields = _ensure(str(page_name))
                     fields["memberName"] = name

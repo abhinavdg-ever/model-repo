@@ -226,6 +226,87 @@ def _pick_manifest_row(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     return max(rows, key=completeness)
 
 
+# 2026-11-04 (user): pages whose name, ID and DOB are read but never verified.
+EXTRACT_ONLY_FLAGS = frozenset({"blank", "junk"})
+
+
+def _extract_only_pages(
+    chart_id: int, chart_name: str, ctx: Any, pages: list[dict[str, Any]], texts: dict[int, str],
+    staged: Any, expected: Any, name_mode: Any, ner_model_id: Any, manifest: dict[str, Any],
+    provided_dob: Any, page_map: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Blank and junk pages: the member name, ID and DOB as read, stored for display with
+    page_status 'not_verified' and no verification (page_verified NULL, no other names, no
+    matched member). The chart's decision is made on the other pages alone."""
+    if not pages:
+        return []
+    engine_pages = [
+        {"page_no": p.get("page_number") or 0, "page_name": p["page_name"], "text": texts.get(p["id"], ""),
+         "staged": staged.page(p["page_name"]), "_page_id": p["id"]}
+        for p in pages
+    ]
+    try:
+        result = verify_record(record_id=chart_name, pages=engine_pages, expected=expected,
+                               name_mode=name_mode, model_id=ner_model_id, total_pages=len(ctx.pages))
+    except Exception:  # display only: never sinks the chart
+        logger.exception("chart %s: member read on blank / junk pages failed", chart_name)
+        with connect() as conn:
+            mark_skipped(conn, ctx, [p["id"] for p in pages], "blank_junk")
+        return []
+    by_page_no = {p["page_no"]: p["_page_id"] for p in engine_pages}
+    rows: list[dict[str, Any]] = []
+    with connect() as conn:
+        for page in result.pages:
+            page_id = by_page_no.get(page.page_no)
+            if page_id is None:
+                continue
+            try:
+                upsert_member_extraction(
+                    conn, chart_id=chart_id, page_id=page_id,
+                    extracted_name=_clean(page.detected_name),
+                    extracted_dob=_iso_dob(page.detected_dob),
+                    extracted_member_id=_clean(page.detected_member_id),
+                    detection_source_name=DETECTION_SOURCE_DB.get(page.detection_source_name, ""),
+                    detection_source_dob=DETECTION_SOURCE_DB.get(page.detection_source_dob, ""),
+                    detection_source_member_id=DETECTION_SOURCE_DB.get(page.detection_source_member_id, ""),
+                    ner_key_source_name=_clean(page.ner_key_source_name),
+                    ner_key_source_dob=_clean(page.ner_key_source_dob),
+                    ner_key_source_member_id=_clean(page.ner_key_source_member_id),
+                    page_status="not_verified", page_verified=None,
+                    confidence=_page_confidence(page),
+                    provided_name=manifest.get("member_name"), provided_dob=provided_dob,
+                    provided_external_member_id=manifest.get("external_member_id"),
+                    other_names=None, matched_member_list_id=None,
+                )
+                mark_completed(conn, ctx, page_id)
+            except Exception as exc:  # one bad page must not sink the chart
+                logger.exception("member read failed for %s", page.page_name)
+                mark_failed(conn, ctx, page_id, str(exc), page.page_name)
+                continue
+            row = page_map.get(page_id, {})
+            rows.append({
+                "chart_name": chart_name, "page_name": page.page_name,
+                "page_number": row.get("page_number") or page.page_no,
+                "extracted_name": _clean(page.detected_name) or "",
+                "extracted_dob": _clean(page.detected_dob) or "",
+                "extracted_member_id": _clean(page.detected_member_id) or "",
+                "detection_source_name": page.detection_source_name,
+                "detection_source_dob": page.detection_source_dob,
+                "detection_source_member_id": page.detection_source_member_id,
+                "ner_key_source_name": page.ner_key_source_name,
+                "ner_key_source_dob": page.ner_key_source_dob,
+                "ner_key_source_member_id": page.ner_key_source_member_id,
+                "page_status": "not_verified (blank / junk)", "page_verified": "",
+                "confidence": _page_confidence(page),
+                "provided_name": manifest.get("member_name") or "", "provided_dob": provided_dob or "",
+                "provided_external_member_id": manifest.get("external_member_id") or "",
+                "matched": "", "ner_enabled": result.ner_enabled,
+            })
+    logger.info("chart %s: member name / ID / DOB read on %d blank / junk page(s), not verified",
+                chart_name, len(rows))
+    return rows
+
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     # Say up front what this run can and cannot conclude. Without the NER layer
     # no page can be classified wrong_member, so no document can be Rejected.
@@ -253,8 +334,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             texts = _ocr_text_map(conn, chart_id)
 
         # Every page blank/junk/duplicate → nothing to verify; skip and complete.
+        # A chart of only blank / junk pages still has their member details read (2026-11-04,
+        # user) further down; only a chart of nothing but duplicates stops here.
         all_blank_junk = bool(ctx.pages) and all(
-            bj_flags.get(p["id"], "not_blank_junk") in BJ_EXCLUDE for p in ctx.pages
+            bj_flags.get(p["id"], "not_blank_junk") in BJ_EXCLUDE - EXTRACT_ONLY_FLAGS for p in ctx.pages
         )
         if all_blank_junk:
             logger.info(
@@ -412,16 +495,23 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 chart_id, manifest.get("id"),
             )
 
-        # Blank / junk / duplicate pages carry no member details worth reading.
+        # Blank / junk / duplicate pages never take part in verification. Since 2026-11-04
+        # (user) the member name, ID and DOB are still read on blank and junk pages, for
+        # display only (EXTRACT_ONLY_FLAGS); a duplicate takes its original's values.
         page_map = ctx.page_map()
+        extract_only = [
+            p for p in ctx.pages
+            if p["id"] in ctx.todo and bj_flags.get(p["id"], "not_blank_junk") in EXTRACT_ONLY_FLAGS
+        ]
+        extract_only_ids = {p["id"] for p in extract_only}
         excluded = [
             pid for pid in ctx.todo
-            if bj_flags.get(pid, "not_blank_junk") in BJ_EXCLUDE
+            if bj_flags.get(pid, "not_blank_junk") in BJ_EXCLUDE and pid not in extract_only_ids
         ]
         with connect() as conn:
             mark_skipped(conn, ctx, excluded, "blank_junk")
 
-        todo_pages = [p for p in ctx.pages if p["id"] in ctx.todo]
+        todo_pages = [p for p in ctx.pages if p["id"] in ctx.todo and p["id"] not in extract_only_ids]
         if not todo_pages:
             # Nothing left to verify. An empty page list is Reject in the
             # what-if rules, which stored final_status=failed for a chart
@@ -430,6 +520,17 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "chart %s: no pages left to verify — member stage skipped",
                 chart_id,
             )
+            if extract_only:
+                # Still read the member details on the blank / junk pages (2026-11-04, user).
+                from stages.lib.extraction.stage import ensure_staging
+
+                dob = manifest.get("member_dob")
+                rows = _extract_only_pages(
+                    chart_id, chart_name, ctx, extract_only, texts, ensure_staging(chart_id, chart_name),
+                    expected, name_mode, ner_model_id, manifest,
+                    dob.isoformat() if isinstance(dob, date) else dob, page_map,
+                )
+                write_csv(imaging_csv(chart_name, "member_extraction"), MEMBER_EXTRACT_COLS, rows)
             with connect() as conn:
                 upsert_member_summary(
                     conn,
@@ -592,6 +693,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "ner_enabled": result.ner_enabled,
                     }
                 )
+
+        csv_rows += _extract_only_pages(
+            chart_id, chart_name, ctx, extract_only, texts, staged, expected, name_mode,
+            ner_model_id, manifest, provided_dob, page_map,
+        )
 
         final_status, reason = summary_status(result)
         if not result.ner_enabled and reason not in {"manifest_name_incomplete"}:
