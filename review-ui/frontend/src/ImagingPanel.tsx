@@ -634,7 +634,8 @@ function entryHint(id: string): string {
 }
 
 /** 2026-11-05 (user): checks across fields before a save; the first problem, or null.
- * DOS From / To must be dates (the non-visit 2222-02-22 counts as one) and To not before From. */
+ * DOS From / To: dates; To not before From; From set when To is; the non-visit 2222-02-22 in
+ * both or neither; no date in the future or before 1900. */
 function groundTruthProblem(values: Record<string, string>): string | null {
   // A choice such as Not Found / NA is not checked as a date; only a value with digits is.
   const dated = (value: string | undefined) => (/\d/.test(value ?? "") ? (value ?? "").trim() : "");
@@ -645,6 +646,17 @@ function groundTruthProblem(values: Record<string, string>): string | null {
   if (from && !fromDate) return "DOS From is not a date (YYYY-MM-DD or MM/DD/YYYY).";
   if (to && !toDate) return "DOS To is not a date (YYYY-MM-DD or MM/DD/YYYY).";
   if (fromDate && toDate && toDate < fromDate) return `DOS To (${toDate}) cannot be before DOS From (${fromDate}).`;
+  if (toDate && !fromDate) return "DOS From is needed when DOS To is set.";
+  // The non-visit date (2222-02-22) stands for both ends or neither.
+  if (fromDate && toDate && (fromDate === NON_VISIT_DOS) !== (toDate === NON_VISIT_DOS)) {
+    return `A non-visit date (${NON_VISIT_DOS}) goes in both DOS From and DOS To.`;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [label, date] of [["DOS From", fromDate], ["DOS To", toDate]] as const) {
+    if (!date || date === NON_VISIT_DOS) continue;
+    if (date > today) return `${label} (${date}) cannot be in the future.`;
+    if (date < "1900-01-01") return `${label} (${date}) is before 1900.`;
+  }
   return null;
 }
 
