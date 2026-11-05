@@ -964,8 +964,8 @@ class TestCardRule:
     """2026-10-31 (user): an ID or insurance card on a printed or visual page is Junk / Cards (both passes since 2026-11-01)."""
 
     CARD = (
-        "UnitedHealthcare Member ID: 912345678 Group Number: 70123 Rx BIN 610279 "
-        "PCP: $25 Specialist: $50 For Members: call 1-800-000-0000 TTY 711"
+        "UnitedHealthcare Member ID Card Name: Jane Q Sample Member ID: 912345678 Group Number: 70123 "
+        "Rx BIN 610279 PCP: $25 Specialist: $50 For Members: call 1-800-000-0000 TTY 711"
     )
 
     def _decide(self, text, document_type="printed", pass_no=2):
@@ -989,10 +989,31 @@ class TestCardRule:
         verdict = self._decide(medium)
         assert verdict.code != classify.CODE_CARDS and verdict.votes["review_required"]
 
-    def test_visit_headings_no_longer_block_a_card(self):
-        """2026-11-03 (user): the user's card_rules.py has no visit-heading exclusions."""
-        note = self.CARD + " Allergies: none. Plan: follow up"
-        assert self._decide(note).code == classify.CODE_CARDS
+    def test_section_headers_block_a_card(self):
+        """2026-11-05 (user): a card has none of the allowed section headers (stage 6)."""
+        inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Allergies",))
+        verdict = method.decide(inputs)
+        assert verdict.code != classify.CODE_CARDS and verdict.votes.get("card_near_miss")
+
+    def test_a_card_needs_the_word_card_and_a_name(self):
+        """2026-11-05 (user)."""
+        assert self._decide(self.CARD.replace("Card ", "")).code != classify.CODE_CARDS
+        assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code != classify.CODE_CARDS
+
+    def test_over_150_words_or_half_the_page_is_not_a_card(self):
+        """2026-11-05 (user)."""
+        long = self.CARD + " " + " ".join(["word"] * 140)
+        assert self._decide(long).code != classify.CODE_CARDS
+        big = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.62)
+        assert method.decide(big).code != classify.CODE_CARDS
+        small = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.20)
+        assert method.decide(small).code == classify.CODE_CARDS
+
+    def test_text_area_is_the_box_round_the_words(self):
+        words = [{"content": "a", "polygon": [10, 10, 20, 10, 20, 20, 10, 20]},
+                 {"content": "b", "polygon": [40, 40, 60, 40, 60, 60, 40, 60]}]
+        assert method.text_area(words, 100, 100) == 0.25  # 50 x 50 of 100 x 100
+        assert method.text_area([], 100, 100) is None
 
     def test_a_provider_name_does_not_keep_a_card(self):
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", provider=True)

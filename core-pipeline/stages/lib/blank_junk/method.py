@@ -233,6 +233,26 @@ class Line:
     bottom: float
 
 
+def text_area(words: list[dict[str, Any]], width: Any, height: Any) -> Optional[float]:
+    """The share of the page inside the box round every OCR word (0-1), None when unknown."""
+    try:
+        w, h = float(width or 0), float(height or 0)
+    except (TypeError, ValueError):
+        return None
+    xs: list[float] = []
+    ys: list[float] = []
+    for word in words or []:
+        polygon = word.get("polygon") or []
+        if len(polygon) < 8 or not str(word.get("content") or "").strip():
+            continue
+        xs += [float(v) for v in polygon[0::2]]
+        ys += [float(v) for v in polygon[1::2]]
+    if not xs or w <= 0 or h <= 0:
+        return None
+    area = (min(max(xs), w) - max(min(xs), 0.0)) * (min(max(ys), h) - max(min(ys), 0.0)) / (w * h)
+    return round(max(0.0, min(1.0, area)), 4)
+
+
 def lines_from_words(words: list[dict[str, Any]], height: float) -> list[Line]:
     """OCR word boxes (``{content, polygon}``, top-left origin) grouped into text lines."""
     boxes = []
@@ -459,6 +479,8 @@ class PageInputs:
     prelim_text: str = ""
     # Pass 2: the page's section headers (stage 6, in the Final OCR JSON), for the fax rule.
     headings: tuple[str, ...] = ()
+    # Pass 2: the share of the page inside the box round every OCR word (the card rule).
+    text_area: Optional[float] = None
 
 
 @dataclass
@@ -648,7 +670,8 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # ---- pass 2
     # 1. card (printed or visual): a strong ID / insurance card.
-    card = detect_card(text) if inputs.document_type in CARD_DOCUMENT_TYPES else None
+    card = (detect_card(text, headings=tuple(inputs.headings or ()), text_area=inputs.text_area)
+            if inputs.document_type in CARD_DOCUMENT_TYPES else None)
     if card is not None and card.is_card:
         votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
         if card.confidence == CARD_JUNK_CONFIDENCE:

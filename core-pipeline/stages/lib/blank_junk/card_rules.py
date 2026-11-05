@@ -8,6 +8,8 @@ card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 A page is a card only when words from two different card groups are on it, and no
 form / letter / clinical words are on it. A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
+2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
+no section header (stage 6), at most 150 words, its text over at most half the page.
 
     detect(text) -> CardResult(is_card, card_type, confidence, matched, blocked_by, words)
 
@@ -21,8 +23,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# Longest page a card can be (front and back of two cards on one sheet fit under it).
-MAX_WORDS = 300
+# Longest page a card can be (2026-11-05, user: 150, was 300).
+MAX_WORDS = 150
+# 2026-11-05 (user), to cut false positives -- a card also needs all of:
+#   the word "card" on the page, and a name on it (a name label: Name, Cardholder, LN / FN);
+#   none of the allowed section headers (stage 6) on the page;
+#   its text over at most half the page (the box round every OCR word, share of the page).
+CARD_WORD = re.compile(r"\bcards?\b", re.I)
+NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
+MAX_TEXT_AREA = 0.50
 
 
 def _rx(*patterns: str) -> list[re.Pattern]:
@@ -221,7 +230,10 @@ def word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9]{2,}", text or ""))
 
 
-def detect(text: str, *, max_words: int = MAX_WORDS) -> CardResult:
+def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
+           text_area: float | None = None) -> CardResult:
+    """``headings``: the page's section headers (stage 6); ``text_area``: the share of the page
+    the text covers (None = not measured, the rule is then off)."""
     text = text or ""
     words = word_count(text)
     stamp = DOCUMENT_STAMP.search(text)
@@ -283,6 +295,14 @@ def detect(text: str, *, max_words: int = MAX_WORDS) -> CardResult:
     blocked = [f"{name}: {', '.join(h)}" for name, pats in BLOCKERS.items() if (h := _hits(pats, text))]
     if words > max_words:
         blocked.append(f"too long: {words} words")
+    if not CARD_WORD.search(text):
+        blocked.append("no word 'card'")
+    if not NAME_WORD.search(text):
+        blocked.append("no name on it")
+    if headings:
+        blocked.append(f"section headers: {len(headings)}")
+    if text_area is not None and text_area > MAX_TEXT_AREA:
+        blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:
         return CardResult(False, kind, conf, matched, blocked, words)
     return CardResult(True, kind, conf, matched, [], words)

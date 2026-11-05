@@ -728,8 +728,9 @@ def _ocr_json(raw: Optional[str]) -> Optional[dict[str, Any]]:
 
 def _page_lines(
     final2: Optional[str], final1: Optional[str], *, page: dict[str, Any], chart_name: str
-) -> Optional[list["method.Line"]]:
-    """The page's text lines with their height on the page (final2 word boxes, else final1)."""
+) -> tuple[Optional[list["method.Line"]], Optional[float]]:
+    """The page's text lines with their height on the page (final2 word boxes, else final1),
+    and the share of the page the text covers (method.text_area)."""
     from stages.lib.extraction.ocr_input import page_for_extraction
 
     found = page_for_extraction(
@@ -738,8 +739,9 @@ def _page_lines(
         image_path=page_image_path(chart_name, page["page_name"]),
     )
     if not found or not found.get("height"):
-        return None
-    return method.lines_from_words(found["words"], float(found["height"])) or None
+        return None, None
+    return (method.lines_from_words(found["words"], float(found["height"])) or None,
+            method.text_area(found["words"], found.get("width"), found.get("height")))
 
 
 def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional[float]]:
@@ -833,7 +835,7 @@ def _page_inputs(
         )
         if pass_no == 2:
             inputs.headings = headings.get(page["page_name"], ())
-            inputs.lines = _page_lines(
+            inputs.lines, inputs.text_area = _page_lines(
                 (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
             )
             bottom = method.content_bottom(inputs.lines) if inputs.lines else None

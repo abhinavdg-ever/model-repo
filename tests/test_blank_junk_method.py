@@ -141,7 +141,7 @@ def test_a_page_typed_blank_is_judged_in_pass_1_and_is_blank_without_text():
 
 
 CARD_TEXT = (
-    "Benefit Award Card # 8101 3360 3004 6207 For Pharmacist: 1-877-889-6510 "
+    "Benefit Award Card # 8101 3360 3004 6207 Name: Jane Q Sample For Pharmacist: 1-877-889-6510 "
     "Rx Claims: OptumRx UnitedHealthcare UCard Member ID 903710875-00 "
     "RxBIN 610097 RxPCN 9999 RxGRP COS Optum Health Networks"
 )
