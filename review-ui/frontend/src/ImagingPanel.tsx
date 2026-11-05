@@ -1839,7 +1839,12 @@ function PageDetails({
     }
     // Every field with no ground truth that the reviewer did not touch takes its Final value
     // (2026-11-04 / 11-05, user), as if each had been accepted.
-    const merged = { ...offered.current, ...stored, ...edits };
+    // (storedGroundTruth lists every field, "" when empty: an empty one must not hide the
+    // Final value, so the Final values fill in after the merge, not under it.)
+    const merged = { ...stored, ...edits };
+    for (const [id, value] of Object.entries(offered.current)) {
+      if (edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
+    }
     if (editingId && draft != null) {
       const next = normalizeEntry(editingId, draft);
       if (next == null) {
