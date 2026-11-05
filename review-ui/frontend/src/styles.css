@@ -6858,3 +6858,12 @@ input {
   padding: 4px 6px;
   max-width: 220px;
 }
+
+/* A ground-truth entry that does not fit the others, under its field (2026-11-05). */
+.imaging-gt-problem {
+  margin: 0.15rem 0 0;
+  color: var(--status-error-fg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.25;
+}

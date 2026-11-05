@@ -633,35 +633,48 @@ function entryHint(id: string): string {
   return "That value can't be saved";
 }
 
-/** 2026-11-05 (user): checks across fields before a save; the first problem, or null.
- * DOS From / To: dates; To not before From; From set when To is; the non-visit 2222-02-22 in
- * both or neither; no date in the future or before 1900. */
-function groundTruthProblem(values: Record<string, string>): string | null {
+/** 2026-11-05 (user): checks across fields, shown under the field as soon as an inconsistent
+ * change is made (and Save waits until none is left). Field id -> message.
+ * Page Subtype: needed after a Page Type change. DOS From / To: dates; To not before From;
+ * From set when To is; the non-visit 2222-02-22 in both or neither; none in the future or
+ * before 1900. Only fields the reviewer changed are checked. */
+function fieldProblems(
+  values: Record<string, string>,
+  changed: { pageType: boolean; dos: boolean },
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (changed.pageType && !(values.page_subtype ?? "").trim()) out.page_subtype = PAGE_SUBTYPE_ASK;
+  if (!changed.dos) return out;
   // A choice such as Not Found / NA is not checked as a date; only a value with digits is.
   const dated = (value: string | undefined) => (/\d/.test(value ?? "") ? (value ?? "").trim() : "");
   const from = dated(values.dos_from);
   const to = dated(values.dos_to);
   const fromDate = from ? canonicalDate(from) : null;
   const toDate = to ? canonicalDate(to) : null;
-  if (from && !fromDate) return "DOS From is not a date (YYYY-MM-DD or MM/DD/YYYY).";
-  if (to && !toDate) return "DOS To is not a date (YYYY-MM-DD or MM/DD/YYYY).";
-  if (fromDate && toDate && toDate < fromDate) return `DOS To (${toDate}) cannot be before DOS From (${fromDate}).`;
-  if (toDate && !fromDate) return "DOS From is needed when DOS To is set.";
-  // The non-visit date (2222-02-22) stands for both ends or neither.
-  if (fromDate && toDate && (fromDate === NON_VISIT_DOS) !== (toDate === NON_VISIT_DOS)) {
-    return `A non-visit date (${NON_VISIT_DOS}) goes in both DOS From and DOS To.`;
-  }
+  if (from && !fromDate) out.dos_from = "Not a date (YYYY-MM-DD or MM/DD/YYYY).";
+  if (to && !toDate) out.dos_to = "Not a date (YYYY-MM-DD or MM/DD/YYYY).";
   const today = new Date().toISOString().slice(0, 10);
-  for (const [label, date] of [["DOS From", fromDate], ["DOS To", toDate]] as const) {
-    if (!date || date === NON_VISIT_DOS) continue;
-    if (date > today) return `${label} (${date}) cannot be in the future.`;
-    if (date < "1900-01-01") return `${label} (${date}) is before 1900.`;
+  for (const [id, date] of [["dos_from", fromDate], ["dos_to", toDate]] as const) {
+    if (!date || date === NON_VISIT_DOS || out[id]) continue;
+    if (date > today) out[id] = `${date} is in the future.`;
+    else if (date < "1900-01-01") out[id] = `${date} is before 1900.`;
   }
-  return null;
+  if (fromDate && toDate && !out.dos_to) {
+    if ((fromDate === NON_VISIT_DOS) !== (toDate === NON_VISIT_DOS)) {
+      out.dos_to = `A non-visit date (${NON_VISIT_DOS}) goes in both DOS From and DOS To.`;
+    } else if (toDate < fromDate) {
+      out.dos_to = `Cannot be before DOS From (${fromDate}).`;
+    }
+  }
+  if (toDate && !from && !out.dos_from) out.dos_from = "Needed when DOS To is set.";
+  return out;
 }
 
+/** Shown at the top when Save waits on the fields marked below. */
+const FIX_FIELDS_FIRST = "Fix the fields marked in red before saving.";
+
 /** Shown when Page Type changed and Page Subtype still needs a value (2026-11-05, user). */
-const PAGE_SUBTYPE_ASK = "Page Type changed: please choose the Page Subtype too.";
+const PAGE_SUBTYPE_ASK = "Page Type changed: choose the Page Subtype too.";
 
 function saveErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
@@ -910,6 +923,7 @@ function CompareSection({
   withTruth = true,
   readOnly = false,
   offered,
+  problems,
 }: {
   title: string;
   rows: CompareRow[];
@@ -932,6 +946,8 @@ function CompareSection({
   readOnly?: boolean;
   /** Filled while rendering: the pipeline value each untouched cell offers (saved on Save). */
   offered?: { current: Record<string, string> };
+  /** Field id -> what is inconsistent about the reviewer's entry, shown under it. */
+  problems?: Record<string, string>;
 }) {
   const truthColumn = !compact || withTruth || !readOnly;
   // The client's copy: no Extracted column, and Final is headed Algorithm.
@@ -1019,6 +1035,11 @@ function CompareSection({
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
                 />
+                {problems?.[row.id] ? (
+                  <p className="imaging-gt-problem" role="alert">
+                    {problems[row.id]}
+                  </p>
+                ) : null}
               </td>
               </>
               )}
@@ -1836,6 +1857,12 @@ function PageDetails({
   // Pipeline values the untouched cells offer (filled as the cells render).
   const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
+  // What the reviewer changed, and the problems that leaves (shown under the fields).
+  const changedKinds = {
+    pageType: edits.page_type !== undefined && edits.page_type !== (stored.page_type ?? ""),
+    dos: edits.dos_from !== undefined || edits.dos_to !== undefined,
+  };
+  const problems = fieldProblems(values, changedKinds);
   const dirty =
     Object.entries(edits).some(([id, value]) => value !== (stored[id] ?? "")) ||
     (editingId != null && draft != null && draft !== (values[editingId] ?? ""));
@@ -1853,17 +1880,7 @@ function PageDetails({
   }
 
   async function acceptAll(): Promise<boolean> {
-    // Page Type changed but Page Subtype not set after it: ask for it before saving.
-    const typeChanged = edits.page_type !== undefined && edits.page_type !== (stored.page_type ?? "");
-    const subtypeSet =
-      (edits.page_subtype !== undefined && edits.page_subtype.trim() !== "") ||
-      (editingId === "page_subtype" && (draft ?? "").trim() !== "");
-    if (typeChanged && !subtypeSet) {
-      setEditingId("page_subtype");
-      setDraft(draft ?? "");
-      setSaveError(PAGE_SUBTYPE_ASK);
-      return false;
-    }
+
     // Every field with no ground truth that the reviewer did not touch takes its Final value
     // (2026-11-04 / 11-05, user), as if each had been accepted.
     // (storedGroundTruth lists every field, "" when empty: an empty one must not hide the
@@ -1884,9 +1901,8 @@ function PageDetails({
       }
       merged[editingId] = next;
     }
-    const invalid = groundTruthProblem(merged);
-    if (invalid) {
-      setSaveError(invalid);
+    if (Object.keys(fieldProblems(merged, changedKinds)).length) {
+      setSaveError(FIX_FIELDS_FIRST);
       return false;
     }
     const persistedChanged = [...PERSISTED_GT].some(
@@ -1948,6 +1964,7 @@ function PageDetails({
     compact,
     withTruth,
     offered,
+    problems,
     readOnly: Boolean(frozen),
     values,
     editingId,
@@ -1977,7 +1994,6 @@ function PageDetails({
         });
         setEditingId("page_subtype");
         setDraft("");
-        setSaveError(PAGE_SUBTYPE_ASK);
       }
     },
     onCancel: () => {
