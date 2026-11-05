@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { frozenNote, useChartFrozen } from "./chartFrozen";
 import GroundTruthBanner, { pageUpdate } from "./GroundTruthBanner";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
@@ -879,6 +879,7 @@ function CompareSection({
   compact = false,
   withTruth = true,
   readOnly = false,
+  offered,
 }: {
   title: string;
   rows: CompareRow[];
@@ -899,6 +900,8 @@ function CompareSection({
   withTruth?: boolean;
   /** The chart is marked Reviewed: the ground truth shows, nothing to edit. */
   readOnly?: boolean;
+  /** Filled while rendering: the pipeline value each untouched cell offers (saved on Save). */
+  offered?: { current: Record<string, string> };
 }) {
   const truthColumn = !compact || withTruth || !readOnly;
   // The client's copy: no Extracted column, and Final is headed Algorithm.
@@ -979,6 +982,7 @@ function CompareSection({
                   saving={saving}
                   verdict={verdicts[row.id]}
                   suggest={!withTruth}
+                  offered={offered}
                   onCommit={(next) => onCommit(row.id, next)}
                   onAccept={(next) => onAccept(row.id, next)}
                   onCancel={onCancel}
@@ -1009,9 +1013,11 @@ function GroundTruthCell({
   onDraft,
   onStartEdit,
   readOnly = false,
+  offered,
 }: {
   row: CompareRow;
   readOnly?: boolean;
+  offered?: { current: Record<string, string> };
   editing: boolean;
   value: string;
   saving: boolean;
@@ -1047,6 +1053,12 @@ function GroundTruthCell({
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
   const offer = suggest && !stored && !verdict;
+  // 2026-11-04 (user): what the cell offers is saved with the page when the reviewer saves
+  // another field, instead of an empty (Not Found) entry.
+  if (offered) {
+    if (offer && copied) offered.current[row.id] = copied;
+    else delete offered.current[row.id];
+  }
   const fromStore = !verdict && Boolean(stored);
   const effective = verdict ?? (fromStore ? "enter" : undefined);
   const compared =
@@ -1787,6 +1799,8 @@ function PageDetails({
       ? numbered(signers.map((signer) => text(signer.credentials) || NOT_FOUND))
       : providerCredentials || NOT_FOUND;
   const stored = storedGroundTruth(page.groundTruth);
+  // Pipeline values the untouched cells offer (filled as the cells render).
+  const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
   const dirty =
     Object.entries(edits).some(([id, value]) => value !== (stored[id] ?? "")) ||
@@ -1805,7 +1819,9 @@ function PageDetails({
   }
 
   async function acceptAll(): Promise<boolean> {
-    const merged = { ...stored, ...edits };
+    // A page with no ground truth yet: every field the reviewer did not touch takes the
+    // pipeline's value it offers (2026-11-04, user), as if each had been accepted.
+    const merged = { ...offered.current, ...stored, ...edits };
     if (editingId && draft != null) {
       const next = normalizeEntry(editingId, draft);
       if (next == null) {
@@ -1872,6 +1888,7 @@ function PageDetails({
   const sectionProps = {
     compact,
     withTruth,
+    offered,
     readOnly: Boolean(frozen),
     values,
     editingId,
