@@ -12,12 +12,11 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Blank
-  R3 card           pass 1 and pass 2, page-tag printed or visual: a STRONG ID or
-                    insurance card by card_rules.detect (3+ card groups, no form / letter /
-                    clinical words, <= 300 words) -> Junk / Cards (2026-11-01, user: the one
-                    card rule). Not undone by post_process. A
-                    medium card goes on down the ladder, flagged for review
-  R3V visual        a visual page under 20 words that is not a strong card (a picture: an
+  R3 card           pass 2, page-tag printed or visual: an ID or insurance card by
+                    card_rules.detect (card or no card; no form / letter words, no section
+                    header but the card's own, <= 150 words) -> Junk / Cards, after the
+                    handwritten and signed keeps (2026-11-05, user)
+  R3V visual        a visual page under 20 words that is not a card (a picture: an
                     ECG strip, an X-ray print) -> Main, either pass (2026-11-01, user)
   pass 1 (Tesseract text) stops here:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
@@ -82,8 +81,6 @@ SUBTYPE_CODE = {
 
 # Page-tag types the card rule R3 reads (2026-10-31, user).
 CARD_DOCUMENT_TYPES = frozenset({"printed", "visual"})
-# R3 junks a strong card only (2026-10-31, user); a medium one is flagged for review.
-CARD_JUNK_CONFIDENCE = "strong"
 # DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
     "JUNK_INVOICE": "Invoice",
@@ -479,6 +476,8 @@ class PageInputs:
     prelim_text: str = ""
     # Pass 2: the page's section headers (stage 6, in the Final OCR JSON), for the fax rule.
     headings: tuple[str, ...] = ()
+    # Pass 2: the canon names stage 6 matched those headers to (matched_canonical).
+    header_canon: tuple[str, ...] = ()
     # Pass 2: the share of the page inside the box round every OCR word (the card rule).
     text_area: Optional[float] = None
 
@@ -583,8 +582,10 @@ def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optio
                       module="blank_junk")
 
 
-# 2026-11-04 (user): a page whose only words are cover marks is a cover page (pass 1 rule 4).
+# 2026-11-05 (user): a cover mark on a page of fewer than COVER_MAX_WORDS words is a cover page
+# (pass 1 rule 4; was: the page's only words are cover marks, 2026-11-04).
 COVER_MARKS = frozenset({"accept", "accepted", "unaccept", "unaccepted", "cover"})
+COVER_MAX_WORDS = 5
 # Pass 2 rule 4: an explicit signed phrase on the page (not the bare word "signature").
 SIGNED_PHRASE = re.compile(
     r"(?<![A-Za-z])(?:electronically\s+signed|digitally\s+signed|signed\s+by|e-?signed|co-?signed)(?![A-Za-z])",
@@ -594,16 +595,18 @@ SIGNED_PHRASE = re.compile(
 JUNK_UNLESS_KEEP_AT = 0.99
 
 
-def _cover_marks_only(text: str) -> bool:
-    words = [w.casefold() for w in re.findall(r"[A-Za-z]+", text or "")]
-    return bool(words) and all(w in COVER_MARKS for w in words)
+def _cover_mark(text: str) -> Optional[str]:
+    """The cover mark on a page of fewer than COVER_MAX_WORDS words, else None."""
+    if _word_count(text) >= COVER_MAX_WORDS:
+        return None
+    return next((w for w in re.findall(r"[A-Za-z]+", text or "") if w.casefold() in COVER_MARKS), None)
 
 
 def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict (2026-11-04, user: the simplified ladder; first rule that fires wins).
 
     Pass 1 (Tesseract, rules only): Blank (no ink / stage 1 blank / no text / 'blank'),
-    'intentionally left blank' -> Blank, cover marks only -> Junk / Cover Page, < 15 characters
+    'intentionally left blank' -> Blank, a cover mark in < 5 words -> Junk / Cover Page, < 15 characters
     -> Junk / Others; anything else waits for the Final OCR and pass 2.
 
     Pass 2 (final OCR + the teammate's PageClassifierService; p(keep) / p(junk) / p(blank)
@@ -659,8 +662,10 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters")
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank")
-    if _cover_marks_only(text):
-        return ruled(_junk_code("Cover Page"), "R1", "R1 cover marks only (ACCEPT / UNACCEPT / COVER) -> Junk / Cover Page")
+    mark = _cover_mark(text)
+    if mark is not None:
+        return ruled(_junk_code("Cover Page"), "R1",
+                     f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page")
     if not visual and chars < MIN_TEXT_CHARS:
         return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others")
     if not pass2:
@@ -669,23 +674,20 @@ def decide(inputs: PageInputs) -> Verdict:
                      conf.score(0.5, "degraded"))
 
     # ---- pass 2
-    # 1. card (printed or visual): a strong ID / insurance card.
-    card = (detect_card(text, headings=tuple(inputs.headings or ()), text_area=inputs.text_area)
+    # 1. card (printed or visual): an ID / insurance card, junked at 5 below.
+    card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area)
             if inputs.document_type in CARD_DOCUMENT_TYPES else None)
-    # 2026-11-05 (user): a strong card goes through the same keeps as any other junk (more than
-    # 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in post_process) before Junk / Cards.
-    strong_card = None
+    # 2026-11-05 (user): card or no card (no strong / medium). A card goes through the same keeps
+    # as any other junk (more than 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in
+    # post_process) before Junk / Cards.
+    found_card = None
     if card is not None and card.is_card:
-        votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
-        if card.confidence == CARD_JUNK_CONFIDENCE:
-            strong_card = card
-        else:
-            votes["review_required"] = True
-            votes["card_review"] = f"{card.card_type} card ({card.confidence}): not junked, review"
+        votes["card"] = {"type": card.card_type, "matched": card.matched}
+        found_card = card
     elif card is not None and card.blocked_by:
         votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
     # 2. visual and under 20 words: a picture (an ECG strip, an X-ray print).
-    if visual and strong_card is None:
+    if visual and found_card is None:
         return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
     # 3. more than 30% handwritten.
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
@@ -700,8 +702,8 @@ def decide(inputs: PageInputs) -> Verdict:
             votes["r4_overruled"] = f"{why}, but raw p(junk) {p_junk:.3f} > {over}"
         else:
             return ruled(CODE_MAIN, "R4", f"R4 signed ({why}) -> Main")
-    if strong_card is not None:
-        found = f"{strong_card.card_type} ({strong_card.confidence}; {'; '.join(strong_card.matched)})"
+    if found_card is not None:
+        found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
             return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
                          conf.score(p_keep))

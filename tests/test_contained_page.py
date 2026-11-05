@@ -12,6 +12,9 @@ BODY = " ".join(f"finding{i} meniscus ligament effusion impression" for i in ran
 def _run(texts, signed=()):
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    # 2026-11-05 (user): a short page's content ends in the top 20%.
+    for i in texts:
+        inputs[i].content_bottom = 0.9 if len(texts[i]) > 400 else 0.12
     rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed), find_duplicates=True)
     return {row["page_id"]: row for row in rows}
 
@@ -54,9 +57,22 @@ def test_a_page_adding_only_its_section_headers_is_junk(monkeypatch):
     texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Addendum Summary"}
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
     inputs[2].headings = ("Addendum Summary",)
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
     assert rows[2]["flag"] == "junk" and "section headers only" in rows[2]["reason"]
     inputs[2].headings = ("Addendum",)
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
     assert rows[2]["flag"] == "not_blank_junk"
+
+
+def test_a_contained_page_whose_content_goes_past_20_percent_stays_main(monkeypatch):
+    """2026-11-05 (user): the top-20% condition is back; past it, or not measured, stays Main."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    for bottom, flag in ((0.12, "junk"), (0.35, "not_blank_junk"), (None, "not_blank_junk")):
+        inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+        inputs[1].content_bottom, inputs[2].content_bottom = 0.9, bottom
+        rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+        assert rows[2]["flag"] == flag, bottom

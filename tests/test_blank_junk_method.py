@@ -285,7 +285,10 @@ class TestSimplifiedLadder:
         assert run("x.7 :", pass_no=1).code == classify.CODE_OTHERS  # under 15 characters
         v = run(JUNK_TEXT, pass_no=1, bert=bert(0.99))  # the model is not read in pass 1
         assert (v.code, v.rule) == (method.CODE_MAIN, "P1")
-        assert run("Accept this invoice please", pass_no=1).rule == "P1"  # not only cover marks
+        # 2026-11-05: a cover mark with fewer than 5 words on the page; 5 or more is not.
+        assert run("Accept this invoice please", pass_no=1).code == classify.CODE_COVER_PAGE
+        assert run("Fax cover 2 pages", pass_no=1).code == classify.CODE_COVER_PAGE
+        assert run("Accept this invoice please today", pass_no=1).rule == "P1"
 
     def test_a_card_comes_before_the_visual_keep(self):
         v = run(CARD_TEXT, document_type="visual", bert=bert(0.5))
@@ -366,3 +369,4 @@ class TestCardKeeps:
         v = run(CARD_TEXT, document_type="printed", bert=bert(0.5))
         assert (v.code, v.rule) == (classify.CODE_CARDS, "R3")
         assert run(CARD_TEXT, document_type="printed", bert=None).code == classify.CODE_CARDS
+

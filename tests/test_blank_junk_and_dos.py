@@ -984,10 +984,11 @@ class TestCardRule:
         assert verdict.rule != "R3" and verdict.votes.get("card_near_miss")
 
 
-    def test_a_medium_card_is_flagged_not_junked(self):
-        medium = "Member ID: 912345678 Group Number: 70123"  # two groups only
-        verdict = self._decide(medium)
-        assert verdict.code != classify.CODE_CARDS and verdict.votes["review_required"]
+    def test_card_or_no_card(self):
+        """2026-11-05 (user): no strong / medium -- two groups with the word card and a name is a card."""
+        two = "Member ID Card Name: Jane Q Sample Member ID: 912345678 Group Number: 70123"
+        assert self._decide(two).code == classify.CODE_CARDS
+        assert self._decide("Member ID: 912345678 Group Number: 70123").code != classify.CODE_CARDS  # no card, no name
 
     def test_section_headers_block_a_card(self):
         """2026-11-05 (user): a card has none of the allowed section headers (stage 6)."""

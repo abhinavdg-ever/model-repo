@@ -6,16 +6,17 @@ with form / letter / clinical words) are not junk; the ladder goes on. The rules
 card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 
 A page is a card only when words from two different card groups are on it, and no
-form / letter / clinical words are on it. A card photocopied on an A4 sheet still
+form / letter words are on it. 2026-11-05 (user): clinical is the section headers alone (no
+clinical word list), and the answer is binary -- a card or not (no strong / medium).
+A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
 2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
 no section header but Insurance / Subscriber / Policy ID / PCP (stage 6), at most 150 words, its text over at most half the page.
 
-    detect(text) -> CardResult(is_card, card_type, confidence, matched, blocked_by, words)
+    detect(text) -> CardResult(is_card, card_type, matched, blocked_by, words)
 
 card_type: insurance, medicare, drivers_license, state_id, drivers_license_or_id
            (back of a licence or ID), ssn_card, passport, green_card, military_id
-confidence: strong (3+ groups, or a title plus 3+ licence fields) or medium
 """
 
 from __future__ import annotations
@@ -216,16 +217,6 @@ BLOCKERS: dict[str, list[re.Pattern]] = {
         r"\bprior\s*authorization\s*(?:request|form)",
         r"\bfax\s*(?:cover|number|#)",
     ),
-    "clinical": _rx(
-        r"chief\s*complaint",
-        r"\bdiagnosis\b",
-        r"\bassessment\b",
-        r"\bhistory\s*of\s*present\s*illness",
-        r"\breference\s*range\b",
-        r"\bmedication\s*list\b",
-        r"\bplan\s*of\s*care\b",
-        r"\bprogress\s*note\b",
-    ),
 }
 
 
@@ -233,7 +224,6 @@ BLOCKERS: dict[str, list[re.Pattern]] = {
 class CardResult:
     is_card: bool
     card_type: str = ""
-    confidence: str = ""
     matched: list[str] = field(default_factory=list)
     blocked_by: list[str] = field(default_factory=list)
     words: int = 0
@@ -271,23 +261,19 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
     other = {name: _hits(pats, text) for name, pats in OTHER_ID.items()}
     other = {name: h for name, h in other.items() if h}
 
-    candidates: list[tuple[str, str, list[str]]] = []  # (type, confidence, matched)
+    candidates: list[tuple[str, list[str]]] = []  # (type, matched)
 
     # Insurance: two groups, or three back-of-card lines (the back has little else).
     n_ins = len(ins) + (1 if stamp else 0)
     back_lines = len(ins.get("card back", []))
     if n_ins >= 2 or back_lines >= 3:
-        conf = "strong" if n_ins >= 3 or back_lines >= 4 else "medium"
-        matched = [f"{g}: {', '.join(h)}" for g, h in ins.items()]
-        candidates.append(("insurance", conf, matched))
+        candidates.append(("insurance", [f"{g}: {', '.join(h)}" for g, h in ins.items()]))
 
     # Medicare card: two of its own lines, or one plus an insurance group.
     if len(medicare) >= 2 or (medicare and n_ins >= 1):
-        conf = "strong" if len(medicare) >= 3 else "medium"
-        candidates.append(("medicare", conf, [f"medicare: {', '.join(medicare)}"]))
+        candidates.append(("medicare", [f"medicare: {', '.join(medicare)}"]))
 
     # Licence / state ID: a title or a back-of-card line, plus licence fields.
-    lic_groups = (1 if lic_title or id_title else 0) + (1 if back else 0) + (1 if stamp else 0)
     # The back of an ID can be mostly sentences: a title and two back lines are enough then.
     if (lic_title or id_title or back) and (len(fields) >= 2 or ((lic_title or id_title) and len(back) >= 2)):
         # The back of a state ID says it is "not a driver's license", so the ID title wins.
@@ -297,20 +283,18 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
             kind = "drivers_license"
         else:
             kind = "drivers_license_or_id"
-        conf = "strong" if lic_groups >= 2 or len(fields) >= 4 else "medium"
         matched = [f"title: {', '.join(lic_title + id_title)}"] if lic_title or id_title else []
         matched += [f"back: {', '.join(back)}"] if back else []
         matched.append(f"fields: {', '.join(fields)}")
-        candidates.append((kind, conf, matched))
+        candidates.append((kind, matched))
 
     for kind, h in other.items():
-        candidates.append((kind, "strong", [f"{kind}: {', '.join(h)}"]))
+        candidates.append((kind, [f"{kind}: {', '.join(h)}"]))
 
     if not candidates:
         return CardResult(False, words=words)
 
-    rank = {"strong": 2, "medium": 1}
-    kind, conf, matched = max(candidates, key=lambda c: (rank[c[1]], len(c[2])))
+    kind, matched = max(candidates, key=lambda c: len(c[1]))
     if stamp:
         matched = matched + [f"stamp: {stamp.group(0)}"]
 
@@ -321,11 +305,12 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append("no word 'card'")
     if not NAME_WORD.search(text):
         blocked.append("no name on it")
+    # The clinical check: any section header but the card's own (Insurance, Subscriber ...).
     blocking = blocking_headers(tuple(headings or ()))
     if blocking:
         blocked.append(f"section headers: {len(blocking)}")
     if text_area is not None and text_area > MAX_TEXT_AREA:
         blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:
-        return CardResult(False, kind, conf, matched, blocked, words)
-    return CardResult(True, kind, conf, matched, [], words)
+        return CardResult(False, kind, matched, blocked, words)
+    return CardResult(True, kind, matched, [], words)

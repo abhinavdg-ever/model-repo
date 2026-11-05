@@ -92,14 +92,14 @@ def main(argv: list[str] | None = None) -> int:
             typed += 1
             card = detect(text or "")
             if card.is_card:
-                kind = "strong card (junked)" if card.confidence == "strong" else "medium card (review)"
+                kind = "card (junked)"
             elif card.blocked_by:
                 kind = "near miss (kept)"
             else:
                 continue
             truth = _truth(blank, junk)
             tally[(kind, truth)] += 1
-            if kind.startswith("strong") and truth == "GT main":
+            if kind.startswith("card") and truth == "GT main":
                 misses.append((chart, page, card.card_type))
 
     print(f"{pages} pages, {typed} printed or visual")

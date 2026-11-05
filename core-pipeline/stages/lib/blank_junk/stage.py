@@ -597,13 +597,15 @@ def _classify(
         )
         partial.add(page_id)
 
-    # 2026-11-05 (user): a page that adds nothing to a longer Main page within +-n pages is
-    # Junk / Others, with no geometry: (a) all its distinct words are on that page, or (b) the
-    # only words it adds are its own section headers (stage 6). Otherwise it stays Main.
+    # 2026-11-05 (user): a short page -- its content ends in the top 20% of the page -- that adds
+    # nothing to a longer Main page within +-n pages is Junk / Others: (a) all its distinct words
+    # are on that page, or (b) the only words it adds are its own section headers (stage 6).
+    # Otherwise it stays Main. A page without line positions is never short.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         near = int(cfg.get("near_pages", 3))
+        top = float(cfg.get("top_fraction", 0.20))
         min_words = int(cfg.get("min_words", 3))
         order = [page["id"] for page in pages]
         mains = [i for i, pid in enumerate(order)
@@ -614,8 +616,9 @@ def _classify(
             pid = order[i]
             mine = page_words[i]
             # An invoice page kept by the INVOICE rule stays Main (2026-11-05, user).
-            if len(mine) < min_words or _signature_page(pid) or method.is_invoice_page(
-                    (by_id.get(pid) or {}).get("reason")):
+            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
+            if len(mine) < min_words or _signature_page(pid) or bottom is None or bottom > top or (
+                    method.is_invoice_page((by_id.get(pid) or {}).get("reason"))):
                 continue
             longer = sorted((k for k in mains if k != i and abs(k - i) <= near and page_len[k] > page_len[i]),
                             key=lambda k: (abs(k - i), k))
@@ -635,7 +638,8 @@ def _classify(
             what = (f"all {len(mine)} distinct words on page {other.get('page_number')}" if why == "contained"
                     else f"the {len(mine - page_words[container])} word(s) not on page {other.get('page_number')} "
                          f"are its section headers only")
-            note = f"{CONTAINED_MARK}{order[container]} ({what}) -> Junk / Others"
+            note = (f"{CONTAINED_MARK}{order[container]} (content ends at {bottom:.0%} <= {top:.0%} of the page; "
+                    f"{what}) -> Junk / Others")
             own = by_id.get(pid) or {}
             earlier = own.get("votes")
             by_id[pid] = _row_for(
@@ -814,6 +818,7 @@ def _page_inputs(
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
+    header_canon = section_heading_canon(ctx.chart_name) if pass_no == 2 else {}
     top = float(method.canon().raw["zones"]["header_band"])
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
@@ -835,6 +840,7 @@ def _page_inputs(
         )
         if pass_no == 2:
             inputs.headings = headings.get(page["page_name"], ())
+            inputs.header_canon = header_canon.get(page["page_name"], ())
             inputs.lines, inputs.text_area = _page_lines(
                 (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
             )
@@ -847,6 +853,21 @@ def _page_inputs(
             if not page_blocks_prelim(q):
                 inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
+    return out
+
+
+def section_heading_canon(chart_name: str) -> dict[str, tuple[str, ...]]:
+    """Each page's section headers as stage 6's canon names (matched_canonical, else the text),
+    Final OCR 2's when the page has them, else Final OCR 1's (the card rule's header check)."""
+    from stages.lib.continuity.layout import load_pages, section_headers
+
+    out: dict[str, tuple[str, ...]] = {}
+    for engine in ("final1", "final2"):
+        for name, page in load_pages(chart_name, engine).items():
+            names = tuple(h.get("matched_canonical") or h["text"] for h in section_headers(page)
+                          if h.get("matched_canonical") or h.get("text"))
+            if names:
+                out[name] = names
     return out
 
 
