@@ -994,6 +994,9 @@ class TestCardRule:
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Allergies",))
         verdict = method.decide(inputs)
         assert verdict.code != classify.CODE_CARDS and verdict.votes.get("card_near_miss")
+        # Non-clinical headers a card carries (Insurance, Subscriber) do not block it.
+        ok = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Insurance", "Subscriber"))
+        assert method.decide(ok).code == classify.CODE_CARDS
 
     def test_a_card_needs_the_word_card_and_a_name(self):
         """2026-11-05 (user)."""
