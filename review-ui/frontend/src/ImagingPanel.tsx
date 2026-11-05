@@ -633,6 +633,9 @@ function entryHint(id: string): string {
   return "That value can't be saved";
 }
 
+/** Shown when Page Type changed and Page Subtype still needs a value (2026-11-05, user). */
+const PAGE_SUBTYPE_ASK = "Page Type changed: please choose the Page Subtype too.";
+
 function saveErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
   try {
@@ -1053,10 +1056,14 @@ function GroundTruthCell({
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
   const offer = suggest && !stored && !verdict;
-  // 2026-11-04 (user): what the cell offers is saved with the page when the reviewer saves
-  // another field, instead of an empty (Not Found) entry.
+  // 2026-11-04 / 11-05 (user): a field with no ground truth and no change takes its Final
+  // value when the reviewer saves another field, instead of an empty (Not Found) entry --
+  // also on a page that already has ground truth for other fields.
   if (offered) {
-    if (offer && copied) offered.current[row.id] = copied;
+    const fallback = row.presence
+      ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
+      : confirmedValue(row.processed);
+    if (!stored && !verdict && fallback) offered.current[row.id] = fallback;
     else delete offered.current[row.id];
   }
   const fromStore = !verdict && Boolean(stored);
@@ -1819,8 +1826,19 @@ function PageDetails({
   }
 
   async function acceptAll(): Promise<boolean> {
-    // A page with no ground truth yet: every field the reviewer did not touch takes the
-    // pipeline's value it offers (2026-11-04, user), as if each had been accepted.
+    // Page Type changed but Page Subtype not set after it: ask for it before saving.
+    const typeChanged = edits.page_type !== undefined && edits.page_type !== (stored.page_type ?? "");
+    const subtypeSet =
+      (edits.page_subtype !== undefined && edits.page_subtype.trim() !== "") ||
+      (editingId === "page_subtype" && (draft ?? "").trim() !== "");
+    if (typeChanged && !subtypeSet) {
+      setEditingId("page_subtype");
+      setDraft(draft ?? "");
+      setSaveError(PAGE_SUBTYPE_ASK);
+      return false;
+    }
+    // Every field with no ground truth that the reviewer did not touch takes its Final value
+    // (2026-11-04 / 11-05, user), as if each had been accepted.
     const merged = { ...offered.current, ...stored, ...edits };
     if (editingId && draft != null) {
       const next = normalizeEntry(editingId, draft);
@@ -1907,6 +1925,13 @@ function PageDetails({
       setSaveError(null);
       setVerdicts((current) => ({ ...current, [id]: "enter" }));
       setEdits((current) => ({ ...current, [id]: next }));
+      // 2026-11-05 (user): a new Page Type asks for its Page Subtype: the subtype opens
+      // for editing straight away (empty: the old one belongs to the old type).
+      if (id === "page_type" && next !== (values.page_type ?? "")) {
+        setEditingId("page_subtype");
+        setDraft("");
+        setSaveError(PAGE_SUBTYPE_ASK);
+      }
     },
     onCancel: () => {
       setEditingId(null);
