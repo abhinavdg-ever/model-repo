@@ -476,5 +476,17 @@ def _review_fields(review) -> dict:
         "reviewed": True,
         "reviewed_by": review.reviewedBy,
         "reviewed_by_id": review.reviewedById,
-        "reviewed_at": review.reviewedAt,
+        # model_copy(update=...) skips validation: a str here made pydantic warn on every
+        # History response (PydanticSerializationUnexpectedValue, 2026-11-05).
+        "reviewed_at": _as_datetime(review.reviewedAt),
     }
+
+
+def _as_datetime(value):
+    """An ISO string (or datetime) as a datetime; None when it is neither."""
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None

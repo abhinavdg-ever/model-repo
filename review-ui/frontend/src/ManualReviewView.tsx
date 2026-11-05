@@ -78,15 +78,28 @@ function passesFieldFilters(row: ManualReviewRow, fieldFilters: Record<string, F
 /** A cell with no value, as a value filter's option. */
 const BLANK_VALUE = "(Blank)";
 
-/** 2026-11-05 (user): a column narrowed to some of its values. A row passes when its
- * ground truth or its algo value is one of them (each side is one of the two rows shown). */
-function passesValueFilters(row: ManualReviewRow, valueFilters: Record<string, string[]>): boolean {
+/** Which side a value filter reads: either, the ground truth, or the algo output. */
+type ValueSide = "either" | "gt" | "algo";
+
+/** A row's values for one column on the chosen side(s); a Missing record has only ground
+ * truth and an Extra one only algo output. */
+function rowValues(row: ManualReviewRow, field: string, side: ValueSide): string[] {
+  const out: string[] = [];
+  if (side !== "algo" && row.status !== "EXTRA") out.push(sideValue(row, field, "gt").trim() || BLANK_VALUE);
+  if (side !== "gt" && row.status !== "MISSING") out.push(sideValue(row, field, "algo").trim() || BLANK_VALUE);
+  return out;
+}
+
+/** 2026-11-05 (user): a column narrowed to some of its values, on the ground truth, the
+ * algo output, or either. */
+function passesValueFilters(
+  row: ManualReviewRow,
+  valueFilters: Record<string, string[]>,
+  valueSides: Record<string, ValueSide>,
+): boolean {
   return Object.entries(valueFilters).every(([field, wanted]) => {
     if (!wanted.length) return true;
-    const values = [sideValue(row, field, "gt"), sideValue(row, field, "algo")]
-      .filter((_, i) => (i === 0 ? row.status !== "EXTRA" : row.status !== "MISSING"))
-      .map((v) => v.trim() || BLANK_VALUE);
-    return values.some((v) => wanted.includes(v));
+    return rowValues(row, field, valueSides[field] ?? "either").some((v) => wanted.includes(v));
   });
 }
 
@@ -391,11 +404,13 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     query: string;
     fieldFilters: Record<string, FieldFilter>;
     valueFilters?: Record<string, string[]>;
+    valueSides?: Record<string, ValueSide>;
     filterField?: string;
-  }>("manual-review", { filter: "ALL", page: 1, query: "", fieldFilters: {}, valueFilters: {}, filterField: "" });
+  }>("manual-review", { filter: "ALL", page: 1, query: "", fieldFilters: {}, valueFilters: {}, valueSides: {}, filterField: "" });
   const { filter, page, query } = view;
   const fieldFilters = view.fieldFilters ?? {};
   const valueFilters = view.valueFilters ?? {};
+  const valueSides = view.valueSides ?? {};
   const setValueFilter = (field: string, values: string[]) => {
     const next = { ...valueFilters };
     if (values.length) next[field] = values;
@@ -565,9 +580,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
       (row) =>
         (!needle || row.pdfId.toLowerCase().includes(needle)) &&
         passesFieldFilters(row, fieldFilters) &&
-        passesValueFilters(row, valueFilters),
+        passesValueFilters(row, valueFilters, valueSides),
     );
-  }, [result, query, fieldFilters, valueFilters]);
+  }, [result, query, fieldFilters, valueFilters, valueSides]);
   const fieldFilterCount = new Set([...Object.keys(fieldFilters), ...Object.keys(valueFilters)]).size;
   // The column the filter bar works on, and that column's values in the results.
   const filterField = view.filterField && result?.fields.includes(view.filterField) ? view.filterField : "";
@@ -575,12 +590,11 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     if (!filterField || !result) return [] as string[];
     const seen = new Set<string>();
     for (const row of result.rows) {
-      if (row.status !== "EXTRA") seen.add(sideValue(row, filterField, "gt").trim() || BLANK_VALUE);
-      if (row.status !== "MISSING") seen.add(sideValue(row, filterField, "algo").trim() || BLANK_VALUE);
+      for (const v of rowValues(row, filterField, valueSides[filterField] ?? "either")) seen.add(v);
     }
     const values = [...seen].filter((v) => v !== BLANK_VALUE).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     return seen.has(BLANK_VALUE) ? [...values, BLANK_VALUE] : values;
-  }, [result, filterField]);
+  }, [result, filterField, valueSides]);
   const filtered = useMemo(
     () => (filter === "ALL" ? searched : searched.filter((row) => row.status === filter)),
     [searched, filter],
@@ -987,6 +1001,18 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                       <option value="match">Match</option>
                       <option value="mismatch">No match</option>
                     </select>
+                    <select
+                      className={`excel-compare-col-filter${(valueSides[filterField] ?? "either") !== "either" ? " is-active" : ""}`}
+                      value={valueSides[filterField] ?? "either"}
+                      onChange={(e) =>
+                        setView({ valueSides: { ...valueSides, [filterField]: e.target.value as ValueSide }, page: 1 })
+                      }
+                      aria-label={`Filter ${filterField} values on`}
+                    >
+                      <option value="either">GT or Algo</option>
+                      <option value="gt">GT</option>
+                      <option value="algo">Algo</option>
+                    </select>
                     <ColumnFilterButton
                       label={`${filterField} values`}
                       active={Boolean(valueFilters[filterField]?.length)}
@@ -1020,7 +1046,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 <button
                   type="button"
                   className="excel-compare-filter excel-compare-clear-columns"
-                  onClick={() => setView({ fieldFilters: {}, valueFilters: {}, page: 1 })}
+                  onClick={() => setView({ fieldFilters: {}, valueFilters: {}, valueSides: {}, page: 1 })}
                 >
                   <X size={12} aria-hidden="true" />
                   Clear column filters <span>{fieldFilterCount}</span>
