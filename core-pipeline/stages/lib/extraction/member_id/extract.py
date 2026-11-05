@@ -65,6 +65,10 @@ def _normalize(text: str) -> str:
     return text.strip().strip(_EDGE_CHARS)
 
 
+# A letters-only prefix this long before the ID's first non-letter, and any separator after it.
+_LONG_ALPHA_PREFIX = re.compile(r"^[A-Za-z]{5,}[-_.:#/]*(?=[^A-Za-z])")
+
+
 def is_member_id_value(text: str) -> bool:
     """True when text matches member-id value patterns (digit-bearing, not alpha-only)."""
     return bool(accept(text))
@@ -79,6 +83,13 @@ def accept(text: str) -> str:
     cleaned = _normalize(text)
     if not cleaned or any(char.isspace() for char in cleaned):
         return ""
+    # 2026-11-05 (user): a letters-only prefix of 5 or more ('MEMBERID123456', 'PATIENT-00123')
+    # is not part of the ID; the rest must still be an ID.
+    prefix = _LONG_ALPHA_PREFIX.match(cleaned)
+    if prefix:
+        cleaned = cleaned[prefix.end():]
+        if not cleaned:
+            return ""
     if _ALPHA_ONLY.fullmatch(cleaned):
         return ""
     if _PHONE.fullmatch(text.strip()) or _SLASH_DATE.fullmatch(cleaned):

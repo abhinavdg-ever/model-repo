@@ -522,3 +522,14 @@ def test_encounter_id_is_not_a_member_id_key():
 
     before, _after = load_key_blocklist("member_id")["id"]
     assert "encounter" in before
+
+
+def test_a_long_letters_prefix_is_not_part_of_the_member_id():
+    """2026-11-05 (user): a letters-only prefix of 5 or more is removed."""
+    from stages.lib.extraction.member_id.extract import accept
+
+    assert accept("MEMBERID123456") == "123456"
+    assert accept("PATIENT-00123") == "00123"
+    assert accept("EMA20577880") == "EMA20577880"  # 3 letters: kept
+    assert accept("ABCD1234") == "ABCD1234"  # 4 letters: kept
+    assert accept("MEDICARE") == ""  # letters only: no ID
