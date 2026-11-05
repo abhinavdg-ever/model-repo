@@ -35,7 +35,8 @@
     "DIAS",
     "Visit",
     "Appointment",
-    "Provider Initial Contact Time"
+    "Provider Initial Contact Time",
+    "Date/Time of Service"
   ],
   "admit": [
     "Admit",
@@ -84,6 +85,8 @@
     "Service",
     "Chief Complaint",
     "Chief Complaint/Reason For Visit",
-    "PSFH/ROS Updated Date"
+    "PSFH/ROS Updated Date",
+    "Encounter Info",
+    "Encounter Information"
   ]
 }

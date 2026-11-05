@@ -23,8 +23,10 @@ Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
     (-, –, to, thru, through). Admit + discharge on one page are both selected and
     become a range in the record summary.
   - Keyed value: first date after the key on the key's line (weak keys: right after
-    the key; received/printed too), else the column-aligned date just below the key (table
-    headers).
+    the key; received/printed too; 'Encounter Info' reads along its line, after the encounter
+    number, place and type), else the column-aligned date just below the key (table headers).
+    'Date/Time of Service' is a service key; 'Encounter Info' is weak, so its range only
+    counts when the page has no service date (2026-11-05 Extraction drop).
   - Year must be 2000..next year; dates equal to the page's DOB are never used.
   - Keyless: header/footer only, only when no keyed DOS; dates followed by a clock
     time (fax/print stamps), fax/signature/print lines, prose lines and page labels
@@ -61,6 +63,9 @@ _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
+# Weak keys whose date comes after other details on their line ('Encounter info: 49537160,
+# BDWMC, Observation, 06/11/2025 - 06/18/2025'): they read as far along it as a service key.
+_WEAK_LINE_KEYS = frozenset({"encounter info", "encounter information"})
 _BELOW_LINES = 4.0
 # Keyless header/footer dates followed by a clock time are fax/print stamps.
 _TIME_AFTER = re.compile(r"^[\s,]*\d{1,2}:\d{2}")
@@ -172,8 +177,11 @@ def _pick(
     tier: str,
     blocked: set[str],
     header_row: bool = False,
+    max_gap: int | None = None,
 ) -> tuple[_Span, float, str] | None:
     key_start, key_end = tokens[key_first], tokens[key_last]
+    if max_gap is None:
+        max_gap = _WEAK_GAP_WORDS if tier in _NEAR_TIERS else _MAX_GAP_WORDS
     origin = _value_origin(tokens, text, key_first, key_last)
     line_h = median_height([token.word for token in tokens])
     spans = [span for span in date_spans(text, blocked) if span.start >= origin]
@@ -189,7 +197,7 @@ def _pick(
         if not on_line:
             continue
         gap = len(text[key_end.end : span.start].split())
-        if gap <= (_WEAK_GAP_WORDS if tier in _NEAR_TIERS else _MAX_GAP_WORDS):
+        if gap <= max_gap:
             return span, _confidence(gap), "same_line"
         # 'Encounter Note by Davis, Alfred H III, PA at 06/12/2024': introduced on the key's line.
         if tier == "service" and _INTRODUCED.search(text[key_end.end : span.start]):
@@ -283,7 +291,8 @@ def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | N
     if positions is None:
         return blank
     header_row = tier in _NEAR_TIERS and bool(words) and _header_row(hit, words)
-    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row)
+    max_gap = _MAX_GAP_WORDS if hit.key.strip().casefold() in _WEAK_LINE_KEYS else None
+    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row, max_gap)
     if picked is None:
         return blank
     span, score, source = picked

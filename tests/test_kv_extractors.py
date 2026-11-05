@@ -533,3 +533,20 @@ def test_a_long_letters_prefix_is_not_part_of_the_member_id():
     assert accept("EMA20577880") == "EMA20577880"  # 3 letters: kept
     assert accept("ABCD1234") == "ABCD1234"  # 4 letters: kept
     assert accept("MEDICARE") == ""  # letters only: no ID
+
+
+class TestExtractionDrop20261105:
+    """DOS rules from the 2026-11-05 Extraction drop."""
+
+    def test_date_time_of_service_is_a_service_key(self):
+        from stages.lib.extraction.util.keys import load_key_tiers
+
+        assert load_key_tiers("dos")["date/time of service"] == "service"
+
+    def test_encounter_info_is_weak_and_reads_along_its_line(self):
+        from stages.lib.extraction.dos import extract as dos
+        from stages.lib.extraction.util.keys import load_key_tiers
+
+        tiers = load_key_tiers("dos")
+        assert tiers["encounter info"] == tiers["encounter information"] == "weak"
+        assert {"encounter info", "encounter information"} == set(dos._WEAK_LINE_KEYS)
