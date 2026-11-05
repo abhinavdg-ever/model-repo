@@ -908,7 +908,7 @@ function CompareSection({
   const finalOnly = useContext(ClientViewContext);
   const finalHeading = finalOnly ? "Algorithm" : "Final";
   return (
-    <section className="imaging-section">
+    <section className={`imaging-section${finalOnly && !compact ? " is-final-only" : ""}`}>
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
         {toolbar}
@@ -1922,10 +1922,9 @@ function PageDetails({
       setDraft(values[id] ?? "");
     },
   };
-  // 2026-11-05 (user): a page with no ground truth can be saved untouched: every field takes
-  // the Final value it offers. Discard only shows once something was changed.
-  const saveUntouched = !dirty && !withTruth && !frozen;
-  const saveBar = dirty || saveUntouched ? (
+  // Save / Discard show once something was changed; saving then stores the untouched fields'
+  // offered Final values too (2026-11-04, user). (An always-shown Save was dropped 2026-11-05.)
+  const saveBar = dirty ? (
     <span className="imaging-gt-savebar">
       <button
         type="button"
@@ -1938,19 +1937,17 @@ function PageDetails({
         <Save size={15} aria-hidden="true" />
         Save
       </button>
-      {dirty ? (
-        <button
-          type="button"
-          className="imaging-gt-discard"
-          aria-label="Discard"
-          title="Discard"
-          disabled={saving}
-          onClick={discardReview}
-        >
-          <CircleMinus size={15} aria-hidden="true" />
-          Discard
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="imaging-gt-discard"
+        aria-label="Discard"
+        title="Discard"
+        disabled={saving}
+        onClick={discardReview}
+      >
+        <CircleMinus size={15} aria-hidden="true" />
+        Discard
+      </button>
     </span>
   ) : null;
 
