@@ -1922,7 +1922,10 @@ function PageDetails({
       setDraft(values[id] ?? "");
     },
   };
-  const saveBar = dirty ? (
+  // 2026-11-05 (user): a page with no ground truth can be saved untouched: every field takes
+  // the Final value it offers. Discard only shows once something was changed.
+  const saveUntouched = !dirty && !withTruth && !frozen;
+  const saveBar = dirty || saveUntouched ? (
     <span className="imaging-gt-savebar">
       <button
         type="button"
@@ -1935,17 +1938,19 @@ function PageDetails({
         <Save size={15} aria-hidden="true" />
         Save
       </button>
-      <button
-        type="button"
-        className="imaging-gt-discard"
-        aria-label="Discard"
-        title="Discard"
-        disabled={saving}
-        onClick={discardReview}
-      >
-        <CircleMinus size={15} aria-hidden="true" />
-        Discard
-      </button>
+      {dirty ? (
+        <button
+          type="button"
+          className="imaging-gt-discard"
+          aria-label="Discard"
+          title="Discard"
+          disabled={saving}
+          onClick={discardReview}
+        >
+          <CircleMinus size={15} aria-hidden="true" />
+          Discard
+        </button>
+      ) : null}
     </span>
   ) : null;
 

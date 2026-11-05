@@ -12,7 +12,7 @@ import ReviewLogView from "./ReviewLogView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
-import { ClientViewContext, scoreFinalOnly, setFinalOnlyChoice, setScoreFinalOnly, setScoringAdmin } from "./clientView";
+import { ClientViewContext, isClientCopy, scoreFinalOnly, setFinalOnlyChoice, setScoreFinalOnly, setScoringAdmin } from "./clientView";
 import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
 
 
@@ -239,7 +239,7 @@ export default function App() {
             onOpenReviewLog={() => guardedNavigate({ view: "review-log" })}
             includeExtracted={!scoreFinalOnly()}
             onToggleIncludeExtracted={
-              isAdmin
+              isAdmin && !isClientCopy()
                 ? (on) => {
                     setFinalOnlyChoice(!on);
                     setScoring((n) => n + 1);

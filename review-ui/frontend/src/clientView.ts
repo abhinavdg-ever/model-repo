@@ -15,6 +15,15 @@ let admin = false;
  * (2026-10-28, user). Set from /api/config before any chart is shown. */
 export function setScoreFinalOnly(on: boolean): void {
   byDefault = on;
+  clientCopy = on;
+}
+
+// The client's copy: Include Extracted is always No there, whatever an admin picked
+// (2026-11-05, user).
+let clientCopy = false;
+
+export function isClientCopy(): boolean {
+  return clientCopy;
 }
 
 export function setScoringAdmin(isAdmin: boolean): void {
@@ -39,6 +48,7 @@ export function setFinalOnlyChoice(on: boolean): void {
 }
 
 export function scoreFinalOnly(): boolean {
+  if (clientCopy) return true;
   const chosen = admin ? choice() : null;
   return chosen ?? byDefault;
 }
