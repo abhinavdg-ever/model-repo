@@ -55,13 +55,14 @@ SIGNED_BY = "Electronically signed by"
 
 
 def test_signature_present_only_with_an_accepted_signature():
-    # A provider name or credentials alone do not make a signature; they name the page.
+    # A provider name or credentials alone do not make a signature, and without one no
+    # provider is looked for (2026-11-05, user).
     fields = signature_fields(
         [{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "accepted": False}],
         [{"value": "Liane Kirchberger, PA", "score": 0.95}],
         [{"value": "PA", "accepted": True}],
     )
-    assert (fields["signature_present"], fields["provider_name"], fields["signers"]) == (False, "Liane Kirchberger", [])
+    assert (fields["signature_present"], fields["provider_name"], fields["signers"]) == (False, None, [])
     # Accepted but not selected still counts.
     fields = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "accepted": True, "selected": False}])
     assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (True, "A. Patel", "MD")
@@ -359,20 +360,26 @@ def test_a_signature_with_no_name_and_no_credentials_anywhere_is_no():
     assert (fields["signature_present"], fields["provider_name"], fields["signers"]) == (False, None, [])
 
 
-def test_no_signature_names_the_page_provider_with_signature_no():
-    # A consult page with a lab section: no electronic signature; the credentials row names
-    # the lab's physician (Weidong Huang, MD), which wins over the provider_name row.
-    providers = [{"key": "Physician", "value": "Finkelstein Tom I, MD", "score": 0.7728, "accepted": True, "selected": True},
-                 {"key": "Performed by", "value": "", "score": 0, "accepted": False}]
+def test_no_signature_means_no_provider():
+    """2026-11-05 (user): the provider name and credentials are looked for only when an
+    Electronic Signature is found."""
+    providers = [{"key": "Physician", "value": "Finkelstein Tom I, MD", "score": 0.7728, "accepted": True, "selected": True}]
     credentials = [{"key": "Credential", "value": "MD", "provider_name": "Weidong Huang", "score": 0.9, "accepted": True}]
     fields = signature_fields([], providers, credentials)
-    assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (False, "Weidong Huang", "MD")
-    assert (fields["signers"], fields["confidence"]) == ([], 0.5737)  # 0.9 x 0.85 x 0.75
-    # Without a credentials row naming someone: the provider_name row.
-    fields = signature_fields([], providers, [])
-    assert (fields["provider_name"], fields["provider_credentials"]) == ("Finkelstein Tom I", "MD")
-    # Nothing counted anywhere: all empty.
-    assert signature_fields([], [], [])["provider_name"] is None
+    assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (False, None, None)
+    assert fields["signers"] == []
+
+
+def test_rn_and_do_credential_rows_never_fill_a_signer():
+    """2026-11-05 (user)."""
+    signature = [{"key": SIGNED_BY, "provider_name": "", "ner_text": "", "score": 0.9, "accepted": True, "selected": True}]
+    for value in ("RN", "DO", "D.O."):
+        credentials = [{"key": "Credential", "value": value, "provider_name": "Jane Roe", "score": 0.9, "accepted": True}]
+        fields = signature_fields(signature, [], credentials)
+        assert fields["provider_name"] != "Jane Roe" and fields["provider_credentials"] != value
+    credentials = [{"key": "Credential", "value": "FNP", "provider_name": "Jane Roe", "score": 0.9, "accepted": True}]
+    fields = signature_fields(signature, [], credentials)
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("Jane Roe", "FNP")
 
 
 def test_heading_candidates_keep_every_heading_row_with_the_page_size():

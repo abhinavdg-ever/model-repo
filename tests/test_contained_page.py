@@ -12,9 +12,6 @@ BODY = " ".join(f"finding{i} meniscus ligament effusion impression" for i in ran
 def _run(texts, signed=()):
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
-    # 2026-11-04 (user): a short page's content ends in the top 20%.
-    for i in texts:
-        inputs[i].content_bottom = 0.9 if len(texts[i]) > 400 else 0.12
     rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed), find_duplicates=True)
     return {row["page_id"]: row for row in rows}
 
@@ -48,3 +45,18 @@ def test_pass_1_marks_an_exact_copy_within_3_pages_the_later_page(monkeypatch):
     assert rows[2]["flag"] == "duplicate" and rows[2]["duplicate_of"] == 1
     assert rows[1]["flag"] != "duplicate" and rows[3]["flag"] != "duplicate"
     assert rows[7]["flag"] != "duplicate"  # 6 places from page 1, 5 from page 2: not within 3
+
+
+def test_a_page_adding_only_its_section_headers_is_junk(monkeypatch):
+    """2026-11-05 (user): no geometry; the words not on a longer page within 3 are its section
+    headers only -> Junk / Others; any other new word keeps it."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Addendum Summary"}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[2].headings = ("Addendum Summary",)
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "junk" and "section headers only" in rows[2]["reason"]
+    inputs[2].headings = ("Addendum",)
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "not_blank_junk"

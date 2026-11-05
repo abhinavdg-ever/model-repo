@@ -310,7 +310,8 @@ class TestSimplifiedLadder:
         assert run(FILLER, bert=b).code == method.CODE_MAIN
         b = bert(0.0)
         b["service"]["flag"] = "BLANK"
-        assert run(FILLER, bert=b).code == method.CODE_BLANK
+        # 2026-11-05 (user): the classifier's Blank is Junk / Others.
+        assert run(FILLER, bert=b).code == classify.CODE_OTHERS
         assert run(FILLER, bert=bert(0.10)).code == method.CODE_MAIN
 
     def test_no_model_is_main_for_review(self):

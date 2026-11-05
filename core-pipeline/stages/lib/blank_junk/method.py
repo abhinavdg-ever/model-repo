@@ -694,7 +694,9 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
                      conf.score(float(service["confidence"])))
     if service["flag"] == "BLANK":
-        return ruled(CODE_BLANK, "R5", f"R5 service {why} -> Blank", conf.score(float(service["confidence"])))
+        # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
+        return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
+                     conf.score(float(service["confidence"])))
     return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(float(service["confidence"])))
 
 

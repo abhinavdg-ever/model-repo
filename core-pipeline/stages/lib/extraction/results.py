@@ -281,6 +281,14 @@ def _page_provider(
     return None, None, None
 
 
+# provider_credentials values never used to derive a signer (2026-11-05, user).
+IGNORED_DERIVED_CREDENTIALS = frozenset({"RN", "DO"})
+
+
+def _ignored_credential(value: Optional[str]) -> bool:
+    return re.sub(r"[^A-Za-z]", "", value or "").upper() in IGNORED_DERIVED_CREDENTIALS
+
+
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
@@ -291,8 +299,8 @@ def signature_fields(
     ``hit`` is the page's electronic-signature rows; one counts when accepted or scored
     above COUNTS_ABOVE (0.7). Signature present = at least one signer was found (a name or
     credentials); a signature with neither is No. With **no counted signature**: Signature
-    No, and the page's provider from ``_page_provider`` (a counted credentials row naming
-    its provider, else a counted provider_name row), confidence x0.75.
+    No and no provider (2026-11-05, user: the provider is looked for only with a signature).
+    A ``provider_credentials`` row reading RN or DO is never used to fill a signer.
 
     Each accepted signature: name = its ``provider_name`` without credentials, credentials =
     its ``designation``; a missing name from its ``ner_text``, missing credentials from its
@@ -313,6 +321,9 @@ def signature_fields(
     (SEVERAL_FACTOR). Each signer carries its own; the page's is their average.
     """
     rows = [row for row in _as_hits(hit) if _counts(row)]
+    # 2026-11-05 (user): a provider_credentials row reading RN or DO is never used to derive
+    # a signer's name or credentials.
+    credential_hits = [item for item in _as_hits(credential_hits) if not _ignored_credential(_text(item, "value"))]
     empty = {
         "signature_present": False,
         "signature_key": None, "region": None, "scale": None, "sentence": None,
@@ -321,18 +332,9 @@ def signature_fields(
         "provider_version": PROVIDER_VERSION,
     }
     if not rows:
-        # No signature: Signature No, but the page's provider from its counted
-        # provider_credentials (a row naming its provider) or provider_name rows.
-        name, creds, score = _page_provider(provider_hits, credential_hits)
-        if not name:
-            return empty
-        return {
-            **empty,
-            "provider_name": name,
-            "provider_credentials": creds,
-            "confidence": round(score * OUTSIDE_FACTOR, 4) if score is not None else None,
-            "source": "page_provider",
-        }
+        # 2026-11-05 (user): no Electronic Signature -> Signature No and no provider: the
+        # provider name and credentials are looked for only with a signature.
+        return empty
     primary = _best([row for row in rows if row.get("selected")]) or _best(rows)
     ordered = [primary, *sorted((row for row in rows if row is not primary), key=lambda row: -(_score(row) or 0.0))]
 

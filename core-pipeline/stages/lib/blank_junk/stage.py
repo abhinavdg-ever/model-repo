@@ -597,15 +597,13 @@ def _classify(
         )
         partial.add(page_id)
 
-    # 2026-11-04 (user): a short page -- its content ends in the top 20% of the page -- whose
-    # distinct words are all on a longer Main page within 3 pages adds nothing: Junk / Others
-    # (a report's "page 2 of 2" that only repeats the header block). Replaces R6 and the
-    # 2026-11-03 half-the-length rule. A page without line positions is never short.
+    # 2026-11-05 (user): a page that adds nothing to a longer Main page within +-n pages is
+    # Junk / Others, with no geometry: (a) all its distinct words are on that page, or (b) the
+    # only words it adds are its own section headers (stage 6). Otherwise it stays Main.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         near = int(cfg.get("near_pages", 3))
-        top = float(cfg.get("top_fraction", 0.20))
         min_words = int(cfg.get("min_words", 3))
         order = [page["id"] for page in pages]
         mains = [i for i, pid in enumerate(order)
@@ -615,21 +613,27 @@ def _classify(
         for i in mains:
             pid = order[i]
             mine = page_words[i]
-            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
-            if len(mine) < min_words or _signature_page(pid) or bottom is None or bottom > top:
+            if len(mine) < min_words or _signature_page(pid):
                 continue
-            container = next(
-                (k for k in sorted((k for k in mains if k != i and abs(k - i) <= near), key=lambda k: (abs(k - i), k))
-                 if page_len[k] > page_len[i] and mine <= page_words[k]),
-                None,
-            )
+            longer = sorted((k for k in mains if k != i and abs(k - i) <= near and page_len[k] > page_len[i]),
+                            key=lambda k: (abs(k - i), k))
+            if not longer:
+                continue
+            heading_words = unique_words("\n".join(getattr((inputs or {}).get(pid), "headings", ()) or ()))
+            container, why = next(((k, "contained") for k in longer if mine <= page_words[k]), (None, ""))
+            if container is None:
+                # The neighbour sharing the most words; what the page adds must be headers only.
+                k = max(longer, key=lambda k: (len(mine & page_words[k]), -abs(k - i)))
+                added = mine - page_words[k]
+                if added and heading_words and added <= heading_words:
+                    container, why = k, "headers"
             if container is None:
                 continue
             other = page_by_id[order[container]]
-            note = (
-                f"{CONTAINED_MARK}{order[container]} (content ends at {bottom:.0%} <= {top:.0%} of the page; "
-                f"all {len(mine)} distinct words on page {other.get('page_number')}) -> Junk / Others"
-            )
+            what = (f"all {len(mine)} distinct words on page {other.get('page_number')}" if why == "contained"
+                    else f"the {len(mine - page_words[container])} word(s) not on page {other.get('page_number')} "
+                         f"are its section headers only")
+            note = f"{CONTAINED_MARK}{order[container]} ({what}) -> Junk / Others"
             own = by_id.get(pid) or {}
             earlier = own.get("votes")
             by_id[pid] = _row_for(
