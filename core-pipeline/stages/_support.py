@@ -32,6 +32,18 @@ BJ_EXCLUDE = frozenset({"blank", "junk", "duplicate"})
 # Starts the reason of a pass-1 junk verdict DistilBERT was sure of (p(junk) above
 # ``pass1_final_junk_above``, 2026-10-22): final, so pass 2 does not judge it again.
 FINAL_JUNK = "R5 junk (final)"
+# 2026-11-05 (user): a Junk / Invoice page is Main (Blank/Junk "No") with page type
+# Invoice / Invoice Page. Blank / junk writes INVOICE_MARK in its reason; page_classify
+# and imaging_final read it.
+INVOICE_MARK = "invoice_page_kept"
+INVOICE_PAGE_TYPE = "Invoice"
+INVOICE_PAGE_SUBTYPE = "Invoice Page"
+INVOICE_DECIDED_BY = "invoice_page"
+
+
+def is_invoice_page(reason: Optional[str]) -> bool:
+    """True when the blank / junk reason says the INVOICE rule kept the page."""
+    return INVOICE_MARK in (reason or "")
 # A signature on the page, as Final OCR 1 reads it (pass1_ruled_out).
 SIGNATURE_WORD = re.compile(r"(?<![A-Za-z])(?:signed|signature|e-?signed|co-?signed|attested)(?![A-Za-z])", re.IGNORECASE)
 

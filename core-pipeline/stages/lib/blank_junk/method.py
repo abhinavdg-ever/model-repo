@@ -64,7 +64,7 @@ from classify import (
     CODE_OTHERS,
     CODE_RECORD_REQUEST,
 )
-from stages._support import FINAL_JUNK
+from stages._support import FINAL_JUNK, INVOICE_MARK, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, is_invoice_page  # noqa: F401
 from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
@@ -105,7 +105,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -743,11 +743,29 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     return found.group(0)
 
 
+INVOICE_RULE = "INVOICE"
+
+
 def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """The processing rule after the ladder, both passes (2026-11-04, user): a junk page with
-    Lab, Reference Range and Value on it is a lab result -> Main (LAB). Blank stays Blank.
-    (The provider-details keep was dropped and the fax rule moved into the ladder.)"""
-    return _keep_lab(verdict, inputs)
+    """The processing rules after the ladder, both passes: a junk page with Lab, Reference
+    Range and Value on it is a lab result -> Main (LAB, 2026-11-04); a Junk / Invoice page
+    -> Main, page type Invoice / Invoice Page (INVOICE, 2026-11-05). Blank stays Blank."""
+    return _keep_invoice(_keep_lab(verdict, inputs), inputs)
+
+
+def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """A Junk / Invoice page is Main; page_classify gives it Invoice / Invoice Page."""
+    if verdict.code != CODE_INVOICE:
+        return verdict
+    verdict.votes["invoice_kept"] = verdict.reason
+    verdict.votes["rule"] = INVOICE_RULE
+    bert = inputs.bert or {}
+    p_keep = float(bert["p_keep"]) if bert else None
+    p_junk = float(bert["p_junk"]) if bert else None
+    # Scored as the invoice call it is (p(junk)), not as a keep the model disagrees with.
+    return Verdict(CODE_MAIN, rule_confidence(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk), INVOICE_RULE,
+                   f"{verdict.reason}; {INVOICE_MARK} -> Main (Page Type {INVOICE_PAGE_TYPE} / "
+                   f"{INVOICE_PAGE_SUBTYPE})", verdict.votes)
 
 
 def lab_result_words(inputs: PageInputs) -> Optional[list[str]]:

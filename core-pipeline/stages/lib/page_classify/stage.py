@@ -18,7 +18,8 @@ documents and are applied by ``imaging_final`` as the **Final** answer.
 
 Blank / junk / duplicate pages are ``non_codeable`` and keep their junk label
 as the sub-type; a label that is a taxonomy sub-type (Invoice) also gives its
-page type. A duplicate takes its original's page type and sub-type instead
+page type. A Junk / Invoice page that blank / junk kept (Main, INVOICE rule, 2026-11-05)
+is Invoice / Invoice Page, non_codeable. A duplicate takes its original's page type and sub-type instead
 (2026-10-22, user): it is the same page. It stays ``non_codeable`` -- one copy is
 coded -- and ``imaging_final`` copies the original's Final values as before.
 
@@ -43,7 +44,16 @@ from db import (
 )
 from config import staging_dir
 from db.paths import imaging_csv, write_csv
-from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, stage_run
+from stages._support import (
+    BJ_EXCLUDE,
+    INVOICE_DECIDED_BY,
+    INVOICE_PAGE_SUBTYPE,
+    INVOICE_PAGE_TYPE,
+    best_page_text,
+    is_invoice_page,
+    mark_completed,
+    stage_run,
+)
 from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify import axes, leaf
@@ -235,6 +245,21 @@ def _blank_junk_row(flag: str, junk_subtype: Optional[str], confidence: Any) -> 
     }
 
 
+def _invoice_row(confidence: Any) -> dict[str, Any]:
+    """A page blank / junk's INVOICE rule kept (Junk / Invoice -> Main): Invoice / Invoice Page,
+    non_codeable."""
+    return {
+        "page_type": INVOICE_PAGE_TYPE,
+        "page_subtype": INVOICE_PAGE_SUBTYPE,
+        "model_type": None,
+        "classification_category": "non_codeable",
+        "confidence": float(confidence) if confidence is not None else None,
+        "duplicate_flag": False,
+        "decided_by": INVOICE_DECIDED_BY,
+        "needs_review": False,
+    }
+
+
 def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
     """The page's row: names, category and decided_by from its axes. The confidence is
     the page type's (the whole path), times the page's own doubts (``reasons``:
@@ -266,7 +291,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
 
-        counts = {"main": 0, "blank_junk": 0, "review": 0, "axes_model": 0, "canon": 0, "others": 0, "specialty": 0}
+        counts = {"main": 0, "blank_junk": 0, "invoice": 0, "review": 0, "axes_model": 0, "canon": 0, "others": 0, "specialty": 0}
         # Every page's row first: a duplicate takes its original's page type, and the
         # original can come later in the chart.
         built: dict[int, tuple[dict[str, Any], Any, str]] = {}
@@ -280,6 +305,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 row = _blank_junk_row(flag, bj.get("junk_subtype"), bj.get("confidence"))
                 counts["blank_junk"] += 1
                 source = ""
+            elif is_invoice_page(bj.get("reason")):
+                # 2026-11-05 (user): a page blank / junk kept as an invoice is Invoice /
+                # Invoice Page, not classified again.
+                row = _invoice_row(bj.get("confidence"))
+                counts["invoice"] += 1
+                source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             else:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                 headings = tuple(_headings(f2, f1))
@@ -339,9 +370,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         path = write_csv(imaging_csv(ctx.chart_name, "codeable"), CODEABLE_COLS, csv_rows)
         staged_path = write_staged(ctx.chart_name, staged)
         logger.info(
-            "page_subtype chart=%s main=%d blank_junk=%d review=%d model=%d canon=%d others=%d "
+            "page_subtype chart=%s main=%d blank_junk=%d invoice=%d review=%d model=%d canon=%d others=%d "
             "specialty=%d → %s",
-            ctx.chart_name, counts["main"], counts["blank_junk"], counts["review"],
+            ctx.chart_name, counts["main"], counts["blank_junk"], counts["invoice"], counts["review"],
             counts["axes_model"], counts["canon"], counts["others"], counts["specialty"], path,
         )
         return {

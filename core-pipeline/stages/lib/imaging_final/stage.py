@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from datetime import date
 from typing import Any, Optional
 
@@ -47,7 +48,7 @@ from db import (
     upsert_imaging_final,
 )
 from db.paths import imaging_csv, write_csv
-from stages._support import mark_completed, stage_run
+from stages._support import INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, mark_completed, stage_run
 from stages.lib import confidence as conf
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
@@ -363,6 +364,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 final_pages[page_id],
                 [final_pages[pid] for pid in type_document_of.get(page_id, [])] or None,
             )
+            if kind.get("decided_by") == INVOICE_DECIDED_BY:
+                # 2026-11-05 (user): an invoice blank / junk kept stays Invoice / Invoice Page.
+                verdict = replace(verdict, page_type=INVOICE_PAGE_TYPE, page_subtype=INVOICE_PAGE_SUBTYPE,
+                                  codability="Non-Codable", source="page", continuation_rule="invoice_page",
+                                  needs_review=False)
             # DOS and encounter type: the document's (first dated page / first page) when
             # the page belongs to one, else its own.
             document = carried.get(page_id)

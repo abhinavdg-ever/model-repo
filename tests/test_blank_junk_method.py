@@ -220,8 +220,9 @@ class TestPostProcess:
     alone does not keep it (removed the same day)."""
 
     def test_plain_junk_and_pass_1_are_unchanged(self):
-        for inputs in (PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99)),
-                       PageInputs(text=JUNK_TEXT, pass_no=1, bert=bert(0.99), signed=True)):
+        # JUNK_OTHERS: a Junk / Invoice page is kept by the INVOICE rule (2026-11-05).
+        for inputs in (PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99, "JUNK_OTHERS")),
+                       PageInputs(text=JUNK_TEXT, pass_no=1, bert=bert(0.99, "JUNK_OTHERS"), signed=True)):
             verdict = decide(inputs)
             assert method.post_process(verdict, inputs) is verdict
 
@@ -251,7 +252,7 @@ class TestBlankFromStage1AndLabKeep:
 
     def test_all_three_words_are_needed(self):
         no_range = "Lab report. Test Value Units. Invoice number 4411 amount due now. " + FILLER
-        v = method.post_process(run(no_range, bert=bert(0.99)), PageInputs(text=no_range, pass_no=2))
+        v = method.post_process(run(no_range, bert=bert(0.99, "JUNK_OTHERS")), PageInputs(text=no_range, pass_no=2))
         assert v.code != method.CODE_MAIN
 
 
@@ -319,7 +320,8 @@ class TestSimplifiedLadder:
         assert v.code == method.CODE_MAIN and v.votes.get("review_required")
 
     def test_provider_details_no_longer_keep_a_page(self):
-        v = method.post_process(run(JUNK_TEXT, bert=bert(0.99), provider=True), PageInputs(text=JUNK_TEXT, pass_no=2, provider=True))
+        v = method.post_process(run(JUNK_TEXT, bert=bert(0.99, "JUNK_OTHERS"), provider=True),
+                                PageInputs(text=JUNK_TEXT, pass_no=2, provider=True))
         assert v.code != method.CODE_MAIN
 
     def test_a_lab_result_is_main_in_pass_2(self):
@@ -327,3 +329,25 @@ class TestSimplifiedLadder:
                "Invoice number 4411 amount due now. " + FILLER)
         v = method.post_process(run(lab, bert=bert(0.99)), PageInputs(text=lab, pass_no=2))
         assert (v.code, v.rule) == (method.CODE_MAIN, "LAB")
+
+
+class TestInvoiceKept:
+    """2026-11-05 (user): a Junk / Invoice page is Main (Blank/Junk No), page type Invoice /
+    Invoice Page."""
+
+    def test_a_junk_invoice_page_is_main_by_the_invoice_rule(self):
+        inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.99))
+        v = method.post_process(decide(inputs), inputs)
+        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+        assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
+
+    def test_other_junk_stays_junk(self):
+        inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.99, "JUNK_RECORD_REQUEST"))
+        v = method.post_process(decide(inputs), inputs)
+        assert v.code != method.CODE_MAIN and not method.is_invoice_page(v.reason)
+
+    def test_page_classify_writes_invoice_page(self):
+        from stages.lib.page_classify import stage as pc
+        row = pc._invoice_row(0.97)
+        assert (row["page_type"], row["page_subtype"], row["decided_by"]) == ("Invoice", "Invoice Page", "invoice_page")
+        assert row["classification_category"] == "non_codeable"

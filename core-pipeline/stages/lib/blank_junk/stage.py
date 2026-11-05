@@ -613,7 +613,9 @@ def _classify(
         for i in mains:
             pid = order[i]
             mine = page_words[i]
-            if len(mine) < min_words or _signature_page(pid):
+            # An invoice page kept by the INVOICE rule stays Main (2026-11-05, user).
+            if len(mine) < min_words or _signature_page(pid) or method.is_invoice_page(
+                    (by_id.get(pid) or {}).get("reason")):
                 continue
             longer = sorted((k for k in mains if k != i and abs(k - i) <= near and page_len[k] > page_len[i]),
                             key=lambda k: (abs(k - i), k))
