@@ -633,6 +633,21 @@ function entryHint(id: string): string {
   return "That value can't be saved";
 }
 
+/** 2026-11-05 (user): checks across fields before a save; the first problem, or null.
+ * DOS From / To must be dates (the non-visit 2222-02-22 counts as one) and To not before From. */
+function groundTruthProblem(values: Record<string, string>): string | null {
+  // A choice such as Not Found / NA is not checked as a date; only a value with digits is.
+  const dated = (value: string | undefined) => (/\d/.test(value ?? "") ? (value ?? "").trim() : "");
+  const from = dated(values.dos_from);
+  const to = dated(values.dos_to);
+  const fromDate = from ? canonicalDate(from) : null;
+  const toDate = to ? canonicalDate(to) : null;
+  if (from && !fromDate) return "DOS From is not a date (YYYY-MM-DD or MM/DD/YYYY).";
+  if (to && !toDate) return "DOS To is not a date (YYYY-MM-DD or MM/DD/YYYY).";
+  if (fromDate && toDate && toDate < fromDate) return `DOS To (${toDate}) cannot be before DOS From (${fromDate}).`;
+  return null;
+}
+
 /** Shown when Page Type changed and Page Subtype still needs a value (2026-11-05, user). */
 const PAGE_SUBTYPE_ASK = "Page Type changed: please choose the Page Subtype too.";
 
@@ -1842,8 +1857,12 @@ function PageDetails({
     // (storedGroundTruth lists every field, "" when empty: an empty one must not hide the
     // Final value, so the Final values fill in after the merge, not under it.)
     const merged = { ...stored, ...edits };
-    for (const [id, value] of Object.entries(offered.current)) {
-      if (edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
+    // Only the page's first save (no ground truth yet) copies the Final values; after it the
+    // page is edited field by field like an uploaded one (2026-11-05, user).
+    if (!withTruth) {
+      for (const [id, value] of Object.entries(offered.current)) {
+        if (edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
+      }
     }
     if (editingId && draft != null) {
       const next = normalizeEntry(editingId, draft);
@@ -1852,6 +1871,11 @@ function PageDetails({
         return false;
       }
       merged[editingId] = next;
+    }
+    const invalid = groundTruthProblem(merged);
+    if (invalid) {
+      setSaveError(invalid);
+      return false;
     }
     const persistedChanged = [...PERSISTED_GT].some(
       (id) => (merged[id] ?? "") !== (stored[id] ?? ""),
@@ -1929,10 +1953,16 @@ function PageDetails({
       setDraft(null);
       setSaveError(null);
       setVerdicts((current) => ({ ...current, [id]: "enter" }));
-      setEdits((current) => ({ ...current, [id]: next }));
-      // 2026-11-05 (user): a new Page Type asks for its Page Subtype: the subtype opens
-      // for editing straight away (empty: the old one belongs to the old type).
-      if (id === "page_type" && next !== (values.page_type ?? "")) {
+      // 2026-11-05 (user): a new Page Type clears the Page Subtype (it belongs to the old
+      // type) and opens it for editing straight away.
+      const typeChanged = id === "page_type" && next !== (values.page_type ?? "");
+      setEdits((current) => ({ ...current, [id]: next, ...(typeChanged ? { page_subtype: "" } : {}) }));
+      if (typeChanged) {
+        setVerdicts((current) => {
+          const rest = { ...current };
+          delete rest.page_subtype;
+          return rest;
+        });
         setEditingId("page_subtype");
         setDraft("");
         setSaveError(PAGE_SUBTYPE_ASK);
