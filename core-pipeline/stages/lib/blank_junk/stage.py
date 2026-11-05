@@ -600,7 +600,10 @@ def _classify(
     # 2026-11-05 (user): a short page -- its content ends in the top 20% of the page -- that adds
     # nothing to a longer Main page within +-n pages is Junk / Others: (a) all its distinct words
     # are on that page, or (b) the only words it adds are its own section headers (stage 6).
-    # Otherwise it stays Main. A page without line positions is never short.
+    # A page without line positions is never short. It decides in the ladder just before the
+    # classifier: every page that reached the classifier is a candidate, whatever the classifier
+    # or a later keep (LAB, p(keep) >= 0.99) made of it; a page an earlier rule settled (blank,
+    # visual, handwritten, signed, card, fax) is not. Invoice pages stay Main.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
@@ -610,9 +613,12 @@ def _classify(
         order = [page["id"] for page in pages]
         mains = [i for i, pid in enumerate(order)
                  if pid not in dup_of and _main(pid) and (texts.get(pid) or "").strip()]
-        page_words = {i: unique_words(texts.get(order[i]) or "") for i in mains}
-        page_len = {i: duplicate_char_count(texts.get(order[i]) or "") for i in mains}
-        for i in mains:
+        candidates = [i for i, pid in enumerate(order)
+                      if pid not in dup_of and (texts.get(pid) or "").strip()
+                      and ((by_id.get(pid) or {}).get("votes") or {}).get("reached_classifier")]
+        page_words = {i: unique_words(texts.get(order[i]) or "") for i in set(mains) | set(candidates)}
+        page_len = {i: duplicate_char_count(texts.get(order[i]) or "") for i in set(mains) | set(candidates)}
+        for i in candidates:
             pid = order[i]
             mine = page_words[i]
             # An invoice page kept by the INVOICE rule stays Main (2026-11-05, user).

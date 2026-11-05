@@ -76,3 +76,30 @@ def test_a_contained_page_whose_content_goes_past_20_percent_stays_main(monkeypa
         inputs[1].content_bottom, inputs[2].content_bottom = 0.9, bottom
         rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
         assert rows[2]["flag"] == flag, bottom
+
+
+def test_contained_decides_before_the_classifier(monkeypatch):
+    """2026-11-05 (user): the contained page comes before the classifier, so a page the classifier
+    junked becomes Junk / Others (contained), and one it kept at p(keep) >= 0.99 is junked too."""
+    def scores(text, docling=None):
+        flag = "JUNK" if len(text) < 400 else "KEEP"
+        return {"bert": {"p_keep": 0.995 if flag == "KEEP" else 0.1, "p_junk": 0.005 if flag == "KEEP" else 0.9,
+                         "service": {"flag": flag, "subclass": "JUNK_INSTRUCTIONS" if flag == "JUNK" else "",
+                                     "confidence": 0.9, "decision_reason": "argmax"}}}
+    monkeypatch.setattr(stage, "model_scores", scores)
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
+    assert rows[2]["subtype"] == "Others" and rows[2]["reason"].startswith(stage.CONTAINED_MARK + "1")
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.995, "p_junk": 0.005, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.99, "decision_reason": "argmax"}}})
+    assert _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})[2]["flag"] == "junk"
+
+
+def test_a_page_an_earlier_rule_settled_is_not_a_candidate(monkeypatch):
+    """Handwritten > 30% (and visual, signed, card, fax) decide before the contained page."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
+    inputs[2].hw_area_pct = 45
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("HW")

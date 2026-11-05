@@ -713,6 +713,9 @@ def decide(inputs: PageInputs) -> Verdict:
     if word is not None:
         votes["fax_unsigned"] = word
         return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
+    # 6b. the contained page (stage._classify) decides here, before the classifier: it needs the
+    # neighbours, so the stage applies it to every page that reached this point (2026-11-05, user).
+    votes["reached_classifier"] = True
     # 7-9. the service's decision.
     if service is None:
         votes["review_required"] = True
