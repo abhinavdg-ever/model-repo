@@ -260,14 +260,21 @@ export function ClearAllFilters({ count, onClear }: { count: number; onClear: ()
 }
 
 /** The chart-metadata filters both tables offer (manifest / metadata CSV). */
-export type MetaFilterKey = "scope" | "source" | "measure" | "retrieval";
+export type MetaFilterKey = "scope" | "source" | "measure" | "retrieval" | "reviewed" | "truth";
 export type MetaFilters = Partial<Record<MetaFilterKey, string[]>>;
 export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[] = [
   { key: "scope", label: "Scope", title: "Scope (Project Scope)" },
   { key: "measure", label: "Measure", title: "Measure" },
   { key: "source", label: "Source Name", title: "Source Name" },
   { key: "retrieval", label: "Retrieval Method", title: "Retrieval Method (RR Method)" },
+  // 2026-11-05 (user).
+  // Shown as History column filters, not in the toolbar (2026-11-05, user).
+  { key: "reviewed", label: "Reviewed", title: "Reviewed (marked Reviewed in History)" },
+  { key: "truth", label: "Ground Truth", title: "Ground Truth (any saved on the chart)" },
 ];
+
+/** The chart-metadata filters only (Accuracy View has no Reviewed / Ground Truth). */
+export const CHART_META_FILTERS = META_FILTERS.filter(({ key }) => key !== "reviewed" && key !== "truth");
 
 /** A metadata filter's option for a chart with no value (same as the API's). */
 export const BLANK_META = "(Blank)";
@@ -332,14 +339,17 @@ export function MetaFilterBar({
   options,
   filters,
   onChange,
+  only = META_FILTERS,
 }: {
   options: Partial<Record<MetaFilterKey, string[]>>;
   filters: MetaFilters;
   onChange: (next: MetaFilters) => void;
+  /** Which filters to show (default: all, as History). */
+  only?: typeof META_FILTERS;
 }) {
   return (
     <>
-      {META_FILTERS.map((filter) => (
+      {only.map((filter) => (
         <TopCheckFilter
           key={filter.key}
           label={filter.label}

@@ -46,6 +46,10 @@ export type FolderListParams = {
   measure?: string[];
   /** RR Method. */
   retrieval?: string[];
+  /** Reviewed / Not Reviewed. */
+  reviewed?: string[];
+  /** With / No Ground Truth. */
+  truth?: string[];
   /** Only charts last run at or after this ISO date-time (with its offset). */
   run_after?: string | null;
   sort?: "filename" | "pages" | "updated";
@@ -83,6 +87,8 @@ export type FolderListResponse = {
   source_options?: string[];
   measure_options?: string[];
   retrieval_options?: string[];
+  reviewed_options?: string[];
+  truth_options?: string[];
   limit: number | null;
   offset: number;
 };
@@ -591,6 +597,8 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.source ?? []) sp.append("source", s);
   for (const s of params?.measure ?? []) sp.append("measure", s);
   for (const s of params?.retrieval ?? []) sp.append("retrieval", s);
+  for (const s of params?.reviewed ?? []) sp.append("reviewed", s);
+  for (const s of params?.truth ?? []) sp.append("truth", s);
   if (params?.run_after) sp.set("run_after", params.run_after);
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);

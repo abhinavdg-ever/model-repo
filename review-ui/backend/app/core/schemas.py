@@ -71,6 +71,8 @@ class FolderListResponse(BaseModel):
     source_options: list[str] = Field(default_factory=list)
     measure_options: list[str] = Field(default_factory=list)
     retrieval_options: list[str] = Field(default_factory=list)
+    reviewed_options: list[str] = Field(default_factory=list)
+    truth_options: list[str] = Field(default_factory=list)
     limit: int | None = None
     offset: int = 0
 

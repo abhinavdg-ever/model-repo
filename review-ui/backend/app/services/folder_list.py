@@ -74,6 +74,21 @@ def ocr_status_for(status: str | None, current_stage: str | None) -> OcrRunStatu
     return mapped  # type: ignore[return-value]
 
 
+# The History columns' own values (2026-11-05, user: filters on those columns).
+REVIEWED_OPTIONS = ["Yes", "No"]
+TRUTH_OPTIONS = ["Yes", "No"]
+
+
+def reviewed_label(f: FolderSummary) -> str:
+    """Marked Reviewed in History (chart_review) or not."""
+    return REVIEWED_OPTIONS[0] if f.reviewed else REVIEWED_OPTIONS[1]
+
+
+def truth_label(f: FolderSummary) -> str:
+    """Has any ground truth saved or not."""
+    return TRUTH_OPTIONS[0] if f.ground_truth_available else TRUTH_OPTIONS[1]
+
+
 @dataclass
 class FolderListParams:
     q: str = ""
@@ -84,6 +99,9 @@ class FolderListParams:
     measure: list[str] = field(default_factory=list)
     retrieval: list[str] = field(default_factory=list)
     scope: list[str] = field(default_factory=list)
+    # 2026-11-05 (user): Reviewed / Not Reviewed and With / No Ground Truth.
+    reviewed: list[str] = field(default_factory=list)
+    truth: list[str] = field(default_factory=list)
     # Only charts last run at or after this moment (None = any time).
     run_after: Optional[datetime] = None
     sort: SortKey = "updated"
@@ -111,6 +129,8 @@ class FolderListResult:
     retrieval_options: list[str]
     limit: Optional[int]
     offset: int
+    reviewed_options: list[str] = field(default_factory=list)
+    truth_options: list[str] = field(default_factory=list)
 
 
 def quick_page_count(folder_dir: Path) -> int:
@@ -319,6 +339,10 @@ def filter_sort_page(
     run_after = _aware(params.run_after) if params.run_after else None
 
     # Batch options are locked to selected run(s).
+    # Reviewed / Ground Truth (2026-11-05, user): two fixed options each.
+    reviewed_set = {s for s in params.reviewed if s}
+    truth_set = {s for s in params.truth if s}
+
     if run_set:
         batch_options = sorted(
             {
@@ -344,6 +368,10 @@ def filter_sort_page(
         if run_after and (f.last_updated_at is None or _aware(f.last_updated_at) < run_after):
             continue
         if any(wanted and (getattr(f, attr) or BLANK_OPTION) not in wanted for attr, wanted in metadata_filters):
+            continue
+        if reviewed_set and reviewed_label(f) not in reviewed_set:
+            continue
+        if truth_set and truth_label(f) not in truth_set:
             continue
         filtered.append(f)
 
@@ -382,6 +410,8 @@ def filter_sort_page(
         source_options=metadata_options["source_name"],
         measure_options=metadata_options["measure"],
         retrieval_options=metadata_options["rr_method"],
+        reviewed_options=REVIEWED_OPTIONS,
+        truth_options=TRUTH_OPTIONS,
         limit=eff_limit,
         offset=offset,
     )

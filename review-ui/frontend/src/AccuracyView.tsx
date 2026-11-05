@@ -20,7 +20,7 @@ import {
   ClearAllFilters,
   ColumnFilterButton,
   BLANK_META,
-  META_FILTERS,
+  CHART_META_FILTERS,
   MetaFilterBar,
   TopCheckFilter,
   metaFilterCount,
@@ -802,7 +802,7 @@ function metaValue(row: ChartAccuracy, key: MetaFilterKey): string | null | unde
 }
 
 function passesMeta(row: ChartAccuracy, filters: MetaFilters): boolean {
-  return META_FILTERS.every(({ key }) => {
+  return CHART_META_FILTERS.every(({ key }) => {
     const wanted = filters[key];
     if (!wanted?.length) return true;
     return wanted.includes(metaValue(row, key) || BLANK_META);
@@ -918,7 +918,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   );
   const metaOptions = useMemo(() => {
     const out = {} as Record<MetaFilterKey, string[]>;
-    for (const { key } of META_FILTERS) {
+    for (const { key } of CHART_META_FILTERS) {
       const values = new Set<string>();
       let blank = false;
       for (const row of allRows) {
@@ -1254,7 +1254,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   formatOption={formatBatchLabel}
                   onChange={(next) => setView({ batches: next, page: 1 })}
                 />
-                <MetaFilterBar options={metaOptions} filters={meta} onChange={(next) => setView({ meta: next, page: 1 })} />
+                <MetaFilterBar only={CHART_META_FILTERS} options={metaOptions} filters={meta} onChange={(next) => setView({ meta: next, page: 1 })} />
                 <ClearAllFilters count={allFilterCount} onClear={clearAll} />
               </div>
             </div>

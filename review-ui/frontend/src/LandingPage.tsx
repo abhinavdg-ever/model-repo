@@ -42,6 +42,7 @@ import {
   CheckListFilter,
   ClearAllFilters,
   ColumnFilterButton,
+  CHART_META_FILTERS,
   META_FILTERS,
   MetaFilterBar,
   metaFilterCount,
@@ -427,6 +428,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         source: data.source_options ?? [],
         measure: data.measure_options ?? [],
         retrieval: data.retrieval_options ?? [],
+        reviewed: data.reviewed_options ?? [],
+        truth: data.truth_options ?? [],
       });
       // Drop batch picks that are no longer valid for the selected run(s).
       setBatchFilter((prev) => {
@@ -769,7 +772,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                 />
               </label>
 
-              <MetaFilterBar options={metaOptions} filters={metaFilter} onChange={setMetaFilter} />
+              <MetaFilterBar only={CHART_META_FILTERS} options={metaOptions} filters={metaFilter} onChange={setMetaFilter} />
 
               <ClearAllFilters count={filterCount} onClear={clearFilters} />
 
@@ -857,9 +860,39 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </ColumnFilterButton>
                     </span>
                   </th>
-                  <th title="Client page labels loaded for this chart">Ground Truth</th>
-                  <th className="landing-col-reviewed" title="Marked Reviewed: the chart's ground truth is frozen">
-                    Reviewed
+                  {/* 2026-11-05 (user): Yes / No filters on these two columns. */}
+                  <th className={metaFilter.truth?.length ? "is-filtered" : undefined} title="Client page labels loaded for this chart">
+                    <span className="column-th">
+                      <span className="column-th-label">Ground Truth</span>
+                      <ColumnFilterButton label="Ground Truth" active={Boolean(metaFilter.truth?.length)} icon={filterIcon}>
+                        {() => (
+                          <CheckListFilter
+                            options={metaOptions.truth ?? ["Yes", "No"]}
+                            selected={metaFilter.truth ?? []}
+                            onChange={(next) => setMetaFilter({ ...metaFilter, truth: next })}
+                            formatOption={(v) => v}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
+                  </th>
+                  <th
+                    className={`landing-col-reviewed${metaFilter.reviewed?.length ? " is-filtered" : ""}`}
+                    title="Marked Reviewed: the chart's ground truth is frozen"
+                  >
+                    <span className="column-th">
+                      <span className="column-th-label">Reviewed</span>
+                      <ColumnFilterButton label="Reviewed" active={Boolean(metaFilter.reviewed?.length)} icon={filterIcon}>
+                        {() => (
+                          <CheckListFilter
+                            options={metaOptions.reviewed ?? ["Yes", "No"]}
+                            selected={metaFilter.reviewed ?? []}
+                            onChange={(next) => setMetaFilter({ ...metaFilter, reviewed: next })}
+                            formatOption={(v) => v}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
                   </th>
                   <th className={runAfter ? "is-filtered" : undefined}>
                     <span className="column-th">
