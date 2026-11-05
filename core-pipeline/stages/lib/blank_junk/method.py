@@ -672,17 +672,20 @@ def decide(inputs: PageInputs) -> Verdict:
     # 1. card (printed or visual): a strong ID / insurance card.
     card = (detect_card(text, headings=tuple(inputs.headings or ()), text_area=inputs.text_area)
             if inputs.document_type in CARD_DOCUMENT_TYPES else None)
+    # 2026-11-05 (user): a strong card goes through the same keeps as any other junk (more than
+    # 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in post_process) before Junk / Cards.
+    strong_card = None
     if card is not None and card.is_card:
         votes["card"] = {"type": card.card_type, "confidence": card.confidence, "matched": card.matched}
         if card.confidence == CARD_JUNK_CONFIDENCE:
-            return ruled(CODE_CARDS, "R3",
-                         f"R3 card: {card.card_type} ({card.confidence}; {'; '.join(card.matched)}) -> Junk / Cards", 0.95)
-        votes["review_required"] = True
-        votes["card_review"] = f"{card.card_type} card ({card.confidence}): not junked, review"
+            strong_card = card
+        else:
+            votes["review_required"] = True
+            votes["card_review"] = f"{card.card_type} card ({card.confidence}): not junked, review"
     elif card is not None and card.blocked_by:
         votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
     # 2. visual and under 20 words: a picture (an ECG strip, an X-ray print).
-    if visual:
+    if visual and strong_card is None:
         return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
     # 3. more than 30% handwritten.
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
@@ -697,6 +700,12 @@ def decide(inputs: PageInputs) -> Verdict:
             votes["r4_overruled"] = f"{why}, but raw p(junk) {p_junk:.3f} > {over}"
         else:
             return ruled(CODE_MAIN, "R4", f"R4 signed ({why}) -> Main")
+    if strong_card is not None:
+        found = f"{strong_card.card_type} ({strong_card.confidence}; {'; '.join(strong_card.matched)})"
+        if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
+            return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
+                         conf.score(p_keep))
+        return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
     # 6. fax in the section headers and no signature anywhere.
     word = fax_unsigned(inputs)
     if word is not None:

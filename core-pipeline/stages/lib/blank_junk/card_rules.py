@@ -9,7 +9,7 @@ A page is a card only when words from two different card groups are on it, and n
 form / letter / clinical words are on it. A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
 2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
-no clinical section header (stage 6), at most 150 words, its text over at most half the page.
+no section header but Insurance / Subscriber / Policy ID / PCP (stage 6), at most 150 words, its text over at most half the page.
 
     detect(text) -> CardResult(is_card, card_type, confidence, matched, blocked_by, words)
 
@@ -34,25 +34,26 @@ MAX_WORDS = 150
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
 NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.50
-# Section headers a card itself can carry: only the clinical ones block a card (2026-11-05,
-# user). The split is keyword-canon/section_header_classes.json (non_clinical / clinical).
+# Section headers a card itself can carry (2026-11-05, user): keyword-canon/
+# section_header_classes.json ``card_allowed`` (Insurance, Subscriber ...). Any other header,
+# clinical or not (Demographics), blocks a card.
 _CLASSES_FILE = Path(__file__).resolve().parents[1] / "keyword-canon" / "section_header_classes.json"
 
 
-def _non_clinical() -> frozenset[str]:
+def _card_allowed() -> frozenset[str]:
     try:
-        names = json.loads(_CLASSES_FILE.read_text(encoding="utf-8")).get("non_clinical") or []
+        names = json.loads(_CLASSES_FILE.read_text(encoding="utf-8")).get("card_allowed") or []
     except (OSError, ValueError):
         names = []
     return frozenset(" ".join(str(n).split()).casefold() for n in names)
 
 
-NON_CLINICAL_HEADERS = _non_clinical()
+CARD_HEADERS = _card_allowed()
 
 
-def clinical_headers(headings: tuple[str, ...]) -> list[str]:
-    """The page's section headers that are clinical (not in NON_CLINICAL_HEADERS)."""
-    return [h for h in headings if " ".join(str(h).split()).casefold().rstrip(":") not in NON_CLINICAL_HEADERS]
+def blocking_headers(headings: tuple[str, ...]) -> list[str]:
+    """The page's section headers a card cannot carry (all but CARD_HEADERS)."""
+    return [h for h in headings if " ".join(str(h).split()).casefold().rstrip(":") not in CARD_HEADERS]
 
 
 def _rx(*patterns: str) -> list[re.Pattern]:
@@ -320,9 +321,9 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append("no word 'card'")
     if not NAME_WORD.search(text):
         blocked.append("no name on it")
-    clinical = clinical_headers(tuple(headings or ()))
-    if clinical:
-        blocked.append(f"clinical section headers: {len(clinical)}")
+    blocking = blocking_headers(tuple(headings or ()))
+    if blocking:
+        blocked.append(f"section headers: {len(blocking)}")
     if text_area is not None and text_area > MAX_TEXT_AREA:
         blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:

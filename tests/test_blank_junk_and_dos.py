@@ -994,9 +994,11 @@ class TestCardRule:
         inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Allergies",))
         verdict = method.decide(inputs)
         assert verdict.code != classify.CODE_CARDS and verdict.votes.get("card_near_miss")
-        # Non-clinical headers a card carries (Insurance, Subscriber) do not block it.
+        # Headers a card carries (Insurance, Subscriber) do not block it; Demographics does.
         ok = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Insurance", "Subscriber"))
         assert method.decide(ok).code == classify.CODE_CARDS
+        demo = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Demographics",))
+        assert method.decide(demo).code != classify.CODE_CARDS
 
     def test_a_card_needs_the_word_card_and_a_name(self):
         """2026-11-05 (user)."""
@@ -1086,5 +1088,6 @@ def test_section_header_classes_cover_the_canon():
     canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
     classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
     assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)
-    assert {"insurance", "subscriber", "invoice page"} <= card_rules.NON_CLINICAL_HEADERS
-    assert card_rules.clinical_headers(("Insurance", "Chief Complaint")) == ["Chief Complaint"]
+    assert {"insurance", "subscriber"} <= card_rules.CARD_HEADERS
+    assert "demographics" not in card_rules.CARD_HEADERS
+    assert card_rules.blocking_headers(("Insurance", "Demographics", "Chief Complaint")) == ["Demographics", "Chief Complaint"]

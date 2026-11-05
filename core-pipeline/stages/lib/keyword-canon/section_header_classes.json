@@ -1,5 +1,11 @@
 {
-  "_about": "2026-11-05 (user): the section header canon (section_header_canon.json) split into clinical and non-clinical headers. Blank / junk's card rule: only a clinical header blocks a card. A header in the canon but in neither list counts as clinical.",
+  "_about": "2026-11-05 (user): the section header canon (section_header_canon.json) split into clinical and non-clinical headers. card_allowed: the only headers a card can carry (blank / junk's card rule); any other header on the page, Demographics included, blocks a card.",
+  "card_allowed": [
+    "Insurance",
+    "Subscriber",
+    "Policy ID",
+    "Primary Care Physician"
+  ],
   "non_clinical": [
     "Admission Date",
     "Outpatient",

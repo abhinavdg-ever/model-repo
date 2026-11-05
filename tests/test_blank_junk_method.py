@@ -288,7 +288,7 @@ class TestSimplifiedLadder:
         assert run("Accept this invoice please", pass_no=1).rule == "P1"  # not only cover marks
 
     def test_a_card_comes_before_the_visual_keep(self):
-        v = run(CARD_TEXT, document_type="visual", bert=bert(0.0))
+        v = run(CARD_TEXT, document_type="visual", bert=bert(0.5))
         assert v.code == classify.CODE_CARDS
         assert run(" ".join(["word"] * 19), document_type="visual", bert=bert(0.99)).rule == "R3V"
 
@@ -351,3 +351,18 @@ class TestInvoiceKept:
         row = pc._invoice_row(0.97)
         assert (row["page_type"], row["page_subtype"], row["decided_by"]) == ("Invoice", "Invoice Page", "invoice_page")
         assert row["classification_category"] == "non_codeable"
+
+
+class TestCardKeeps:
+    """2026-11-05 (user): a card goes through the same keeps as other junk."""
+
+    def test_handwritten_signed_or_sure_keep_is_main(self):
+        assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), hw_area_pct=45.0).rule == "HW"
+        assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), signed=True).rule == "R4"
+        v = run(CARD_TEXT, document_type="printed", bert=bert(0.005))
+        assert (v.code, v.rule) == (method.CODE_MAIN, "R3")
+
+    def test_otherwise_a_card_is_junk_cards(self):
+        v = run(CARD_TEXT, document_type="printed", bert=bert(0.5))
+        assert (v.code, v.rule) == (classify.CODE_CARDS, "R3")
+        assert run(CARD_TEXT, document_type="printed", bert=None).code == classify.CODE_CARDS
