@@ -545,6 +545,45 @@ export function searchOcr(params: { q: string; wholeWord: boolean; run?: string;
   return api(`/api/search/ocr?${qs.toString()}`);
 }
 
+export type ValueSide = "prediction" | "ground_truth";
+export type ValueOperator = "is" | "contains" | "empty";
+export type ValueCondition = { column: string; side: ValueSide; op: ValueOperator; value: string };
+export type ValueSearchColumn = { key: string; label: string };
+export type ValueSearchPage = {
+  page_number: number | null;
+  page_name: string;
+  values: Record<string, { prediction: string | null; ground_truth: string | null }>;
+};
+export type ValueSearchChart = { chart: string; run: string; batch: string; total_pages: number | null; pages: ValueSearchPage[] };
+export type ValueSearchResult = {
+  columns: ValueSearchColumn[];
+  charts: ValueSearchChart[];
+  batches: { run: string; batch: string; charts: number; pages: number }[];
+  total_charts: number;
+  total_pages: number;
+  truncated: boolean;
+  max_pages: number;
+};
+
+/** Admins only: the columns a value search reads. */
+export function valueSearchColumns(): Promise<{ columns: ValueSearchColumn[] }> {
+  return api("/api/search/values/columns");
+}
+
+/** A column's values on one side, most pages first. */
+export function valueSearchOptions(column: string, side: ValueSide): Promise<{ options: { value: string; pages: number }[] }> {
+  const qs = new URLSearchParams({ column, side });
+  return api(`/api/search/values/options?${qs.toString()}`);
+}
+
+/** Admins only: pages whose Prediction or Ground Truth has the columns at the values (all must hold). */
+export function searchValues(body: { conditions: ValueCondition[]; run?: string; batch?: string }): Promise<ValueSearchResult> {
+  return api("/api/search/values", {
+    method: "POST",
+    body: JSON.stringify({ conditions: body.conditions, run: body.run?.trim() || null, batch: body.batch?.trim() || null }),
+  });
+}
+
 /** The server's ``detail`` from a failed call's message, else the message. */
 export function errorDetail(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : String(err);

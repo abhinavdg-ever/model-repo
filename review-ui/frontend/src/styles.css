@@ -6867,3 +6867,7 @@ input {
   font-weight: 600;
   line-height: 1.25;
 }
+
+.search-modes { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+.value-condition { margin-bottom: 8px; }
+.value-condition select { min-width: 0; }

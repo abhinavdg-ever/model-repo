@@ -2,6 +2,7 @@ import { Fragment, useState, type FormEvent, type MouseEvent } from "react";
 import { formatIstShort } from "./istTime";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Search, X } from "lucide-react";
 import PageMessage from "./PageMessage";
+import ValueSearchPanel from "./ValueSearchPanel";
 import { errorDetail, searchOcr, type OcrSearchChart, type OcrSearchResult, type OcrSearchSnippet } from "./api";
 
 type Props = {
@@ -31,6 +32,8 @@ const HISTORY_SIZE = 20;
 /** Answers stay in memory only (they hold page text), for as long as the tab is open,
  * so going Back and returning to Search keeps them. */
 const answers = new Map<string, OcrSearchResult>();
+/** Text or Values, kept while the tab is open. */
+let searchMode: "text" | "values" = "text";
 
 /** The history, newest first: queries and totals only, never page text. */
 function readHistory(): Searched[] {
@@ -92,6 +95,12 @@ export default function SearchView({ onBack, chartHref }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<"text" | "values">(() => searchMode);
+
+  function switchMode(next: "text" | "values") {
+    searchMode = next;
+    setMode(next);
+  }
 
   const current = selected ? history.find((h) => h.id === selected) ?? null : null;
   const result = selected ? answers.get(selected) ?? null : null;
@@ -211,6 +220,19 @@ export default function SearchView({ onBack, chartHref }: Props) {
         </div>
       </div>
 
+      <div className="search-modes" role="tablist" aria-label="Search by">
+        <button type="button" role="tab" aria-selected={mode === "text"}
+                className={`search-history-chip${mode === "text" ? " is-active" : ""}`} onClick={() => switchMode("text")}>
+          Text
+        </button>
+        <button type="button" role="tab" aria-selected={mode === "values"}
+                className={`search-history-chip${mode === "values" ? " is-active" : ""}`} onClick={() => switchMode("values")}>
+          Values (Prediction / Ground Truth)
+        </button>
+      </div>
+
+      {mode === "values" ? <ValueSearchPanel chartHref={chartHref} /> : (
+      <>
       <section className="accuracy-section users-form search-form" aria-label="Search the OCR">
         <p className="accuracy-note">
           Finds a word or phrase in every page's preliminary OCR (Tesseract) text and in its section headers, one row
@@ -337,6 +359,8 @@ export default function SearchView({ onBack, chartHref }: Props) {
           ) : null}
         </section>
       ) : null}
+      </>
+      )}
     </div>
   );
 }
