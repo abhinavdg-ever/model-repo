@@ -20,8 +20,10 @@ confidence: strong (3+ groups, or a title plus 3+ licence fields) or medium
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # Longest page a card can be (2026-11-05, user: 150, was 300).
 MAX_WORDS = 150
@@ -32,11 +34,20 @@ MAX_WORDS = 150
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
 NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.50
-# Section headers a card itself can carry: only the clinical ones block a card (2026-11-05, user).
-NON_CLINICAL_HEADERS = frozenset({
-    "insurance", "subscriber", "patient information", "demographics", "demographic", "guarantor",
-    "emergency contact",
-})
+# Section headers a card itself can carry: only the clinical ones block a card (2026-11-05,
+# user). The split is keyword-canon/section_header_classes.json (non_clinical / clinical).
+_CLASSES_FILE = Path(__file__).resolve().parents[1] / "keyword-canon" / "section_header_classes.json"
+
+
+def _non_clinical() -> frozenset[str]:
+    try:
+        names = json.loads(_CLASSES_FILE.read_text(encoding="utf-8")).get("non_clinical") or []
+    except (OSError, ValueError):
+        names = []
+    return frozenset(" ".join(str(n).split()).casefold() for n in names)
+
+
+NON_CLINICAL_HEADERS = _non_clinical()
 
 
 def clinical_headers(headings: tuple[str, ...]) -> list[str]:

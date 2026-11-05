@@ -1073,3 +1073,18 @@ class TestSameContentDifferentEncounter:
         texts = {1: _body(8) + " Collected 04/30/2026", 2: _body(8) + other + " Collected 05/30/2026"}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
         assert "duplicate_content_of_page_id" not in ({r["page_id"]: r for r in rows}[2]["reason"] or "")
+
+
+def test_section_header_classes_cover_the_canon():
+    """2026-11-05 (user): every canon header is clinical or non-clinical; cards read the split."""
+    import json
+    from pathlib import Path
+
+    import card_rules
+
+    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "stages" / "lib" / "keyword-canon"
+    canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
+    classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
+    assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)
+    assert {"insurance", "subscriber", "invoice page"} <= card_rules.NON_CLINICAL_HEADERS
+    assert card_rules.clinical_headers(("Insurance", "Chief Complaint")) == ["Chief Complaint"]
