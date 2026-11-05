@@ -911,7 +911,7 @@ function CompareSection({
   const finalOnly = useContext(ClientViewContext);
   const finalHeading = finalOnly ? "Algorithm" : "Final";
   return (
-    <section className={`imaging-section${finalOnly && !compact ? " is-final-only" : ""}`}>
+    <section className={`imaging-section${compact ? "" : " is-value-section"}${finalOnly && !compact ? " is-final-only" : ""}`}>
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
         {toolbar}

@@ -6463,6 +6463,11 @@ input {
   width: 32%;
 }
 
+/* The section title and its Save / Discard end where the table ends (2026-11-05, user). */
+.imaging-section.is-value-section > .imaging-section-head {
+  max-width: calc(13.5rem + 3 * 10.692rem + 7.128rem + 0.55rem);
+}
+
 /* The section title and its Save / Discard end where the narrower table ends (2026-11-05). */
 .imaging-section.is-final-only > .imaging-section-head {
   max-width: calc(13.5rem + 2 * 12.5rem + 7.128rem + 0.55rem + 4rem);
