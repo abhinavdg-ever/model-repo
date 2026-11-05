@@ -6835,3 +6835,16 @@ input {
 .imaging-rejection-table tr.row-reject td {
   color: var(--status-error-fg, #b42318);
 }
+
+/* Manual Review toolbar: column, Match / No match and values filters (2026-11-05). */
+.excel-compare-value-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.excel-compare-value-filter > .excel-compare-col-filter {
+  font-size: 12px;
+  padding: 4px 6px;
+  max-width: 220px;
+}

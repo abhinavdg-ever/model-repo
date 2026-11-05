@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileSpreadsheet,
   FileText,
+  Filter as FilterIcon,
   Info,
   Link2,
   Loader2,
@@ -28,6 +29,7 @@ import {
   type ManualReviewStatus,
 } from "./api";
 import { DateLines } from "./AccuracyView";
+import { CheckListFilter, ColumnFilterButton } from "./columnFilter";
 import { saveChartOrder } from "./chartSequence";
 import { readGroundTruthSource } from "./groundTruthSource";
 import { readFile, readSources, writeFile, writeSources, type Source } from "./manualReviewStore";
@@ -71,6 +73,21 @@ function passesFieldFilters(row: ManualReviewRow, fieldFilters: Record<string, F
   if (active.length === 0) return true;
   if (row.status !== "CORRECT" && row.status !== "ERROR") return false;
   return active.every(([field, want]) => row.mismatched.includes(field) === (want === "mismatch"));
+}
+
+/** A cell with no value, as a value filter's option. */
+const BLANK_VALUE = "(Blank)";
+
+/** 2026-11-05 (user): a column narrowed to some of its values. A row passes when its
+ * ground truth or its algo value is one of them (each side is one of the two rows shown). */
+function passesValueFilters(row: ManualReviewRow, valueFilters: Record<string, string[]>): boolean {
+  return Object.entries(valueFilters).every(([field, wanted]) => {
+    if (!wanted.length) return true;
+    const values = [sideValue(row, field, "gt"), sideValue(row, field, "algo")]
+      .filter((_, i) => (i === 0 ? row.status !== "EXTRA" : row.status !== "MISSING"))
+      .map((v) => v.trim() || BLANK_VALUE);
+    return values.some((v) => wanted.includes(v));
+  });
 }
 
 /** An input card: its title row (with any controls), then the body. The title row
@@ -373,9 +390,18 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     page: number;
     query: string;
     fieldFilters: Record<string, FieldFilter>;
-  }>("manual-review", { filter: "ALL", page: 1, query: "", fieldFilters: {} });
+    valueFilters?: Record<string, string[]>;
+    filterField?: string;
+  }>("manual-review", { filter: "ALL", page: 1, query: "", fieldFilters: {}, valueFilters: {}, filterField: "" });
   const { filter, page, query } = view;
   const fieldFilters = view.fieldFilters ?? {};
+  const valueFilters = view.valueFilters ?? {};
+  const setValueFilter = (field: string, values: string[]) => {
+    const next = { ...valueFilters };
+    if (values.length) next[field] = values;
+    else delete next[field];
+    setView({ valueFilters: next, page: 1 });
+  };
   const setFilter = (value: Filter) => setView({ filter: value });
   const setFieldFilter = (field: string, value: FieldFilter | "") => {
     const next = { ...fieldFilters };
@@ -538,10 +564,23 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     return rows.filter(
       (row) =>
         (!needle || row.pdfId.toLowerCase().includes(needle)) &&
-        passesFieldFilters(row, fieldFilters),
+        passesFieldFilters(row, fieldFilters) &&
+        passesValueFilters(row, valueFilters),
     );
-  }, [result, query, fieldFilters]);
-  const fieldFilterCount = Object.keys(fieldFilters).length;
+  }, [result, query, fieldFilters, valueFilters]);
+  const fieldFilterCount = new Set([...Object.keys(fieldFilters), ...Object.keys(valueFilters)]).size;
+  // The column the filter bar works on, and that column's values in the results.
+  const filterField = view.filterField && result?.fields.includes(view.filterField) ? view.filterField : "";
+  const fieldValues = useMemo(() => {
+    if (!filterField || !result) return [] as string[];
+    const seen = new Set<string>();
+    for (const row of result.rows) {
+      if (row.status !== "EXTRA") seen.add(sideValue(row, filterField, "gt").trim() || BLANK_VALUE);
+      if (row.status !== "MISSING") seen.add(sideValue(row, filterField, "algo").trim() || BLANK_VALUE);
+    }
+    const values = [...seen].filter((v) => v !== BLANK_VALUE).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return seen.has(BLANK_VALUE) ? [...values, BLANK_VALUE] : values;
+  }, [result, filterField]);
   const filtered = useMemo(
     () => (filter === "ALL" ? searched : searched.filter((row) => row.status === filter)),
     [searched, filter],
@@ -920,11 +959,68 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   aria-label="Search charts"
                 />
               </label>
+              {/* 2026-11-05 (user): pick a column, then Match / No match and its values. */}
+              <span className="excel-compare-value-filter">
+                <select
+                  className={`excel-compare-col-filter${filterField ? " is-active" : ""}`}
+                  value={filterField}
+                  onChange={(e) => setView({ filterField: e.target.value })}
+                  aria-label="Column to filter"
+                >
+                  <option value="">Filter a column…</option>
+                  {result.fields.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                      {fieldFilters[field] || valueFilters[field]?.length ? " •" : ""}
+                    </option>
+                  ))}
+                </select>
+                {filterField ? (
+                  <>
+                    <select
+                      className={`excel-compare-col-filter${fieldFilters[filterField] ? " is-active" : ""}`}
+                      value={fieldFilters[filterField] ?? ""}
+                      onChange={(e) => setFieldFilter(filterField, e.target.value as FieldFilter | "")}
+                      aria-label={`Filter ${filterField} by match`}
+                    >
+                      <option value="">Match: All</option>
+                      <option value="match">Match</option>
+                      <option value="mismatch">No match</option>
+                    </select>
+                    <ColumnFilterButton
+                      label={`${filterField} values`}
+                      active={Boolean(valueFilters[filterField]?.length)}
+                      icon={<FilterIcon size={12} aria-hidden="true" />}
+                      align="start"
+                      width={280}
+                      text={
+                        <span className="top-filter-text">
+                          <span className="top-filter-label">Values:</span>{" "}
+                          {valueFilters[filterField]?.length ? (
+                            <span className="top-filter-count">{valueFilters[filterField].length}</span>
+                          ) : (
+                            "All"
+                          )}
+                        </span>
+                      }
+                    >
+                      {() => (
+                        <CheckListFilter
+                          options={fieldValues}
+                          selected={valueFilters[filterField] ?? []}
+                          onChange={(next) => setValueFilter(filterField, next)}
+                          formatOption={(v) => v}
+                        />
+                      )}
+                    </ColumnFilterButton>
+                  </>
+                ) : null}
+              </span>
               {fieldFilterCount > 0 ? (
                 <button
                   type="button"
                   className="excel-compare-filter excel-compare-clear-columns"
-                  onClick={() => setView({ fieldFilters: {}, page: 1 })}
+                  onClick={() => setView({ fieldFilters: {}, valueFilters: {}, page: 1 })}
                 >
                   <X size={12} aria-hidden="true" />
                   Clear column filters <span>{fieldFilterCount}</span>
