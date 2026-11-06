@@ -241,9 +241,20 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                     if flipped.reads and flipped.english > chosen_read.english:
                         mirrored, chosen_read, method = True, flipped, "readability"
             else:
-                turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
+                # 2026-11-06 (user): OSD says 0 and CV a quarter-turn (90 / 270): CV's turn is the
+                # starting point and stands unless another orientation reads clearly (strong
+                # English, more than at CV's turn) -- good evidence to undo it.
+                cv_side = osd is not None and proposed == 0 and cv_turn in (90, 270)
+                turn, mirrored, chosen_read = orientation_that_reads(small, cv_turn if cv_side else proposed)
+                if cv_side and (turn != cv_turn or mirrored):
+                    cv_read = read_page(small, cv_turn)
+                    if not (chosen_read.reads and chosen_read.english >= STRONG_READ_ENGLISH
+                            and chosen_read.english > cv_read.english):
+                        turn, mirrored, chosen_read = cv_turn, False, cv_read
                 orientation = float(turn)
-                if turn != proposed or mirrored:
+                if cv_side and turn == cv_turn and not mirrored:
+                    method = "cv_kept"
+                elif turn != proposed or mirrored:
                     method = "readability"
         elif agreed:
             method = "osd_cv_agree"
@@ -382,7 +393,8 @@ def _rotation_confidences(
     elif method == "osd":
         turn = conf.backed(osd_p or 0.0, share or 0.0) if share is not None else osd_p
         turn = conf.score(turn, module="image_preprocess")
-    elif method == "readability":
+    elif method in ("readability", "cv_kept"):
+        # cv_kept: OSD said 0, rotation_cv a quarter-turn, and nothing read clearly against it.
         turn = conf.score(share if share is not None else 0.5, "overturned", module="image_preprocess")
     else:  # osd_undecided
         turn = conf.score(share if share is not None else 0.5, "fallback", module="image_preprocess")

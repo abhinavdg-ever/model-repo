@@ -64,6 +64,39 @@ def test_disagreeing_goes_through_the_reading_rule(monkeypatch, tmp_path):
     assert (out["orientation_angle"], out["method"], reading) == (0.0, "osd_cv_agree", False)
 
 
+def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn):
+    """OSD 0, CV ``cv_turn``; the reading search returns ``search_turn``; reads per turn."""
+    path = tmp_path / "p.png"
+    cv2.imwrite(str(path), _text_page())
+
+    def page_read(english):
+        return SimpleNamespace(share=0.9 if english else 0.1, tokens=max(english, 10),
+                               reads=english >= 8, english=english)
+
+    monkeypatch.setattr(osd_module, "detect_rotation", lambda image: {"rotation": 0, "confidence": 5.0})
+    monkeypatch.setattr(stage, "_cv_result", lambda image: (cv_turn, {"rotation": cv_turn}))
+    monkeypatch.setattr(stage, "_classify_hw", lambda p: ("printed", 0.9, "model", {"document_type": "printed"}))
+    monkeypatch.setattr(rotation, "orientation_that_reads",
+                        lambda small, proposed: (search_turn, False, page_read(reads_by_turn[search_turn])))
+    monkeypatch.setattr(rotation, "read_page", lambda small, deg, mirrored=False, **kw: page_read(reads_by_turn[deg]))
+    monkeypatch.setattr(rotation, "tilt_on_upright", lambda image, deg, mirrored=False: 0.0)
+    monkeypatch.setattr(rotation, "tilt_that_reads", lambda *a, **k: 0.0)
+    return stage._detect_rotation(path)
+
+
+def test_osd_zero_cv_quarter_turn_keeps_cv_without_good_evidence(monkeypatch, tmp_path):
+    """2026-11-06 (user): OSD 0, CV 90: CV stands unless another turn reads clearly better."""
+    # Nothing reads well anywhere: CV's 90 stands.
+    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 9, 90: 3})
+    assert (out["orientation_angle"], out["method"]) == (90.0, "cv_kept")
+    # 0 reads strongly and better than 90: undone, back to 0.
+    out = _run_cv_side(monkeypatch, tmp_path, 270, 0, {0: 60, 270: 5})
+    assert (out["orientation_angle"], out["method"]) == (0.0, "osd")
+    # CV's turn is what the search found: kept.
+    out = _run_cv_side(monkeypatch, tmp_path, 90, 90, {90: 50})
+    assert (out["orientation_angle"], out["method"]) == (90.0, "cv_kept")
+
+
 def test_both_zero_tries_the_mirror_only_when_the_page_reads_badly(monkeypatch, tmp_path):
     # Reads well at 0: no flip tried, stays 0 unmirrored.
     out, _ = _run(monkeypatch, tmp_path, 0, 0, reads={False: (0.9, 40), True: (0.95, 60)})
