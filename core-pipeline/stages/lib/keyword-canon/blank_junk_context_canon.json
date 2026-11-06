@@ -833,5 +833,11 @@
       ["reference range", "ref range", "ref. range", "reference interval"],
       ["value", "values"]
     ]
+  },
+  "clinical_content_keep": {
+    "note": "2026-11-06 (user), after the ladder, both passes, after lab_keep: a junk page (not Blank, not Junk / Invoice) with at least min_icd_codes distinct ICD-10 codes as printed (I11.0, E11.9, N18.32), or a Social History section header (stage 6, or a line of its own) when social_history is on, is Main (rule CLINICAL_CONTENT).",
+    "enabled": true,
+    "min_icd_codes": 2,
+    "social_history": true
   }
 }

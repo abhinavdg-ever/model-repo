@@ -785,9 +785,56 @@ INVOICE_RULE = "INVOICE"
 
 def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
     """The processing rules after the ladder, both passes: a junk page with Lab, Reference
-    Range and Value on it is a lab result -> Main (LAB, 2026-11-04); a Junk / Invoice page
-    -> Main, page type Invoice / Invoice Page (INVOICE, 2026-11-05). Blank stays Blank."""
-    return _keep_invoice(_keep_lab(verdict, inputs), inputs)
+    Range and Value on it is a lab result -> Main (LAB, 2026-11-04); a junk page with 2+
+    ICD-10 codes or a Social History header -> Main (CLINICAL_CONTENT, 2026-11-06); a Junk /
+    Invoice page -> Main, page type Invoice / Invoice Page (INVOICE, 2026-11-05). Blank stays
+    Blank."""
+    return _keep_invoice(_keep_clinical_content(_keep_lab(verdict, inputs), inputs), inputs)
+
+
+# 2026-11-06 (user): an ICD-10-CM code as printed ("I11.0", "E11.319", "F03.C0", "Z68.1"):
+# a letter, a digit, a digit or letter, a dot, 1-4 more.
+ICD10_CODE = re.compile(r"(?<![A-Za-z0-9])[A-TV-Z][0-9][0-9A-Z]\.[0-9A-Z]{1,4}(?![A-Za-z0-9])")
+SOCIAL_HISTORY = re.compile(r"(?<![A-Za-z])social\s+history(?![A-Za-z])", re.IGNORECASE)
+SOCIAL_HISTORY_LINE = re.compile(r"^\W*social\s+history\W*$", re.IGNORECASE | re.MULTILINE)
+CLINICAL_CONTENT_RULE = "CLINICAL_CONTENT"
+RULE_SUPPORT[CLINICAL_CONTENT_RULE] = 0.95
+
+
+def clinical_content_signs(inputs: PageInputs) -> Optional[str]:
+    """2026-11-06 (user): why a junk page is clinical content -- 2+ distinct ICD-10 codes on it
+    (canon ``clinical_content_keep.min_icd_codes``), or a Social History section header (stage 6,
+    or a line of its own) -- or None."""
+    cfg = canon().raw.get("clinical_content_keep") or {}
+    if not cfg.get("enabled", True):
+        return None
+    text = f"{inputs.text or ''}\n{inputs.prelim_text or ''}"
+    codes = sorted({m.group(0).upper() for m in ICD10_CODE.finditer(text)})
+    if len(codes) >= int(cfg.get("min_icd_codes", 2)):
+        shown = ", ".join(codes[:4]) + (f" (+{len(codes) - 4})" if len(codes) > 4 else "")
+        return f"{len(codes)} ICD-10 codes ({shown})"
+    headers = tuple(inputs.header_canon or ()) + tuple(inputs.headings or ())
+    if cfg.get("social_history", True) and (
+            any(SOCIAL_HISTORY.search(str(h)) for h in headers) or SOCIAL_HISTORY_LINE.search(inputs.text or "")):
+        return "Social History section header"
+    return None
+
+
+def _keep_clinical_content(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """2026-11-06 (user): a junk page with ICD-10 codes or a Social History header is Main.
+    Blank stays Blank; a Junk / Invoice page goes to the INVOICE rule."""
+    if verdict.code in (CODE_MAIN, CODE_BLANK, CODE_INVOICE):
+        return verdict
+    why = clinical_content_signs(inputs)
+    if why is None:
+        return verdict
+    verdict.votes["clinical_content_kept"] = verdict.reason
+    verdict.votes["rule"] = CLINICAL_CONTENT_RULE
+    bert = inputs.bert or {}
+    p_keep = float(bert["p_keep"]) if bert else None
+    p_junk = float(bert["p_junk"]) if bert else None
+    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, CLINICAL_CONTENT_RULE, p_keep, p_junk),
+                   CLINICAL_CONTENT_RULE, f"{verdict.reason}; {why} -> Main (never junk)", verdict.votes)
 
 
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:

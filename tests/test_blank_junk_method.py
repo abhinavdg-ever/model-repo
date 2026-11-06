@@ -418,3 +418,26 @@ class TestCardKeeps:
         assert (v.code, v.rule) == (classify.CODE_CARDS, "R3")
         assert run(CARD_TEXT, document_type="printed", bert=None).code == classify.CODE_CARDS
 
+
+
+class TestClinicalContentKeep:
+    """2026-11-06 (user): a junk page with 2+ ICD-10 codes or a Social History header is Main."""
+
+    def _keep(self, text, **kw):
+        inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99, "JUNK_OTHERS"), **kw)
+        return method.post_process(decide(inputs), inputs)
+
+    def test_icd_codes_keep_a_junk_page(self):
+        v = self._keep(JUNK_TEXT + "\nI11.0 : Hypertensive heart disease\nE11.9 : Type 2 diabetes mellitus\n")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "CLINICAL_CONTENT") and "2 ICD-10 codes" in v.reason
+
+    def test_one_code_is_not_enough(self):
+        assert self._keep(JUNK_TEXT + "\nI11.0 : Hypertensive heart disease\n").code != method.CODE_MAIN
+
+    def test_social_history_header_keeps_a_junk_page(self):
+        assert self._keep(JUNK_TEXT, headings=("Social History",)).rule == "CLINICAL_CONTENT"
+        assert self._keep(JUNK_TEXT + "\nSocial History\nTobacco Smoking Status Never Smoker\n").rule == "CLINICAL_CONTENT"
+
+    def test_blank_stays_blank(self):
+        inputs = PageInputs(text="", pass_no=2, headings=("Social History",))
+        assert method.post_process(decide(inputs), inputs).code == method.CODE_BLANK
