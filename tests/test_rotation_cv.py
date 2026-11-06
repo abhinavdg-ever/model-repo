@@ -84,24 +84,15 @@ def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn, doc
     return stage._detect_rotation(path)
 
 
-def test_osd_zero_cv_quarter_turn_keeps_cv_without_good_evidence(monkeypatch, tmp_path):
-    """2026-11-06 (user): a visual page, OSD 0, CV 90: CV stands unless another turn reads
-    clearly better (CV 270 too). A page that is not visual: the reading rule as before."""
-    # Nothing reads well anywhere: CV's 90 stands.
-    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 9, 90: 3})
-    assert (out["orientation_angle"], out["method"]) == (90.0, "cv_kept")
-    # 0 reads strongly and better than 90: undone, back to 0.
-    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 60, 90: 5})
-    assert (out["orientation_angle"], out["method"]) == (0.0, "osd")
-    # CV 270 on a visual page: kept too.
-    out = _run_cv_side(monkeypatch, tmp_path, 270, 0, {0: 9, 270: 3})
-    assert (out["orientation_angle"], out["method"]) == (270.0, "cv_kept")
-    # A printed page: the reading rule decides (here 0).
+def test_cv_quarter_turn_is_final_on_a_visual_page(monkeypatch, tmp_path):
+    """2026-11-06 (user): on a visual page CV's 90 / 270 is final, whatever OSD says or the page
+    reads. A printed page goes through the reading rule as before."""
+    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 60, 90: 3})
+    assert (out["orientation_angle"], out["method"]) == (90.0, "cv_final")
+    out = _run_cv_side(monkeypatch, tmp_path, 270, 0, {0: 60, 270: 3})
+    assert (out["orientation_angle"], out["method"]) == (270.0, "cv_final")
     out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 9, 90: 3}, document_type="printed")
     assert (out["orientation_angle"], out["method"]) == (0.0, "osd")
-    # CV's turn is what the search found: kept.
-    out = _run_cv_side(monkeypatch, tmp_path, 90, 90, {90: 50})
-    assert (out["orientation_angle"], out["method"]) == (90.0, "cv_kept")
 
 
 def test_both_zero_tries_the_mirror_only_when_the_page_reads_badly(monkeypatch, tmp_path):

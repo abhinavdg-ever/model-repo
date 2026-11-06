@@ -231,9 +231,16 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         agreed = osd is not None and cv_turn is not None and cv_turn == proposed
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
         small = None
+        # 2026-11-06 (user): on a visual page CV's quarter-turn (90 / 270) is final, whatever OSD
+        # says -- no reading search (a picture has too little text to read either way).
+        cv_final = tags.get("document_type") == "visual" and cv_turn in (90, 270)
         if tags.get("document_type") != "blank":
             small = page_for_reading(image)
-            if agreed:
+            if cv_final:
+                orientation, mirrored = float(cv_turn), False
+                chosen_read = read_page(small, cv_turn)
+                method = "osd_cv_agree" if agreed else "cv_final"
+            elif agreed:
                 chosen_read = read_page(small, proposed)
                 method = "osd_cv_agree"
                 if proposed == 0 and not (chosen_read.reads and chosen_read.english >= STRONG_READ_ENGLISH):
@@ -241,22 +248,9 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                     if flipped.reads and flipped.english > chosen_read.english:
                         mirrored, chosen_read, method = True, flipped, "readability"
             else:
-                # 2026-11-06 (user): on a visual page (stage 1 page tag) where OSD says 0 and CV
-                # a quarter-turn (90 or 270), CV's turn is the starting point and stands unless another
-                # orientation reads clearly (strong English, more than at CV's turn) -- good
-                # evidence to undo it. Every other page and disagreement: the reading rule.
-                cv_side = (osd is not None and proposed == 0 and cv_turn in (90, 270)
-                           and tags.get("document_type") == "visual")
-                turn, mirrored, chosen_read = orientation_that_reads(small, cv_turn if cv_side else proposed)
-                if cv_side and (turn != cv_turn or mirrored):
-                    cv_read = read_page(small, cv_turn)
-                    if not (chosen_read.reads and chosen_read.english >= STRONG_READ_ENGLISH
-                            and chosen_read.english > cv_read.english):
-                        turn, mirrored, chosen_read = cv_turn, False, cv_read
+                turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
                 orientation = float(turn)
-                if cv_side and turn == cv_turn and not mirrored:
-                    method = "cv_kept"
-                elif turn != proposed or mirrored:
+                if turn != proposed or mirrored:
                     method = "readability"
         elif agreed:
             method = "osd_cv_agree"
@@ -395,8 +389,8 @@ def _rotation_confidences(
     elif method == "osd":
         turn = conf.backed(osd_p or 0.0, share or 0.0) if share is not None else osd_p
         turn = conf.score(turn, module="image_preprocess")
-    elif method in ("readability", "cv_kept"):
-        # cv_kept: OSD said 0, rotation_cv a quarter-turn, and nothing read clearly against it.
+    elif method in ("readability", "cv_final"):
+        # cv_final: a visual page turned by rotation_cv's quarter-turn, against OSD.
         turn = conf.score(share if share is not None else 0.5, "overturned", module="image_preprocess")
     else:  # osd_undecided
         turn = conf.score(share if share is not None else 0.5, "fallback", module="image_preprocess")
