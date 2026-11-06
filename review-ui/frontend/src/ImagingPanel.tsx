@@ -625,56 +625,8 @@ function normalizeEntry(id: string, value: string): string | null {
   return canonicalLabel(value);
 }
 
-function entryHint(id: string): string {
-  const rule = ENTRY_RULES[id];
-  if (!rule || rule.presence || rule.choices) return "Invalid Value";
-  if (rule.kind === "date") return "Enter a date";
-  if (rule.kind === "degrees") return "Enter an angle";
-  return "That value can't be saved";
-}
-
-/** 2026-11-05 (user): checks across fields, shown under the field as soon as an inconsistent
- * change is made (and Save waits until none is left). Field id -> message.
- * Page Subtype: needed after a Page Type change. DOS From / To: dates; To not before From;
- * From set when To is; the non-visit 2222-02-22 in both or neither; none in the future or
- * before 1900. Only fields the reviewer changed are checked. */
-function fieldProblems(
-  values: Record<string, string>,
-  changed: { pageType: boolean; dos: boolean },
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (changed.pageType && !(values.page_subtype ?? "").trim()) out.page_subtype = PAGE_SUBTYPE_ASK;
-  if (!changed.dos) return out;
-  // A choice such as Not Found / NA is not checked as a date; only a value with digits is.
-  const dated = (value: string | undefined) => (/\d/.test(value ?? "") ? (value ?? "").trim() : "");
-  const from = dated(values.dos_from);
-  const to = dated(values.dos_to);
-  const fromDate = from ? canonicalDate(from) : null;
-  const toDate = to ? canonicalDate(to) : null;
-  if (from && !fromDate) out.dos_from = "Not a date (YYYY-MM-DD or MM/DD/YYYY).";
-  if (to && !toDate) out.dos_to = "Not a date (YYYY-MM-DD or MM/DD/YYYY).";
-  const today = new Date().toISOString().slice(0, 10);
-  for (const [id, date] of [["dos_from", fromDate], ["dos_to", toDate]] as const) {
-    if (!date || date === NON_VISIT_DOS || out[id]) continue;
-    if (date > today) out[id] = `${date} is in the future.`;
-    else if (date < "1900-01-01") out[id] = `${date} is before 1900.`;
-  }
-  if (fromDate && toDate && !out.dos_to) {
-    if ((fromDate === NON_VISIT_DOS) !== (toDate === NON_VISIT_DOS)) {
-      out.dos_to = `A non-visit date (${NON_VISIT_DOS}) goes in both DOS From and DOS To.`;
-    } else if (toDate < fromDate) {
-      out.dos_to = `Cannot be before DOS From (${fromDate}).`;
-    }
-  }
-  if (toDate && !from && !out.dos_from) out.dos_from = "Needed when DOS To is set.";
-  return out;
-}
-
-/** Shown at the top when Save waits on the fields marked below. */
-const FIX_FIELDS_FIRST = "Fix the fields marked in red before saving.";
-
-/** Shown when Page Type changed and Page Subtype still needs a value (2026-11-05, user). */
-const PAGE_SUBTYPE_ASK = "Page Type changed: choose the Page Subtype too.";
+/** 2026-11-06 (user): no validation in the ground-truth entry -- it blocked reviewers. A value
+ * the rules do not recognise is saved as typed; Page Subtype is optional. */
 
 function saveErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
@@ -1285,12 +1237,7 @@ function ChoiceMenu({
     onDraft(option);
   };
   function commit() {
-    const next = normalizeEntry(fieldId, text);
-    if (next == null) {
-      setInvalid(entryHint(fieldId));
-      return;
-    }
-    onCommit(next);
+    onCommit(normalizeEntry(fieldId, text) ?? text.trim());
   }
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -1857,12 +1804,8 @@ function PageDetails({
   // Pipeline values the untouched cells offer (filled as the cells render).
   const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
-  // What the reviewer changed, and the problems that leaves (shown under the fields).
-  const changedKinds = {
-    pageType: edits.page_type !== undefined && edits.page_type !== (stored.page_type ?? ""),
-    dos: edits.dos_from !== undefined || edits.dos_to !== undefined,
-  };
-  const problems = fieldProblems(values, changedKinds);
+  // 2026-11-06 (user): nothing is checked across fields; Save never waits.
+  const problems: Record<string, string> = {};
   const dirty =
     Object.entries(edits).some(([id, value]) => value !== (stored[id] ?? "")) ||
     (editingId != null && draft != null && draft !== (values[editingId] ?? ""));
@@ -1894,16 +1837,7 @@ function PageDetails({
       }
     }
     if (editingId && draft != null) {
-      const next = normalizeEntry(editingId, draft);
-      if (next == null) {
-        setSaveError(entryHint(editingId));
-        return false;
-      }
-      merged[editingId] = next;
-    }
-    if (Object.keys(fieldProblems(merged, changedKinds)).length) {
-      setSaveError(FIX_FIELDS_FIRST);
-      return false;
+      merged[editingId] = normalizeEntry(editingId, draft) ?? draft.trim();
     }
     const persistedChanged = [...PERSISTED_GT].some(
       (id) => (merged[id] ?? "") !== (stored[id] ?? ""),
