@@ -71,5 +71,5 @@ def format_duplicate_label(
     if is_partial:
         return "Partial"
     if is_content:
-        return "Repeated Content"  # 2026-11-03 (user); was "No (Duplicate Content)"
+        return "Partial"  # 2026-11-06 (user): Repeated Content is displayed as a Partial
     return "No"

@@ -82,11 +82,12 @@ def test_a_pair_flagged_on_its_word_count_below_the_cut_reads_50_percent():
     assert duplicate_display_confidence(False, 0.9, True, 0.93) == 0.5
 
 
-def test_repeated_content_label_reads_as_no_in_manual_review():
+def test_repeated_content_is_displayed_as_partial():
+    """2026-11-06 (user): Repeated Content is displayed as a Partial."""
     import sys
     sys.path.insert(0, "review-ui/backend")
     from app.services.duplicate_label import format_duplicate_label
     from app.services.excel_compare.normalizer import normalize_labelled_yes_no
 
-    assert format_duplicate_label(False, None, is_content=True) == "Repeated Content"
-    assert normalize_labelled_yes_no("Repeated Content (To Page 4)") == "no"
+    assert format_duplicate_label(False, None, is_content=True) == "Partial"
+    assert normalize_labelled_yes_no("Repeated Content (To Page 4)") == "no"  # older exports

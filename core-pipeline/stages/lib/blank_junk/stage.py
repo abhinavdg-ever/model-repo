@@ -1015,7 +1015,7 @@ def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
     status = (
         "Duplicate" if entry.get("verdict") == "Duplicate"
         else "Partial" if "partial_duplicate_of_page_id:" in reason
-        else "Repeated Content" if SAME_CONTENT_MARK in reason
+        else "Partial" if SAME_CONTENT_MARK in reason  # 2026-11-06 (user): shown as a Partial
         else "No"
     )
     out: dict[str, Any] = {"status": status}

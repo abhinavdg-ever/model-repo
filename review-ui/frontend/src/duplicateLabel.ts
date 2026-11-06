@@ -75,8 +75,8 @@ export function formatDuplicateLabel(
   const withTarget = (state: string) => (target ? `${state} (To ${target})` : state);
   if (isDuplicate) return withTarget("Duplicate");
   if (labels.isPartial) return withTarget("Partial");
-  // 2026-11-03 (user): a page repeating another 100% that the encounter check kept: "Repeated Content".
-  if (labels.isContent) return target ? `Repeated Content (To ${target})` : "Repeated Content";
+  // 2026-11-06 (user): a page repeating another (Repeated Content) is displayed as a Partial.
+  if (labels.isContent) return withTarget("Partial");
   return "No";
 }
 

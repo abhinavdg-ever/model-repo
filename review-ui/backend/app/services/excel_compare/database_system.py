@@ -95,7 +95,7 @@ def _duplicate(page: ImagingPageResult) -> str:
     if page.isPartialDuplicate:
         return "Partial"
     if page.isDuplicateContent:
-        return "Repeated Content"
+        return "Partial"  # 2026-11-06 (user): Repeated Content is displayed as a Partial
     return _yes_no(page.isDuplicate)
 
 
