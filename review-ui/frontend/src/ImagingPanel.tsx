@@ -1897,6 +1897,16 @@ function PageDetails({
       value != null &&
       String(value).trim() !== "",
   );
+  /** Set a field. 2026-11-06 (user): a Page Type change clears the Page Subtype, and the
+   * reviewer is not asked for one. The cleared subtype is marked entered: an empty cell with no
+   * mark would offer the Final subtype again (and take it on Save). */
+  function setField(id: string, next: string, how: "accept" | "enter") {
+    const clearSubtype = id === "page_type" && next !== shownPageType();
+    setVerdicts((current) => ({ ...current, [id]: how, ...(clearSubtype ? { page_subtype: "enter" as const } : {}) }));
+    setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
+  }
+  // The Page Type the reviewer sees: the ground truth, else the Final value offered.
+  const shownPageType = () => (values.page_type ?? "").trim() || (offered.current.page_type ?? "");
   const sectionProps = {
     compact,
     withTruth,
@@ -1911,26 +1921,13 @@ function PageDetails({
       setEditingId(null);
       setDraft(null);
       setSaveError(null);
-      setVerdicts((current) => ({ ...current, [id]: "accept" }));
-      const clearSubtype = id === "page_type" && !subtypeFitsType(next, values.page_subtype);
-      setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
+      setField(id, next, "accept");
     },
     onCommit: (id: string, next: string) => {
       setEditingId(null);
       setDraft(null);
       setSaveError(null);
-      setVerdicts((current) => ({ ...current, [id]: "enter" }));
-      // 2026-11-06 (user): a new Page Type clears a Page Subtype that is not one of its L2s;
-      // the reviewer is not asked for one (Page Subtype is optional).
-      const clearSubtype = id === "page_type" && !subtypeFitsType(next, values.page_subtype);
-      setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
-      if (clearSubtype) {
-        setVerdicts((current) => {
-          const rest = { ...current };
-          delete rest.page_subtype;
-          return rest;
-        });
-      }
+      setField(id, next, "enter");
     },
     onCancel: () => {
       setEditingId(null);
