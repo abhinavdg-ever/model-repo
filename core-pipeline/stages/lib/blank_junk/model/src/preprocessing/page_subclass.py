@@ -648,14 +648,26 @@ def metadata_page_reason(text: str) -> str | None:
     return "document_metadata"
 
 
+# A contents / index title line (2026-11-06, Advantmed): "CONTENTS", "Table of Contents",
+# "Record Index". Not "Body Mass Index 24.1" (a value on the line).
+CONTENTS_TITLE_RE = re.compile(
+    r"^\W*(?:table\s+of\s+)?contents\W*$|^\W*(?:[A-Za-z]+\s+){0,2}index\W*$", re.I | re.M
+)
+
+
 def contents_page_reason(text: str) -> str | None:
     """A table of contents or index: 3+ lines that are only a label with a date or a page
-    range; everything else is header, short labels, or headings. No sentences, no values."""
+    range; everything else is header, short labels, or headings. No sentences, no values.
+
+    2026-11-06 (Advantmed): dates alone do not make an index -- a problem list, medication
+    list or immunization list is "name + date" on every line too. It needs 3+ page-range
+    entries, or a Contents / Index title with 3+ entries of either kind."""
     from src.preprocessing.protocol import CLINICAL_VALUE_RE
 
     if not (text or "").strip() or CLINICAL_VALUE_RE.search(text):
         return None
     entries = 0
+    range_entries = 0
     for line in (text or "").splitlines():
         line = line.strip()
         if not line:
@@ -667,6 +679,8 @@ def contents_page_reason(text: str) -> str | None:
             if rng and not re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", line) and int(rng.group(1)) > int(rng.group(2)):
                 return None  # a phone number or code, not a page range
             entries += 1
+            if rng and not re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\W*$", line):
+                range_entries += 1
             continue
         tokens = line.split()
         lower = re.findall(r"(?<![A-Za-z])[a-z]{3,}", line)
@@ -679,7 +693,9 @@ def contents_page_reason(text: str) -> str | None:
         if re.match(r"^\W*note\s*:", line, re.I) and len(tokens) <= 30:
             continue  # "Note: There may be certain notes which are not made available ..."
         return None
-    return "contents_page" if entries >= 3 else None
+    if range_entries >= 3 or (entries >= 3 and CONTENTS_TITLE_RE.search(text)):
+        return "contents_page"
+    return None
 
 
 def header_only_reason(text: str) -> str | None:

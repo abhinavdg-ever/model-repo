@@ -274,6 +274,54 @@ def test_lab_results_overrule_the_admin_rule():
     assert not model_bridge.lab_result_signs("CONTENTS\nOffice Visit 01/02/2024\nRadiology pages 3 - 9")
 
 
+PROBLEM_HEAD = ("Patient Name: Shaw, Amanda Date of Birth: 08/02/1945 Sex:F Encounter Date: January 22, 2026\n"
+                "Name Status Onset Date Source Resolution Date Notes\n")
+PROBLEMS = ["Diabetic Peripheral Neuropathy", "Thrombocytopenic Disorder", "Neutropenia", "Cirrhosis of Liver",
+            "Anemia", "Insomnia", "Bronchitis", "Subacute Cough"]
+
+
+class TestProblemListIsNotAnIndex:
+    """2026-11-06 (user): the v3 admin rule junked a problem list ("Anemia  Active  11/06/2025")
+    as a contents page. Dates alone no longer make an index, and the bridge overrules the admin
+    rule on a clinical list."""
+
+    def _vendored(self, name):
+        import sys
+
+        import model_bridge
+
+        vendor = str(model_bridge._VENDOR)
+        sys.path.insert(0, vendor)
+        try:
+            from src.preprocessing import page_subclass
+        finally:
+            sys.path.remove(vendor)
+        return getattr(page_subclass, name)
+
+    def _admin(self, text):
+        return self._vendored("admin_page_reason")(text)
+
+    def test_a_problem_list_is_not_a_contents_page(self):
+        text = PROBLEM_HEAD + "".join(f"{name} Active 11/06/2025\n" for name in PROBLEMS)
+        assert self._admin(text) is None
+
+    def test_a_real_index_still_is(self):
+        assert self._admin("Progress Notes 1 - 12\nLab Results 13 - 20\nRadiology 21 to 25\n")[1] == "contents_page"
+        contents = self._vendored("contents_page_reason")
+        dated = "Office Visit 01/02/2024\nLab Report 01/05/2024\nRadiology 02/01/2024\n"
+        assert contents("CONTENTS\n" + dated) == "contents_page"
+        assert contents(dated) is None  # dates alone, no title
+
+    def test_the_bridge_sees_a_clinical_list(self):
+        import model_bridge
+
+        short = PROBLEM_HEAD + "".join(f"{name} Active 11/06/2025\n" for name in PROBLEMS[:4])
+        assert model_bridge.clinical_list_signs(short)
+        assert model_bridge.clinical_list_signs("Problem List\nAnemia 11/06/2025")
+        assert model_bridge.clinical_list_signs("Dementia 08/30/2023 Problem Code: F03.90")
+        assert not model_bridge.clinical_list_signs("CONTENTS\nOffice Visit 01/02/2024\nRadiology pages 3 - 9")
+
+
 class TestSimplifiedLadder:
     """2026-11-04 (user): the simplified blank / junk ladder."""
 

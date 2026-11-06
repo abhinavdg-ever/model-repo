@@ -178,6 +178,31 @@ def lab_result_signs(text: str) -> bool:
     return bool(_LAB_RESULT.search(text or ""))
 
 
+# 2026-11-06 (user): a problem / medication / immunization list ("Anemia  Active  11/06/2025")
+# is not an index or an empty header either. When the admin rule says contents_page or header_only
+# (a short list's "name  date" rows read as header lines), any of these keeps the page:
+# a status column (Active / Inactive / Resolved / Completed / Chronic / Historical / Discontinued)
+# on 3+ lines, an ICD-10 code, a medication dose, or a list heading (Problem List, Diagnoses ...).
+_STATUS_LINE = _re.compile(
+    r"(?<![A-Za-z])(?:active|inactive|resolved|completed|chronic|historical|discontinued)(?![A-Za-z])",
+    _re.IGNORECASE,
+)
+_CLINICAL_LIST = _re.compile(
+    r"\b[A-TV-Z]\d{2}\.\d{1,4}\b"
+    r"|\bicd-?10\b"
+    r"|\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml|units?)\b"
+    r"|(?<![A-Za-z])(?:problem\s+list|problems|diagnos[ie]s|medications?|immunizations?|allergies"
+    r"|surgical\s+history|medical\s+history|procedures)(?![A-Za-z])",
+    _re.IGNORECASE,
+)
+
+
+def clinical_list_signs(text: str) -> bool:
+    """A clinical list read as an index: 3+ lines with a status word, or a code, dose or list heading."""
+    status_lines = sum(1 for line in (text or "").splitlines() if _STATUS_LINE.search(line))
+    return status_lines >= 3 or bool(_CLINICAL_LIST.search(text or ""))
+
+
 def _model_input(text: str, docling: Any) -> tuple[str, dict[str, Any] | None]:
     """What v3 infer.py feeds the service: a Docling page's text and its structure,
     else cleaned OCR text with no structure."""
@@ -227,14 +252,18 @@ def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
         logger.exception("Blank/junk BERT predict failed")
         return out
     out["bert"] = {"p_keep": p_keep, "p_junk": p_junk, "p_blank": p_blank, "top_junk_label": top, "service": None}
-    if (result is not None and result.flag == "JUNK" and "admin_rule" in (result.decision_reason or "")
-            and lab_result_signs(model_text)):
+    admin = result is not None and result.flag == "JUNK" and "admin_rule" in (result.decision_reason or "")
+    why = ("lab_results" if admin and lab_result_signs(model_text)
+           else "clinical_list" if admin and _re.search(r"admin_rule:(?:contents_page|header_only)",
+                                                         result.decision_reason or "")
+           and clinical_list_signs(model_text) else "")
+    if why:
         from dataclasses import replace
 
         result = replace(
             result, flag="KEEP", subclass="", review_required=False,
             confidence=float(result.p_keep if result.p_keep is not None else result.confidence),
-            decision_reason=f"{result.decision_reason}+overruled:lab_results",
+            decision_reason=f"{result.decision_reason}+overruled:{why}",
         )
         top = ""
     if result is not None:
