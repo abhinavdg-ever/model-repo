@@ -39,7 +39,7 @@ _JUNK_LIB = CORE_ROOT / "stages" / "lib" / "blank_junk"
 if str(_JUNK_LIB) not in sys.path:
     sys.path.insert(0, str(_JUNK_LIB))
 
-from classify import DUPLICATE_SIMILARITY_THRESHOLD, word_overlap  # noqa: E402
+from classify import DUPLICATE_SIMILARITY_THRESHOLD, copy_runs, word_overlap  # noqa: E402
 
 # A copy this close to its original is in the same encounter.
 NEAR_PAGES = 3
@@ -133,6 +133,27 @@ def review(
 
     averages: dict[tuple[Any, Any], float] = {}
     exact_shares: dict[tuple[Any, Any], float] = {}
+    # 2026-11-06 (user): a copy run (consecutive pages copying the pages the same distance
+    # before them) of the same encounter is judged as one: every page a duplicate, or every
+    # page a Partial -- never a mix page by page.
+    target = {page.page_id: page.duplicate_of for page in pages if page.kind == "duplicate" and page.duplicate_of}
+    target.update(partial_of)
+    run_of: dict[int, int] = {}
+    runs = copy_runs([page.page_id for page in pages], target)
+    for n, run in enumerate(runs):
+        for pid, _ in run:
+            run_of[pid] = n
+    run_copied: dict[int, bool] = {}
+
+    def _run_is_copy(n: int) -> bool:
+        if n not in run_copied:
+            scores = [_similarity(texts.get(pid) or "", texts.get(orig) or "") for pid, orig in runs[n]]
+            average = sum(scores) / len(scores)
+            exact = sum(1 for score in scores if score >= 1.0) / len(scores)
+            run_copied[n] = average >= DUPLICATE_SIMILARITY_THRESHOLD or (
+                average >= ENCOUNTER_MIN_AVERAGE_WITH_EXACT and exact >= EXACT_PAGES_MIN_SHARE)
+        return run_copied[n]
+
     for i, page in enumerate(pages):
         if page.kind != "duplicate":
             continue
@@ -145,8 +166,18 @@ def review(
         mine, theirs = dos.get(page.page_id), dos.get(original.page_id)
         same_document = document[i] is not None and document[i] == document[o]
         if abs(i - o) <= NEAR_PAGES or same_document or (mine and theirs and mine == theirs):
-            # The same encounter: a 100% match stays a duplicate, anything less is a Partial.
             overlap = word_overlap(texts.get(page.page_id) or "", texts.get(original.page_id) or "").overlap
+            run = run_of.get(page.page_id)
+            if run is not None:
+                if _run_is_copy(run):
+                    # The whole run is a duplicate: its partials become duplicates too.
+                    for pid, orig in runs[run]:
+                        if pid in partial_of:
+                            out.promote[pid] = (orig, overlap)
+                else:
+                    out.partial[page.page_id] = (original.page_id, overlap)
+                continue
+            # The same encounter: a 100% match stays a duplicate, anything less is a Partial.
             if overlap < CONTENT_MIN_OVERLAP:
                 out.partial[page.page_id] = (original.page_id, overlap)
             continue

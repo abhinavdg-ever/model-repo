@@ -110,6 +110,7 @@ from classify import (  # noqa: E402
     JUNK_CODES,
     classification_confidence,
     duplicate_char_count,
+    copy_runs,
     page_dates,
     text_is_comparable,
     unique_words,
@@ -283,6 +284,82 @@ SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
 SAME_CONTENT_NOTE = "same content, different encounter"
 
 CONTAINED_CONFIDENCE = 0.90
+
+# 2026-11-06 (user): a copy run -- two or more consecutive pages, each a copy of the page the same
+# number of pages before it -- is one label. Its encounter rule (the continuity one): average
+# >= 98%, or >= 95% with at least half the pages an exact match.
+COPY_RUN_DUPLICATE_AT = 0.98
+COPY_RUN_WITH_EXACT_AT = 0.95
+COPY_RUN_EXACT_SHARE = 0.5
+
+
+def _settle_copy_runs(
+    pages: list[dict[str, Any]],
+    texts: dict[int, str],
+    rules: dict[str, float],
+    dos_by_id: dict[int, frozenset[str]],
+    best: dict[int, dict[str, Any]],
+    dup_of: dict[int, int],
+    dup_sim: dict[int, float],
+    dup_contained: dict[int, bool],
+    partial_of: dict[int, int],
+    partial_sim: dict[int, float],
+    content_of: dict[int, int],
+    content_score: dict[int, tuple[float, int]],
+    pair_words: dict[int, int],
+) -> None:
+    """One label per copy run (2026-11-06, user). A page belongs to a run when it is a
+    duplicate, partial or Repeated Content of a page, or its closest page is >= 95% alike but a
+    rule (a date, a signature page) kept them apart. The run is then judged as a whole:
+
+    * a different kv DOS on any page, or different written dates on at least half its pages:
+      every page **Repeated Content** (another encounter's copy);
+    * else average >= 98%, or >= 95% with at least half its pages an exact match: every page a
+      **Duplicate** of its counterpart;
+    * else every page a **Partial**.
+    """
+    target: dict[int, int] = {}
+    for pid, info in best.items():
+        if info.get("blocked_by") and float(info.get("similarity") or 0.0) >= DUPLICATE_PARTIAL_THRESHOLD:
+            target[pid] = int(info["page_id"])
+    for marks in (content_of, partial_of, dup_of):  # the strongest mark wins
+        target.update(marks)
+    order = [page["id"] for page in pages]
+    for run in copy_runs(order, target):
+        scores: list[float] = []
+        details: list[tuple[int, int, float, bool, int]] = []
+        dos_differ = written_differ = 0
+        for pid, orig in run:
+            words = word_overlap(texts.get(pid) or "", texts.get(orig) or "")
+            contained = words.contained >= rules["contained_at"]
+            score = 1.0 if contained else words.overlap
+            scores.append(score)
+            details.append((pid, orig, score, contained, words.different))
+            a, b = dos_by_id.get(pid), dos_by_id.get(orig)
+            if a and b and a != b:
+                dos_differ += 1
+            if page_dates(texts.get(pid) or "") != page_dates(texts.get(orig) or ""):
+                written_differ += 1
+        average = sum(scores) / len(scores)
+        exact_share = sum(1 for s in scores if s >= 1.0) / len(scores)
+        if dos_differ or written_differ * 2 >= len(run):
+            label = "content"
+        elif average >= COPY_RUN_DUPLICATE_AT or (
+            average >= COPY_RUN_WITH_EXACT_AT and exact_share >= COPY_RUN_EXACT_SHARE
+        ):
+            label = "duplicate"
+        else:
+            label = "partial"
+        for pid, orig, score, contained, different in details:
+            for marks in (dup_of, partial_of, content_of):
+                marks.pop(pid, None)
+            pair_words[pid] = different
+            if label == "duplicate":
+                dup_of[pid], dup_sim[pid], dup_contained[pid] = orig, score, contained
+            elif label == "partial":
+                partial_of[pid], partial_sim[pid] = orig, score
+            else:
+                content_of[pid], content_score[pid] = orig, (score, different)
 
 
 def _classify(
@@ -541,6 +618,14 @@ def _classify(
                 dup_sim[dup] = sim
                 dup_contained[dup] = is_contained
                 pair_words[dup] = words.different
+
+    # 2026-11-06 (user): a block of pages copying a block of pages gets one label, not a
+    # mix of Duplicate / Partial / Repeated Content / No page by page (_settle_copy_runs).
+    if find_duplicates and not exact_near:
+        _settle_copy_runs(
+            pages, texts, rules, dos_by_id or {}, best,
+            dup_of, dup_sim, dup_contained, partial_of, partial_sim, content_of, content_score, pair_words,
+        )
 
     # Apply duplicate marks (including demoting prior-main pages not in todo).
     page_by_id = {p["id"]: p for p in pages}

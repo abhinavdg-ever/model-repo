@@ -183,6 +183,11 @@ class Rules:
     section_continued: bool = True
     section_continued_top: float = 0.25
     standalone_families: frozenset[str] = frozenset()
+    # 2026-11-06 (user): a Consent and Authorization page (its family, or a consent section
+    # header) never shares a document with a Progress Note page -- over a "(continued)" banner.
+    consent_families: frozenset[str] = frozenset()
+    consent_headers: frozenset[str] = frozenset()
+    consent_apart_from: frozenset[str] = frozenset()
 
     def pts(self, name: str) -> float:
         return float(self.points[name]["points"])
@@ -270,7 +275,18 @@ def _build(data: dict[str, Any]) -> Rules:
         standalone_families=frozenset(
             t.casefold() for t in (data.get("standalone_families") or {}).get("families") or ()
         ),
+        **_consent_rules(data.get("consent_break") or {}),
     )
+
+
+def _consent_rules(cfg: dict[str, Any]) -> dict[str, frozenset[str]]:
+    if not cfg.get("enabled", True):
+        return {"consent_families": frozenset(), "consent_headers": frozenset(), "consent_apart_from": frozenset()}
+    return {
+        "consent_families": frozenset(t.casefold() for t in cfg.get("page_families") or ()),
+        "consent_headers": frozenset(t.casefold() for t in cfg.get("section_headers") or ()),
+        "consent_apart_from": frozenset(t.casefold() for t in cfg.get("apart_from") or ()),
+    }
 
 
 _RULES: CanonFile[Rules] = CanonFile(CANON_DIR / "continuity_canon.json", _build)
@@ -627,7 +643,30 @@ def score_gap(
         gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["section_continued"] = f"'{carried} (continued)' at the top; the page before has it"
         gap.flags.append("section continued: always joins the previous page")
+    # A consent page and a Progress Note page are never one document (2026-11-06, user):
+    # last, so a sticky "(continued)" visit banner cannot join them.
+    if a.kind == "main" and b.kind == "main":
+        a_consent, b_consent = is_consent(a, rules), is_consent(b, rules)
+        if a_consent != b_consent and (fb if a_consent else fa) in rules.consent_apart_from:
+            gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
+            gap.confidence = _ruled_confidence(gap, rules)
+            gap.evidence.pop("section_continued", None)
+            gap.evidence["consent_boundary"] = f"{a.page_type or '-'} / {b.page_type or '-'}: consent apart from a note"
+            gap.flags.append("consent page beside a Progress Note: always a break")
     return gap
+
+
+def is_consent(page: "PageInput", rules: Rules) -> bool:
+    """A Consent and Authorization page: its family is one of the canon's
+    ``consent_break.page_families``, or a section header (stage 6) is one of its
+    ``section_headers``."""
+    if (page.page_type or "").casefold() in rules.consent_families:
+        return True
+    for header in page.section_headers:
+        for name in (header.get("matched_canonical"), header.get("canonical"), header.get("text")):
+            if name and str(name).strip().casefold() in rules.consent_headers:
+                return True
+    return False
 
 
 def _top_lines(page: "PageInput", top: float) -> list[str]:

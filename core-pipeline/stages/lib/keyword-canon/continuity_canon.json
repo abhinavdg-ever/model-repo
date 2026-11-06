@@ -456,5 +456,26 @@
       "Clinical Summary"
     ],
     "note": "2026-11-01 (user): a page of these families never shares a document with a page of another family: a summary pulls unrelated things together. Consecutive pages of the family can still join."
+  },
+  "consent_break": {
+    "enabled": true,
+    "note": "2026-11-06 (user): a Consent and Authorization page -- its family (L1), or one of these section headers (stage 6) -- never shares a document with a page of the apart_from families. The break is decisive: it wins over a '(continued)' visit banner, and the final pass does not merge it back.",
+    "page_families": [
+      "Consent and Authorization"
+    ],
+    "section_headers": [
+      "Consent form",
+      "Consent pages",
+      "Authorization pages",
+      "Surgical Consent Form",
+      "Transfusion Consent",
+      "Immunization Consent",
+      "Referral Authorization Form",
+      "Insurance Authorization Note",
+      "HIPAA Form"
+    ],
+    "apart_from": [
+      "Progress Note"
+    ]
   }
 }

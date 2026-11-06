@@ -175,3 +175,29 @@ def classification_confidence(code: int, *, blank_via_image: bool = False) -> fl
     if code == CODE_DUPLICATE:
         return 0.99
     return 0.85
+
+
+# 2026-11-06 (user): a copy run is at least this many consecutive copied pages.
+COPY_RUN_MIN_PAGES = 2
+
+
+def copy_runs(order: list[int], target: dict[int, int]) -> list[list[tuple[int, int]]]:
+    """Runs of (page, its original) in page order: consecutive pages whose originals are the
+    same number of pages before them, at least COPY_RUN_MIN_PAGES long."""
+    index = {pid: i for i, pid in enumerate(order)}
+    runs: list[list[tuple[int, int]]] = []
+    current: list[tuple[int, int]] = []
+    last: Optional[tuple[int, int]] = None  # (index, offset)
+    for i, pid in enumerate(order):
+        t = target.get(pid)
+        offset = i - index[t] if t in index else None
+        if offset is not None and offset > 0 and last is not None and last == (i - 1, offset):
+            current.append((pid, t))
+        else:
+            if len(current) >= COPY_RUN_MIN_PAGES:
+                runs.append(current)
+            current = [(pid, t)] if offset is not None and offset > 0 else []
+        last = (i, offset) if offset is not None and offset > 0 else None
+    if len(current) >= COPY_RUN_MIN_PAGES:
+        runs.append(current)
+    return runs
