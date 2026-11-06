@@ -241,10 +241,12 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                     if flipped.reads and flipped.english > chosen_read.english:
                         mirrored, chosen_read, method = True, flipped, "readability"
             else:
-                # 2026-11-06 (user): OSD says 0 and CV a quarter-turn (90 / 270): CV's turn is the
-                # starting point and stands unless another orientation reads clearly (strong
-                # English, more than at CV's turn) -- good evidence to undo it.
-                cv_side = osd is not None and proposed == 0 and cv_turn in (90, 270)
+                # 2026-11-06 (user): on a visual page (stage 1 page tag) where OSD says 0 and CV
+                # a quarter-turn (90 or 270), CV's turn is the starting point and stands unless another
+                # orientation reads clearly (strong English, more than at CV's turn) -- good
+                # evidence to undo it. Every other page and disagreement: the reading rule.
+                cv_side = (osd is not None and proposed == 0 and cv_turn in (90, 270)
+                           and tags.get("document_type") == "visual")
                 turn, mirrored, chosen_read = orientation_that_reads(small, cv_turn if cv_side else proposed)
                 if cv_side and (turn != cv_turn or mirrored):
                     cv_read = read_page(small, cv_turn)

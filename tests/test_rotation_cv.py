@@ -64,7 +64,7 @@ def test_disagreeing_goes_through_the_reading_rule(monkeypatch, tmp_path):
     assert (out["orientation_angle"], out["method"], reading) == (0.0, "osd_cv_agree", False)
 
 
-def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn):
+def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn, document_type="visual"):
     """OSD 0, CV ``cv_turn``; the reading search returns ``search_turn``; reads per turn."""
     path = tmp_path / "p.png"
     cv2.imwrite(str(path), _text_page())
@@ -75,7 +75,7 @@ def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn):
 
     monkeypatch.setattr(osd_module, "detect_rotation", lambda image: {"rotation": 0, "confidence": 5.0})
     monkeypatch.setattr(stage, "_cv_result", lambda image: (cv_turn, {"rotation": cv_turn}))
-    monkeypatch.setattr(stage, "_classify_hw", lambda p: ("printed", 0.9, "model", {"document_type": "printed"}))
+    monkeypatch.setattr(stage, "_classify_hw", lambda p: ("printed", 0.9, "model", {"document_type": document_type}))
     monkeypatch.setattr(rotation, "orientation_that_reads",
                         lambda small, proposed: (search_turn, False, page_read(reads_by_turn[search_turn])))
     monkeypatch.setattr(rotation, "read_page", lambda small, deg, mirrored=False, **kw: page_read(reads_by_turn[deg]))
@@ -85,12 +85,19 @@ def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn):
 
 
 def test_osd_zero_cv_quarter_turn_keeps_cv_without_good_evidence(monkeypatch, tmp_path):
-    """2026-11-06 (user): OSD 0, CV 90: CV stands unless another turn reads clearly better."""
+    """2026-11-06 (user): a visual page, OSD 0, CV 90: CV stands unless another turn reads
+    clearly better (CV 270 too). A page that is not visual: the reading rule as before."""
     # Nothing reads well anywhere: CV's 90 stands.
     out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 9, 90: 3})
     assert (out["orientation_angle"], out["method"]) == (90.0, "cv_kept")
     # 0 reads strongly and better than 90: undone, back to 0.
-    out = _run_cv_side(monkeypatch, tmp_path, 270, 0, {0: 60, 270: 5})
+    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 60, 90: 5})
+    assert (out["orientation_angle"], out["method"]) == (0.0, "osd")
+    # CV 270 on a visual page: kept too.
+    out = _run_cv_side(monkeypatch, tmp_path, 270, 0, {0: 9, 270: 3})
+    assert (out["orientation_angle"], out["method"]) == (270.0, "cv_kept")
+    # A printed page: the reading rule decides (here 0).
+    out = _run_cv_side(monkeypatch, tmp_path, 90, 0, {0: 9, 90: 3}, document_type="printed")
     assert (out["orientation_angle"], out["method"]) == (0.0, "osd")
     # CV's turn is what the search found: kept.
     out = _run_cv_side(monkeypatch, tmp_path, 90, 90, {90: 50})
