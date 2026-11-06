@@ -140,6 +140,11 @@ def _duplicate_rules() -> dict[str, float]:
         "count_rule_min_overlap": float(cfg.get("count_rule_min_overlap", 0.80)),
         "duplicate_min_length_ratio": float(cfg.get("duplicate_min_length_ratio", 0.90)),
         "larger_kept_above_words": int(cfg.get("larger_kept_above_words", 10)),
+        # 2026-11-06 (user): a page shorter than another, at least this share of its length,
+        # with at most contained_max_extra_words distinct words not on the other, is Repeated
+        # Content (never a Duplicate by this rule).
+        "contained_min_length_ratio": float(cfg.get("contained_min_length_ratio", 0.80)),
+        "contained_max_extra_words": int(cfg.get("contained_max_extra_words", 3)),
     }
 
 
@@ -422,26 +427,40 @@ def _classify(
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             pair_sim = 1.0 if words.contained >= rules["contained_at"] else words.overlap
 
+            def _contained_copy(la: int, lb: int) -> bool:
+                """2026-11-06 (user): the shorter page is mostly in the longer one -- at most 3 of
+                its distinct words are not on it -- and is at least 80% of its length."""
+                if la == lb:
+                    return False
+                own = (words.words_a if la < lb else words.words_b) - words.shared
+                return (own <= rules["contained_max_extra_words"]
+                        and min(la, lb) >= rules["contained_min_length_ratio"] * max(la, lb))
+
             def _blocked(why: str) -> None:
                 # The closest page is recorded even when a rule stops the pair (2026-11-04, user).
                 _note_best(pid, nid, words, pair_sim, words.contained >= rules["contained_at"], why)
                 _note_best(nid, pid, words, pair_sim, words.contained >= rules["contained_at"], why)
 
-            def _same_content() -> None:
+            def _same_content(contained_only: bool = False) -> None:
                 """Pages of different encounters with the same content: >= 98% alike or fewer
-                than 7 distinct words different, lengths within 10% (2026-11-04, user)."""
+                than 7 distinct words different, lengths within 10% (2026-11-04, user); or, for
+                any pair, a shorter page mostly in the longer one (_contained_copy, 2026-11-06)."""
                 if exact_near or not find_duplicates:
                     return
                 la, lb = length[pid], length[nid]
-                if min(la, lb) < rules["duplicate_min_length_ratio"] * max(la, lb):
+                alike = not contained_only and (
+                    min(la, lb) >= rules["duplicate_min_length_ratio"] * max(la, lb)
+                    and (pair_sim >= SAME_CONTENT_SIMILARITY
+                         or (words.overlap >= rules["count_rule_min_overlap"]
+                             and words.different < SAME_CONTENT_BELOW_WORDS)))
+                if not (alike or _contained_copy(la, lb)):
                     return
-                if not (pair_sim >= SAME_CONTENT_SIMILARITY
-                        or (words.overlap >= rules["count_rule_min_overlap"]
-                            and words.different < SAME_CONTENT_BELOW_WORDS)):
-                    return
-                if pair_sim > content_score.get(nid, (-1.0, 0))[0]:
-                    content_of[nid] = pid
-                    content_score[nid] = (pair_sim, words.different)
+                # The later page repeats the earlier; by the contained rule alone, the shorter page
+                # (the one contained) repeats the longer.
+                copy, source = (nid, pid) if alike or lb < la else (pid, nid)
+                if pair_sim > content_score.get(copy, (-1.0, 0))[0]:
+                    content_of[copy] = source
+                    content_score[copy] = (pair_sim, words.different)
 
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
             if dates_a and dates_b and dates_a != dates_b:
@@ -484,17 +503,19 @@ def _classify(
                 if not (similar_length and words.different == 0):
                     continue
                 kind, orig, dup = "duplicate", pid, nid  # the later page is the copy
-            elif similar_length and (
+            elif (similar_length and (
                 is_contained
                 or sim >= DUPLICATE_SIMILARITY_THRESHOLD
                 or (counts and words.different < rules["duplicate_below_words"])
-            ):
+            )):
                 kind = "duplicate"
             elif sim >= DUPLICATE_PARTIAL_THRESHOLD or (
                 counts and words.different < rules["partial_below_words"]
             ):
                 kind = "partial"
             else:
+                # 2026-11-06 (user): a shorter page mostly in the longer one is Repeated Content.
+                _same_content(contained_only=True)
                 continue
             if not exact_near:
                 # 2026-11-03 (user): the later page is always the duplicate (was: the page
