@@ -342,6 +342,18 @@ export function pageL2Choices(l1: string | null | undefined): readonly string[] 
   return name ? PAGE_L2[name] ?? [] : ALL_L2;
 }
 
+/** 2026-11-06 (user): a Page Subtype that is not one of its Page Type's L2s is cleared. True
+ * when the subtype is empty, the type is not one of our L1s (nothing to check against), or the
+ * subtype is one of the type's L2s. */
+export function subtypeFitsType(l1: string | null | undefined, l2: string | null | undefined): boolean {
+  const sub = acceptKey(text(l2));
+  if (!sub) return true;
+  const key = acceptKey(text(l1));
+  const name = PAGE_L1_CHOICES.find((candidate) => acceptKey(candidate) === key);
+  if (!name) return true;
+  return (PAGE_L2[name] ?? []).some((candidate) => acceptKey(candidate) === sub);
+}
+
 /** Every L2, for checking a typed Page Subtype. */
 export const PAGE_L2_ALL: readonly string[] = ALL_L2;
 

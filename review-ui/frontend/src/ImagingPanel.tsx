@@ -39,6 +39,7 @@ import {
   PAGE_L1_CHOICES,
   PAGE_L2_ALL,
   pageL2Choices,
+  subtypeFitsType,
   SPECIALTY_CHOICES,
   CREDENTIAL_CHOICES,
 } from "./groundTruth";
@@ -1839,6 +1840,8 @@ function PageDetails({
     if (editingId && draft != null) {
       merged[editingId] = normalizeEntry(editingId, draft) ?? draft.trim();
     }
+    // 2026-11-06 (user): a Page Subtype that does not belong to the Page Type is cleared.
+    if (!subtypeFitsType(merged.page_type, merged.page_subtype)) merged.page_subtype = "";
     const persistedChanged = [...PERSISTED_GT].some(
       (id) => (merged[id] ?? "") !== (stored[id] ?? ""),
     );
@@ -1909,25 +1912,24 @@ function PageDetails({
       setDraft(null);
       setSaveError(null);
       setVerdicts((current) => ({ ...current, [id]: "accept" }));
-      setEdits((current) => ({ ...current, [id]: next }));
+      const clearSubtype = id === "page_type" && !subtypeFitsType(next, values.page_subtype);
+      setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
     },
     onCommit: (id: string, next: string) => {
       setEditingId(null);
       setDraft(null);
       setSaveError(null);
       setVerdicts((current) => ({ ...current, [id]: "enter" }));
-      // 2026-11-05 (user): a new Page Type clears the Page Subtype (it belongs to the old
-      // type) and opens it for editing straight away.
-      const typeChanged = id === "page_type" && next !== (values.page_type ?? "");
-      setEdits((current) => ({ ...current, [id]: next, ...(typeChanged ? { page_subtype: "" } : {}) }));
-      if (typeChanged) {
+      // 2026-11-06 (user): a new Page Type clears a Page Subtype that is not one of its L2s;
+      // the reviewer is not asked for one (Page Subtype is optional).
+      const clearSubtype = id === "page_type" && !subtypeFitsType(next, values.page_subtype);
+      setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
+      if (clearSubtype) {
         setVerdicts((current) => {
           const rest = { ...current };
           delete rest.page_subtype;
           return rest;
         });
-        setEditingId("page_subtype");
-        setDraft("");
       }
     },
     onCancel: () => {
