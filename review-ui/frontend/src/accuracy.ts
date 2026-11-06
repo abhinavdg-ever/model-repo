@@ -73,7 +73,7 @@ export const METRICS: {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Every labelled page, Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. M (credentials match) = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
+    rule: "Every labelled page the pipeline did not call blank / junk (a junk page's provider is not shown or matched), Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. M (credentials match) = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
   },
   {
     id: "orientation",
@@ -362,7 +362,7 @@ function pageScores(
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
   dos: PresenceCall;
-  signature: SignatureCall;
+  signature: SignatureCall | null;
 } {
   const parts = splitPageType(page.pageType);
   const input = {
@@ -480,7 +480,9 @@ function pageScores(
         single(codeableBits(page.isCodeable)),
       );
 
-  const signatureCalled = signatureCall(page);
+  // 2026-11-06 (user): a page the pipeline calls blank / junk is not scored for Provider
+  // Signature: its provider may still be extracted, but it is not shown or matched.
+  const signatureCalled = pipelineBlankJunk ? null : signatureCall(page);
 
   return {
     scores: {
@@ -499,7 +501,7 @@ function pageScores(
             ? "no"
             : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable,
-      signature: signatureCalled.expected === signatureCalled.predicted ? "yes" : "no",
+      signature: signatureCalled ? (signatureCalled.expected === signatureCalled.predicted ? "yes" : "no") : null,
       // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
       // stage left alone. Equal angles = Match, else No Match.
       orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
@@ -642,9 +644,11 @@ export function scoreChart(
     const page = asManifestMember(raw, doc.manifest);
     const scored = pageScores(page, sections, doc.manifest, raw);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
-    addRates(signatureRates, scored.signature.expected, scored.signature.predicted);
-    if (scored.signature.credCase) signatureRates.credCases = (signatureRates.credCases ?? 0) + 1;
-    if (scored.signature.credMatch) signatureRates.credMatch = (signatureRates.credMatch ?? 0) + 1;
+    if (scored.signature) {
+      addRates(signatureRates, scored.signature.expected, scored.signature.predicted);
+      if (scored.signature.credCase) signatureRates.credCases = (signatureRates.credCases ?? 0) + 1;
+      if (scored.signature.credMatch) signatureRates.credMatch = (signatureRates.credMatch ?? 0) + 1;
+    }
     addPresenceRates(dosRates, scored.dos);
 
     const pageOverall = overallVerdict(scored.scores, scored.applicable);
