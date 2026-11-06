@@ -115,3 +115,27 @@ def test_a_same_encounter_copy_is_a_duplicate_at_100_and_a_partial_below():
     assert not duplicates.review(pages, rows, texts, partial_of={}).partial  # 100%: stays
     texts[11] = texts[9] + " one more"
     assert duplicates.review(pages, rows, texts, partial_of={}).partial.keys() == {11}
+
+
+class TestHalfExactAt95:
+    """2026-11-06 (user): an encounter averaging 95% or more with at least half its pages an
+    exact match is a duplicate too (was: an average of 98% only)."""
+
+    @staticmethod
+    def _near(tag):  # 57 of 63 distinct words shared with the page: overlap about 0.905
+        return " ".join(f"{tag}{i}" for i in range(57)) + " " + " ".join(f"new{tag}{i}" for i in range(3))
+
+    def _encounter(self, page_10, page_12):
+        """Document 2 = pages 10-12 around the duplicate page 11 (an exact copy of page 2)."""
+        pages, rows, texts = _chart({11})
+        texts[10], texts[12] = page_10, page_12
+        return duplicates.review(pages, rows, texts, partial_of={})
+
+    def test_two_exact_pages_of_three_at_97_percent_is_a_duplicate(self):
+        result = self._encounter(_words("p1x"), self._near("p3x"))  # (1 + 1 + 0.905) / 3 = 0.968
+        assert 0.95 <= result.checked[11][1] < 0.98
+        assert not result.demote and not result.release
+
+    def test_one_exact_page_of_three_below_95_is_not(self):
+        result = self._encounter(self._near("p1x"), self._near("p3x"))  # (0.905 + 1 + 0.905) / 3 = 0.937
+        assert result.demote.keys() == {11}

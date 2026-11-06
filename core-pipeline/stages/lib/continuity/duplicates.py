@@ -16,9 +16,10 @@ Summary page is then checked encounter against encounter:
   blank pages around it. The anchor is the original's document. Each page of the copy's
   encounter scores its best distinct-word overlap against the anchor's pages (a page
   whose words are all on one scores 1.0), and the scores are averaged.
-* **Average 98% or more, and no date differs** (the dates kv_extract read on the two
-  encounters' pages): the whole encounter is a duplicate -- its duplicates stay and its
-  partial duplicates (95-98%) of anchor pages become duplicates.
+* **Average 98% or more -- or average 95% or more with at least half its pages an exact
+  match (score 1.0; 2026-11-06, user) -- and no date differs** (the dates kv_extract read on
+  the two encounters' pages): the whole encounter is a duplicate -- its duplicates stay and
+  its partial duplicates (95-98%) of anchor pages become duplicates.
 * **Otherwise** each copied page is judged on its own:
   - **the same distinct words (100%)**: a Main page again, "Repeated Content (to Pg X)": its
     blank / junk row keeps ``duplicate_of_page_id`` and its reason starts
@@ -53,6 +54,10 @@ CONTENT_MARK = "duplicate_content_of_page_id:"
 CARRIED_MARK = "carried_forward_of_page_id:"
 # Duplicate content is a 100% match (2026-11-02, user).
 CONTENT_MIN_OVERLAP = 1.0
+# 2026-11-06 (user): an encounter averaging this much is a copy too when at least
+# EXACT_PAGES_MIN_SHARE of its pages match an anchor page exactly (score 1.0).
+ENCOUNTER_MIN_AVERAGE_WITH_EXACT = 0.95
+EXACT_PAGES_MIN_SHARE = 0.5
 
 
 @dataclass
@@ -127,6 +132,7 @@ def review(
         return [k for k in range(len(pages)) if k not in mine and (k == o or (main(k) and document[k] == doc))] or [o]
 
     averages: dict[tuple[Any, Any], float] = {}
+    exact_shares: dict[tuple[Any, Any], float] = {}
     for i, page in enumerate(pages):
         if page.kind != "duplicate":
             continue
@@ -156,14 +162,17 @@ def review(
                 if pages[k].kind != "blank"
             ]
             averages[pair] = sum(scores) / len(scores) if scores else 0.0
+            exact_shares[pair] = sum(1 for score in scores if score >= 1.0) / len(scores) if scores else 0.0
         average = averages[pair]
+        copied = average >= DUPLICATE_SIMILARITY_THRESHOLD or (
+            average >= ENCOUNTER_MIN_AVERAGE_WITH_EXACT and exact_shares[pair] >= EXACT_PAGES_MIN_SHARE)
         anchor_ids = {pages[a].page_id for a in anchor}
         out.checked[page.page_id] = (original.page_id, average)
         # 2026-11-03 (user): a copied encounter also has the same dates as its original.
         copy_dates = frozenset().union(*(dos.get(pages[k].page_id) or frozenset() for k in encounter))
         anchor_dates = frozenset().union(*(dos.get(pages[a].page_id) or frozenset() for a in anchor))
         same_dates = not (copy_dates and anchor_dates and copy_dates != anchor_dates)
-        if average >= DUPLICATE_SIMILARITY_THRESHOLD and same_dates:
+        if copied and same_dates:
             for k in encounter:
                 pid = pages[k].page_id
                 if partial_of.get(pid) in anchor_ids:
