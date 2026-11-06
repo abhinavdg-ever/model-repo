@@ -2203,7 +2203,9 @@ function PageDetails({
           },
         ]}
       />
-      <CompareSection
+      {/* Not on a blank / junk page (2026-11-06, user): a junk page has no provider to review.
+          A duplicate still shows it (its original's values). */}
+      {!skipped && <CompareSection
         {...sectionProps}
         title="Provider Extraction"
         rows={[
@@ -2236,7 +2238,7 @@ function PageDetails({
             },
           ),
         ]}
-      />
+      />}
     </div>
   );
 }
