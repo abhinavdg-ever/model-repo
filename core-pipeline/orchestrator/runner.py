@@ -420,7 +420,15 @@ def run_pipeline_for_chart(
                     refresh_final1 = name == "ocr_final1" and bool(
                         results.get("final1_refresh")
                     )
-                    if skip_ocr_active and (adaptive_gates or refresh_final1):
+                    # 2026-11-06 (user): pages an earlier run skipped for Azure (high quality,
+                    # pass-1 junk) that the rules now send there get their Final OCR 2.
+                    refresh_final2 = False
+                    if name == "ocr_final2" and skip_ocr_active:
+                        from stages.lib.ocr.reuse import reopen_final2_missing
+
+                        results["final2_refresh"] = reopen_final2_missing(chart_id)
+                        refresh_final2 = bool(results["final2_refresh"])
+                    if skip_ocr_active and (adaptive_gates or refresh_final1 or refresh_final2):
                         # Per-page: gate-delta, plus high-quality pages whose
                         # earlier Final2 was skipped and whose Final1 has no boxes.
                         logger.info(

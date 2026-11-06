@@ -589,6 +589,32 @@ def reopen_final1_for_hq_pages(chart_id: int, chart_name: str) -> list[int]:
     return page_ids
 
 
+def final2_pages_to_fill(stored: dict[int, Any], page_ids: list[int], settled: set[int]) -> list[int]:
+    """Pages a skip_ocr re-run still owes Final OCR 2: no Azure text stored, and not settled by
+    pass 1 now. High-quality printed pages are included -- the stage re-grades them and skips
+    the ones still High (2026-11-06, user)."""
+    return [pid for pid in page_ids if pid not in settled and not str(stored.get(pid) or "").strip()]
+
+
+def reopen_final2_missing(chart_id: int) -> list[int]:
+    """2026-11-06 (user): a page an earlier run skipped for Azure (high-quality printed, or
+    blank / junk in pass 1) that the rules no longer skip got no Final OCR 2 on a skip_ocr
+    re-run. Mark Final2 pending for every page with no Azure text that pass 1 has not settled;
+    the stage then skips the ones still high-quality printed and sends only the rest (billed)."""
+    from db import reset_pages_stage
+    from stages._support import pass1_ruled_out
+
+    with connect() as conn:
+        page_ids = [p["id"] for p in list_pages(conn, chart_id)]
+        stored = get_ocr_texts(conn, chart_id, "azuredocintel")
+        todo = final2_pages_to_fill(stored, page_ids, pass1_ruled_out(conn, chart_id))
+        if todo:
+            reset_pages_stage(conn, chart_id, todo, "ocr_final2", pass_no=1)
+    if todo:
+        logger.info("SKIP_OCR: %d page(s) without Final2 re-checked for Azure", len(todo))
+    return todo
+
+
 def apply_skip_ocr(chart_id: int, chart_name: str) -> dict[str, Any]:
     """Reuse OCR for skip_ocr, in this order:
 
