@@ -3,11 +3,11 @@ import logging
 
 from fastapi import Request
 
-from app.adapters.base import FolderRepository
-from app.adapters.postgres.repository import PostgresFolderRepository
+from app.store.base import FolderRepository
+from app.store.postgres.repository import PostgresFolderRepository
 from app.core.config import Settings, get_settings
 
-logger = logging.getLogger("review_ui.adapters")
+logger = logging.getLogger("review_ui.store")
 
 
 def request_is_production(request: Request) -> bool:

@@ -55,8 +55,8 @@ def test_retry_clears_the_wait(failing_blob):
 def test_the_image_route_has_no_disk_fallback(monkeypatch):
     """2026-11-07 (user): review-ui reads the database and Blob only. A Blob sign-in failure is
     a 503 (the viewer offers Retry); nothing is read from disk."""
-    from app.adapters.postgres.repository import PostgresFolderRepository
-    from app.api import routes
+    from app.store.postgres.repository import PostgresFolderRepository
+    from app.routers import charts as routes
 
     def blob_fails(*_a, **_k):
         raise HTTPException(status_code=503, detail="Azure Blob sign-in failed")

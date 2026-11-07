@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal, Optional, Sequence
 
 # Every stage after Final OCR 2 is an imaging stage (the postgres adapter's set).
-from app.adapters.postgres.repository import IMAGING_STAGES as _IMAGING_STAGES
+from app.store.postgres.repository import IMAGING_STAGES as _IMAGING_STAGES
 from app.core.schemas import FolderSummary, OcrRunStatus
 from app.services.chart_run_batch import (
     db_lookup_enabled,

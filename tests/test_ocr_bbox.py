@@ -81,7 +81,7 @@ def test_resolve_norm_page_size_halves_when_page_is_2x_image():
 
 def test_review_ui_halves_page_dims_against_image():
     """OCR page_* 2× the file → scale = image/page maps boxes onto the image."""
-    from app.adapters.local.repository import _section_headers_from_page
+    from app.store.local.repository import _section_headers_from_page
 
     page = {
         "fileName": "1.jpg",
@@ -107,7 +107,7 @@ def test_review_ui_halves_page_dims_against_image():
 
 def test_review_ui_azure_inches_not_mixed_with_image_pixels():
     """Final2 inch polygons scale onto image pixels (document-processing pattern)."""
-    from app.adapters.local.repository import _section_headers_from_page
+    from app.store.local.repository import _section_headers_from_page
 
     page = {
         "fileName": "1.jpg",
@@ -200,7 +200,7 @@ def test_azure_line_polygon_to_section_headers():
 
 
 def test_review_ui_headers_from_azure_polygon():
-    from app.adapters.local.repository import _section_headers_from_page
+    from app.store.local.repository import _section_headers_from_page
 
     page = {
         "fileName": "14.jpg",
@@ -224,7 +224,7 @@ def test_review_ui_headers_from_azure_polygon():
 
 def test_review_ui_recomputes_norm_from_bbox_ignoring_bad_stored():
     """Older Final1 JSON defaulted coord_origin to BOTTOMLEFT on image OCR."""
-    from app.adapters.local.repository import _section_headers_from_page
+    from app.store.local.repository import _section_headers_from_page
 
     page = {
         "fileName": "1.jpg",
@@ -251,7 +251,7 @@ def test_review_ui_recomputes_norm_from_bbox_ignoring_bad_stored():
 
 
 def test_review_ui_headers_from_pages_meta_lines():
-    from app.adapters.local.repository import (
+    from app.store.local.repository import (
         _filter_headers_against_canon,
         _section_headers_from_page,
     )

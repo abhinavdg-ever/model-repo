@@ -37,7 +37,7 @@ class _FakeConn:
 
 
 def _repo_with_pages(monkeypatch, n_pages, processed_pages=False):
-    from app.adapters.postgres.repository import PostgresFolderRepository
+    from app.store.postgres.repository import PostgresFolderRepository
     from app.services import blob_store
 
     rows = [
@@ -121,7 +121,7 @@ def test_derived_jpeg_cache_skips_the_producer_on_a_hit(tmp_path, monkeypatch):
 
 
 def test_header_matching_is_memoised_per_text(monkeypatch):
-    from app.adapters.local import repository as local_repo
+    from app.store.local import repository as local_repo
     from app.core.schemas import OcrSectionHeader
 
     matcher = local_repo._load_header_matcher()

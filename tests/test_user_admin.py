@@ -92,13 +92,13 @@ def test_short_passwords_and_odd_usernames_are_refused(table):
 def test_only_an_admin_reaches_the_user_routes(monkeypatch, table):
     from fastapi.testclient import TestClient
 
-    from app.api import routes
+    from app.routers import deps, users as routes
     from app.core.config import get_settings
     from app.main import app
 
     s = Settings(database_url="postgresql://u:p@db.example:5432/x", auth_secret="test-secret")
     app.dependency_overrides[get_settings] = lambda: s
-    monkeypatch.setattr(routes, "database_url_usable", lambda url: True)
+    monkeypatch.setattr(deps, "database_url_usable", lambda url: True)
 
     def bearer(role: str) -> dict:
         token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role=role))

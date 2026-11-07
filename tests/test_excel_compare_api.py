@@ -12,7 +12,7 @@ pytest.importorskip("httpx")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes import router
+from app.routers import router
 
 GROUND = (
     "PDF Id,Page No.,DOS From,DoS To,Codable or Non Codable\n"
@@ -118,12 +118,10 @@ class _Repo:
 
 
 @pytest.fixture()
-def repo(client):
-    from app.adapters.factory import get_repository
+def repo(client, monkeypatch):
+    from app.store.factory import get_repository
 
-    from types import SimpleNamespace
-
-    import app.api.routes as routes
+    import app.routers.excel_compare as routes
 
     from app.services.excel_compare import database_algo
 
@@ -137,11 +135,10 @@ def repo(client):
         runs = {f.name: f.last_updated_at for f in fake.folders if f.name in names}
         return docs, runs
 
-    saved = routes.build_folder_list, database_algo.fetch
-    routes.build_folder_list = lambda **_kwargs: SimpleNamespace(items=fake.folders)
-    database_algo.fetch = fetch
+    # The database is review-ui's only source (2026-11-07): the pipeline side is read through it.
+    monkeypatch.setattr(routes, "database_url_usable", lambda _url: True)
+    monkeypatch.setattr(database_algo, "fetch", fetch)
     yield fake
-    routes.build_folder_list, database_algo.fetch = saved
 
 
 def test_system_output_defaults_to_the_pipeline(client, repo):
@@ -192,7 +189,7 @@ _DB_LABELS = [
 
 
 def _database_ground(monkeypatch, asked):
-    import app.api.routes as routes
+    import app.routers.excel_compare as routes
 
     def labels(_url, charts, source, _schema):
         asked["charts"], asked["source"] = charts, source
@@ -232,7 +229,7 @@ def test_both_sides_from_the_database(client, repo, monkeypatch):
 
 
 def test_database_ground_truth_needs_a_database(client, monkeypatch):
-    import app.api.routes as routes
+    import app.routers.excel_compare as routes
 
     monkeypatch.setattr(routes, "database_url_usable", lambda _url: False)
     res = client.post("/api/excel-compare", data={"ground_source": "db"})

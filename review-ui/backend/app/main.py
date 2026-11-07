@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.api.routes import router
+from app.routers import router
 from app.core.config import get_settings
 from app.core.logging_setup import RequestLoggingMiddleware, configure_logging, logger
 from app.services.blob_store import blob_auth_label, check_blob_access, resolved_blob_account_url

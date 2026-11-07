@@ -57,7 +57,7 @@ _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = AN
 
 
 def _page(row: tuple) -> ImagingPageResult:
-    from app.adapters.postgres.repository import DUPLICATE_CONTENT_MARK, _blank_junk_ui, _fmt_date
+    from app.store.postgres.repository import DUPLICATE_CONTENT_MARK, _blank_junk_ui, _fmt_date
     from app.services.accuracy_cache import _CODEABLE, _text
     from app.services.imaging_overlays import compose_page_type, page_type_fields, signer_fields
 

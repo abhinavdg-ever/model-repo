@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from app.adapters.postgres import repository as repo_mod
-from app.adapters.postgres.repository import PostgresFolderRepository
+from app.store.postgres import repository as repo_mod
+from app.store.postgres.repository import PostgresFolderRepository
 from app.core.schemas import OcrTextResponse
 
 

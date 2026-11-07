@@ -20,8 +20,8 @@ from typing import Any, Iterator
 
 from fastapi import HTTPException
 
-from app.adapters.base import FolderRepository
-from app.adapters.local.repository import LocalFolderRepository, _fmt_dos_display, _normalize_kind
+from app.store.base import FolderRepository
+from app.store.local.repository import LocalFolderRepository, _fmt_dos_display, _normalize_kind
 from app.core.schemas import (
     FolderDetail,
     FolderSummary,
@@ -840,7 +840,7 @@ class PostgresFolderRepository(FolderRepository):
 
     def _build_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """Assemble OCR from ocr_results into ===== page ===== marker text for the UI."""
-        from app.adapters.local.repository import FINAL2_QUALITY_SKIP_MESSAGE
+        from app.store.local.repository import FINAL2_QUALITY_SKIP_MESSAGE
 
         normalized = _normalize_kind(kind)
         ocr_type = KIND_TO_OCR_TYPE[normalized]
@@ -930,7 +930,7 @@ class PostgresFolderRepository(FolderRepository):
                     "blank_junk",
                     "blank_junk_pass2",
                 }:
-                    from app.adapters.local.repository import (
+                    from app.store.local.repository import (
                         FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
                     )
 
@@ -947,18 +947,18 @@ class PostgresFolderRepository(FolderRepository):
                 and str(skip_reason or "").strip().lower()
                 in {"blank_junk_pass1", "blank_junk", "blank_junk_pass2"}
             ):
-                from app.adapters.local.repository import (
+                from app.store.local.repository import (
                     FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
                 )
 
                 body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
             if body and ocr_type in {"azuredocintel", "docling"}:
-                from app.adapters.local.repository import clean_ocr_display_text
+                from app.store.local.repository import clean_ocr_display_text
 
                 if not body.startswith("Skipped for "):
                     body = clean_ocr_display_text(body)
             if ocr_type in {"docling", "azuredocintel"} and parsed is not None:
-                from app.adapters.local.repository import (
+                from app.store.local.repository import (
                     _filter_headers_against_canon,
                     _section_headers_from_page,
                 )

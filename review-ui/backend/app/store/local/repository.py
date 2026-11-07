@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from app.adapters.base import FolderRepository
+from app.store.base import FolderRepository
 from app.services.dates import show_date
 from app.core.schemas import (
     FolderDetail,
@@ -508,7 +508,7 @@ def _core_pipeline_dir() -> Path | None:
             return core
     except Exception:
         pass
-    # review-ui/backend/app/adapters/local → parents[4] = monorepo
+    # review-ui/backend/app/store/local → parents[4] = monorepo
     here = Path(__file__).resolve()
     for parent in here.parents:
         core = parent / "core-pipeline"

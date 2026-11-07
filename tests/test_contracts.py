@@ -188,7 +188,7 @@ class TestPerChartCsvNamesAreRead:
 
     def test_folder_list_marks_every_stage_stream(self):
         source = (
-            REPO_ROOT / "review-ui" / "backend" / "app" / "adapters" / "local"
+            REPO_ROOT / "review-ui" / "backend" / "app" / "store" / "local"
             / "repository.py"
         ).read_text(encoding="utf-8")
         # The per-chart override loop in _pipeline_streams.
@@ -202,7 +202,7 @@ class TestPerChartCsvNamesAreRead:
 
     def test_detail_view_reads_every_stage_stream(self):
         source = (
-            REPO_ROOT / "review-ui" / "backend" / "app" / "adapters" / "local"
+            REPO_ROOT / "review-ui" / "backend" / "app" / "store" / "local"
             / "repository.py"
         ).read_text(encoding="utf-8")
         for suffix in self.STAGE_SUFFIXES:
@@ -503,7 +503,7 @@ class TestDatabaseUrlScheme:
             assert _psycopg_url(form) == "postgresql://u:p@h:5432/d", form
 
     def test_review_ui_accepts_every_form(self):
-        from app.adapters.postgres.repository import _psycopg_url
+        from app.store.postgres.repository import _psycopg_url
 
         for form in self.FORMS[:3]:  # review-ui does not claim psycopg2
             assert _psycopg_url(form) == "postgresql://u:p@h:5432/d", form
@@ -1275,8 +1275,8 @@ class TestManifestLookup:
 
     def test_local_mode_prefers_db_run_batch_over_metadata(self, tmp_path, monkeypatch):
         """Local Mode landing Run/Batch come from chart_list when DATABASE_URL is set."""
-        from app.adapters.local import repository as local_repo
-        from app.adapters.local.repository import LocalFolderRepository
+        from app.store.local import repository as local_repo
+        from app.store.local.repository import LocalFolderRepository
         from app.services.metadata_csv import clear_metadata_cache
 
         clear_metadata_cache()
@@ -1339,8 +1339,8 @@ class TestManifestLookup:
         ) == {"member": "From DB", "dob": "01/01/1950", "memberId": "M9", "measure": None, "serviceNote": None}
 
     def test_local_mode_prefers_db_manifest_over_metadata(self, tmp_path, monkeypatch):
-        from app.adapters.local import repository as local_repo
-        from app.adapters.local.repository import LocalFolderRepository
+        from app.store.local import repository as local_repo
+        from app.store.local.repository import LocalFolderRepository
         from app.services.metadata_csv import clear_metadata_cache
 
         clear_metadata_cache()

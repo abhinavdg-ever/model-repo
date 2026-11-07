@@ -67,7 +67,7 @@ def test_the_configured_account_signs_in_without_touching_the_database(monkeypat
 def test_saving_ground_truth_needs_a_signed_in_user(monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app.api import routes
+    from app.routers import charts as routes
     from app.core.config import get_settings
     from app.main import app
 
@@ -98,7 +98,7 @@ def test_saving_ground_truth_needs_a_signed_in_user(monkeypatch) -> None:
 def test_only_an_admin_can_delete_a_chart(monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app.api import routes
+    from app.routers import charts as routes
     from app.core.config import get_settings
     from app.main import app
 

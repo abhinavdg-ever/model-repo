@@ -73,7 +73,7 @@ def test_the_schema_defines_chart_review_and_the_changes_file_adds_it():
 
 
 def test_every_ground_truth_save_route_refuses_a_frozen_chart():
-    routes = (REPO_ROOT / "review-ui/backend/app/api/routes.py").read_text(encoding="utf-8")
+    routes = (REPO_ROOT / "review-ui/backend/app/routers/charts.py").read_text(encoding="utf-8")
     for route in (
         '@router.post("/folders/{folder_id}/ground-truth"',
         '@router.put("/folders/{folder_id}/ground-truth/sequence"',

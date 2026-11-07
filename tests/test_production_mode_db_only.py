@@ -1,7 +1,7 @@
 """Production Mode reads Postgres and Azure Blob only: no workspace, no staging."""
 from __future__ import annotations
 
-from app.adapters.factory import build_repository
+from app.store.factory import build_repository
 from app.core.config import Settings
 
 
@@ -37,7 +37,7 @@ def test_data_mode_local_is_ignored():
 
 def test_the_extraction_pane_reads_no_staging_in_production(tmp_path):
     # Production reads additional_page_details (unreachable here), never the staging file.
-    from app.api.routes import get_folder_extraction
+    from app.routers.charts import get_folder_extraction
 
     result = get_folder_extraction("chart1", page="1.jpg", settings=_production(tmp_path))
     assert result.available is False and result.section_headers == []

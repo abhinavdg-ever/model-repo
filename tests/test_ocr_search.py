@@ -130,7 +130,7 @@ def test_a_one_letter_query_is_refused():
 def test_only_an_admin_searches(monkeypatch):
     from fastapi.testclient import TestClient
 
-    from app.api import routes
+    from app.routers import deps as routes
     from app.core.config import get_settings
     from app.main import app
 
@@ -154,7 +154,7 @@ def test_only_an_admin_searches(monkeypatch):
 
 
 def test_a_page_with_no_blob_says_why():
-    from app.adapters.postgres.repository import PostgresFolderRepository
+    from app.store.postgres.repository import PostgresFolderRepository
 
     repo = PostgresFolderRepository("postgresql://u:p@db:5432/x")
     repo._no_blob("c1", 2, "not in imaging-pipeline/Processed/R1/c1/pages/2.jpg")

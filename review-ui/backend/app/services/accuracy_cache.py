@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app.adapters.postgres.repository import _blank_junk_ui, _fmt_date
+from app.store.postgres.repository import _blank_junk_ui, _fmt_date
 from app.core.config import Settings
 from app.core.schemas import (
     AccuracyChartPayload,

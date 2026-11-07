@@ -401,13 +401,13 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app: CORS, router mount, static frontend serving. |
-| `api/routes.py` | Every endpoint: health, config, folder list and detail, page images (from Azure Blob), OCR text by kind, imaging results, ground truth, accuracy, CSV export. |
+| `routers/` | Every endpoint: health, config, folder list and detail, page images (from Azure Blob), OCR text by kind, imaging results, ground truth, accuracy, CSV export. |
 | `core/config.py` | Pydantic settings: database URL, Azure Blob, CORS, sign-in, Playground. One mode: the database (`DATA_MODE` is ignored). |
 | `core/schemas.py` | Response models — `FolderSummary`, `FolderDetail`, `ImagingDocumentResponse`, `OcrTextResponse` — the contract the frontend types against. |
-| `adapters/base.py` | The `FolderRepository` interface. |
-| `adapters/factory.py` | Builds the Postgres repository (the only one since 2026-11-07). |
-| `adapters/local/repository.py` | Shared helpers the Postgres repository still imports (OCR display cleanup, section-header matching, labels). No longer a data source; it goes with the `store/` split (docs/PLATFORM_PLAN.md). |
-| `adapters/postgres/repository.py` | **The repository.** The interface over the schema.sql tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. Nothing is read from disk. |
+| `store/base.py` | The `FolderRepository` interface. |
+| `store/factory.py` | Builds the Postgres repository (the only one since 2026-11-07). |
+| `store/local/repository.py` | Shared helpers the Postgres repository still imports (OCR display cleanup, section-header matching, labels). No longer a data source; it goes with the `store/` split (docs/PLATFORM_PLAN.md). |
+| `store/postgres/repository.py` | **The repository.** The interface over the schema.sql tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. Nothing is read from disk. |
 | `services/imaging_overlays.py` | Field mapping and labels shared by the screens: the canonical page-type labels, date formatting, provider and name cleanup. |
 | `services/imaging_csv.py` | Streams the combined export CSV. |
 | `services/blob_store.py` | Proxies page images from Azure Blob (managed identity, Entra, key or SAS). |
