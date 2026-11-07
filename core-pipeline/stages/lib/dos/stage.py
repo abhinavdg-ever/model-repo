@@ -154,20 +154,20 @@ def _date_rows(hit: dict[str, Any]) -> list[dict[str, Any]]:
 def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Staged DOS rows as the dates dos_logic reads; ``confidence`` is the model's score, or
     the rules' score when no model ran."""
-    from stages.lib.extraction.util.dates import canonical_date
+    from stages.lib.extraction.util.dates import canonical_date, is_iso_date
 
     found: list[dict[str, Any]] = []
     for row in rows:
         raw = str(row.get("dos_from") or row.get("value") or "")
         iso = canonical_date(raw)
-        if len(iso) != 10:
+        if not is_iso_date(iso):
             continue
         # A range ("Date of Service: a - b") keeps its end date.
         iso_to = canonical_date(str(row.get("dos_to") or ""))
         found.append(
             {
                 "iso": iso,
-                "iso_to": iso_to if len(iso_to) == 10 and iso_to > iso else "",
+                "iso_to": iso_to if is_iso_date(iso_to) and iso_to > iso else "",
                 "raw": raw,
                 "sentence": row.get("sentence") or "",
                 "tier": row.get("tier") or "",
@@ -204,7 +204,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         from stages.lib.extraction.stage import ensure_staging
 
         staged = ensure_staging(chart_id, ctx.chart_name)
-        from stages.lib.extraction.util.dates import canonical_date
+        from stages.lib.extraction.util.dates import canonical_date, is_iso_date
         # Every key/value date the rules accepted; dos_logic picks by the page's priority.
         kv_dates: dict[str, list[dict[str, Any]]] = {}
         print_texts: dict[str, str] = {}
@@ -216,7 +216,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             if staged_page is not None:
                 signed = [canonical_date(str(row.get("signature_date") or ""))
                           for row in staged_page.accepted("electronic_signature")]
-                signed = [iso for iso in signed if len(iso) == 10]
+                signed = [iso for iso in signed if is_iso_date(iso)]
                 if signed:
                     signature_dates[page["page_name"]] = signed
             # The print keys' sentences ('Printed: 10/30/20258:10 AM'), read or not.

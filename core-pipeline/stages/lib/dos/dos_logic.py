@@ -31,6 +31,7 @@ Labels and settings live in ``keyword-canon/dos_canon.json`` (reloads on change)
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
@@ -38,6 +39,9 @@ from typing import Any, Optional
 
 from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
+from stages.lib.extraction.util.dates import is_iso_date
+
+logger = logging.getLogger(__name__)
 
 
 # --- editable config ---------------------------------------------------------
@@ -477,7 +481,7 @@ def kv_dated(candidates: list[dict[str, Any]], printed: frozenset[str] | set[str
     printed = set(printed) | {str(item.get("iso")) for item in candidates or [] if item.get("tier") == "printed"}
     return [
         item for item in candidates or []
-        if len(str(item.get("iso") or "")) == 10
+        if is_iso_date(item.get("iso"))
         and item.get("tier") != "printed"
         and not amended_item(item)
         and str(item.get("iso")) not in printed
@@ -515,7 +519,7 @@ def kv_page_date(
         # The admit / discharge backup (a misclassified discharge page) keeps the pair.
         return admit_discharge_date(_kv_stay(dated), [], prof)
     iso, iso_to = str(item["iso"]), str(item.get("iso_to") or "")
-    is_pair = len(iso_to) == 10 and iso_to > iso
+    is_pair = is_iso_date(iso_to) and iso_to > iso
     group = _group(item, prof, rank)
     rivals = [it for it in dated if _group(it, prof, rank) == group and str(it["iso"]) != iso
               and score(it) >= 0.8 * score(item)]
@@ -647,7 +651,7 @@ def signature_page_date(signature_dates: list[str], prof: Optional[DosProfile] =
                         printed: frozenset[str] | set[str] = frozenset()) -> Optional[PageDate]:
     """2026-11-01 (user): the last electronic signature's date (the main doctor's) on the page."""
     prof = prof or profile()
-    dated = [iso for iso in signature_dates if len(iso) == 10 and iso not in printed]
+    dated = [iso for iso in signature_dates if is_iso_date(iso) and iso not in printed]
     if not dated:
         return None
     return PageDate(dated[-1], dated[-1], conf.score(prof.confidence.get("signature", 0.6), "no_model", module="dos"),
@@ -706,6 +710,9 @@ def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str]
 
 
 def iso_to_mdy(iso: str) -> str:
+    """YYYY-MM-DD as MM-DD-YYYY; '' for anything that is not a real ISO date."""
+    if not is_iso_date(iso):
+        return ""
     y, m, d = iso.split("-")
     return f"{m}-{d}-{y}"
 
@@ -756,6 +763,11 @@ def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
 
     The document-level columns are the page's own date (DOS_DEFAULT_DATE when
     it has none); nothing is carried from another page here."""
+    if page_date is not None and not (is_iso_date(page_date.dos_from) and is_iso_date(page_date.dos_to)):
+        # Never fail a chart on one unreadable date: the page is treated as undated.
+        logger.warning("DOS: page %s dropped an unreadable date %r..%r (%s)", page.get("page_name"),
+                       page_date.dos_from, page_date.dos_to, page_date.source)
+        page_date = None
     doc_from = page_date.dos_from if page_date else prof.default_date
     doc_to = page_date.dos_to if page_date else prof.default_date
     if page_date is None:

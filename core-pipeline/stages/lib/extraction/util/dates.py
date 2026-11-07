@@ -92,6 +92,23 @@ def canonical_date(raw: str) -> str:
     return text.casefold()
 
 
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def is_iso_date(value: object) -> bool:
+    """A real YYYY-MM-DD date. canonical_date returns the text itself (casefolded) when it
+    cannot read a date, so its length alone proves nothing: 'nov 3 2025' is 10 characters
+    too (2026-11-07, a chart failed on it)."""
+    text = str(value or "")
+    if not _ISO_DATE.match(text):
+        return False
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
 def date_year(raw: str) -> int | None:
     """Four-digit year of a matched date; two-digit years map to 20xx unless in the future."""
     text = normalize_date(raw)
