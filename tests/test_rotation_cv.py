@@ -86,10 +86,10 @@ def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn, doc
 
 def test_agreed_turn_is_undone_when_the_page_reads_better_as_it_arrived(monkeypatch, tmp_path):
     """2026-11-07 (user): an upright form that OSD and CV both called 180 stays at 0. The
-    agreed turn stands when the page reads better turned (or equally well)."""
+    check is for an agreed 180 only: an agreed 90 / 270 stands, however the page reads."""
     for agreed, reads, expected in ((180, {0: 60, 180: 3}, (0.0, "readability")),
                                     (180, {0: 3, 180: 60}, (180.0, "osd_cv_agree")),
-                                    (90, {0: 40, 90: 40}, (90.0, "osd_cv_agree"))):
+                                    (90, {0: 60, 90: 3}, (90.0, "osd_cv_agree"))):
         _run_cv_side(monkeypatch, tmp_path, agreed, 0, reads, document_type="printed")  # page + patches
         monkeypatch.setattr(osd_module, "detect_rotation", lambda image, t=agreed: {"rotation": t, "confidence": 5.0})
         out = stage._detect_rotation(tmp_path / "p.png")
@@ -135,3 +135,22 @@ def test_rotation_log_lists_only_turned_pages(tmp_path, monkeypatch):
     assert [line.split("\t")[2] for line in lines] == ["page=2.jpg", "page=3.jpg"]
     assert "osd=90" in lines[0] and "opencv=90" in lines[0] and "agree=yes" in lines[0]
     assert "opencv=180" in lines[1] and "agree=no" in lines[1]
+
+
+def test_visual_page_turn_is_measured_without_its_border(monkeypatch, tmp_path):
+    """2026-11-07 (user): a visual page is trimmed by VISUAL_CROP on every side before OSD and
+    CV look at it (a thin upright header round a sideways card); other pages are not."""
+    seen = {}
+
+    def osd(image):
+        seen["osd"] = image.shape[:2]
+        return {"rotation": 0, "confidence": 5.0}
+
+    for document_type, trimmed in (("visual", True), ("printed", False)):
+        _run_cv_side(monkeypatch, tmp_path, 0, 0, {0: 60}, document_type=document_type)
+        monkeypatch.setattr(osd_module, "detect_rotation", osd)
+        monkeypatch.setattr(stage, "_cv_result", lambda image: (seen.__setitem__("cv", image.shape[:2]) or 0, {}))
+        stage._detect_rotation(tmp_path / "p.png")
+        full = (1400, 1000)
+        want = (1400 - 2 * 28, 1000 - 2 * 20) if trimmed else full
+        assert seen["osd"] == want and seen["cv"] == want

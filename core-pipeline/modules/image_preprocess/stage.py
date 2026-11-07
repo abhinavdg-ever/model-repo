@@ -202,7 +202,12 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             tilt_that_reads,
         )
 
-        osd = osd_rotation(image)
+        # 2026-11-07 (user): on a visual page the turn is measured with VISUAL_CROP trimmed off
+        # every side, so a thin upright header / footer round a sideways card does not decide
+        # it. The correction is still applied to the whole page.
+        _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
+        seen = _trim(image, VISUAL_CROP) if tags.get("document_type") == "visual" else image
+        osd = osd_rotation(seen)
         if osd is not None:
             proposed = int(osd["rotation"])
             method = "osd"
@@ -227,15 +232,14 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # disagree the reading rule decides as before. Both 0 on a page that does not read
         # well: only the mirror is tried, at 0, and kept when the flipped page reads and
         # reads more English (a face-down scan; 2026-11-03, user).
-        cv_turn, cv_detail = _cv_result(image)
+        cv_turn, cv_detail = _cv_result(seen)
         agreed = osd is not None and cv_turn is not None and cv_turn == proposed
-        _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
         small = None
         # 2026-11-06 (user): on a visual page CV's quarter-turn (90 / 270) is final, whatever OSD
         # says -- no reading search (a picture has too little text to read either way).
         cv_final = tags.get("document_type") == "visual" and cv_turn in (90, 270)
         if tags.get("document_type") != "blank":
-            small = page_for_reading(image)
+            small = page_for_reading(seen)
             if cv_final:
                 orientation, mirrored = float(cv_turn), False
                 chosen_read = read_page(small, cv_turn)
@@ -247,10 +251,10 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                     flipped = read_page(small, 0, mirrored=True)
                     if flipped.reads and flipped.english > chosen_read.english:
                         mirrored, chosen_read, method = True, flipped, "readability"
-                elif proposed != 0:
-                    # 2026-11-07 (user): both can agree on a wrong turn (an upright form
-                    # read as 180 by both). The agreed turn stands only when the page as it
-                    # arrived does not read better.
+                elif proposed == 180:
+                    # 2026-11-07 (user): both can agree on a wrong 180 (an upright form read
+                    # upside down by both). An agreed 180 stands only when the page as it
+                    # arrived does not read better. Agreed 90 / 270 stand as before.
                     as_is = read_page(small, 0)
                     if as_is.reads and as_is.english > chosen_read.english:
                         orientation, chosen_read, method = 0.0, as_is, "readability"
@@ -336,6 +340,19 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "orientation_confidence": _stand_in(),
             "tilt_confidence": _stand_in(),
         }
+
+
+# Share of each side trimmed off a visual page before its turn is measured (2026-11-07, user).
+VISUAL_CROP = 0.02
+
+
+def _trim(image: Any, share: float) -> Any:
+    """``image`` with ``share`` of its height / width cut off every side."""
+    height, width = image.shape[:2]
+    dy, dx = int(height * share), int(width * share)
+    if dy * 2 >= height or dx * 2 >= width:
+        return image
+    return image[dy:height - dy, dx:width - dx]
 
 
 def _stand_in() -> float:

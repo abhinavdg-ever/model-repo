@@ -1092,3 +1092,24 @@ def test_section_header_classes_cover_the_canon():
     assert {"insurance", "subscriber"} <= card_rules.CARD_HEADERS
     assert "demographics" not in card_rules.CARD_HEADERS
     assert card_rules.blocking_headers(("Insurance", "Demographics", "Chief Complaint")) == ["Demographics", "Chief Complaint"]
+
+
+LICENCE_TEXT = """Patient: Doe, Jane DOB: 01/01/1950
+ARIZONA The Grand Canyon State DRIVER LICENSE 4d DLN B12345678 4b EXP 07/05/2029
+3 DOB 07/10/1954 4a ISS 07/05/2024 1 SAMPLE 2 JANE 8 1 MAIN ST MESA AZ 85204
+15 SEX F 16 HGT 5'-07" 17 WGT 160 lb 18 EYES BLU 9 CLASS D 9a ENDORSEMENTS NONE
+12 RESTRICTIONS B 5 DD 1234567890123
+Document: 2024/12/12 pt az id Page 1 of 4 Printed: 04-30-2026"""
+
+
+def test_licence_on_a_visual_page_is_a_card_without_card_or_name_words():
+    """2026-11-07 (user): visual + driver's licence is junk. A licence prints neither 'card' nor a
+    'Name' label; on a printed page those guards still apply."""
+    import card_rules
+
+    visual = card_rules.detect(LICENCE_TEXT, visual=True, headings=("Demographics",), text_area=0.8)
+    assert visual.is_card and visual.card_type == "drivers_license"
+    printed = card_rules.detect(LICENCE_TEXT)
+    assert not printed.is_card and "no word 'card'" in printed.blocked_by
+    form = card_rules.detect(LICENCE_TEXT + "\nPlease complete this form", visual=True)
+    assert not form.is_card

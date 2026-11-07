@@ -242,10 +242,17 @@ def word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9]{2,}", text or ""))
 
 
+# A licence or state ID prints neither the word "card" nor a "Name" label (its fields are
+# numbered), so on a visual page its title + two licence fields decide alone (2026-11-07, user:
+# visual + driver's licence is junk). Form and letter words still block it.
+LICENSE_KINDS = ("drivers_license", "state_id", "drivers_license_or_id")
+
+
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
-           text_area: float | None = None) -> CardResult:
+           text_area: float | None = None, visual: bool = False) -> CardResult:
     """``headings``: the page's section headers (stage 6); ``text_area``: the share of the page
-    the text covers (None = not measured, the rule is then off)."""
+    the text covers (None = not measured, the rule is then off); ``visual``: the page-tag model
+    calls the page visual (a licence / state ID then needs only its own words)."""
     text = text or ""
     words = word_count(text)
     stamp = DOCUMENT_STAMP.search(text)
@@ -299,6 +306,8 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         matched = matched + [f"stamp: {stamp.group(0)}"]
 
     blocked = [f"{name}: {', '.join(h)}" for name, pats in BLOCKERS.items() if (h := _hits(pats, text))]
+    if visual and kind in LICENSE_KINDS:
+        return CardResult(not blocked, kind, matched, blocked, words)
     if words > max_words:
         blocked.append(f"too long: {words} words")
     if not CARD_WORD.search(text):

@@ -675,7 +675,8 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # ---- pass 2
     # 1. card (printed or visual): an ID / insurance card, junked at 5 below.
-    card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area)
+    card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area,
+                        visual=inputs.document_type == "visual")
             if inputs.document_type in CARD_DOCUMENT_TYPES else None)
     # 2026-11-05 (user): card or no card (no strong / medium). A card goes through the same keeps
     # as any other junk (more than 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in
