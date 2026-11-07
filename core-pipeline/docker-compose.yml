@@ -2,14 +2,12 @@
 #
 #   docker compose --env-file .env up -d --build
 #
-# Shares two things with the review-ui deployment, and nothing else:
-#   * the Postgres database (DATABASE_URL)
-#   * the chart workspace volume (DATA_HOST_PATH -> /data/folders)
-# This service WRITES that volume; review-ui mounts the same path read-only.
-# There is no HTTP call in either direction.
+# Shares only data with review-ui: the database (DATABASE_URL) and Azure Blob.
+# Chart working folders are scratch in ./outputs (deleted after 7 unused days);
+# review-ui does not mount them. Guide: docs/VM_GUIDE.md.
 #
-# Apply the schema once before the first run (one file, no migrations):
-#   psql "$DATABASE_URL" -f ../schema/schema.sql
+# Database: new  -> psql "$DATABASE_URL" -f ../schema/schema.sql
+#           existing -> psql "$DATABASE_URL" -f ../schema/migrate.sql
 
 services:
   api:
