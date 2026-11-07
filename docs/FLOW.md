@@ -159,3 +159,39 @@ the survivors. Blank / junk pass 1 pays for itself, because every page it rules 
 a page the two final OCR stages never read, and stage 5 is the billed one.
 `python cli.py usage --days 7` shows the real numbers per day: runs, pages, time and
 Azure cost (`run_usage`).
+
+---
+
+## 9. Next: the Service Bus queue (planned, not built yet)
+
+Today the API runs the stages itself, in the background of the same process (§2). The
+Service Bus queue `chart-runs` exists in Azure and `SERVICEBUS_CONNECTION_STRING` /
+`SERVICEBUS_QUEUE` are in `core-pipeline/.env`, but **no code reads them yet**. After that
+phase the flow splits into a small API and separate workers:
+
+```
+ caller ──X-API-Key──► orchestrator API (1 copy, small, no models)
+                           │  records the run, 1 message per chart (session = chart_id)
+                           ▼
+                  Service Bus queue "chart-runs"
+                     │            │            │
+                     ▼            ▼            ▼
+                  worker 1     worker 2     worker 3      docker compose up --scale worker=3
+                  1 chart      1 chart      1 chart       models loaded once per worker
+                     └────────────┴─────┬──────┘
+                                        ▼  each worker runs §2's 15 stages and writes
+                               Postgres (Cosmos later) + Blob directly
+```
+
+- **The API stops processing charts.** It checks the key, records the run, queues one
+  message per chart and answers `202` with a `run_id`. Status: `GET /v1/runs/{run_id}`,
+  or `?wait=60` for a small chart.
+- **Workers pull one chart at a time.** A batch spreads itself over the workers; adding a
+  worker needs no code change.
+- **Session = chart_id**, so the same chart never runs twice at once.
+- **Crash-safe.** A dead worker's message returns after its 5-minute lock and another
+  worker carries on, skipping finished stages. After 5 failed deliveries it goes to the
+  dead-letter queue.
+- The stage chain, the tables and review-ui do not change.
+
+The VM side (worker count, memory): [specials/VM_GUIDE.md §3](specials/VM_GUIDE.md).
