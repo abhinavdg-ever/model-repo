@@ -93,6 +93,58 @@ These are not fetched by the commands above, and they are not baked into the Doc
 | `models/blank-junk/` | `bert/` (DistilBERT), `default.json` | Blank and junk: DistilBERT is one of the two voters. Missing folder, or no torch / transformers, means the vote runs on keywords alone (`/health` says `engine: keywords`). |
 | `models/page-family/page-axes/` | `encoder/`, `heads.pt`, `label_space.json` from `training/bert-training/train_axes.py` | Page axes (L1 / L2 / L3 top 3, specialty). `label_space.json` `taxonomy_version` must equal `page_arbitration.json` → `axes.taxonomy_version` (v29.2). Missing folder, another version, or no transformers / torch means the keyword canon (`page_canon.json`) decides (`/health` says so). |
 
+### From Blob instead of by hand (phase 8)
+
+Models (and, optionally, the keyword canon) can be published once to the Blob container
+`imaging-models` and fetched by every host. Layout: `manifest.json` (live version + SHA-256
+and size of every file), `models/<name>/<version>/…`, `canon/<version>/*.json`. Same
+storage account and credentials as `AZURE_STORAGE_*`. Code: `core-pipeline/common/resources.py`.
+
+| Setting (`core-pipeline/.env`, section 15) | Default | Meaning |
+|---|---|---|
+| `RESOURCES_FROM_BLOB` | `false` | `true`: at API start (`serve`) and before CLI `run` / `batch-run`, download every file that is missing or differs from `manifest.json` into `core-pipeline/models/<name>/` |
+| `RESOURCES_CONTAINER` | `imaging-models` | Container holding the manifest |
+| `RESOURCES_MODELS` | blank = all | Comma list of model names to fetch on this host |
+| `RESOURCES_CANON_FROM_BLOB` | `false` | `true`: also overwrite `core-pipeline/resources/canon/` with the published canon. `false` keeps the git copy |
+
+Each file is downloaded to a temporary file, checked against the manifest's SHA-256 and size,
+and only then moved into place; a mismatch is refused and the old file kept. Unchanged files
+are not downloaded again (hashes are cached in `models/.resources-state.json`). If Blob cannot
+be reached the API starts with what is on disk and `/health` → `resources` says
+`reachable: false`. A new model version takes effect on the next restart. The first start on an
+empty host downloads everything (about 3 GB) before the API answers.
+
+Publish (from the Mac or the Windows laptop, never from a worker). `._*`, `.DS_Store` and
+`__pycache__` are skipped; the manifest write is conditional on its etag, so two publishers
+never overwrite each other:
+
+```bash
+# macOS / Ubuntu VM
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/publish_resources.py --model sequencing --version v2 --dry-run   # list only
+python ../utilities/publish_resources.py --model sequencing --version v2
+python ../utilities/publish_resources.py --model page-family --version v4 --from /data/page-family
+python ../utilities/publish_resources.py --canon --version 2026-11-08a
+python ../utilities/publish_resources.py --list
+python -m common.resources sync --model sequencing          # pull now, into models/
+python -m common.resources sync --dest /tmp/check           # pull into another folder
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+python ..\utilities\publish_resources.py --model sequencing --version v2 --dry-run
+python ..\utilities\publish_resources.py --model sequencing --version v2
+python ..\utilities\publish_resources.py --model page-family --version v4 --from C:\data\page-family
+python ..\utilities\publish_resources.py --canon --version 2026-11-08a
+python ..\utilities\publish_resources.py --list
+python -m common.resources sync --model sequencing
+python -m common.resources sync --dest C:\temp\check
+```
+
+Rolling back: publish the old folder again (any version name); the manifest points at the
+last one published.
+
 ---
 
 ## 3. Starting uvicorn

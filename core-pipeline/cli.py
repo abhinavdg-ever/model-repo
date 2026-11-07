@@ -246,6 +246,12 @@ def main() -> None:
 
         configure_logging(logging.INFO)
 
+    if args.cmd in ("run", "batch-run", "batch"):
+        # Phase 8: models from Blob before the stages load them (off unless RESOURCES_FROM_BLOB=true).
+        from common.resources import ensure_resources
+
+        ensure_resources()
+
     if args.cmd == "serve":
         from apps.orchestrator_api.main import main as serve_main
 

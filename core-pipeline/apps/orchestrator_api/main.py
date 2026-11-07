@@ -136,6 +136,12 @@ def _startup() -> None:
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
+    # Phase 8: models (and optionally canon) from Blob, before anything loads them.
+    # Off unless RESOURCES_FROM_BLOB=true; never raises (Blob down = use what is on disk).
+    from common.resources import ensure_resources
+
+    ensure_resources()
+
     # Optional features: OK / off only — no path dumps.
     try:
         from common.capabilities import all_capabilities, startup_lines

@@ -352,6 +352,16 @@ def extraction_status() -> dict[str, Any]:
         return {"ready": False, "reason": str(exc)}
 
 
+def _resources_status() -> dict[str, Any]:
+    """Models / canon from Blob (phase 8): what the start-up fetch did. No network."""
+    try:
+        from common.resources import resources_status
+
+        return resources_status()
+    except Exception as exc:
+        return {"enabled": False, "ready": False, "reason": str(exc)}
+
+
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
     from modules.ocr.docling_ocr import docling_status
@@ -368,6 +378,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),
         "extraction": extraction_status(),
+        "resources": _resources_status(),
         "skip_ocr": {
             "enabled": SKIP_OCR,
             "ready": True,

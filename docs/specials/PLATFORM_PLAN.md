@@ -389,7 +389,7 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 | 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Not started** (DB-only and Blob images: done) |
 | 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Not started** |
 | 7a | Monitoring | `run_usage` now; `runs.usage` + `metrics` on Cosmos; LLM wrapper; `/v1/metrics`; review-ui Usage page | every run shows time, Doc Intel pages and cost | **Partly:** `run_usage` and `cli.py usage` built; no LLM wrapper, `/v1/metrics` or Usage page |
-| 8 | Resources from Blob | `manifest.json`, `publish_resources.py`, models fetched at worker start, canon checked before each run, fingerprints | a new model reaches every host with no manual copy | **Not started** (weights still copied by hand) |
+| 8 | Resources from Blob | `manifest.json`, `publish_resources.py`, models fetched at worker start, canon checked before each run, fingerprints | a new model reaches every host with no manual copy | **Built 2026-11-08, off by default** (`RESOURCES_FROM_BLOB`): `common/resources.py` fetch with sha256 check, `utilities/publish_resources.py`, `/health.resources`; checked on the real `imaging-models` container. Not yet: canon re-check before each chart, versions stamped on results |
 | 9 | AKS | — | — | **Parked** (2026-11-07) |
 | — | db-utilities | manifests and ground truth loaded by their own Docker job | core-pipeline has no load code | **Done** on Postgres (2026-11-07); Cosmos writer in phase 7 |
 
@@ -494,12 +494,12 @@ review-ui's chart views (detail, OCR, imaging, page images) read from Cosmos.
 
 In build order:
 
-1. **History migration (phase 7).** A utility copying every Postgres chart, page result,
-   job, manifest row, ground truth and user into Cosmos, with per-chart count checks.
+1. **History migration (phase 7):** built (`utilities/migrate_postgres_to_cosmos.py`, the
+   Mac's 5 charts copied with matching counts); left: users, and the run on the VM's database.
 2. **review-ui on Cosmos, the rest (phase 6).** Landing list, ground-truth edits and history,
    users and sign-in, review log, tags, accuracy, search, Manual Review, chart delete.
-3. **Models and canon from Blob (phase 8).** `imaging-models/manifest.json`, a publish
-   script, fetch-at-start with fingerprints.
+3. **Models and canon from Blob (phase 8):** built (off by default); left: the canon re-check
+   before each chart and model / canon versions stamped on results.
 4. **Service Bus and separate workers (phase 4).** The API enqueues, workers pull one
    chart each (sessions, lock renewal, dead-letter), the `X-API-Key` check, two images.
 5. **Outputs (phase 3).** Stage-to-stage data out of `staging/*.json` into the page docs;
@@ -508,4 +508,5 @@ In build order:
    `/dos`, `/v1/runs/{run_id}` with `?wait=`.
 7. **Monitoring leftovers (7a).** LLM token wrapper, `/v1/metrics`, the review-ui Usage page.
 8. **review-ui-client replica.** The clone job rewritten for Cosmos (a replica database).
-9. **`infra/`.** Bicep for the Cosmos containers (main + replica), the queue and `imaging-models`.
+9. **`infra/`:** written (Bicep for Cosmos, the queue, `imaging-models`); not yet run (no
+   Azure CLI on the Mac).
