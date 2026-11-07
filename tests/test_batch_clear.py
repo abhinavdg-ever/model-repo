@@ -6,15 +6,15 @@ import inspect
 
 
 def test_a_batch_does_not_clear_its_charts_before_they_run():
-    from jobs import batch_intake
-    from orchestrator import runner
+    from apps.worker.jobs import batch_intake
+    from apps.worker import runner
 
     assert not hasattr(runner, "clear_before_batch")
     assert "_clear_for_rerun" not in inspect.getsource(batch_intake)
 
 
 def test_quality_kept_by_memory_store():
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
 
     store = MemoryStore()
     store.quality[1] = {"chart_id": 7, "page_id": 1}

@@ -215,9 +215,9 @@ class TestPerChartCsvNamesAreRead:
 
 class TestCombinedOcrFormat:
     def test_marker_round_trips(self):
-        from db.paths import parse_combined_ocr_txt, write_combined_ocr_txt
+        from common.db.paths import parse_combined_ocr_txt, write_combined_ocr_txt
 
-        import config
+        from common import config
 
         original_root = config.DATA_ROOT
         try:
@@ -235,9 +235,9 @@ class TestCombinedOcrFormat:
 
     def test_final1_json_round_trips_like_final2(self):
         """Local Mode and load_ocr_text_for_page both read pages[].content."""
-        from db.paths import load_ocr_text_for_page, parse_ocr_json, write_final1_json
+        from common.db.paths import load_ocr_text_for_page, parse_ocr_json, write_final1_json
 
-        import config
+        from common import config
 
         original_root = config.DATA_ROOT
         try:
@@ -281,7 +281,7 @@ class TestStageRegistry:
     def test_execution_chain_matches_the_schema_seed(self):
         """pipeline_stage drives progress reporting, STAGE_CHAIN drives
         execution. If they disagree, a chart can never reach 'completed'."""
-        from orchestrator.runner import STAGE_CHAIN
+        from apps.worker.runner import STAGE_CHAIN
 
         # schema.sql Part 1 seeds the implemented stages; Part 2 registers stages that
         # are not orchestrated yet (is_phase1 = FALSE).
@@ -312,7 +312,7 @@ class TestStageRegistry:
             )
 
     def test_stage_names_are_exposed_for_the_rerun_api(self):
-        from orchestrator.runner import STAGE_NAMES
+        from apps.worker.runner import STAGE_NAMES
 
         assert "blank_junk:2" in STAGE_NAMES
         assert "member_verify:1" in STAGE_NAMES
@@ -497,7 +497,7 @@ class TestDatabaseUrlScheme:
     ]
 
     def test_core_pipeline_accepts_every_form(self):
-        from config import _psycopg_url
+        from common.config import _psycopg_url
 
         for form in self.FORMS:
             assert _psycopg_url(form) == "postgresql://u:p@h:5432/d", form
@@ -553,14 +553,14 @@ class TestBatchFolderDiscovery:
         return tmp_path
 
     def test_finds_only_subfolders_containing_images(self, tmp_path):
-        from jobs.batch_intake import find_local_chart_folders
+        from apps.worker.jobs.batch_intake import find_local_chart_folders
 
         names = [p.name for p in find_local_chart_folders(self._drop(tmp_path))]
         assert names == ["chart_a", "chart_b"], names
 
     def test_a_single_chart_folder_is_itself_the_chart(self, tmp_path):
         """Pointing at one chart must work, not return its subfolders."""
-        from jobs.batch_intake import find_local_chart_folders
+        from apps.worker.jobs.batch_intake import find_local_chart_folders
 
         drop = self._drop(tmp_path)
         found = find_local_chart_folders(drop / "chart_a")
@@ -568,26 +568,26 @@ class TestBatchFolderDiscovery:
 
     def test_appledouble_stubs_do_not_make_a_folder_a_chart(self, tmp_path):
         """A folder holding only ._ stubs has no real images."""
-        from jobs.batch_intake import find_local_chart_folders
+        from apps.worker.jobs.batch_intake import find_local_chart_folders
 
         (tmp_path / "stubs_only").mkdir()
         (tmp_path / "stubs_only" / "._p1.jpg").write_text("", encoding="utf-8")
         assert find_local_chart_folders(tmp_path) == []
 
     def test_missing_directory_is_an_error_not_an_empty_batch(self, tmp_path):
-        from jobs.batch_intake import find_local_chart_folders
+        from apps.worker.jobs.batch_intake import find_local_chart_folders
 
         with pytest.raises(RuntimeError, match="Not a directory"):
             find_local_chart_folders(tmp_path / "nope")
 
     def test_batch_rejects_both_sources_at_once(self):
-        from jobs.batch_intake import run_batch
+        from apps.worker.jobs.batch_intake import run_batch
 
         with pytest.raises(ValueError, match="either local_read_path"):
             run_batch(local_read_path="/x", blob_container="c", blob_read_path="p")
 
     def test_batch_rejects_neither_source(self):
-        from jobs.batch_intake import run_batch
+        from apps.worker.jobs.batch_intake import run_batch
 
         with pytest.raises(ValueError, match="either local_read_path"):
             run_batch()
@@ -595,7 +595,7 @@ class TestBatchFolderDiscovery:
     def test_batch_read_and_write_must_share_a_backend(self):
         """Same rule as /run: a write landing somewhere the caller did not mean
         is worse than an error."""
-        from jobs.batch_intake import run_batch
+        from apps.worker.jobs.batch_intake import run_batch
 
         with pytest.raises(ValueError, match="local_write_path"):
             run_batch(local_read_path="/x", blob_write_path="out")
@@ -618,7 +618,7 @@ class TestBatchFolderDiscovery:
     def test_batch_takes_the_same_options_as_run(self):
         """Batch is run-per-folder. An option that means one thing in run and
         another in batch is the bug this shape exists to prevent."""
-        from api.main import BatchRequest, RunRequest
+        from apps.orchestrator_api.main import BatchRequest, RunRequest
 
         for field in self.SHARED:
             assert field in RunRequest.model_fields, field
@@ -630,7 +630,7 @@ class TestBatchFolderDiscovery:
         }
 
     def test_removed_options_are_gone_from_both(self):
-        from api.main import BatchRequest, RunRequest
+        from apps.orchestrator_api.main import BatchRequest, RunRequest
 
         for field in self.REMOVED:
             assert field not in RunRequest.model_fields, field
@@ -638,7 +638,7 @@ class TestBatchFolderDiscovery:
 
     def test_defaults_reprocess_everything_and_replace_outputs(self):
         """No force / overwrite knobs: unspecified means reprocess and replace."""
-        from api.main import BatchRequest
+        from apps.orchestrator_api.main import BatchRequest
 
         body = BatchRequest(input_type="local", input_path="/data/inbox")
         assert body.force is True
@@ -650,13 +650,13 @@ class TestBatchFolderDiscovery:
     def test_skip_ocr_is_the_one_thing_that_turns_force_off(self):
         """The runner only reuses OCR on a non-force run (it re-runs every
         non-OCR stage itself), so skip_ocr must map to force=False."""
-        from api.main import RunRequest
+        from apps.orchestrator_api.main import RunRequest
 
         body = RunRequest(input_type="local", input_path="/x", chart_name="c", skip_ocr=True)
         assert body.force is False
 
     def test_batch_sample_and_chart_list(self):
-        from api.main import BatchRequest
+        from apps.orchestrator_api.main import BatchRequest
 
         body = BatchRequest(
             input_type="local", input_path="/data/inbox", sample=2,
@@ -666,11 +666,11 @@ class TestBatchFolderDiscovery:
         assert body.chart_list == ["a", "b"]
 
     def test_batch_workers_must_fit_the_db_pool(self, monkeypatch):
-        from jobs import batch_intake as bi
+        from apps.worker.jobs import batch_intake as bi
 
         monkeypatch.setattr(bi, "STAGE_WORKERS", 4)
         monkeypatch.setattr(bi, "BATCH_POOL_HEADROOM", 2)
-        import db as dbmod
+        from common import db as dbmod
 
         monkeypatch.setattr(dbmod, "DB_POOL_MAX", 10)
         with pytest.raises(ValueError, match="DB_POOL_MAX"):
@@ -680,7 +680,7 @@ class TestBatchFolderDiscovery:
     def test_batch_has_no_folder_name(self):
         """Each sub-folder IS a chart and names itself, so one folder name
         could not mean anything across fifty of them."""
-        from api.main import BatchRequest
+        from apps.orchestrator_api.main import BatchRequest
 
         assert not [f for f in BatchRequest.model_fields if "folder_name" in f]
 
@@ -688,8 +688,8 @@ class TestBatchFolderDiscovery:
         """In a batch of fifty, one unwritable destination must be reported and
         stepped over, not abort the other forty-nine — and the chart itself
         still ran, so it must not be marked failed either."""
-        import config
-        from jobs.batch_intake import _write_one
+        from common import config
+        from apps.worker.jobs.batch_intake import _write_one
 
         # A chart that does not exist on disk: write_chart raises, and
         # _write_one must turn that into a recorded outcome.
@@ -708,8 +708,8 @@ class TestBatchFolderDiscovery:
     def test_a_successful_write_is_recorded_with_its_destination(
         self, tmp_path, monkeypatch
     ):
-        import config
-        from jobs.batch_intake import _write_one
+        from common import config
+        from apps.worker.jobs.batch_intake import _write_one
 
         root = tmp_path / "folders"
         (root / "c1" / "ocr").mkdir(parents=True)
@@ -740,7 +740,7 @@ class TestRunAcceptsBothModes:
     def _client(monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         # Pretend the database is fine, so only the shape checks can fail.
         monkeypatch.setattr(main, "_require_db", lambda: None)
@@ -832,7 +832,7 @@ class TestRunAcceptsBothModes:
 
     def test_batch_skip_completed_drops_finished_charts(self, monkeypatch, tmp_path):
         client, main = self._client(monkeypatch)
-        from jobs import batch_intake
+        from apps.worker.jobs import batch_intake
 
         monkeypatch.setattr(main, "_bg_batch", lambda payload: None)
         monkeypatch.setattr(batch_intake, "assert_batch_workers_fit", lambda w: None)
@@ -857,7 +857,7 @@ class TestRunAcceptsBothModes:
         client, main = self._client(monkeypatch)
         from datetime import date
 
-        from jobs import batch_intake
+        from apps.worker.jobs import batch_intake
 
         monkeypatch.setattr(main, "_bg_batch", lambda payload: None)
         monkeypatch.setattr(batch_intake, "assert_batch_workers_fit", lambda w: None)
@@ -894,7 +894,7 @@ class TestStageSelection:
     def _client(monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         monkeypatch.setattr(main, "_require_db", lambda: None)
         monkeypatch.setattr(main, "_bg_run", lambda payload: None)
@@ -904,7 +904,7 @@ class TestStageSelection:
         """Resolves to the right STAGE, not a fixed index — the chain order is
         allowed to change (rotation moved ahead of prelim OCR), and a test that
         pins positions fails for the wrong reason when it does."""
-        from orchestrator.runner import STAGE_CHAIN, resolve_stage
+        from apps.worker.runner import STAGE_CHAIN, resolve_stage
 
         def at(token):
             name, pass_no, _fn = STAGE_CHAIN[resolve_stage(token)]
@@ -918,13 +918,13 @@ class TestStageSelection:
         """blank_junk runs twice. A bare `blank_junk` must be the pass-1 one,
         deterministically, or `--only blank_junk` means different things on
         different days."""
-        from orchestrator.runner import STAGE_CHAIN, resolve_stage
+        from apps.worker.runner import STAGE_CHAIN, resolve_stage
 
         name, pass_no, _ = STAGE_CHAIN[resolve_stage("blank_junk")]
         assert (name, pass_no) == ("blank_junk", 1)
 
     def test_an_unknown_stage_raises_naming_the_known_ones(self):
-        from orchestrator.runner import resolve_stage
+        from apps.worker.runner import resolve_stage
 
         with pytest.raises(ValueError) as exc:
             resolve_stage("ocr_final3")
@@ -932,7 +932,7 @@ class TestStageSelection:
         assert "ocr_final1" in str(exc.value)
 
     def test_a_non_numeric_pass_is_rejected(self):
-        from orchestrator.runner import resolve_stage
+        from apps.worker.runner import resolve_stage
 
         with pytest.raises(ValueError):
             resolve_stage("blank_junk:two")
@@ -966,7 +966,7 @@ class TestStageSelection:
     def test_batch_takes_the_same_stage_options_as_run(self, monkeypatch):
         """Batch is run-per-folder; an option that means one thing in run and
         another in batch is the bug this shape exists to prevent."""
-        from api.main import BatchRequest, RunRequest
+        from apps.orchestrator_api.main import BatchRequest, RunRequest
 
         for field in ("run_through", "only"):
             assert field in RunRequest.model_fields
@@ -1009,15 +1009,15 @@ class TestStageLabels:
     """Every orchestrated stage has a display name, so logs read uniformly."""
 
     def test_every_stage_in_the_chain_has_a_label(self):
-        from orchestrator.runner import STAGE_CHAIN
-        from stages._support import STAGE_LABELS, stage_label
+        from apps.worker.runner import STAGE_CHAIN
+        from apps.worker.stages._support import STAGE_LABELS, stage_label
 
         for name, pass_no, _fn in STAGE_CHAIN:
             assert name in STAGE_LABELS, f"{name} has no display label"
             assert stage_label(name, pass_no)
 
     def test_a_second_pass_is_distinguishable(self):
-        from stages._support import stage_label
+        from apps.worker.stages._support import stage_label
 
         assert stage_label("blank_junk", 1) == "Blank/Junk"
         assert stage_label("blank_junk", 2) == "Blank/Junk pass 2"
@@ -1027,7 +1027,7 @@ class TestChartResetKeepsTheAuditTrail:
     """A re-run replaces results but must not erase the run log."""
 
     def test_pipeline_jobs_is_not_wiped(self):
-        from db import CHART_RESULT_TABLES
+        from common.db import CHART_RESULT_TABLES
 
         assert "pipeline_jobs" not in CHART_RESULT_TABLES, (
             "pipeline_jobs is the audit trail — the point of a re-run is being "
@@ -1035,7 +1035,7 @@ class TestChartResetKeepsTheAuditTrail:
         )
 
     def test_the_client_roster_is_not_wiped(self):
-        from db import CHART_RESULT_TABLES
+        from common.db import CHART_RESULT_TABLES
 
         assert "manifest_member_list" not in CHART_RESULT_TABLES, (
             "the manifest is the client's data, not our output"
@@ -1072,7 +1072,7 @@ class TestChartResetKeepsTheAuditTrail:
         """A DELETE ... WHERE chart_id on a table without one is a runtime error."""
         import re
 
-        from db import CHART_RESULT_TABLES
+        from common.db import CHART_RESULT_TABLES
 
         schema = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in schema.splitlines())
@@ -1088,7 +1088,7 @@ class TestWriteChartOut:
     def test_write_endpoint_is_gone(self, monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         monkeypatch.setattr(main, "_require_db", lambda: None)
         client = TestClient(main.app, raise_server_exceptions=False)
@@ -1102,7 +1102,7 @@ class TestWriteChartOut:
     def test_rerun_endpoint_is_gone(self, monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         monkeypatch.setattr(main, "_require_db", lambda: None)
         client = TestClient(main.app, raise_server_exceptions=False)
@@ -1112,8 +1112,8 @@ class TestWriteChartOut:
 
     def test_the_chart_name_is_appended_to_the_destination(self, tmp_path, monkeypatch):
         """Two charts written to one destination must not merge into it."""
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         chart = tmp_path / "folders" / "chart_a"
         (chart / "ocr").mkdir(parents=True)
@@ -1124,8 +1124,8 @@ class TestWriteChartOut:
 
     def test_writing_onto_the_workspace_itself_is_refused(self, tmp_path, monkeypatch):
         """Otherwise the source is its own destination and the copy truncates."""
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
         (root / "chart_b" / "ocr").mkdir(parents=True)
@@ -1136,8 +1136,8 @@ class TestWriteChartOut:
             write_chart("chart_b", local_path=str(root))
 
     def test_apple_double_stubs_are_not_written_out(self, tmp_path, monkeypatch):
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
         corrected = root / "chart_c" / "corrected-pages"
@@ -1153,8 +1153,8 @@ class TestWriteChartOut:
 
     def test_sync_skips_existing_and_writes_missing(self, tmp_path, monkeypatch):
         """Default write checks what is already at the destination."""
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
         ocr = root / "chart_d" / "ocr"
@@ -1181,8 +1181,8 @@ class TestWriteChartOut:
     def test_corrected_pages_are_mirrored_not_synced(self, tmp_path, monkeypatch):
         """A correction undone by a later run must not survive at the
         destination, where it would be read in place of the original."""
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
         corrected = root / "chart_e" / "corrected-pages"
@@ -1206,8 +1206,8 @@ class TestWriteChartOut:
         assert (dest / "chart_e" / "ocr" / "old.txt").is_file()
 
     def test_a_chart_with_no_workspace_raises(self, tmp_path, monkeypatch):
-        import config
-        from jobs.export_chart import write_chart
+        from common import config
+        from apps.worker.jobs.export_chart import write_chart
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         with pytest.raises(RuntimeError, match="No chart workspace"):
@@ -1218,7 +1218,7 @@ class TestManifestLookup:
     """GET /api/manifest/{record_id}: Postgres first, METADATA_ROOT fallback."""
 
     def test_lookup_on_disk_finds_matching_rows(self, tmp_path):
-        from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+        from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
 
         csv_path = tmp_path / "metadata_R1_B1.csv"
         csv_path.write_text(
@@ -1236,7 +1236,7 @@ class TestManifestLookup:
         assert rows[0]["source_file"] == "metadata_R1_B1.csv"
 
     def test_demotest_metadata_loads_as_run_and_batch_test(self, tmp_path):
-        from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+        from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
         from app.services.metadata_csv import clear_metadata_cache, run_batch_for_record
 
         csv_path = tmp_path / "metadata_demotest.csv"
@@ -1384,8 +1384,8 @@ class TestManifestLookup:
     def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
-        from jobs import manifest_sweeper as sweeper
+        import apps.orchestrator_api.main as main
+        from apps.worker.jobs import manifest_sweeper as sweeper
 
         meta = tmp_path / "metadata"
         meta.mkdir()
@@ -1421,7 +1421,7 @@ class TestManifestLookup:
     def test_endpoint_prefers_postgres(self, monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         db_row = {
             "id": 9,
@@ -1455,8 +1455,8 @@ class TestManifestLookup:
     def test_endpoint_404_when_neither_has_rows(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 
-        import api.main as main
-        from jobs import manifest_sweeper as sweeper
+        import apps.orchestrator_api.main as main
+        from apps.worker.jobs import manifest_sweeper as sweeper
 
         class _EmptyConn:
             def __enter__(self):
@@ -1496,10 +1496,10 @@ class TestCapabilityReporting:
                 monkeypatch.delenv(key, raising=False)
             else:
                 monkeypatch.setenv(key, value)
-        import config
+        from common import config
 
         importlib.reload(config)
-        import capabilities
+        from common import capabilities
 
         return importlib.reload(capabilities)
 
@@ -1617,7 +1617,7 @@ class TestCapabilityReporting:
         silent break."""
         from fastapi.testclient import TestClient
 
-        import api.main as main
+        import apps.orchestrator_api.main as main
 
         client = TestClient(main.app, raise_server_exceptions=False)
         body = client.get("/health").json()
@@ -1637,7 +1637,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import azure_log_level
+        from common.logging_setup import azure_log_level
 
         assert azure_log_level() == logging.WARNING
 
@@ -1647,7 +1647,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.setenv("AZURE_LOG_LEVEL", "banana")
-        from logging_setup import azure_log_level
+        from common.logging_setup import azure_log_level
 
         assert azure_log_level() == logging.WARNING
 
@@ -1655,7 +1655,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.setenv("AZURE_LOG_LEVEL", "debug")
-        from logging_setup import azure_log_level
+        from common.logging_setup import azure_log_level
 
         assert azure_log_level() == logging.DEBUG
 
@@ -1665,7 +1665,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import quiet_noisy_loggers
+        from common.logging_setup import quiet_noisy_loggers
 
         quiet_noisy_loggers()
         http_policy = logging.getLogger(
@@ -1680,7 +1680,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import quiet_noisy_loggers
+        from common.logging_setup import quiet_noisy_loggers
 
         quiet_noisy_loggers()
         assert not logging.getLogger("docling.document_converter").isEnabledFor(
@@ -1696,7 +1696,7 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import quiet_noisy_loggers
+        from common.logging_setup import quiet_noisy_loggers
 
         quiet_noisy_loggers()
         policy = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -1708,14 +1708,14 @@ class TestAzureSdkLogging:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import configure_logging
+        from common.logging_setup import configure_logging
 
         root = logging.getLogger()
         previous = root.level
         try:
             configure_logging(logging.INFO)
-            assert logging.getLogger("stages._support").isEnabledFor(logging.INFO)
-            assert logging.getLogger("orchestrator.runner").isEnabledFor(logging.INFO)
+            assert logging.getLogger("apps.worker.stages._support").isEnabledFor(logging.INFO)
+            assert logging.getLogger("apps.worker.runner").isEnabledFor(logging.INFO)
         finally:
             root.setLevel(previous)
 
@@ -1725,7 +1725,7 @@ class TestAzureSdkLogging:
         requested level must still take effect, or progress lines vanish."""
         import logging
 
-        from logging_setup import configure_logging
+        from common.logging_setup import configure_logging
 
         root = logging.getLogger()
         previous = root.level
@@ -1741,7 +1741,7 @@ class TestAzureSdkLogging:
         import io
         import logging
 
-        from logging_setup import (
+        from common.logging_setup import (
             LOG_FORMAT,
             _ChartAwareFormatter,
             _ChartContextFilter,
@@ -1788,7 +1788,7 @@ class TestCorrectedPages:
     """
 
     def test_page_image_path_prefers_a_corrected_page(self, tmp_path, monkeypatch):
-        import config
+        from common import config
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         (tmp_path / "c" / "pages").mkdir(parents=True)
@@ -1802,7 +1802,7 @@ class TestCorrectedPages:
     def test_it_falls_back_to_the_original(self, tmp_path, monkeypatch):
         """Correction is sparse: an upright page is never copied, and a chart
         processed before corrections existed has no folder at all."""
-        import config
+        from common import config
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         (tmp_path / "c" / "pages").mkdir(parents=True)
@@ -1849,7 +1849,7 @@ class TestCorrectedPages:
     def test_rotation_runs_before_every_ocr_stage(self):
         """The whole point of the reorder: a sideways page must be corrected
         before anything reads it."""
-        from orchestrator.runner import STAGE_CHAIN
+        from apps.worker.runner import STAGE_CHAIN
 
         order = [name for name, _pass, _fn in STAGE_CHAIN]
         quality = order.index("ocr_quality")
@@ -1863,7 +1863,7 @@ class TestCorrectedPages:
         import re
         from pathlib import Path
 
-        from orchestrator.runner import STAGE_CHAIN
+        from apps.worker.runner import STAGE_CHAIN
 
         sql = (Path(__file__).resolve().parents[1] / "schema" / "schema.sql").read_text(
             encoding="utf-8"
@@ -1886,7 +1886,7 @@ class TestCorrectedPages:
         while the geometric detector was the only option."""
         import importlib
 
-        import config
+        from common import config
 
         assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is True
 
@@ -1896,7 +1896,7 @@ class TestCorrectedPages:
         import importlib
 
         monkeypatch.setenv("ROTATION_CORRECTION_ENABLED", "false")
-        import config
+        from common import config
 
         assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is False
         monkeypatch.delenv("ROTATION_CORRECTION_ENABLED")
@@ -2035,7 +2035,7 @@ class TestCorrectedPages:
         including a file from an earlier run, and a TIFF that needed nothing."""
         import numpy as np
 
-        import config
+        from common import config
         from modules.image_preprocess import stage as quality_rotation_hw
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
@@ -2100,8 +2100,8 @@ class TestCorrectedPages:
         but only when the operator asks to redownload pages."""
         import inspect
 
-        from db.paths import clear_page_image_dirs
-        from stages.utilities import download_blob
+        from common.db.paths import clear_page_image_dirs
+        from apps.worker.stages.utilities import download_blob
 
         source = inspect.getsource(download_blob.import_local_folder)
         assert "clear_page_image_dirs" in source
@@ -2113,8 +2113,8 @@ class TestCorrectedPages:
 
     def test_ensure_chart_images_prefers_workspace(self, tmp_path, monkeypatch):
         """Existing pages/ are reused; no Raw_Input fetch when local is present."""
-        import config
-        from stages.utilities.download_blob import ensure_chart_images
+        from common import config
+        from apps.worker.stages.utilities.download_blob import ensure_chart_images
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         pages = tmp_path / "chart_a" / "pages"
@@ -2128,7 +2128,7 @@ class TestCorrectedPages:
             raise AssertionError("must not download when workspace has pages")
 
         monkeypatch.setattr(
-            "stages.utilities.download_blob._download_missing_from_raw_input", _boom
+            "apps.worker.stages.utilities.download_blob._download_missing_from_raw_input", _boom
         )
 
         out = ensure_chart_images(
@@ -2146,8 +2146,8 @@ class TestCorrectedPages:
         self, tmp_path, monkeypatch
     ):
         """Empty workspace → Raw_Input only (not Processed pages)."""
-        import config
-        from stages.utilities.download_blob import ensure_chart_images
+        from common import config
+        from apps.worker.stages.utilities.download_blob import ensure_chart_images
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
 
@@ -2158,7 +2158,7 @@ class TestCorrectedPages:
             return 1, 0
 
         monkeypatch.setattr(
-            "stages.utilities.download_blob._download_missing_from_raw_input",
+            "apps.worker.stages.utilities.download_blob._download_missing_from_raw_input",
             _fake_download,
         )
 
@@ -2173,7 +2173,7 @@ class TestCorrectedPages:
         assert (tmp_path / "chart_c" / "pages" / "1.jpg").read_bytes() == b"from-raw"
 
     def test_write_exports_the_corrected_pages(self):
-        from jobs.export_chart import CHART_SUBDIRS
+        from apps.worker.jobs.export_chart import CHART_SUBDIRS
 
         assert "corrected-pages" in CHART_SUBDIRS
 
@@ -2311,7 +2311,7 @@ class TestStartupProbeCannotBlock:
     def test_a_slow_probe_returns_at_the_deadline(self, monkeypatch):
         import time
 
-        import capabilities
+        from common import capabilities
 
         def slow(status, timeout):
             time.sleep(30)
@@ -2333,7 +2333,7 @@ class TestStartupProbeCannotBlock:
     def test_a_timeout_is_not_reported_as_a_failure(self, monkeypatch):
         """`reachable: None` means we did not find out. Rendering that as
         UNREACHABLE would send someone debugging credentials that are fine."""
-        import capabilities
+        from common import capabilities
 
         line = capabilities._one_line(
             {"ready": True, "reachable": None, "reason": "probe exceeded 5s"}, "OK"
@@ -2342,7 +2342,7 @@ class TestStartupProbeCannotBlock:
         assert line.startswith("OK")
 
     def test_a_real_failure_still_reads_as_unreachable(self, monkeypatch):
-        import capabilities
+        from common import capabilities
 
         line = capabilities._one_line(
             {"ready": True, "reachable": False, "reason": "AuthorizationFailure"}, "OK"
@@ -2356,7 +2356,7 @@ class TestStartupProbeCannotBlock:
         and it lands on every single start."""
         import logging
 
-        import capabilities
+        from common import capabilities
 
         identity = logging.getLogger("azure.identity")
         seen = []
@@ -2373,9 +2373,9 @@ class TestStartupProbeCannotBlock:
             identity.warning("DefaultAzureCredential failed ... nine sources ...")
             raise RuntimeError("ClientAuthenticationError")
 
-        import db.blob_store
+        import common.db.blob_store
 
-        monkeypatch.setattr(db.blob_store, "get_container_client", fail)
+        monkeypatch.setattr(common.db.blob_store, "get_container_client", fail)
         try:
             status = {"ready": True}
             capabilities._blob_round_trip(status, 1)
@@ -2389,7 +2389,7 @@ class TestStartupProbeCannotBlock:
     def test_an_unconfigured_blob_never_starts_a_thread(self, monkeypatch):
         """No credentials means nothing to probe — it must not cost a thread
         or a second on every start."""
-        import capabilities
+        from common import capabilities
 
         monkeypatch.setattr(
             capabilities, "blob_status",
@@ -2416,7 +2416,7 @@ class TestCredentialFailureReporting:
         import logging
 
         monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
-        from logging_setup import quiet_noisy_loggers
+        from common.logging_setup import quiet_noisy_loggers
 
         quiet_noisy_loggers()
         chained = logging.getLogger("azure.identity._credentials.chained")
@@ -2428,7 +2428,7 @@ class TestCredentialFailureReporting:
         import logging
 
         monkeypatch.setenv("AZURE_LOG_LEVEL", "DEBUG")
-        from logging_setup import quiet_noisy_loggers
+        from common.logging_setup import quiet_noisy_loggers
 
         quiet_noisy_loggers()
         chained = logging.getLogger("azure.identity._credentials.chained")
@@ -2437,7 +2437,7 @@ class TestCredentialFailureReporting:
         quiet_noisy_loggers()
 
     def test_a_credential_failure_is_recognised(self):
-        from api.main import _is_credential_failure
+        from apps.orchestrator_api.main import _is_credential_failure
 
         class ClientAuthenticationError(Exception):
             pass
@@ -2447,7 +2447,7 @@ class TestCredentialFailureReporting:
     def test_it_is_recognised_through_a_wrapping_exception(self):
         """run_download may wrap it; the operator still needs the credential
         advice rather than fifteen frames of SDK plumbing."""
-        from api.main import _is_credential_failure
+        from apps.orchestrator_api.main import _is_credential_failure
 
         class ClientAuthenticationError(Exception):
             pass
@@ -2463,7 +2463,7 @@ class TestCredentialFailureReporting:
     def test_an_unrelated_failure_keeps_its_traceback(self):
         """Only auth failures get the short treatment — anything else still
         needs the stack, and swallowing it would hide real bugs."""
-        from api.main import _is_credential_failure
+        from apps.orchestrator_api.main import _is_credential_failure
 
         assert not _is_credential_failure(ValueError("disk full"))
         assert not _is_credential_failure(RuntimeError("No images in ..."))
@@ -2485,17 +2485,17 @@ class TestInteractiveBlobAuth:
         monkeypatch.setenv("AZURE_STORAGE_AUTH", auth)
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_NAME", "acct")
         monkeypatch.delenv("AZURE_STORAGE_CONNECTION_STRING", raising=False)
-        import config
+        from common import config
 
         importlib.reload(config)
-        import capabilities
+        from common import capabilities
 
         return importlib.reload(capabilities)
 
     def test_interactive_is_not_reached_by_plain_entra(self, monkeypatch):
         """A service must never open a browser because someone wrote `entra`.
         The interactive chain is opt-in by name, not a fallback."""
-        from db.blob_store import ENTRA_INTERACTIVE_MODES, ENTRA_MODES
+        from common.db.blob_store import ENTRA_INTERACTIVE_MODES, ENTRA_MODES
 
         assert not (ENTRA_MODES & ENTRA_INTERACTIVE_MODES)
         assert "entra" not in ENTRA_INTERACTIVE_MODES
@@ -2534,7 +2534,7 @@ class TestInteractiveBlobAuth:
         should ever see a browser."""
         import inspect
 
-        from db import blob_store
+        from common.db import blob_store
 
         source = inspect.getsource(blob_store._interactive_credential)
         order = [
@@ -2549,7 +2549,7 @@ class TestInteractiveBlobAuth:
         what make it one login for the process."""
         import inspect
 
-        from db import blob_store
+        from common.db import blob_store
 
         source = inspect.getsource(blob_store._interactive_credential)
         assert "TokenCachePersistenceOptions" in source and "_RememberedBrowser(cache)" in source
@@ -2570,10 +2570,10 @@ class TestManagedIdentityBlobAuth:
                 monkeypatch.delenv(key, raising=False)
             else:
                 monkeypatch.setenv(key, value)
-        import config
+        from common import config
 
         importlib.reload(config)
-        import capabilities
+        from common import capabilities
 
         return importlib.reload(capabilities)
 
@@ -2594,7 +2594,7 @@ class TestManagedIdentityBlobAuth:
         assert blob["principal_id"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
     def test_mi_alias_is_accepted(self, monkeypatch):
-        from db.blob_store import MANAGED_IDENTITY_MODES
+        from common.db.blob_store import MANAGED_IDENTITY_MODES
 
         assert "mi" in MANAGED_IDENTITY_MODES
         assert "msi" in MANAGED_IDENTITY_MODES
@@ -2608,7 +2608,7 @@ class TestManagedIdentityBlobAuth:
         assert caps.blob_status()["auth"] == "managed_identity"
 
     def test_managed_identity_is_not_interactive(self):
-        from db.blob_store import (
+        from common.db.blob_store import (
             ENTRA_INTERACTIVE_MODES,
             MANAGED_IDENTITY_MODES,
         )
@@ -2618,7 +2618,7 @@ class TestManagedIdentityBlobAuth:
     def test_interactive_chain_passes_client_id_when_set(self, monkeypatch):
         import inspect
 
-        from db import blob_store
+        from common.db import blob_store
 
         source = inspect.getsource(blob_store._interactive_credential)
         assert "client_id" in source
@@ -2627,7 +2627,7 @@ class TestManagedIdentityBlobAuth:
 
 class TestEnsureBlobReady:
     def test_ensure_blob_ready_is_idempotent(self, monkeypatch):
-        from db import blob_store
+        from common.db import blob_store
 
         monkeypatch.setattr(blob_store, "_BLOB_READY", False)
         calls = {"n": 0}
@@ -2657,7 +2657,7 @@ class TestWriteModes:
 
     @staticmethod
     def _chart(tmp_path, monkeypatch):
-        import config
+        from common import config
 
         root = tmp_path / "folders"
         chart = root / "c1"
@@ -2672,7 +2672,7 @@ class TestWriteModes:
         return root
 
     def test_the_default_omits_the_original_pages(self, tmp_path, monkeypatch):
-        from jobs.export_chart import write_chart
+        from apps.worker.jobs.export_chart import write_chart
 
         self._chart(tmp_path, monkeypatch)
         out = write_chart("c1", local_path=str(tmp_path / "out"))
@@ -2687,7 +2687,7 @@ class TestWriteModes:
         assert out["write_mode"] == "skip_orig_pages"
 
     def test_all_files_sends_the_originals_too(self, tmp_path, monkeypatch):
-        from jobs.export_chart import write_chart
+        from apps.worker.jobs.export_chart import write_chart
 
         self._chart(tmp_path, monkeypatch)
         write_chart("c1", local_path=str(tmp_path / "out"), write_mode="all_files")
@@ -2702,14 +2702,14 @@ class TestWriteModes:
     def test_a_corrected_page_is_sent_even_by_default(self, tmp_path, monkeypatch):
         """The point of the default: skip what the source already has, keep
         what the pipeline made."""
-        from jobs.export_chart import subdirs_for
+        from apps.worker.jobs.export_chart import subdirs_for
 
         assert "corrected-pages" in subdirs_for("skip_orig_pages")
         assert "pages" not in subdirs_for("skip_orig_pages")
         assert "pages" in subdirs_for("all_files")
 
     def test_an_unknown_mode_raises_rather_than_guessing(self):
-        from jobs.export_chart import subdirs_for
+        from apps.worker.jobs.export_chart import subdirs_for
 
         with pytest.raises(ValueError, match="write_mode"):
             subdirs_for("everything")
@@ -2719,9 +2719,9 @@ class TestWriteModes:
     ):
         """Default mode on a chart that produced no output would silently write
         an empty folder; the message names all_files as the way out."""
-        import config
+        from common import config
 
-        from jobs.export_chart import write_chart
+        from apps.worker.jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
         (root / "c2" / "pages").mkdir(parents=True)
@@ -2798,8 +2798,8 @@ class TestNoModelWeightsInGit:
 def test_encounter_grouping_is_written_for_production_mode():
     """Every page's encounter_type_results row carries its encounter (encounter_seq) and the
     encounter's decision, so review-ui's Production Mode groups pages without the workspace."""
-    from db import upsert_encounter
-    from db.memory_store import MemoryStore
+    from common.db import upsert_encounter
+    from common.db.memory_store import MemoryStore
     from modules.encounter.encounter_classify import classify_pages
 
     rows = classify_pages([

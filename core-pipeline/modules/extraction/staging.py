@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 
-from config import staging_dir
+from common.config import staging_dir
 from modules import confidence as conf
 
 from .util.geometry import Box

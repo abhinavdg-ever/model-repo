@@ -91,7 +91,7 @@ def test_review_follows_quality_type_and_visibility():
 def test_csvs_and_upsert_use_the_schema_column_names():
     import inspect
 
-    from db import upsert_quality
+    from common.db import upsert_quality
     from modules.image_preprocess.stage import HW_COLS, QUALITY_COLS
 
     columns = ["document_type", "handwritten_probability", "is_visible", "handwritten_area_pct"]
@@ -106,11 +106,11 @@ def test_csvs_and_upsert_use_the_schema_column_names():
 
 
 def test_decisions_read_the_page_type():
-    from db import page_blocks_prelim, page_type
+    from common.db import page_blocks_prelim, page_type
     from modules.image_preprocess.quality_label_postprocess import (
         apply_quality_label_postprocess,
     )
-    from stages.utilities.gate_delta import hw_class_from_row
+    from apps.worker.stages.utilities.gate_delta import hw_class_from_row
 
     # Type wins over the old label.
     row = {"document_type": "form", "printed_or_handwritten": "printed", "quality_tag": "high"}
@@ -135,7 +135,7 @@ def test_decisions_read_the_page_type():
 
 
 def test_page_sets_follow_the_type():
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
 
     store = MemoryStore()
     rows = {

@@ -25,7 +25,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = SCRIPT_DIR.parents[1]  # …/core-pipeline
 _DEFAULT_RF = _CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
 try:
-    from config import HW_MODEL_PATH as _CFG_HW
+    from common.config import HW_MODEL_PATH as _CFG_HW
 
     # Only honour HW_MODEL_PATH when it already points at a pickle.
     if _CFG_HW and Path(_CFG_HW).suffix.lower() in {".pkl", ".joblib"}:

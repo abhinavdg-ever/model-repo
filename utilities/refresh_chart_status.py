@@ -4,7 +4,7 @@
 Before 2026-10-20 a batch run re-registered every chart as 'received' when it was queued,
 so a finished chart dropped off History until its turn came, and a run that stopped early
 left it there. Its stage rows (page_stage_status) still say what is done, so the real
-status can be worked out again: the same rule the pipeline uses (db.chart_status).
+status can be worked out again: the same rule the pipeline uses (common.db.chart_status).
 A chart with no pages stays 'received'.
 
 Examples::
@@ -36,8 +36,8 @@ try:
 except ImportError:
     pass
 
-from db import connect  # noqa: E402
-from db.chart_status import _stage_rows, compute_progress, refresh_chart_status  # noqa: E402
+from common.db import connect  # noqa: E402
+from common.db.chart_status import _stage_rows, compute_progress, refresh_chart_status  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

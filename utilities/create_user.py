@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
-    from db import connect
+    from common.db import connect
 
     with connect() as conn:
         for username, name, role, password in users:

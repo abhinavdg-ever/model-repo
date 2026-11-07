@@ -2,7 +2,7 @@
 savepoint, so a failed write leaves the transaction usable for the next page."""
 import pytest
 
-import db
+from common import db
 
 
 class FakeConn:

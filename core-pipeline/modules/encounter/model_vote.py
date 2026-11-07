@@ -30,7 +30,7 @@ _failed: Optional[str] = None
 
 
 def model_dir() -> Path:
-    from config import ENCOUNTER_MODEL_DIR
+    from common.config import ENCOUNTER_MODEL_DIR
 
     return Path(ENCOUNTER_MODEL_DIR)
 

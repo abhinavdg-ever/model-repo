@@ -114,4 +114,4 @@ EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:8001/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python", "-m", "uvicorn", "apps.orchestrator_api.main:app", "--host", "0.0.0.0", "--port", "8001"]

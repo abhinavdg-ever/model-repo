@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from azure_retry import call_with_retry, is_transient_azure_error
+from common.azure_retry import call_with_retry, is_transient_azure_error
 
 
 class _FakeHttpError(Exception):
@@ -22,7 +22,7 @@ def test_404_is_not_transient():
 
 
 def test_call_with_retry_succeeds_after_transient_failures(monkeypatch):
-    monkeypatch.setattr("azure_retry.time.sleep", lambda *_: None)
+    monkeypatch.setattr("common.azure_retry.time.sleep", lambda *_: None)
     calls = {"n": 0}
 
     def flaky():
@@ -36,7 +36,7 @@ def test_call_with_retry_succeeds_after_transient_failures(monkeypatch):
 
 
 def test_call_with_retry_does_not_retry_permanent_errors(monkeypatch):
-    monkeypatch.setattr("azure_retry.time.sleep", lambda *_: None)
+    monkeypatch.setattr("common.azure_retry.time.sleep", lambda *_: None)
     calls = {"n": 0}
 
     def permanent():
@@ -49,7 +49,7 @@ def test_call_with_retry_does_not_retry_permanent_errors(monkeypatch):
 
 
 def test_azure_sdk_retry_kwargs_can_set_a_connection_pool():
-    from azure_retry import azure_sdk_retry_kwargs
+    from common.azure_retry import azure_sdk_retry_kwargs
 
     kwargs = azure_sdk_retry_kwargs(connection_pool_maxsize=32)
     assert "transport" in kwargs

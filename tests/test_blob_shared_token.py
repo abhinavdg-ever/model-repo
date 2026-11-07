@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from db.blob_store import _SharedToken
+from common.db.blob_store import _SharedToken
 
 
 class SlowCredential:
@@ -77,7 +77,7 @@ def test_a_failed_fetch_is_not_retried_by_every_waiting_thread():
 def test_the_browser_sign_in_is_remembered_across_processes(monkeypatch, tmp_path):
     import azure.identity
 
-    from db import blob_store
+    from common.db import blob_store
 
     record_path = tmp_path / "azure_auth_record.json"
     monkeypatch.setattr(blob_store, "AUTH_RECORD_PATH", record_path)

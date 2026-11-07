@@ -25,7 +25,7 @@ def has_signature_section(text: str) -> bool:
 
 def signed_page_names(chart_name: str) -> set[str]:
     """Page names whose key/value extraction row says a signature is present."""
-    from db.paths import imaging_csv
+    from common.db.paths import imaging_csv
 
     path = imaging_csv(chart_name, "provider_signature")
     if not path.is_file():

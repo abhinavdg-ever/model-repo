@@ -102,7 +102,7 @@ Three terminals.
 ```bash
 # 1. Pipeline API — http://localhost:8001/docs
 cd core-pipeline && source .venv/bin/activate
-uvicorn api.main:app --host 0.0.0.0 --port 8001
+uvicorn apps.orchestrator_api.main:app --host 0.0.0.0 --port 8001
 ```
 
 ```bash

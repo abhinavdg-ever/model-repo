@@ -17,9 +17,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from db import connect, get_ocr_texts, upsert_ocr_result
-from db.paths import ocr_dir, write_final1_json, write_final2_json
-from stages._support import (
+from common.db import connect, get_ocr_texts, upsert_ocr_result
+from common.db.paths import ocr_dir, write_final1_json, write_final2_json
+from apps.worker.stages._support import (
     mark_completed,
     mark_failed,
     mark_processing,

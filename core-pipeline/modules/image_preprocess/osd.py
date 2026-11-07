@@ -64,7 +64,7 @@ def detect_rotation(image: Any) -> Optional[dict[str, Any]]:
 
     try:
         try:
-            from config import ROTATION_TESSERACT_TIMEOUT
+            from common.config import ROTATION_TESSERACT_TIMEOUT
         except ImportError:
             ROTATION_TESSERACT_TIMEOUT = 30.0
         osd = pytesseract.image_to_osd(

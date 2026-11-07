@@ -13,7 +13,7 @@ if str(CORE) not in sys.path:
 
 def test_blob_resume_does_not_wipe_when_force_false():
     """force=false must not clear workspace just because pages already exist."""
-    from stages.utilities import download_blob
+    from apps.worker.stages.utilities import download_blob
 
     src = inspect.getsource(download_blob.run_download)
     # Wipe only under force=True — not `force or had_local`.
@@ -23,7 +23,7 @@ def test_blob_resume_does_not_wipe_when_force_false():
 
 
 def test_local_resume_keeps_existing_pages():
-    from stages.utilities import download_blob
+    from apps.worker.stages.utilities import download_blob
 
     src = inspect.getsource(download_blob.import_local_folder)
     # A workspace with the same page count as the source is reused.
@@ -37,7 +37,7 @@ def test_local_resume_keeps_existing_pages():
 
 
 def test_chart_is_pipeline_complete_logic():
-    from db.chart_status import compute_progress
+    from common.db.chart_status import compute_progress
 
     pages = 2
     # One incomplete stage → not complete
@@ -77,7 +77,7 @@ def test_chart_is_pipeline_complete_logic():
 
 
 def test_batch_summarise_counts_skipped():
-    from jobs.batch_intake import _summarise
+    from apps.worker.jobs.batch_intake import _summarise
 
     summary = _summarise(
         [
@@ -93,7 +93,7 @@ def test_batch_summarise_counts_skipped():
 
 
 def test_select_batch_sources_skips_complete_when_enough_incomplete(monkeypatch):
-    from jobs import batch_intake
+    from apps.worker.jobs import batch_intake
 
     sources = [
         ("/a", "chart_a", "local"),
@@ -111,7 +111,7 @@ def test_select_batch_sources_skips_complete_when_enough_incomplete(monkeypatch)
 
 
 def test_select_batch_sources_fills_with_complete_when_needed(monkeypatch):
-    from jobs import batch_intake
+    from apps.worker.jobs import batch_intake
 
     sources = [
         ("/a", "chart_a", "local"),
@@ -128,7 +128,7 @@ def test_select_batch_sources_fills_with_complete_when_needed(monkeypatch):
 
 
 def test_select_batch_sources_keeps_all_when_drop_fits():
-    from jobs.batch_intake import select_batch_sources
+    from apps.worker.jobs.batch_intake import select_batch_sources
 
     sources = [
         ("/a", "chart_a", "local"),
@@ -140,14 +140,14 @@ def test_select_batch_sources_keeps_all_when_drop_fits():
 
 
 def test_select_batch_sources_no_sample_returns_all():
-    from jobs.batch_intake import select_batch_sources
+    from apps.worker.jobs.batch_intake import select_batch_sources
 
     sources = [("/a", "a", "local"), ("/b", "b", "local")]
     assert select_batch_sources(sources, None) == sources
 
 
 def test_filter_sources_by_chart_names():
-    from jobs.batch_intake import filter_sources_by_chart_names
+    from apps.worker.jobs.batch_intake import filter_sources_by_chart_names
 
     sources = [
         ("/drop/chart_a", "chart_a", "local"),
@@ -167,7 +167,7 @@ def test_filter_sources_by_chart_names():
 
 def test_batch_runs_charts_in_alphabetical_order():
     """Order is by chart name only — size does not reorder the batch."""
-    from jobs.batch_intake import LARGE_CHART_MIN_PAGES, submission_order
+    from apps.worker.jobs.batch_intake import LARGE_CHART_MIN_PAGES, submission_order
 
     big = LARGE_CHART_MIN_PAGES + 1
     sources = [(f"src/{n}", n, "blob") for n in ("delta", "Alpha", "charlie", "bravo")]
@@ -182,7 +182,7 @@ def test_batch_runs_charts_in_alphabetical_order():
 
 def test_large_means_more_than_the_threshold():
     """500 pages is not large; 501 is (default LARGE_CHART_MIN_PAGES=500)."""
-    from jobs.batch_intake import LARGE_CHART_MIN_PAGES, is_large_chart
+    from apps.worker.jobs.batch_intake import LARGE_CHART_MIN_PAGES, is_large_chart
 
     assert not is_large_chart(LARGE_CHART_MIN_PAGES)
     assert is_large_chart(LARGE_CHART_MIN_PAGES + 1)
@@ -193,9 +193,9 @@ def _run_one(monkeypatch, *, force, skip_completed):
     import threading
     from contextlib import contextmanager
 
-    import db
-    import db.chart_status as chart_status
-    from jobs import batch_intake as bi
+    from common import db
+    import common.db.chart_status as chart_status
+    from apps.worker.jobs import batch_intake as bi
 
     ran: list[str] = []
 
@@ -206,7 +206,7 @@ def _run_one(monkeypatch, *, force, skip_completed):
     monkeypatch.setattr(db, "connect", fake_connect)
     monkeypatch.setattr(db, "get_chart_by_name", lambda conn, name: {"id": 1, "chart_name": name})
     monkeypatch.setattr(chart_status, "chart_is_pipeline_complete", lambda conn, cid: True)
-    import orchestrator.runner as runner
+    import apps.worker.runner as runner
 
     monkeypatch.setattr(
         runner, "ingest_and_run",
@@ -241,7 +241,7 @@ def test_skip_completed_skips_a_finished_chart(monkeypatch):
 
 
 def test_refresh_runs_finished_charts_first():
-    from jobs.batch_intake import submission_order
+    from apps.worker.jobs.batch_intake import submission_order
 
     sources = [(f"/in/{n}", n, "local") for n in ("a", "b", "c", "d")]
     order = submission_order(sources, [1, 1, 1, 1], first={"d", "b"})

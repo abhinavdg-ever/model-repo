@@ -20,7 +20,7 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from config import CORE_ROOT, DATA_ROOT
+from common.config import CORE_ROOT, DATA_ROOT
 
 logger = logging.getLogger(__name__)
 

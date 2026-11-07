@@ -13,6 +13,6 @@ def test_pages_without_azure_text_and_not_settled_are_owed_final2():
 
 
 def test_the_runner_reopens_final2_under_skip_ocr():
-    source = (ROOT / "core-pipeline" / "orchestrator" / "runner.py").read_text(encoding="utf-8")
+    source = (ROOT / "core-pipeline" / "apps" / "worker" / "runner.py").read_text(encoding="utf-8")
     assert "reopen_final2_missing(chart_id)" in source
     assert "refresh_final1 or refresh_final2" in source

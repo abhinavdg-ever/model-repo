@@ -39,7 +39,7 @@ try:
 except ImportError:
     pass
 
-from jobs.manifest_sweeper import (  # noqa: E402
+from apps.worker.jobs.manifest_sweeper import (  # noqa: E402
     MANIFEST_SUFFIXES,
     parse_run_batch_from_name,
     run_load,

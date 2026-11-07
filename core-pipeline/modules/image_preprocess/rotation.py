@@ -807,7 +807,7 @@ def _tesseract_text(image: np.ndarray) -> str:
     except ImportError:
         return ""
     try:
-        from config import ROTATION_TESSERACT_TIMEOUT, TESSERACT_CMD
+        from common.config import ROTATION_TESSERACT_TIMEOUT, TESSERACT_CMD
     except ImportError:
         TESSERACT_CMD, ROTATION_TESSERACT_TIMEOUT = None, 30.0
     if TESSERACT_CMD:

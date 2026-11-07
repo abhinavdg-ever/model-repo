@@ -1199,7 +1199,7 @@ CREATE INDEX idx_pipeline_jobs_claim ON pipeline_jobs(status, queue_name, queued
 
 
 -- Monitoring (2026-11-07): one row per chart run: time, pages, Doc Intel pages and cost, LLM
--- tokens and cost. Written by core-pipeline when a run ends (orchestrator/usage.py). Prices
+-- tokens and cost. Written by core-pipeline when a run ends (core-pipeline/apps/worker/usage.py). Prices
 -- come from .env (PRICE_*) and are stored with the row, so a later price change never
 -- rewrites history. v_run_usage_daily / v_run_usage_hourly add them up.
 CREATE TABLE run_usage (

@@ -63,7 +63,7 @@ from classify import (
     CODE_OTHERS,
     CODE_RECORD_REQUEST,
 )
-from stages._support import FINAL_JUNK, INVOICE_MARK, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, is_invoice_page  # noqa: F401
+from apps.worker.stages._support import FINAL_JUNK, INVOICE_MARK, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, is_invoice_page  # noqa: F401
 from modules import confidence as conf
 from modules.canon_store import CANON_DIR, CanonFile
 

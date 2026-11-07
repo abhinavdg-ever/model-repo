@@ -35,7 +35,7 @@ except ImportError:
     pass
 
 from card_rules import detect  # noqa: E402
-from db import connect  # noqa: E402
+from common.db import connect  # noqa: E402
 
 _PAGES = """
 SELECT c.chart_name AS chart, p.page_number AS page,

@@ -35,17 +35,17 @@ def _core_pipeline_root() -> Path:
     ``HERE.parents[3]`` is correct only when this file lives at the usual
     depth under core-pipeline. Shallow checkouts, alternate layouts, and
     Windows drive-root edge cases raise ``IndexError`` — walk up instead and
-    recognize the service root by ``cli.py`` + ``api/``.
+    recognize the service root by ``cli.py`` + ``modules/``.
     """
     for parent in (HERE, *HERE.parents):
-        if (parent / "cli.py").is_file() and (parent / "api").is_dir():
+        if (parent / "cli.py").is_file() and (parent / "modules").is_dir():
             return parent
     # Intact layout: ner_based → extractors → member → module → core-pipeline
     if len(HERE.parents) > 3:
         return HERE.parents[3]
     raise RuntimeError(
         f"Cannot locate core-pipeline root from {HERE} "
-        "(expected a parent containing cli.py and api/)"
+        "(expected a parent containing cli.py and modules/)"
     )
 
 
@@ -54,7 +54,7 @@ def _load_env() -> None:
 
     This module reads os.environ once, at import time, so whoever imports it
     first decides what it sees — and the entrypoints did not agree. cli.py and
-    api/main.py load .env; the documented downloader command,
+    core-pipeline/apps/orchestrator_api/main.py load .env; the documented downloader command,
 
         python -m modules.member.extractors.ner_based.model_downloader
 

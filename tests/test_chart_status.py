@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from db.chart_status import CHART_STATUS_VALUES, compute_progress
+from common.db.chart_status import CHART_STATUS_VALUES, compute_progress
 
 STAGES = [
     ("ocr_prelim", 1, 10),
@@ -200,7 +200,7 @@ class TestProgressShape:
 
 
 def test_a_run_in_progress_is_never_completed_by_old_stage_rows():
-    from db.chart_status import _hold_while_running
+    from common.db.chart_status import _hold_while_running
 
     progress = {"status": "completed", "current_stage": None, "current_pass": None}
     _hold_while_running(progress, ("ocr_quality", 1))
@@ -218,7 +218,7 @@ def test_re_registering_an_unchanged_chart_keeps_its_last_run_at():
     updated_at (review-ui's Last Run At) and its status."""
     import time
 
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
 
     store = MemoryStore()
     first = store.upsert_chart(chart_name="c1", status="completed", run_id="R1", batch_id="B1")
@@ -234,7 +234,7 @@ def test_the_postgres_upsert_only_writes_a_changed_chart():
     when nothing was written."""
     import inspect
 
-    import db
+    from common import db
 
     source = inspect.getsource(db.upsert_chart.__wrapped__ if hasattr(db.upsert_chart, "__wrapped__") else db.upsert_chart)
     assert "IS DISTINCT FROM" in source and "SELECT * FROM chart_list WHERE chart_name" in source

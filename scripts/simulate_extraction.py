@@ -84,7 +84,7 @@ def main() -> int:
         raise SystemExit(f"{len(ocr_pages)} OCR pages but {len(images)} images")
     chart = args.chart_name or ocr_doc.get("recordId") or args.document.name
 
-    from db import (
+    from common.db import (
         connect,
         enable_skip_db_write,
         get_member_summary,
@@ -93,11 +93,11 @@ def main() -> int:
         upsert_manifest_member,
         upsert_ocr_result,
     )
-    from db.memory_store import is_skip_db_write
-    from db.paths import write_final2_json
-    from orchestrator.runner import STAGE_CHAIN
+    from common.db.memory_store import is_skip_db_write
+    from common.db.paths import write_final2_json
+    from apps.worker.runner import STAGE_CHAIN
     from modules.extraction import engine, staging
-    from stages.utilities.download_blob import import_local_folder
+    from apps.worker.stages.utilities.download_blob import import_local_folder
 
     store = enable_skip_db_write(reset=True)
     assert is_skip_db_write()

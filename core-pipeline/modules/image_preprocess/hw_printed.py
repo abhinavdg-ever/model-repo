@@ -104,7 +104,7 @@ _DEFAULT_HW = _HW_DIR / "handwritten_printed_convnext_tiny.pth"
 _BACKUP_HW = _HW_DIR / "handwritten_printed_convnext_tiny_backup.pth"
 _RF_HW = _HW_DIR / "image_type_classification.pkl"
 try:
-    from config import HW_MODEL_PATH as _CFG_HW
+    from common.config import HW_MODEL_PATH as _CFG_HW
 
     if _CFG_HW and Path(_CFG_HW).suffix.lower() in {".pth", ".pt"}:
         _MODEL_CANDIDATES = (Path(_CFG_HW), _DEFAULT_HW, _BACKUP_HW)

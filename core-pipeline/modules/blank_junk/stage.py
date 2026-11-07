@@ -63,8 +63,8 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from config import CORE_ROOT, page_image_path, staging_dir
-from db import (
+from common.config import CORE_ROOT, page_image_path, staging_dir
+from common.db import (
     NO_INK_HW_METHODS,
     connect,
     delete_blank_junk,
@@ -79,8 +79,8 @@ from db import (
     page_type,
     upsert_blank_junk,
 )
-from db.paths import imaging_csv, write_csv
-from stages._support import (
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     mark_completed,
@@ -796,7 +796,7 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
     Always a full rewrite, so re-running either pass converges instead of
     appending duplicate rows.
     """
-    from db import list_blank_junk_for_csv
+    from common.db import list_blank_junk_for_csv
 
     rows = list_blank_junk_for_csv(conn, chart_id)
 
@@ -923,7 +923,7 @@ def _page_inputs(
     with_provider: set[str] = set()
     signature_known = False
     if pass_no == 2:
-        from db.paths import imaging_csv
+        from common.db.paths import imaging_csv
         from modules.continuity.signature import signed_page_names
 
         signed = signed_page_names(ctx.chart_name)

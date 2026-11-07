@@ -13,7 +13,7 @@ for path in (str(CORE), str(ROOT)):
 
 
 def test_ocr_artifacts_present(tmp_path, monkeypatch):
-    import config
+    from common import config
     from modules.ocr.reuse import ocr_artifacts_present
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
@@ -31,7 +31,7 @@ def test_ocr_artifacts_present(tmp_path, monkeypatch):
 
 
 def test_ocr_artifacts_final1_json(tmp_path, monkeypatch):
-    import config
+    from common import config
     from modules.ocr.reuse import ocr_artifacts_present
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
@@ -72,7 +72,7 @@ def test_page_doc_from_raw_preserves_json_envelope():
 
 
 def test_should_skip_prefers_disk_then_needs_db(tmp_path, monkeypatch):
-    import config
+    from common import config
     from modules.ocr.reuse import should_skip_ocr_stages
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
@@ -96,7 +96,7 @@ def test_should_skip_prefers_disk_then_needs_db(tmp_path, monkeypatch):
 
 
 def test_copy_ocr_from_output_folder_into_workspace(tmp_path, monkeypatch):
-    import config
+    from common import config
     from modules.ocr.reuse import (
         _copy_ocr_dir_into_workspace,
         _local_output_ocr_candidates,
@@ -128,7 +128,7 @@ def test_large_charts_never_run_together():
     import threading
     import time
 
-    from jobs.batch_intake import LargeChartLimiter
+    from apps.worker.jobs.batch_intake import LargeChartLimiter
 
     limiter = LargeChartLimiter()
     order: list[str] = []
@@ -162,7 +162,7 @@ def test_large_charts_never_run_together():
 def test_small_charts_are_not_held_by_a_running_large_chart():
     import threading
 
-    from jobs.batch_intake import LargeChartLimiter
+    from apps.worker.jobs.batch_intake import LargeChartLimiter
 
     limiter = LargeChartLimiter()
     limiter.enter(True)  # a large chart is running
@@ -208,7 +208,7 @@ def test_skip_ocr_refreshes_only_old_final1_on_high_quality_pages():
 def test_large_charts_get_their_own_lane():
     """2026-10-31 (user): large charts run one at a time on their own lane; small charts
     keep the other workers; one worker stays one chart at a time."""
-    from jobs.batch_intake import lane_sizes
+    from apps.worker.jobs.batch_intake import lane_sizes
 
     assert lane_sizes(4, 3, 5) == (1, 3)
     assert lane_sizes(2, 3, 5) == (1, 1)

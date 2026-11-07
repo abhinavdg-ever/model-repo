@@ -33,7 +33,7 @@ from dataclasses import replace
 from datetime import date
 from typing import Any, Optional
 
-from db import (
+from common.db import (
     IMAGING_FINAL_COLUMNS,
     connect,
     get_blank_junk_final,
@@ -47,8 +47,8 @@ from db import (
     get_sequencing_map,
     upsert_imaging_final,
 )
-from db.paths import imaging_csv, write_csv
-from stages._support import INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, mark_completed, stage_run
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, mark_completed, stage_run
 from modules import confidence as conf
 from modules.continuity.engine import document_finals
 from modules.page_classify import axes
@@ -247,8 +247,8 @@ def review_fields(confidences: dict[str, float]) -> list[str]:
 
 def page_texts(conn: Any, chart_id: int, pages: list[dict[str, Any]], quality: dict[int, Any]) -> dict[int, str]:
     """Each page's best OCR text (Final 2, Final 1, then Tesseract), for note_sections."""
-    from db import get_ocr_texts
-    from stages._support import best_page_text
+    from common.db import get_ocr_texts
+    from apps.worker.stages._support import best_page_text
 
     prelim = get_ocr_texts(conn, chart_id, "tesseract")
     final1 = get_ocr_texts(conn, chart_id, "docling")

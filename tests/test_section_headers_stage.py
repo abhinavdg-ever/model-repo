@@ -104,7 +104,7 @@ def test_refresh_ocr_json_doc_rewrites_headers():
 
 
 def test_stage_in_chain():
-    from orchestrator.runner import STAGE_CHAIN, resolve_stage
+    from apps.worker.runner import STAGE_CHAIN, resolve_stage
 
     assert resolve_stage("section_headers") >= 0
     names = [n for n, _p, _ in STAGE_CHAIN]

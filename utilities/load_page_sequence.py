@@ -42,7 +42,7 @@ try:
 except ImportError:
     pass
 
-from jobs.ground_truth_load import iter_files, read_table, upsert_rows  # noqa: E402
+from apps.worker.jobs.ground_truth_load import iter_files, read_table, upsert_rows  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {row['chart_name']}  page {row['page_number']}: {row.get('page_sequence') or '(clear)'}")
         return 0
 
-    from db import connect
+    from common.db import connect
 
     with connect() as conn:
         upsert_rows(conn, rows, columns=("page_sequence",))

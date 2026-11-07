@@ -14,7 +14,7 @@ if str(CORE) not in sys.path:
 
 @pytest.fixture()
 def memory():
-    from db import disable_skip_db_write, enable_skip_db_write
+    from common.db import disable_skip_db_write, enable_skip_db_write
 
     store = enable_skip_db_write(reset=True)
     yield store
@@ -23,7 +23,7 @@ def memory():
 
 class TestMemoryStoreRoundTrip:
     def test_chart_pages_ocr_and_resume(self, memory):
-        from db import (
+        from common.db import (
             connect,
             get_ocr_texts,
             init_page_stages,
@@ -74,7 +74,7 @@ class TestMemoryStoreRoundTrip:
             assert texts[pages[0]["id"]] == "hello patient note"
 
     def test_blank_junk_flags(self, memory):
-        from db import (
+        from common.db import (
             connect,
             get_blank_junk_flags,
             mark_blank_junk_final,
@@ -106,7 +106,7 @@ class TestMemoryStoreRoundTrip:
 
 class TestClearChartOutputs:
     def _seed(self):
-        from db import (
+        from common.db import (
             connect,
             set_page_stage,
             upsert_blank_junk,
@@ -130,7 +130,7 @@ class TestClearChartOutputs:
         return cid
 
     def test_skip_ocr_keeps_ocr_only(self, memory):
-        from db import clear_chart_outputs, connect, get_blank_junk_flags, get_ocr_texts
+        from common.db import clear_chart_outputs, connect, get_blank_junk_flags, get_ocr_texts
 
         cid = self._seed()
         with connect() as conn:
@@ -141,7 +141,7 @@ class TestClearChartOutputs:
             assert stages == {"ocr_prelim"}
 
     def test_full_rerun_clears_ocr_too(self, memory):
-        from db import clear_chart_outputs, connect, get_ocr_texts
+        from common.db import clear_chart_outputs, connect, get_ocr_texts
 
         cid = self._seed()
         with connect() as conn:
@@ -164,7 +164,7 @@ class TestSkipDbWriteGuards:
         assert exc.value.code == 0
 
     def test_ingest_rejects_blob_with_skip_db(self, memory):
-        from orchestrator.runner import ingest_and_run
+        from apps.worker.runner import ingest_and_run
 
         with pytest.raises(ValueError, match="local_path"):
             ingest_and_run(
@@ -184,7 +184,7 @@ class TestOfflineIntakeNoPostgres:
             chart_dir / "1.jpg", format="JPEG"
         )
 
-        import db as db_mod
+        from common import db as db_mod
 
         def boom(*_a, **_k):
             raise AssertionError("psycopg.connect must not be called")
@@ -193,12 +193,12 @@ class TestOfflineIntakeNoPostgres:
         monkeypatch.setattr(db_mod, "_get_pool", lambda: False)
 
         # Point DATA_ROOT at a temp workspace so we do not touch review-ui.
-        import config
+        from common import config
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         (tmp_path / "folders").mkdir()
 
-        from stages.utilities.download_blob import import_local_folder
+        from apps.worker.stages.utilities.download_blob import import_local_folder
 
         result = import_local_folder(chart_dir, chart_name="offline_chart", force=True)
         assert result["chart_id"]
@@ -208,8 +208,8 @@ class TestOfflineIntakeNoPostgres:
     def test_a_short_workspace_is_replaced_from_the_source(self, memory, tmp_path, monkeypatch):
         from PIL import Image
 
-        import config
-        from stages.utilities.download_blob import import_local_folder
+        from common import config
+        from apps.worker.stages.utilities.download_blob import import_local_folder
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         (tmp_path / "folders").mkdir()
@@ -232,7 +232,7 @@ class TestOfflineIntakeNoPostgres:
 
 
 def test_test_chart_name_suffix():
-    from db.memory_store import test_chart_name
+    from common.db.memory_store import test_chart_name
 
     assert test_chart_name("52743839_44976074") == "52743839_44976074-test"
     assert test_chart_name("52743839_44976074-test") == "52743839_44976074-test"

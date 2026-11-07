@@ -10,8 +10,8 @@ for path in (str(CORE), str(ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from db import page_blocks_prelim  # noqa: E402
-from stages._support import best_page_text  # noqa: E402
+from common.db import page_blocks_prelim  # noqa: E402
+from apps.worker.stages._support import best_page_text  # noqa: E402
 
 
 def test_prefers_final2_over_final1_and_prelim():

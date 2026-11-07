@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -33,26 +33,26 @@ except ImportError:
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from config import (
+from common.config import (
     API_HOST,
     API_PORT,
     MEMBER_NER_ENABLED,
     STAGE_WORKERS,
 )
-from db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
-from db.chart_status import refresh_chart_status
-from db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
-from jobs.manifest_sweeper import run_load
-from jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
-from orchestrator import run_stats
-from orchestrator.runner import (
+from common.db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
+from common.db.chart_status import refresh_chart_status
+from common.db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
+from apps.worker.jobs.manifest_sweeper import run_load
+from apps.worker.jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
+from apps.worker import run_stats
+from apps.worker.runner import (
     STAGE_NAMES,
     ingest_and_run,
     resolve_stage,
     run_pipeline_for_chart,
 )
 
-from logging_setup import configure_logging
+from common.logging_setup import configure_logging
 
 # Root at INFO for our own per-page progress lines; Azure + Docling quieted to
 # WARNING, or they bury [batch#] [chart#] under convert/HTTP spam.
@@ -83,7 +83,7 @@ def _safe_db_url(url: str) -> str:
 
 @app.on_event("startup")
 def _startup() -> None:
-    from config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
+    from common.config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
 
     logger.info("core-pipeline starting")
     # `kill -USR1 <pid>` prints every thread's stack to stderr (docker logs):
@@ -118,7 +118,7 @@ def _startup() -> None:
 
     # Optional features: OK / off only — no path dumps.
     try:
-        from capabilities import all_capabilities, startup_lines
+        from common.capabilities import all_capabilities, startup_lines
 
         caps = all_capabilities(probe=True)
         logger.info("capabilities")
@@ -521,8 +521,8 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
 
     write = payload.blob_write_path or payload.local_write_path
     try:
-        from db import connect, set_chart_output_path
-        from db.path_ids import resolve_output_path
+        from common.db import connect, set_chart_output_path
+        from common.db.path_ids import resolve_output_path
 
         out_path = resolve_output_path(chart_name, write_path=write)
         if out_path:
@@ -539,7 +539,7 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
             "could not persist output_path for %s", chart_name, exc_info=True
         )
 
-    from jobs.export_chart import write_chart
+    from apps.worker.jobs.export_chart import write_chart
 
     # After skip_ocr, quality refreshed corrected-pages/; push outputs over
     # whatever is already on Processed (ocr / corrected-pages / imaging).
@@ -587,7 +587,7 @@ def _bg_pipeline_then_write(
         _write_after_run(payload, chart_name)
     finally:
         if getattr(payload, "wants_offline", lambda: False)():
-            from db import disable_skip_db_write
+            from common.db import disable_skip_db_write
 
             disable_skip_db_write()
 
@@ -666,7 +666,7 @@ def _bg_pipeline(
 
 
 def _bg_batch(payload: "BatchRequest") -> None:
-    from jobs.batch_intake import run_batch
+    from apps.worker.jobs.batch_intake import run_batch
 
     source = (
         payload.local_read_path
@@ -742,7 +742,7 @@ def _require_db() -> None:
     """
     import psycopg
 
-    from config import DATABASE_URL
+    from common.config import DATABASE_URL
 
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
@@ -767,7 +767,7 @@ def health() -> dict[str, Any]:
     # Same source as the startup banner, so the two cannot disagree. No network
     # here: /health must stay fast and must not hang when Azure is down.
     try:
-        from capabilities import all_capabilities
+        from common.capabilities import all_capabilities
 
         caps = all_capabilities()
     except Exception as exc:  # never let a probe fail on an optional feature
@@ -838,7 +838,7 @@ def _check_source(body: ChartRunOptions) -> None:
 
 def _chart_finished(chart_name: str) -> Optional[str]:
     """The chart's status when it is already finished, else None."""
-    from jobs.batch_intake import FINISHED_CHART_STATUSES
+    from apps.worker.jobs.batch_intake import FINISHED_CHART_STATUSES
 
     with connect() as conn:
         chart = get_chart_by_name(conn, chart_name)
@@ -893,7 +893,7 @@ def run_chart(
     }
 
     if not body.is_blob:
-        from stages.utilities.download_blob import import_local_folder
+        from apps.worker.stages.utilities.download_blob import import_local_folder
 
         source = str(Path(body.input_path) / folder)
         try:
@@ -977,7 +977,7 @@ def _batch_run_impl(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
     """Register every chart under input_path, then run them with a worker pool."""
-    from jobs.batch_intake import (
+    from apps.worker.jobs.batch_intake import (
         filter_sources_by_chart_names,
         find_local_chart_folders,
         finished_chart_names,
@@ -1166,8 +1166,8 @@ def manifest_metadata_extra(body: MetadataExtraRequest) -> dict[str, Any]:
     """Match metadata_extra.csv to the batch metadata CSVs by recordId, add the extra
     columns (MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure, ServiceNote) to them,
     and with ``load`` write them to manifest_member_list. Returns what changed."""
-    from config import METADATA_ROOT
-    from jobs.metadata_expand import run as expand_metadata
+    from common.config import METADATA_ROOT
+    from apps.worker.jobs.metadata_expand import run as expand_metadata
 
     if body.load and not body.dry_run:
         _require_db()
@@ -1191,7 +1191,7 @@ def manifest_metadata_extra(body: MetadataExtraRequest) -> dict[str, Any]:
 @app.post("/api/ground-truth/load", tags=["ground-truth"])
 def ground_truth_load(body: GroundTruthLoadRequest) -> dict[str, Any]:
     """Load client page labels. Chart_Name + Id (1.jpg / 1.png / 1.tif) are the keys."""
-    from jobs.ground_truth_load import run_load
+    from apps.worker.jobs.ground_truth_load import run_load
 
     _require_db()
     if not body.local_path or not Path(body.local_path).exists():
@@ -1210,7 +1210,7 @@ def get_manifest(record_id: str) -> dict[str, Any]:
     id, scans ``METADATA_ROOT`` (default ``core-pipeline/outputs/metadata``) for
     matching rows in every CSV/XLSX there — the same files Local Mode reads.
     """
-    from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+    from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
 
     rid = (record_id or "").strip()
     if not rid:
@@ -1272,7 +1272,7 @@ def list_jobs(
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("api.main:app", host=API_HOST, port=API_PORT, reload=False)
+    uvicorn.run("apps.orchestrator_api.main:app", host=API_HOST, port=API_PORT, reload=False)
 
 
 if __name__ == "__main__":

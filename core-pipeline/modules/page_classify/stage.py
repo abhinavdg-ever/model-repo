@@ -35,16 +35,16 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from db import (
+from common.db import (
     connect,
     get_blank_junk_final,
     get_ocr_texts,
     get_quality_map,
     upsert_page_classification,
 )
-from config import staging_dir
-from db.paths import imaging_csv, write_csv
-from stages._support import (
+from common.config import staging_dir
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     INVOICE_DECIDED_BY,
     INVOICE_PAGE_SUBTYPE,

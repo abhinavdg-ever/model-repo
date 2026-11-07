@@ -22,8 +22,8 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
-from db import (
+from common.config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
+from common.db import (
     connect,
     create_job,
     get_chart,
@@ -39,14 +39,14 @@ from db import (
     upsert_chart,
     upsert_pages,
 )
-from db.blob_store import (
+from common.db.blob_store import (
     chart_name_from_blob_path,
     download_blob_to_path,
     ensure_blob_ready,
     list_image_blobs,
 )
-from db.chart_status import refresh_chart_status
-from db.paths import clear_page_image_dirs, copy_file, list_local_pages
+from common.db.chart_status import refresh_chart_status
+from common.db.paths import clear_page_image_dirs, copy_file, list_local_pages
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +302,7 @@ def _download_missing_from_raw_input(
     ensure_blob_ready(blob_container)
     blob_names = list_image_blobs(blob_container, blob_path)
     if not blob_names:
-        from db.blob_store import get_container_client, normalize_prefix
+        from common.db.blob_store import get_container_client, normalize_prefix
 
         prefix = normalize_prefix(blob_path)
         try:
@@ -333,7 +333,7 @@ def _download_missing_from_raw_input(
     dest_root.mkdir(parents=True, exist_ok=True)
     reused = 0
     total = len(blob_names)
-    from db.paths import write_folder_progress
+    from common.db.paths import write_folder_progress
 
     for idx, blob_name in enumerate(blob_names, start=1):
         local_name = _normalize_page_filename(idx, Path(blob_name).name)
@@ -473,7 +473,7 @@ def run_download(
     force: bool = True,
     redownload_pages: bool = False,
 ) -> dict[str, Any]:
-    from db.path_ids import resolve_output_path, resolve_run_batch
+    from common.db.path_ids import resolve_output_path, resolve_run_batch
 
     run_id, batch_id = resolve_run_batch(run_id, batch_id, blob_path, blob_container)
     chart_name = chart_name_from_blob_path(blob_path)
@@ -589,7 +589,7 @@ def _collect_images(source: Path, *, recursive: bool) -> list[Path]:
 
 def _collect_manifests(source: Path, *, recursive: bool) -> list[Path]:
     """CSV/XLSX sitting alongside the images — the member roster for this drop."""
-    from jobs.manifest_sweeper import MANIFEST_SUFFIXES
+    from apps.worker.jobs.manifest_sweeper import MANIFEST_SUFFIXES
 
     walker = source.rglob("*") if recursive else source.iterdir()
     return sorted(
@@ -626,7 +626,7 @@ def import_local_folder(
     which only resets stage result tables). Pass ``redownload_pages=True`` to
     wipe ``pages/`` + ``corrected-pages/`` and re-copy from ``source``.
     """
-    from db.path_ids import resolve_output_path, resolve_run_batch
+    from common.db.path_ids import resolve_output_path, resolve_run_batch
 
     src = Path(source).expanduser().resolve()
     run_id, batch_id = resolve_run_batch(run_id, batch_id, str(src))
@@ -711,7 +711,7 @@ def import_local_folder(
         result["cleared_workspace"] = cleared
         return result
 
-    from db.paths import write_folder_progress
+    from common.db.paths import write_folder_progress
 
     copied: list[str] = []
     total_files = len(images)
@@ -731,8 +731,8 @@ def import_local_folder(
     manifest_summary: dict[str, Any] = {"files": 0, "inserted": 0, "updated": 0}
     manifests = _collect_manifests(src, recursive=True)
     if manifests:
-        from config import METADATA_ROOT
-        from jobs.manifest_sweeper import run_load
+        from common.config import METADATA_ROOT
+        from apps.worker.jobs.manifest_sweeper import run_load
 
         METADATA_ROOT.mkdir(parents=True, exist_ok=True)
         for man in manifests:

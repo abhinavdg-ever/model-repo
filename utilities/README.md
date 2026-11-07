@@ -142,7 +142,7 @@ PDF in that folder. `--out` defaults to `core-pipeline/outputs/charts`.
 Same job via the API / sweeper:
 
 ```bash
-python -m jobs.manifest_sweeper --local outputs/metadata/
+python -m apps.worker.jobs.manifest_sweeper --local outputs/metadata/
 
 curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/json' \
   -d '{"local_path":"/path/to/metadata"}'

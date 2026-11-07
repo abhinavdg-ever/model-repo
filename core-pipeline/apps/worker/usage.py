@@ -164,7 +164,7 @@ def write(run: dict[str, Any], results: dict[str, Any]) -> Optional[dict[str, An
         logger.warning("run usage not built: %s", exc)
         return None
     try:
-        from db import connect, is_skip_db_write
+        from common.db import connect, is_skip_db_write
 
         if is_skip_db_write():
             return row
@@ -191,7 +191,7 @@ def write(run: dict[str, Any], results: dict[str, Any]) -> Optional[dict[str, An
 
 def daily(days: int = 14) -> list[dict[str, Any]]:
     """The last ``days`` days of v_run_usage_daily, newest first."""
-    from db import connect
+    from common.db import connect
 
     with connect() as conn:
         cur = conn.execute(

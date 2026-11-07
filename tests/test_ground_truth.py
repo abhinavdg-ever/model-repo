@@ -1,6 +1,6 @@
 """Client page ground truth: Chart_Name + Id, where Id 1 is 1.jpg / 1.png / 1.tif."""
 
-from jobs.ground_truth_load import page_number_from_id, parse_rows, read_table
+from apps.worker.jobs.ground_truth_load import page_number_from_id, parse_rows, read_table
 
 
 def test_page_id_matches_the_image_stem():
@@ -86,7 +86,7 @@ def test_csv_file_round_trip(tmp_path):
 def test_every_spelling_of_codable_reads_as_codable_or_non_codable():
     """Sheets and older runs say Codeable / Non Codeable / NonCodeable. They
     are stored and shown as Codable / Non-Codable."""
-    from jobs.ground_truth_load import spell_codeable
+    from apps.worker.jobs.ground_truth_load import spell_codeable
 
     for value in ("Codeable", "codeable", "Codable", "CODEABLE"):
         assert spell_codeable(value) == "Codable"
@@ -99,7 +99,7 @@ def test_every_spelling_of_codable_reads_as_codable_or_non_codable():
 
 
 def test_the_codeable_header_spelling_is_accepted():
-    from jobs.ground_truth_load import parse_rows
+    from apps.worker.jobs.ground_truth_load import parse_rows
 
     rows = parse_rows(
         ["Chart Name", "Id", "Codeable or Non Codeable"],
@@ -109,7 +109,7 @@ def test_the_codeable_header_spelling_is_accepted():
 
 
 def test_page_sequence_comes_from_the_sequence_column_only():
-    from jobs.ground_truth_load import parse_rows
+    from apps.worker.jobs.ground_truth_load import parse_rows
 
     rows = parse_rows(
         ["Chart_Name", "Id", "Sequence", "Page Sequence"],
@@ -120,7 +120,7 @@ def test_page_sequence_comes_from_the_sequence_column_only():
 
 
 def test_only_the_columns_in_the_file_are_upserted():
-    from jobs.ground_truth_load import parse_rows, upsert_sql
+    from apps.worker.jobs.ground_truth_load import parse_rows, upsert_sql
 
     rows = parse_rows(["Chart_Name", "Id", "Sequence"], [["c1", "1.png", "4"]])
     assert rows[0]["_columns"] == ("page_sequence",)
@@ -136,7 +136,7 @@ def test_reloading_an_unchanged_page_writes_nothing():
     """Last Verified At is the page's updated_at: reloading the same sheet must not
     move it. Only a change to the labels or page id updates the row (and so
     appends a bulk entry, which hangs off the RETURNING row)."""
-    from jobs.ground_truth_load import upsert_sql
+    from apps.worker.jobs.ground_truth_load import upsert_sql
 
     sql = upsert_sql(("member_name", "dos_from"))
     guard = sql.split("updated_at = now()", 1)[1].split("RETURNING", 1)[0]
@@ -150,7 +150,7 @@ def test_reloading_an_unchanged_page_writes_nothing():
 def test_upsert_sql_takes_ground_truth_columns_only():
     import pytest
 
-    from jobs.ground_truth_load import upsert_sql
+    from apps.worker.jobs.ground_truth_load import upsert_sql
 
     with pytest.raises(ValueError):
         upsert_sql(("page_sequence", "id; drop table x"))
@@ -159,7 +159,7 @@ def test_upsert_sql_takes_ground_truth_columns_only():
 def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
     import json
 
-    from jobs.ground_truth_load import _TEXT_FIELDS, _UPSERT, entry_labels
+    from apps.worker.jobs.ground_truth_load import _TEXT_FIELDS, _UPSERT, entry_labels
 
     assert "'bulk_upload'" in _UPSERT and "%(labels)s::jsonb" in _UPSERT
     labels = json.loads(entry_labels({"rotation": "90", "member_name": None}))
@@ -168,7 +168,7 @@ def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
 
 
 def test_a_cp1252_csv_from_excel_loads(tmp_path):
-    from jobs.ground_truth_load import read_table
+    from apps.worker.jobs.ground_truth_load import read_table
 
     path = tmp_path / "gt.csv"
     path.write_bytes("Chart_Name,Id,Member Name,Sequence\nc1,1.png,Renée O’Neil,2\n".encode("cp1252"))
@@ -189,7 +189,7 @@ def test_the_review_ui_reader_takes_a_cp1252_csv():
 
 
 def test_blank_and_junk_pages_get_a_j_sequence():
-    from jobs.ground_truth_load import parse_rows
+    from apps.worker.jobs.ground_truth_load import parse_rows
 
     rows = parse_rows(
         ["Chart_Name", "Id", "Blank Page", "Junk Page", "Sequence"],

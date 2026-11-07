@@ -1,9 +1,9 @@
 """2026-11-01 (user): per-chart and per-hour run statistics written next to the logs
-(core-pipeline/orchestrator/run_stats.py)."""
+(core-pipeline/apps/worker/run_stats.py)."""
 import csv
 from datetime import datetime, timedelta, timezone
 
-from orchestrator import run_stats
+from apps.worker import run_stats
 
 T0 = datetime(2026, 11, 1, 10, 50, tzinfo=timezone.utc)
 

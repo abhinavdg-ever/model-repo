@@ -179,7 +179,7 @@ class TestModelBridge:
         return model_bridge
 
     def test_model_dir_comes_from_config(self, monkeypatch, tmp_path):
-        import config
+        from common import config
 
         bridge = self._bridge()
         monkeypatch.setattr(config, "BLANK_JUNK_MODEL_DIR", tmp_path)
@@ -521,9 +521,9 @@ def _edited(words: list[str], changes: int) -> str:
 
 class TestDuplicatePageType:
     def test_a_duplicate_takes_its_originals_page_type(self, tmp_path, monkeypatch):
-        import config
-        import db
-        from db import (
+        from common import config
+        from common import db
+        from common.db import (
             connect,
             disable_skip_db_write,
             enable_skip_db_write,
@@ -571,7 +571,7 @@ class TestPass1SureJunk:
     Final OCR 1, but it re-grades nothing and no later stage reads them."""
 
     def test_pass1_ruled_out_lists_what_later_stages_skip(self):
-        from db import (
+        from common.db import (
             connect,
             disable_skip_db_write,
             enable_skip_db_write,
@@ -582,7 +582,7 @@ class TestPass1SureJunk:
             upsert_pages,
             upsert_quality,
         )
-        from stages._support import FINAL_JUNK, pass1_ruled_out
+        from apps.worker.stages._support import FINAL_JUNK, pass1_ruled_out
 
         enable_skip_db_write(reset=True)
         try:
@@ -659,7 +659,7 @@ class TestDuplicateConfidenceStored:
         assert rows[4]["duplicate_confidence"] is None  # blank: never compared
 
     def test_the_store_keeps_it(self):
-        from db import connect, disable_skip_db_write, enable_skip_db_write, upsert_blank_junk
+        from common.db import connect, disable_skip_db_write, enable_skip_db_write, upsert_blank_junk
 
         store = enable_skip_db_write(reset=True)
         try:

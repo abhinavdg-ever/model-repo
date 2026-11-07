@@ -24,8 +24,8 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from db import connect, get_ocr_texts, list_pages, set_pages_stage, upsert_ocr_result
-from db.paths import (
+from common.db import connect, get_ocr_texts, list_pages, set_pages_stage, upsert_ocr_result
+from common.db.paths import (
     copy_file,
     ocr_dir,
     parse_combined_ocr_txt,
@@ -76,7 +76,7 @@ def ocr_artifacts_present(chart_name: str) -> bool:
 
 
 def _chart_row(chart_id: int) -> Optional[dict[str, Any]]:
-    from db import get_chart
+    from common.db import get_chart
 
     with connect() as conn:
         chart = get_chart(conn, chart_id)
@@ -142,7 +142,7 @@ def _pull_ocr_from_blob_output(
     chart_name: str,
 ) -> int:
     """Download OCR artifacts from ``{output_path}/ocr/`` (or the folder itself)."""
-    from db.blob_store import download_blob_to_path, list_blobs_with_suffixes
+    from common.db.blob_store import download_blob_to_path, list_blobs_with_suffixes
 
     prefix = output_path.strip().strip("/").replace("\\", "/")
     # Prefer …/ocr/ under the chart output; also accept files sitting next to it.
@@ -236,7 +236,7 @@ def output_or_workspace_ocr_ready(chart_id: int, chart_name: str) -> bool:
     if not container:
         return False
     try:
-        from db.blob_store import list_blobs_with_suffixes
+        from common.db.blob_store import list_blobs_with_suffixes
 
         prefix = output_path.strip().strip("/").replace("\\", "/")
         for pref in (f"{prefix}/ocr", prefix):
@@ -254,7 +254,7 @@ def output_or_workspace_ocr_ready(chart_id: int, chart_name: str) -> bool:
 
 def ocr_results_present(chart_id: int) -> bool:
     """True when ``ocr_results`` has at least one non-empty row for this chart."""
-    from db import has_ocr_results
+    from common.db import has_ocr_results
 
     with connect() as conn:
         return has_ocr_results(conn, chart_id)
@@ -566,7 +566,7 @@ def _load_ocr_doc(chart_name: str, suffix: str) -> Any:
 
 def reopen_final1_for_hq_pages(chart_id: int, chart_name: str) -> list[int]:
     """Mark Final1 pending for high-quality pages the earlier run left without Final2."""
-    from db import reset_pages_stage
+    from common.db import reset_pages_stage
 
     names = set(
         final1_names_to_refresh(
@@ -601,8 +601,8 @@ def reopen_final2_missing(chart_id: int) -> list[int]:
     blank / junk in pass 1) that the rules no longer skip got no Final OCR 2 on a skip_ocr
     re-run. Mark Final2 pending for every page with no Azure text that pass 1 has not settled;
     the stage then skips the ones still high-quality printed and sends only the rest (billed)."""
-    from db import reset_pages_stage
-    from stages._support import pass1_ruled_out
+    from common.db import reset_pages_stage
+    from apps.worker.stages._support import pass1_ruled_out
 
     with connect() as conn:
         page_ids = [p["id"] for p in list_pages(conn, chart_id)]
@@ -661,7 +661,7 @@ def should_skip_ocr_stages(
     Processed ``output_path``, or Postgres (``apply_skip_ocr`` does the fetch).
     If nothing is available, returns False so engines re-run.
     """
-    from config import SKIP_OCR
+    from common.config import SKIP_OCR
 
     enabled = SKIP_OCR if skip_ocr is None else bool(skip_ocr)
     if force or not enabled:

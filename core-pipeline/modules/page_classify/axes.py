@@ -271,7 +271,7 @@ def settings() -> dict[str, Any]:
 
 
 def model_dir() -> Path:
-    from config import PAGE_AXES_MODEL_DIR
+    from common.config import PAGE_AXES_MODEL_DIR
 
     return Path(PAGE_AXES_MODEL_DIR)
 

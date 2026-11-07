@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from config import ocr_dir
+from common.config import ocr_dir
 
 from .engine import Line, normalize
 

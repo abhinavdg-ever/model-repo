@@ -33,7 +33,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
-from config import CORE_ROOT
+from common.config import CORE_ROOT
 
 _JUNK_LIB = CORE_ROOT / "modules" / "blank_junk"
 if str(_JUNK_LIB) not in sys.path:

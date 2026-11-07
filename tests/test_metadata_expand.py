@@ -1,13 +1,13 @@
 """Chart metadata (ClientID, SourceName, RR Method, Measure, ServiceNote): the batch CSV
-filler (jobs/metadata_expand.py) and the manifest loader's new columns."""
+filler (core-pipeline/apps/worker/jobs/metadata_expand.py) and the manifest loader's new columns."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
-from db.memory_store import MemoryStore
-from jobs import metadata_expand
-from jobs.manifest_sweeper import _row_to_member
+from common.db.memory_store import MemoryStore
+from apps.worker.jobs import metadata_expand
+from apps.worker.jobs.manifest_sweeper import _row_to_member
 
 NOTE = 'TRC - REQUIRED - Member demographic sheet: Name and date of birth, 2026 "Evidence", long text'
 
@@ -108,7 +108,7 @@ def test_memory_store_keeps_metadata_and_a_blank_does_not_erase_it() -> None:
 
 
 def test_the_dump_beside_the_batch_files_is_read_by_default_and_never_a_batch(tmp_path: Path) -> None:
-    from jobs.manifest_sweeper import _is_manifest_file
+    from apps.worker.jobs.manifest_sweeper import _is_manifest_file
 
     folder = tmp_path / "metadata"
     folder.mkdir()

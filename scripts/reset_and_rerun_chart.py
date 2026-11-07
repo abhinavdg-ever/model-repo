@@ -46,7 +46,7 @@ except ImportError:
 
 
 def _resolve_chart(conn, *, chart_id: int | None, chart_name: str | None) -> dict:
-    from db import get_chart, get_chart_by_name
+    from common.db import get_chart, get_chart_by_name
 
     if chart_id is not None:
         row = get_chart(conn, int(chart_id))
@@ -64,8 +64,8 @@ def _resolve_chart(conn, *, chart_id: int | None, chart_name: str | None) -> dic
 
 def wipe_chart(conn, chart: dict) -> dict:
     """Clear stage tables, page_list, and workspace files for one chart."""
-    from db import reset_chart_results
-    from db.paths import clear_chart_workspace
+    from common.db import reset_chart_results
+    from common.db.paths import clear_chart_workspace
 
     chart_id = int(chart["id"])
     chart_name = str(chart["chart_name"])
@@ -91,7 +91,7 @@ def rerun_chart(
     """Re-ingest from blob (stored on chart) or a local parent folder + run."""
     from pathlib import Path
 
-    from orchestrator.runner import ingest_and_run
+    from apps.worker.runner import ingest_and_run
 
     chart_name = str(chart["chart_name"])
     source = (chart.get("source") or "").strip().lower()
@@ -165,7 +165,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from db import connect
+    from common.db import connect
 
     with connect() as conn:
         chart = _resolve_chart(conn, chart_id=args.chart_id, chart_name=args.chart_name)

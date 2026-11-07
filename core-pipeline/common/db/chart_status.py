@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from db.memory_store import MemoryStore
+from common.db.memory_store import MemoryStore
 
 DONE = frozenset({"completed", "skipped"})
 

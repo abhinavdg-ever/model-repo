@@ -116,7 +116,7 @@ class TestGeometry:
 def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     # The HW stage's blank_page / faint_marks_only pages are not "non-printed": pass 1
     # judges them (R1 Blank) and final OCR skips them. A handwritten page still waits.
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
 
     store = MemoryStore()
     for page_id, kind, hw in ((1, "uncertain", "blank_page"), (2, "uncertain", "faint_marks_only"),
@@ -130,7 +130,7 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
 def test_a_page_typed_blank_is_judged_in_pass_1_and_is_blank_without_text():
     # 2026-10-27 (user): Type (Printed/HW) = Blank is no longer "non-printed": pass 1 reads it,
     # and with no text R1 calls it Blank (before, it reached pass 2 with no text and got no verdict).
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
 
     store = MemoryStore()
     store.upsert_quality(chart_id=8, page_id=1, printed_or_handwritten="uncertain", document_type="blank",

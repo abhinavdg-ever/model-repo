@@ -732,7 +732,7 @@ class MemoryStore:
             )
 
     def handwritten_page_ids(self, chart_id: int) -> set[int]:
-        from db import page_type
+        from common.db import page_type
 
         return {
             pid
@@ -741,7 +741,7 @@ class MemoryStore:
         }
 
     def non_printed_page_ids(self, chart_id: int) -> set[int]:
-        from db import NO_INK_HW_METHODS, is_printed_type, page_type
+        from common.db import NO_INK_HW_METHODS, is_printed_type, page_type
 
         return {
             pid
@@ -758,7 +758,7 @@ class MemoryStore:
         }
 
     def high_quality_printed_page_ids(self, chart_id: int) -> set[int]:
-        from db import page_type
+        from common.db import page_type
 
         return {
             pid

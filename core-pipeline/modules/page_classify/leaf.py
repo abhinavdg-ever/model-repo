@@ -54,13 +54,13 @@ _failed: Optional[str] = None
 
 
 def model_dir() -> Path:
-    from config import PAGE_LEAF_MODEL_DIR
+    from common.config import PAGE_LEAF_MODEL_DIR
 
     return Path(PAGE_LEAF_MODEL_DIR)
 
 
 def enabled() -> bool:
-    from config import PAGE_CLASSIFIER
+    from common.config import PAGE_CLASSIFIER
 
     return PAGE_CLASSIFIER == "leaf"
 

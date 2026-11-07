@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 
-from config import (
+from common.config import (
     MAX_TILT_TO_APPLY,
     ROTATION_CORRECTION_ENABLED,
     STAGE_WORKERS,
@@ -26,9 +26,9 @@ from config import (
     page_image_source,
     pages_dir,
 )
-from db import connect, set_page_image_source, upsert_quality
-from db.paths import imaging_csv, write_csv
-from stages._support import mark_completed, mark_failed, mark_processing, stage_run
+from common.db import connect, set_page_image_source, upsert_quality
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import mark_completed, mark_failed, mark_processing, stage_run
 
 logger = logging.getLogger(__name__)
 
@@ -560,7 +560,7 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
 
 def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path, Path]:
     """Rebuild CSVs from stored rows, so a resumed run stays consistent."""
-    from db import list_quality_for_csv
+    from common.db import list_quality_for_csv
 
     rows = list_quality_for_csv(conn, chart_id)
 
@@ -641,7 +641,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 mark_processing(conn, ctx, page["id"])
         # mark_processing leaves the last page in the log context. The pool
         # below is the whole chart, not page 29.
-        from logging_setup import set_current_page
+        from common.logging_setup import set_current_page
 
         set_current_page("")
 
@@ -724,7 +724,7 @@ def _write_rotation_json(chart_name: str, measured: list[dict[str, Any]]) -> Opt
     import json
     from datetime import datetime, timezone
 
-    from config import staging_dir
+    from common.config import staging_dir
 
     path = staging_dir(chart_name) / "rotation.json"
     try:
@@ -782,7 +782,7 @@ def _append_rotation_log(chart_name: str, measured: list[dict[str, Any]]) -> Non
     and the decision."""
     from datetime import datetime, timezone
 
-    from logging_setup import resolve_log_dir
+    from common.logging_setup import resolve_log_dir
 
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     lines = [line for item in measured if not item.get("error")

@@ -51,8 +51,8 @@ try:
 except ImportError:
     pass
 
-from jobs.manifest_sweeper import EXTRA_FILE_NAME  # noqa: E402
-from jobs.metadata_expand import run  # noqa: E402
+from apps.worker.jobs.manifest_sweeper import EXTRA_FILE_NAME  # noqa: E402
+from apps.worker.jobs.metadata_expand import run  # noqa: E402
 
 DEFAULT_FOLDER = REPO / "review-ui" / "data" / "metadata"
 

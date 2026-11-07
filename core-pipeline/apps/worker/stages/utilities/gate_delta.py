@@ -98,7 +98,7 @@ def orientation_bucket(angle: Any) -> int:
 def hw_class_from_row(row: Optional[dict[str, Any]]) -> str:
     if not row:
         return ""
-    from db import is_printed_type, page_type
+    from common.db import is_printed_type, page_type
 
     kind = page_type(row)
     if not kind:
@@ -114,7 +114,7 @@ def gate_signature_from_row(row: Optional[dict[str, Any]]) -> Optional[GateSigna
     """Build a signature, or None when no quality row exists yet."""
     if not row:
         return None
-    from db import page_type
+    from common.db import page_type
 
     hw = hw_class_from_row(row)
     tag = str(row.get("quality_tag") or "").strip().lower()
@@ -133,7 +133,7 @@ def gate_signature_from_row(row: Optional[dict[str, Any]]) -> Optional[GateSigna
 
 def snapshot_gates(conn: Any, chart_id: int) -> dict[int, GateSignature]:
     """page_id → signature for every page that already has quality."""
-    from db import get_quality_map
+    from common.db import get_quality_map
 
     out: dict[int, GateSignature] = {}
     for page_id, row in get_quality_map(conn, chart_id).items():
@@ -161,7 +161,7 @@ def _raw_has_content(raw: str, *, ocr_type: str) -> bool:
 
 
 def snapshot_ocr_presence(conn: Any, chart_id: int) -> dict[int, PageOcrPresence]:
-    from db import get_ocr_texts, list_pages
+    from common.db import get_ocr_texts, list_pages
 
     pages = list_pages(conn, chart_id)
     prelim = get_ocr_texts(conn, chart_id, "tesseract")
@@ -281,7 +281,7 @@ def compute_gate_delta(
 
 def invalidate_from_plan(conn: Any, chart_id: int, plan: GateDeltaPlan) -> dict[str, int]:
     """Apply ``page_stage_status`` resets; return counts per stage key."""
-    from db import reset_pages_stage
+    from common.db import reset_pages_stage
 
     counts: dict[str, int] = {}
     for (stage_name, pass_no), page_ids in plan.invalidate.items():
@@ -306,7 +306,7 @@ def apply_adaptive_gate_delta(
     old_presence: dict[int, PageOcrPresence],
 ) -> GateDeltaPlan:
     """Diff current quality vs snapshot and invalidate affected stages."""
-    from db import list_pages
+    from common.db import list_pages
 
     new_gates = snapshot_gates(conn, chart_id)
     # Prefer pre-hydrate OCR presence; refresh may have filled gaps from disk.

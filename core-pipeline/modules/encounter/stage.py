@@ -28,8 +28,8 @@ import json
 import logging
 from typing import Any, Optional
 
-from config import ENCOUNTER_DEBUG, chart_dir
-from db import (
+from common.config import ENCOUNTER_DEBUG, chart_dir
+from common.db import (
     connect,
     delete_encounter,
     get_blank_junk_flags,
@@ -40,8 +40,8 @@ from db import (
     get_quality_map,
     upsert_encounter,
 )
-from db.paths import imaging_csv, write_csv
-from stages._support import (
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     mark_completed,
@@ -101,7 +101,7 @@ EVIDENCE_COLS = [
 
 
 def _dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
-    from db import get_dos_map
+    from common.db import get_dos_map
 
     return get_dos_map(conn, chart_id)
 

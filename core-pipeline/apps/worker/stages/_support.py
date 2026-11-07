@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional, Sequence
 
-from db import (
+from common.db import (
     connect,
     create_job,
     get_chart,
@@ -54,7 +54,7 @@ def pass1_ruled_out(conn: Any, chart_id: int) -> set[int]:
     Azure call skip them, and so do section headers, kv_extract, pass 2 and every stage
     after (continuity reads them from Tesseract only). Handwritten and low-quality pages
     are never settled in pass 1."""
-    from db import get_blank_junk_flags, low_quality_page_ids, non_printed_page_ids
+    from common.db import get_blank_junk_flags, low_quality_page_ids, non_printed_page_ids
 
     judged_in_pass2 = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(conn, chart_id)
     settled = {
@@ -129,7 +129,7 @@ def stage_run(
         todo=todo,
         force=force,
     )
-    from logging_setup import (
+    from common.logging_setup import (
         reset_current_chart,
         reset_current_stage,
         set_current_chart,
@@ -234,7 +234,7 @@ def _page_no(ctx: StageContext, page_id: int) -> str:
 
 def _page_status(ctx: StageContext, page_id: int, status: str) -> None:
     """One line: ``[chart][page] [stage] status``."""
-    from logging_setup import reset_current_page, set_current_page
+    from common.logging_setup import reset_current_page, set_current_page
 
     total = len(ctx.pages) or len(ctx.todo) or 1
     seen = ctx.done + len(ctx.errors)
@@ -244,7 +244,7 @@ def _page_status(ctx: StageContext, page_id: int, status: str) -> None:
     finally:
         reset_current_page(token)
     try:
-        from db.paths import write_folder_progress
+        from common.db.paths import write_folder_progress
 
         write_folder_progress(
             ctx.chart_name,
@@ -265,7 +265,7 @@ def mark_processing(conn: Any, ctx: StageContext, page_id: int) -> None:
         pass_no=ctx.pass_no,
         status="processing",
     )
-    from logging_setup import set_current_page
+    from common.logging_setup import set_current_page
 
     set_current_page(_page_no(ctx, page_id))
 
@@ -282,7 +282,7 @@ def mark_completed(conn: Any, ctx: StageContext, page_id: int) -> None:
     ctx.done += 1
     total = len(ctx.pages) or ctx.done
     _page_status(ctx, page_id, f"completed ({ctx.done} of {total})")
-    from logging_setup import set_current_page
+    from common.logging_setup import set_current_page
 
     set_current_page("")
 
@@ -301,7 +301,7 @@ def mark_failed(
     )
     ctx.errors.append(f"{page_name or page_id}: {error}")
     _page_status(ctx, page_id, f"failed — {error[:160]}")
-    from logging_setup import set_current_page
+    from common.logging_setup import set_current_page
 
     set_current_page("")
 
@@ -320,7 +320,7 @@ def eligible_for_downstream(
     them — their blank/junk verdict only exists after final OCR.
     """
     if handwritten_always:
-        from db import page_type
+        from common.db import page_type
 
         if page_type(quality.get(page_id)) == "handwritten":
             return True
@@ -364,7 +364,7 @@ def best_page_text(
     Prelim is never used for handwritten / uncertain / mixed / low-quality
     pages — those must come from final OCR.
     """
-    from db import page_blocks_prelim
+    from common.db import page_blocks_prelim
 
     text = unwrap_ocr_content(final2)
     if text.strip():

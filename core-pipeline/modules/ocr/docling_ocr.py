@@ -31,7 +31,7 @@ _converter_reason: Optional[str] = None
 
 def rapid_models_dir() -> Path:
     try:
-        from config import RAPID_MODELS_DIR
+        from common.config import RAPID_MODELS_DIR
 
         return Path(RAPID_MODELS_DIR)
     except Exception:
@@ -269,7 +269,7 @@ def build_converter(models_dir: Path | None = None) -> Any:
 def _ensure_docling_artifacts() -> Optional[Path]:
     """Layout and table models on disk. RapidOCR weights stay in RAPID_MODELS_DIR."""
     try:
-        from config import DOCLING_ARTIFACTS_DIR
+        from common.config import DOCLING_ARTIFACTS_DIR
     except Exception:
         return None
     dest = Path(DOCLING_ARTIFACTS_DIR)

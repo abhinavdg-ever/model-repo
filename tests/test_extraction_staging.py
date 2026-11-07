@@ -179,15 +179,15 @@ class TestSequencingMarker:
 
 class TestChain:
     def test_extraction_runs_after_headers_and_before_member(self):
-        from orchestrator.runner import STAGE_NAMES
+        from apps.worker.runner import STAGE_NAMES
 
         order = STAGE_NAMES
         assert order.index("section_headers:1") < order.index("kv_extract:1") < order.index("member_verify:1")
         assert order.index("kv_extract:1") < order.index("dos_extract:1") < order.index("page_sequencing:1")
 
     def test_memory_store_seed_matches(self):
-        from db.memory_store import DEFAULT_PIPELINE_STAGES
-        from orchestrator.runner import STAGE_CHAIN
+        from common.db.memory_store import DEFAULT_PIPELINE_STAGES
+        from apps.worker.runner import STAGE_CHAIN
 
         seeded = [(s["stage_name"], s["pass_no"]) for s in sorted(DEFAULT_PIPELINE_STAGES, key=lambda s: s["seq"])]
         assert seeded == [(name, no) for name, no, _ in STAGE_CHAIN]
@@ -213,7 +213,7 @@ class TestPinnedVersion:
     def test_the_pipeline_runs_v004_and_the_environment_cannot_change_it(self, monkeypatch):
         import importlib
 
-        import config
+        from common import config
 
         monkeypatch.setenv("EXTRACTION_MODEL_VERSION", "v001")
         importlib.reload(config)
@@ -224,7 +224,7 @@ class TestPinnedVersion:
             importlib.reload(config)
 
     def test_engine_pins_v004_with_v002_as_fallback(self):
-        import config
+        from common import config
 
         from modules.extraction import engine
 

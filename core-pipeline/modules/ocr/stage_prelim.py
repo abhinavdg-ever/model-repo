@@ -14,10 +14,10 @@ from typing import Any
 import pytesseract
 from PIL import Image
 
-from config import STAGE_WORKERS, TESSERACT_CMD, page_image_path
-from db import connect, get_ocr_texts, upsert_ocr_result
-from db.paths import write_combined_ocr_txt
-from stages._support import mark_completed, mark_failed, mark_processing, stage_run
+from common.config import STAGE_WORKERS, TESSERACT_CMD, page_image_path
+from common.db import connect, get_ocr_texts, upsert_ocr_result
+from common.db.paths import write_combined_ocr_txt
+from apps.worker.stages._support import mark_completed, mark_failed, mark_processing, stage_run
 
 logger = logging.getLogger(__name__)
 

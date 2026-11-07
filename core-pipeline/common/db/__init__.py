@@ -23,9 +23,9 @@ import os
 import threading
 from typing import Any, Iterator, Optional, Sequence
 
-from config import DATABASE_URL
+from common.config import DATABASE_URL
 
-from db.memory_store import (  # noqa: E402
+from common.db.memory_store import (  # noqa: E402
     MemoryStore,
     disable_skip_db_write,
     enable_skip_db_write,

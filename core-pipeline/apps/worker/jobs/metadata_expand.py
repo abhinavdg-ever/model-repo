@@ -12,15 +12,15 @@ ServiceNote. This utility:
      value in the master replaces the file's; a blank in the master keeps it). Names,
      DOB and every other column are left alone,
   3. optionally writes the master records no batch file has into ``--new-file``,
-  4. with ``--load``, loads the batch files into manifest_member_list (jobs.manifest_sweeper),
+  4. with ``--load``, loads the batch files into manifest_member_list (apps.worker.jobs.manifest_sweeper),
      which writes the new columns to the database.
 
 The same is ``POST /api/manifest/metadata-extra`` and ``utilities/fill_metadata_extra.py``.
 
 Usage (from core-pipeline/):
-  python -m jobs.metadata_expand --dry-run                 # report only
-  python -m jobs.metadata_expand --load                    # fill the CSVs, then the DB
-  python -m jobs.metadata_expand --metadata-dir /path/to/metadata --source dump.xlsx --load
+  python -m apps.worker.jobs.metadata_expand --dry-run                 # report only
+  python -m apps.worker.jobs.metadata_expand --load                    # fill the CSVs, then the DB
+  python -m apps.worker.jobs.metadata_expand --metadata-dir /path/to/metadata --source dump.xlsx --load
 """
 from __future__ import annotations
 
@@ -32,12 +32,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import METADATA_ROOT
-from jobs.manifest_sweeper import (
+from common.config import METADATA_ROOT
+from apps.worker.jobs.manifest_sweeper import (
     EXTRA_FILE_NAME,
     EXTRA_HEADERS,
     _record_id,
@@ -202,7 +202,7 @@ def run(
 
     loaded = None
     if load and not dry_run:
-        from jobs.manifest_sweeper import run_load
+        from apps.worker.jobs.manifest_sweeper import run_load
 
         loaded = {}
         for path in files + ([metadata_dir / new_file] if new_file and (metadata_dir / new_file).is_file() else []):

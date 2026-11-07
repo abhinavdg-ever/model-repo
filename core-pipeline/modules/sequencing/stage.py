@@ -20,8 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from config import SEQUENCING_CROSS_ENCODER
-from db import (
+from common.config import SEQUENCING_CROSS_ENCODER
+from common.db import (
     connect,
     get_additional_page_details_map,
     get_blank_junk_flags,
@@ -30,8 +30,8 @@ from db import (
     get_quality_map,
     upsert_sequencing,
 )
-from db.paths import imaging_csv, write_csv
-from stages._support import (
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     mark_completed,

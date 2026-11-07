@@ -10,7 +10,7 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from logging_setup import purge_old_logs  # noqa: E402
+from common.logging_setup import purge_old_logs  # noqa: E402
 
 
 def _files(tmp_path, monkeypatch):

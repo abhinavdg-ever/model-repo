@@ -29,7 +29,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from db import (
+from common.db import (
     connect,
     get_additional_page_details_map,
     get_blank_junk_final,
@@ -41,9 +41,9 @@ from db import (
     revise_blank_junk_final,
     upsert_continuity,
 )
-from config import staging_dir
-from db.paths import imaging_csv, write_csv
-from stages._support import best_page_text, mark_completed, pass1_ruled_out, stage_run
+from common.config import staging_dir
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import best_page_text, mark_completed, pass1_ruled_out, stage_run
 from modules.blank_junk.method import text_is_visual
 from modules.continuity.engine import (
     PageInput,

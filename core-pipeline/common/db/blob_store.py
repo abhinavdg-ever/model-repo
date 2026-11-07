@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO, Optional, Union
 
-from config import (
+from common.config import (
     AZURE_BLOB_CONNECTION_POOL_SIZE,
     AZURE_CLIENT_ID,
     AZURE_PRINCIPAL_ID,
@@ -285,7 +285,7 @@ def _interactive_credential():
 
 
 def _blob_client_kwargs() -> dict:
-    from azure_retry import azure_sdk_retry_kwargs
+    from common.azure_retry import azure_sdk_retry_kwargs
 
     return azure_sdk_retry_kwargs(
         connection_pool_maxsize=AZURE_BLOB_CONNECTION_POOL_SIZE
@@ -396,8 +396,8 @@ def list_image_blobs(container: str, blob_path: str) -> list[str]:
     side too. `/api/charts/batch-run` is the tool for a folder of charts; this one
     is for a folder that IS a chart.
     """
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     prefix = normalize_prefix(blob_path)
 
@@ -437,8 +437,8 @@ def list_image_blobs(container: str, blob_path: str) -> list[str]:
 
 
 def download_blob_to_path(container: str, blob_name: str, dest: Path) -> Path:
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -460,8 +460,8 @@ def download_blob_to_path(container: str, blob_name: str, dest: Path) -> Path:
 def list_blobs_with_suffixes(
     container: str, prefix: str, suffixes: tuple[str, ...]
 ) -> list[str]:
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     pref = normalize_prefix(prefix)
 
@@ -491,8 +491,8 @@ def list_chart_prefixes(container: str, prefix: str) -> list[str]:
     manifest-only or thumbnail folders) are left out, so the caller does not
     have to ingest something that would fail on "no pages".
     """
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     pref = normalize_prefix(prefix)
 
@@ -519,8 +519,8 @@ def list_chart_prefixes(container: str, prefix: str) -> list[str]:
 
 
 def download_blob_bytes(container: str, blob_name: str) -> bytes:
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     def _download() -> bytes:
         client = get_container_client(container)
@@ -543,8 +543,8 @@ def upload_blob(
     overwrite: bool = True,
 ) -> None:
     """Upload one blob with the same retry policy as downloads."""
-    from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from common.azure_retry import call_with_retry
+    from common.config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
 
     def _upload() -> None:
         client = get_container_client(container)

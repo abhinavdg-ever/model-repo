@@ -131,7 +131,7 @@ def reload_catalog() -> list[str]:
 
 def _local_model_dir() -> Path | None:
     """Return ``models/semantic-model`` when it looks like a usable checkout."""
-    from config import SECTION_HEADER_MINILM_PATH
+    from common.config import SECTION_HEADER_MINILM_PATH
 
     root = Path(SECTION_HEADER_MINILM_PATH)
     if not root.is_dir():
@@ -160,7 +160,7 @@ def resolve_minilm_source() -> str:
     local = _local_model_dir()
     if local is not None:
         return str(local)
-    from config import SECTION_HEADER_MINILM_MODEL
+    from common.config import SECTION_HEADER_MINILM_MODEL
 
     return SECTION_HEADER_MINILM_MODEL
 
@@ -175,7 +175,7 @@ def download_minilm(
 
     Uses ``huggingface_hub.snapshot_download`` so the folder is offline-usable.
     """
-    from config import SECTION_HEADER_MINILM_MODEL, SECTION_HEADER_MINILM_PATH
+    from common.config import SECTION_HEADER_MINILM_MODEL, SECTION_HEADER_MINILM_PATH
 
     target = Path(dest) if dest is not None else Path(SECTION_HEADER_MINILM_PATH)
     hub_id = (model_id or SECTION_HEADER_MINILM_MODEL).strip()
@@ -399,7 +399,7 @@ def filter_section_headers(
     When enabled, each kept item is annotated with ``match_score`` and
     ``matched_canonical``. Reloads the catalog if the JSON file changed.
     """
-    from config import (
+    from common.config import (
         SECTION_HEADER_SEMANTIC_ENABLED,
         SECTION_HEADER_SEMANTIC_THRESHOLD,
     )

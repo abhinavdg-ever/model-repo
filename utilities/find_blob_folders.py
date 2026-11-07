@@ -41,7 +41,7 @@ try:
 except ImportError:
     pass
 
-from db.blob_store import get_container_client, normalize_prefix  # noqa: E402
+from common.db.blob_store import get_container_client, normalize_prefix  # noqa: E402
 
 logger = logging.getLogger("find_blob_folders")
 # Chart folders are the leaves (67909080_56076434). Run / Batch / DEID are not.

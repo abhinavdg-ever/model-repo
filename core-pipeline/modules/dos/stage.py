@@ -15,8 +15,8 @@ import logging
 import sys
 from typing import Any, Optional
 
-from config import CORE_ROOT, DOS_DEBUG, chart_dir
-from db import (
+from common.config import CORE_ROOT, DOS_DEBUG, chart_dir
+from common.db import (
     connect,
     get_blank_junk_flags,
     get_ocr_texts,
@@ -24,8 +24,8 @@ from db import (
     get_quality_map,
     upsert_dos,
 )
-from db.paths import imaging_csv, write_csv
-from stages._support import (
+from common.db.paths import imaging_csv, write_csv
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     unwrap_ocr_content,
@@ -92,7 +92,7 @@ def _combined_text(
     top banner (fixed in ``docling_ocr.export_markdown``, but OCR reused with
     ``skip_ocr`` still has it missing).
     """
-    from db import page_blocks_prelim
+    from common.db import page_blocks_prelim
 
     prelim = get_ocr_texts(conn, chart_id, "tesseract")
     final1 = get_ocr_texts(conn, chart_id, "docling")

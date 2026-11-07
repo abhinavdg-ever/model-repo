@@ -10,7 +10,7 @@ for path in (str(CORE), str(ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from db.path_ids import infer_run_batch_from_path, resolve_run_batch  # noqa: E402
+from common.db.path_ids import infer_run_batch_from_path, resolve_run_batch  # noqa: E402
 
 
 def test_run_batch_either_order():
@@ -38,7 +38,7 @@ def test_missing_segments():
 
 
 def test_derive_output_path_raw_input_deid():
-    from db.path_ids import derive_output_path, output_write_prefix, resolve_output_path
+    from common.db.path_ids import derive_output_path, output_write_prefix, resolve_output_path
 
     assert (
         derive_output_path(
@@ -88,7 +88,7 @@ def test_windows_separators_in_run_batch_inference():
 
 
 def test_normalize_fs_and_blob_paths():
-    from db.paths import (
+    from common.db.paths import (
         normalize_blob_path,
         normalize_folder_name,
         normalize_fs_path,
@@ -110,7 +110,7 @@ def test_normalize_fs_and_blob_paths():
 
 
 def test_run_request_force_defaults_true():
-    from api.main import RunRequest
+    from apps.orchestrator_api.main import RunRequest
 
     body = RunRequest(input_type="local", input_path="/x", chart_name="c")
     assert body.force is True
@@ -138,4 +138,4 @@ def test_ner_config_finds_core_pipeline_root():
     root = _core_pipeline_root()
     assert root == CORE_ROOT
     assert (root / "cli.py").is_file()
-    assert (root / "api").is_dir()
+    assert (root / "modules").is_dir()

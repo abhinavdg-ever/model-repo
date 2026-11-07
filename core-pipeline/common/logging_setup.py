@@ -196,7 +196,7 @@ def resolve_log_dir() -> Path:
     raw = (os.environ.get("LOG_DIR") or "").strip()
     if raw:
         return Path(raw).expanduser()
-    return Path(__file__).resolve().parent / "logs"
+    return Path(__file__).resolve().parents[1] / "logs"
 
 
 _PURGE_LOCK = threading.Lock()

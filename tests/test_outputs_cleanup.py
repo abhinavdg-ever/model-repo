@@ -10,7 +10,7 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from jobs import outputs_cleanup  # noqa: E402
+from apps.worker.jobs import outputs_cleanup  # noqa: E402
 
 OLD = 1_700_000_000  # 2023
 

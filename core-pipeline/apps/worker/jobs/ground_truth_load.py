@@ -13,7 +13,7 @@ page_ground_truth_entry (the page's previous bulk labels with this file's on
 top), so review-ui can show the latest load with manual edits hidden.
 
 Usage:
-  python -m jobs.ground_truth_load --local /path/to/ground_truth.xlsx
+  python -m apps.worker.jobs.ground_truth_load --local /path/to/ground_truth.xlsx
   python cli.py ground-truth --local /path/to/ground_truth.csv
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -352,7 +352,7 @@ def iter_files(path: Path) -> Iterator[Path]:
 
 def run_load(local_path: str) -> dict[str, Any]:
     """Read local CSV/XLSX files and upsert page_ground_truth. Requires Postgres."""
-    from db import connect, is_skip_db_write
+    from common.db import connect, is_skip_db_write
 
     if is_skip_db_write():
         raise RuntimeError("ground-truth load writes Postgres; skip_db_write is on")

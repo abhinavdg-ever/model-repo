@@ -432,7 +432,7 @@ def test_loader_refuses_an_unknown_model_vote_setting():
 
 
 def test_without_the_model_folder_no_page_gets_an_answer(tmp_path, monkeypatch):
-    import config
+    from common import config
     from modules.encounter import model_vote
 
     monkeypatch.setattr(config, "ENCOUNTER_MODEL_DIR", str(tmp_path / "missing"))

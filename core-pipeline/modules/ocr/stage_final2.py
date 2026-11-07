@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from config import (
+from common.config import (
     AZURE_DI_CONNECTION_POOL_SIZE,
     AZURE_DI_FEATURES,
     AZURE_DI_MAX_CONCURRENT,
@@ -29,7 +29,7 @@ from config import (
     STAGE_WORKERS,
     page_image_path,
 )
-from db import (
+from common.db import (
     connect,
     get_ocr_texts,
     get_quality_map,
@@ -38,8 +38,8 @@ from db import (
     set_quality_tag,
     upsert_ocr_result,
 )
-from db.paths import write_final2_json
-from stages._support import (
+from common.db.paths import write_final2_json
+from apps.worker.stages._support import (
     mark_completed,
     mark_failed,
     mark_processing,
@@ -93,7 +93,7 @@ def _get_client() -> Any:
             from azure.ai.documentintelligence import DocumentIntelligenceClient
             from azure.core.credentials import AzureKeyCredential
 
-            from azure_retry import azure_sdk_retry_kwargs
+            from common.azure_retry import azure_sdk_retry_kwargs
 
             _client = DocumentIntelligenceClient(
                 endpoint=AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
@@ -319,7 +319,7 @@ def _languages_meta(result: Any) -> list[dict[str, Any]]:
 
 
 def _ocr_azure(image_path: Path) -> dict[str, Any]:
-    from azure_retry import call_with_retry
+    from common.azure_retry import call_with_retry
 
     features = _di_features()
 

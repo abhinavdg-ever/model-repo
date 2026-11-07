@@ -24,9 +24,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
-from orchestrator import run_stats
+from apps.worker import run_stats
 
-from config import (
+from common.config import (
     BATCH_POOL_HEADROOM,
     BATCH_WORKERS,
     IMAGE_SUFFIXES,
@@ -65,11 +65,11 @@ def estimate_chart_pages(
     """Best-effort page count before ingest (for large-chart scheduling)."""
     try:
         if mode == "local":
-            from stages.utilities.download_blob import _collect_images
+            from apps.worker.stages.utilities.download_blob import _collect_images
 
             return len(_collect_images(Path(source), recursive=True))
         if mode == "blob" and blob_container:
-            from db.blob_store import list_image_blobs
+            from common.db.blob_store import list_image_blobs
 
             return len(list_image_blobs(blob_container, source))
     except Exception:
@@ -152,8 +152,8 @@ def _chart_names_pipeline_complete(names: list[str]) -> set[str]:
     if not names:
         return set()
     try:
-        from db import connect, get_chart_by_name, is_skip_db_write
-        from db.chart_status import chart_is_pipeline_complete
+        from common.db import connect, get_chart_by_name, is_skip_db_write
+        from common.db.chart_status import chart_is_pipeline_complete
     except Exception:
         return set()
     if is_skip_db_write():
@@ -224,7 +224,7 @@ def filter_sources_by_chart_names(
     if not chart_names:
         return list(sources), []
 
-    from db.paths import normalize_folder_name
+    from common.db.paths import normalize_folder_name
 
     wanted: list[str] = []
     seen: set[str] = set()
@@ -270,7 +270,7 @@ def finished_chart_names(names: list[str], since: Optional[date] = None) -> set[
     if not names:
         return set()
     try:
-        from db import connect, is_skip_db_write
+        from common.db import connect, is_skip_db_write
     except Exception:
         return set()
     if is_skip_db_write():
@@ -304,7 +304,7 @@ def resolve_batch_workers(requested: Optional[int] = None) -> int:
 
 def assert_batch_workers_fit(workers: int) -> None:
     """Raise ValueError naming both sides when the pool cannot fit the batch."""
-    from db import DB_POOL_MAX
+    from common.db import DB_POOL_MAX
 
     need = int(workers) * STAGE_WORKERS + BATCH_POOL_HEADROOM
     if need > DB_POOL_MAX:
@@ -333,9 +333,9 @@ def _write_one(
     forty-nine — one unwritable destination is exactly the kind of thing that
     should be reported and stepped over.
     """
-    from db import connect, get_chart_by_name, set_chart_output_path
-    from db.path_ids import resolve_output_path
-    from jobs.export_chart import write_chart
+    from common.db import connect, get_chart_by_name, set_chart_output_path
+    from common.db.path_ids import resolve_output_path
+    from apps.worker.jobs.export_chart import write_chart
 
     write = blob_write_path or local_write_path
     if write:
@@ -398,8 +398,8 @@ def _pre_register(
     Status stays ``received`` until ingest flips it. Reviewers and
     ``GET /api/charts/by-name/...`` can see the full drop immediately.
     """
-    from db import connect, upsert_chart
-    from db.path_ids import resolve_output_path
+    from common.db import connect, upsert_chart
+    from common.db.path_ids import resolve_output_path
 
     registered: list[dict[str, Any]] = []
     with connect() as conn:
@@ -451,8 +451,8 @@ def _note_progress(
 ) -> None:
     """Best-effort progress.txt under the chart and (for local batches) the parent."""
     try:
-        from config import ensure_chart_dirs
-        from db.paths import write_batch_folder_progress, write_folder_progress
+        from common.config import ensure_chart_dirs
+        from common.db.paths import write_batch_folder_progress, write_folder_progress
 
         ensure_chart_dirs(chart_name)
         write_folder_progress(
@@ -499,8 +499,8 @@ def _run_one_chart(
     is_large: bool = False,
     large_limiter: Optional[LargeChartLimiter] = None,
 ) -> dict[str, Any]:
-    from logging_setup import reset_current_chart, set_worker_name, set_current_chart
-    from orchestrator.runner import ingest_and_run
+    from common.logging_setup import reset_current_chart, set_worker_name, set_current_chart
+    from apps.worker.runner import ingest_and_run
 
     set_worker_name(f"batch-{index}")
     chart_token = set_current_chart(name)
@@ -541,8 +541,8 @@ def _run_one_chart(
             # tied to force — skip_ocr turns force off and must still re-run
             # finished charts. skip_db_write has no durable status: always run.
             if skip_completed and not skip_db_write:
-                from db import connect, get_chart_by_name
-                from db.chart_status import chart_is_pipeline_complete
+                from common.db import connect, get_chart_by_name
+                from common.db.chart_status import chart_is_pipeline_complete
 
                 with connect() as conn:
                     existing = get_chart_by_name(conn, name)
@@ -691,8 +691,8 @@ def run_batch(
     if skip_db_write and not local_read_path:
         raise ValueError("test_mode / skip_db_write requires local_read_path (no Postgres / blob)")
 
-    from db import disable_skip_db_write, enable_skip_db_write
-    from db.path_ids import resolve_run_batch
+    from common.db import disable_skip_db_write, enable_skip_db_write
+    from common.db.path_ids import resolve_run_batch
 
     if skip_db_write:
         enable_skip_db_write(reset=True)
@@ -768,7 +768,7 @@ def _run_batch_inner(
         where = str(local_read_path)
         batch_progress_dir = str(Path(local_read_path).expanduser().resolve())
     else:
-        from db.blob_store import (
+        from common.db.blob_store import (
             chart_name_from_blob_path,
             ensure_blob_ready,
             list_chart_prefixes,
@@ -818,7 +818,7 @@ def _run_batch_inner(
         )
 
     if skip_db_write:
-        from db import test_chart_name
+        from common.db import test_chart_name
 
         sources = [(src, test_chart_name(name), mode) for src, name, mode in sources]
 
@@ -867,7 +867,7 @@ def _run_batch_inner(
     )
     if batch_progress_dir and total:
         try:
-            from db.paths import write_batch_folder_progress
+            from common.db.paths import write_batch_folder_progress
 
             write_batch_folder_progress(batch_progress_dir, 0, total, detail="starting")
         except OSError:

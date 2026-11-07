@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # REPO_ROOT (the code checkout) is re-exported: training/train.py records its git commit with each version.
-from config import EXTRACTION_DATA_ROOT, EXTRACTION_MODELS_ROOT, REPO_ROOT  # noqa: F401
+from common.config import EXTRACTION_DATA_ROOT, EXTRACTION_MODELS_ROOT, REPO_ROOT  # noqa: F401
 
 # The training tools read reviewed runs, their OCR and their page images from here and write
 # datasets back. The pipeline never writes to any of it: training data is not collected

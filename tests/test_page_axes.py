@@ -287,7 +287,7 @@ class TestWithoutModel:
         assert result.as_json()["prediction"] is None
 
     def test_missing_folder_reports_canon_only(self, tmp_path, monkeypatch):
-        import config
+        from common import config
 
         monkeypatch.setattr(config, "PAGE_AXES_MODEL_DIR", str(tmp_path / "missing"))
         status = axes.describe()
@@ -358,7 +358,7 @@ class TestStageRow:
 
 class TestStorage:
     def test_every_written_column_is_in_the_schema(self):
-        from db import PAGE_CLASSIFICATION_FIELDS
+        from common.db import PAGE_CLASSIFICATION_FIELDS
 
         sql = (REPO / "schema" / "schema.sql").read_text(encoding="utf-8")
         table = re.search(r"CREATE TABLE page_classification \((.*?)\n\);", sql, re.S).group(1)

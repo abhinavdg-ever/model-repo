@@ -23,16 +23,16 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from config import KV_DEBUG, chart_dir, page_image_path
-from db import (
+from common.config import KV_DEBUG, chart_dir, page_image_path
+from common.db import (
     connect,
     get_ocr_texts,
     upsert_additional_page_details,
     upsert_ocr_result,
     upsert_provider_signature,
 )
-from db.paths import imaging_csv, ocr_dir, write_csv, write_final1_json, write_final2_json
-from stages._support import (
+from common.db.paths import imaging_csv, ocr_dir, write_csv, write_final1_json, write_final2_json
+from apps.worker.stages._support import (
     mark_completed,
     mark_processing,
     mark_skipped,
@@ -248,7 +248,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # 2026-11-04 (user): pass-1 blank / junk pages are read too (Final OCR 1 word boxes),
             # so member name, ID and DOB are extracted on them; only a pass-1 duplicate (it
             # takes its original's values) is skipped.
-            from db import get_blank_junk_flags
+            from common.db import get_blank_junk_flags
 
             pass1_flags = get_blank_junk_flags(conn, chart_id, pass_no=1)
             ruled_out = {pid for pid in pass1_ruled_out(conn, chart_id) if pass1_flags.get(pid) == "duplicate"}

@@ -101,7 +101,7 @@ def ensure_models(model_version: str, rules_version: str = "v0") -> None:
 
 if __name__ == "__main__":
     # python -m modules.extraction.util.model_setup   (from core-pipeline/)
-    from config import EXTRACTION_MODEL_VERSION
+    from common.config import EXTRACTION_MODEL_VERSION
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     ensure_models(EXTRACTION_MODEL_VERSION)

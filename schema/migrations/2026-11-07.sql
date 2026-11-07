@@ -460,7 +460,7 @@ LEFT JOIN LATERAL (
 
 -- 6. run_usage (2026-11-07): monitoring, one row per chart run, plus daily / hourly views.
 -- Monitoring (2026-11-07): one row per chart run: time, pages, Doc Intel pages and cost, LLM
--- tokens and cost. Written by core-pipeline when a run ends (orchestrator/usage.py). Prices
+-- tokens and cost. Written by core-pipeline when a run ends (core-pipeline/apps/worker/usage.py). Prices
 -- come from .env (PRICE_*) and are stored with the row, so a later price change never
 -- rewrites history. v_run_usage_daily / v_run_usage_hourly add them up.
 CREATE TABLE IF NOT EXISTS run_usage (

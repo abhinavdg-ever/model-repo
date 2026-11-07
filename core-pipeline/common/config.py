@@ -4,12 +4,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CORE_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CORE_ROOT = Path(__file__).resolve().parents[1]
 REVIEW_UI_ROOT = REPO_ROOT / "review-ui"
 # core-pipeline/outputs/ is scratch (2026-11-07): nothing is written into review-ui any more,
 # which reads only the database and Azure Blob. charts/ = one working folder per chart,
-# deleted after OUTPUTS_RETENTION_DAYS without a run (jobs/outputs_cleanup.py); metadata/ =
+# deleted after OUTPUTS_RETENTION_DAYS without a run (core-pipeline/apps/worker/jobs/outputs_cleanup.py); metadata/ =
 # manifest CSVs fetched or dropped for the manifest sweep.
 OUTPUTS_ROOT = CORE_ROOT / "outputs"
 DATA_ROOT = Path(

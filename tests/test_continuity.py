@@ -374,8 +374,8 @@ class TestStage:
         import csv
         import json
 
-        import config
-        from db import (
+        from common import config
+        from common.db import (
             connect,
             disable_skip_db_write,
             enable_skip_db_write,
@@ -393,7 +393,7 @@ class TestStage:
         from modules.extraction import staging
         from modules.imaging_final import stage as final_stage
 
-        import db
+        from common import db
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         # Another test may have imported the stage while db.connect was faked.
@@ -521,7 +521,7 @@ class TestStage:
 
             # A duplicate of page 2 (skipped after blank/junk) takes page 2's
             # Finals and keeps its own blank/junk flag.
-            from db import upsert_blank_junk
+            from common.db import upsert_blank_junk
 
             with connect() as conn:
                 upsert_pages(conn, cid, [{"page_name": "3.jpg", "page_number": 3}])

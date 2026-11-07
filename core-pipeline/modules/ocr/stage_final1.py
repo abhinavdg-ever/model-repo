@@ -17,19 +17,19 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from config import (
+from common.config import (
     DOCLING_PAGE_TIMEOUT_SECONDS,
     DOCLING_WORKERS,
     STAGE_WORKERS,
     page_image_path,
 )
-from db import (
+from common.db import (
     connect,
     get_ocr_texts,
     upsert_ocr_result,
 )
-from db.paths import write_final1_json
-from stages._support import (
+from common.db.paths import write_final1_json
+from apps.worker.stages._support import (
     mark_completed,
     mark_failed,
     mark_processing,
@@ -104,7 +104,7 @@ def _ocr_onnx(image_path: Path) -> dict[str, Any]:
 
 def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
     page, image_path, prefer_docling, chart_name = args
-    from logging_setup import reset_current_chart, set_current_chart, set_worker_name
+    from common.logging_setup import reset_current_chart, set_current_chart, set_worker_name
 
     set_worker_name(f"page-{page.get('page_number') or page['id']}")
     chart_token = set_current_chart(chart_name)

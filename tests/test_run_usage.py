@@ -9,7 +9,7 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from orchestrator import usage  # noqa: E402
+from apps.worker import usage  # noqa: E402
 
 RUN = {"chart_id": 7, "chart_name": "c7", "trigger_id": "T1", "trigger": "batch-run", "status": "completed",
        "started": "2026-11-07T10:00:00+05:30", "ended": "2026-11-07T10:05:00+05:30", "seconds": 300.0,

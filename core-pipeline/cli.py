@@ -283,30 +283,30 @@ def main() -> None:
 
     # The CLI runs the same stages in-process, so it wants the same logging:
     # our progress lines visible, the Azure SDK request/response dump not.
-    # `serve` is excluded because api.main configures logging itself.
+    # `serve` is excluded because apps.orchestrator_api.main configures logging itself.
     if args.cmd != "serve":
         import logging
 
-        from logging_setup import configure_logging
+        from common.logging_setup import configure_logging
 
         configure_logging(logging.INFO)
 
     if args.cmd == "serve":
-        from api.main import main as serve_main
+        from apps.orchestrator_api.main import main as serve_main
 
         serve_main()
         return
 
     if args.cmd == "run":
-        from db import connect, get_chart, get_chart_by_name
-        from db.paths import (
+        from common.db import connect, get_chart, get_chart_by_name
+        from common.db.paths import (
             normalize_blob_path,
             normalize_folder_name,
             normalize_fs_path,
         )
-        from jobs.export_chart import write_chart
-        from orchestrator import run_stats
-        from orchestrator.runner import ingest_and_run, run_pipeline_for_chart
+        from apps.worker.jobs.export_chart import write_chart
+        from apps.worker import run_stats
+        from apps.worker.runner import ingest_and_run, run_pipeline_for_chart
 
         print(f"trigger_id: {run_stats.new_trigger('run')}")
 
@@ -416,9 +416,9 @@ def main() -> None:
         return
 
     if args.cmd in ("batch-run", "batch"):
-        from db.paths import normalize_blob_path, normalize_fs_path
-        from jobs.batch_intake import run_batch
-        from orchestrator import run_stats
+        from common.db.paths import normalize_blob_path, normalize_fs_path
+        from apps.worker.jobs.batch_intake import run_batch
+        from apps.worker import run_stats
 
         print(f"trigger_id: {run_stats.new_trigger('batch-run')}")
 
@@ -478,7 +478,7 @@ def main() -> None:
         return
 
     if args.cmd == "stats":
-        from orchestrator import run_stats
+        from apps.worker import run_stats
 
         paths = run_stats.write_reports()
         rows = run_stats.hourly_rows(run_stats.read_rows())
@@ -493,7 +493,7 @@ def main() -> None:
         return
 
     if args.cmd == "usage":
-        from orchestrator import usage
+        from apps.worker import usage
 
         try:
             rows = usage.daily(args.days)
@@ -512,7 +512,7 @@ def main() -> None:
         return
 
     if args.cmd == "stages":
-        from orchestrator.runner import STAGE_CHAIN
+        from apps.worker.runner import STAGE_CHAIN
 
         for index, (name, pass_no, _fn) in enumerate(STAGE_CHAIN, start=1):
             label = name if pass_no == 1 else f"{name}:{pass_no}"
@@ -520,8 +520,8 @@ def main() -> None:
         return
 
     if args.cmd == "status":
-        from db import connect
-        from db.chart_status import refresh_chart_status
+        from common.db import connect
+        from common.db.chart_status import refresh_chart_status
 
         with connect() as conn:
             print(
@@ -532,8 +532,8 @@ def main() -> None:
         return
 
     if args.cmd == "manifest":
-        from db.paths import normalize_blob_path, normalize_fs_path
-        from jobs.manifest_sweeper import run_load
+        from common.db.paths import normalize_blob_path, normalize_fs_path
+        from apps.worker.jobs.manifest_sweeper import run_load
 
         args.local = normalize_fs_path(args.local)
         args.blob_prefix = normalize_blob_path(
@@ -559,7 +559,7 @@ def main() -> None:
         return
 
     if args.cmd == "manifest-sweep":
-        from jobs.manifest_sweeper import run_load
+        from apps.worker.jobs.manifest_sweeper import run_load
 
         print(
             json.dumps(
@@ -574,7 +574,7 @@ def main() -> None:
         return
 
     if args.cmd == "manifest-local":
-        from jobs.manifest_sweeper import run_load
+        from apps.worker.jobs.manifest_sweeper import run_load
 
         print(
             json.dumps(
@@ -586,8 +586,8 @@ def main() -> None:
         return
 
     if args.cmd == "ground-truth":
-        from db.paths import normalize_fs_path
-        from jobs.ground_truth_load import run_load as load_ground_truth
+        from common.db.paths import normalize_fs_path
+        from apps.worker.jobs.ground_truth_load import run_load as load_ground_truth
 
         print(
             json.dumps(

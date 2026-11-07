@@ -43,13 +43,13 @@ def new_trigger(kind: str) -> str:
     trigger_id = datetime.now().strftime("T%Y%m%d-%H%M%S-") + secrets.token_hex(2)
     _TRIGGER.set((trigger_id, kind))
     try:  # 2026-11-07 (user): the day's first trigger deletes logs older than 7 days
-        from logging_setup import purge_old_logs
+        from common.logging_setup import purge_old_logs
 
         purge_old_logs()
     except Exception as exc:  # noqa: BLE001 - housekeeping never fails a run
         logger.warning("log purge skipped: %s", exc)
     try:  # and chart folders under core-pipeline/outputs not run for 7 days
-        from jobs.outputs_cleanup import purge_old_charts
+        from apps.worker.jobs.outputs_cleanup import purge_old_charts
 
         purge_old_charts()
     except Exception as exc:  # noqa: BLE001
@@ -81,7 +81,7 @@ HOURLY_FIELDS = (
 
 
 def stats_dir() -> Path:
-    from logging_setup import resolve_log_dir
+    from common.logging_setup import resolve_log_dir
 
     return resolve_log_dir()
 
@@ -142,7 +142,7 @@ def record(
             with open(folder / "run_stats.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(row) + "\n")
             write_reports(folder)
-        from orchestrator import usage
+        from apps.worker import usage
 
         usage.write(row, results)  # run_usage: the database copy, with cost (never raises)
         logger.info(

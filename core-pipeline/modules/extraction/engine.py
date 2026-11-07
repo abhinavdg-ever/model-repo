@@ -22,7 +22,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from config import EXTRACTION_FALLBACK_VERSION, EXTRACTION_MODEL_VERSION
+from common.config import EXTRACTION_FALLBACK_VERSION, EXTRACTION_MODEL_VERSION
 
 from .training import registry
 from .util import config

@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from config import IMAGE_SUFFIXES, chart_dir, imaging_dir, ocr_dir, pages_dir
+from common.config import IMAGE_SUFFIXES, chart_dir, imaging_dir, ocr_dir, pages_dir
 
 PAGE_MARKER_RE = re.compile(r"^=====\s*(.+?)\s*=====\s*$", re.MULTILINE)
 PAGE_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
@@ -287,7 +287,7 @@ def write_folder_progress(
     unit: str = "files",
 ) -> Path:
     """``processing N/X files in the folder`` → ``imaging/progress.txt``."""
-    from config import ensure_chart_dirs
+    from common.config import ensure_chart_dirs
 
     ensure_chart_dirs(chart_name)
     path = folder_progress_path(chart_name)

@@ -36,7 +36,7 @@ _BERT_DIR_NAME = "bert"
 
 def _model_dir() -> Path:
     """Directory from ``BLANK_JUNK_MODEL_DIR`` (``.env``), resolved like the other weights."""
-    from config import BLANK_JUNK_MODEL_DIR
+    from common.config import BLANK_JUNK_MODEL_DIR
 
     return Path(BLANK_JUNK_MODEL_DIR)
 

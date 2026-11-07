@@ -16,9 +16,9 @@ chart folder name — so a manifest can be loaded before or after its charts are
 ingested, and nothing needs linking afterwards.
 
 Usage:
-  python -m jobs.manifest_sweeper --local outputs/metadata/metadata_R1_B1.csv
-  python -m jobs.manifest_sweeper --local outputs/metadata/
-  python -m jobs.manifest_sweeper --blob-container imaging-pipeline --blob-prefix Manifests/
+  python -m apps.worker.jobs.manifest_sweeper --local outputs/metadata/metadata_R1_B1.csv
+  python -m apps.worker.jobs.manifest_sweeper --local outputs/metadata/
+  python -m apps.worker.jobs.manifest_sweeper --blob-container imaging-pipeline --blob-prefix Manifests/
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -44,8 +44,8 @@ try:
 except ImportError:
     pass
 
-from config import METADATA_ROOT
-from db import (
+from common.config import METADATA_ROOT
+from common.db import (
     connect,
     create_job,
     update_job,
@@ -55,7 +55,7 @@ from db import (
 logger = logging.getLogger(__name__)
 
 MANIFEST_SUFFIXES = (".csv", ".xlsx", ".xls")
-# The client's extra-columns dump across all charts (jobs.metadata_expand reads it into the
+# The client's extra-columns dump across all charts (apps.worker.jobs.metadata_expand reads it into the
 # batch files). It sits beside them but is not itself a batch manifest: never loaded.
 EXTRA_FILE_NAME = "metadata_extra.csv"
 EXTRA_FILE_RE = re.compile(r"^metadata[_-]?extra", re.IGNORECASE)
@@ -265,7 +265,7 @@ def lookup_manifest_members_on_disk(
     Used when Postgres / MemoryStore has no rows yet — same files review-ui
     Local Mode reads for Manifest Details.
     """
-    from config import DATA_ROOT
+    from common.config import DATA_ROOT
 
     wanted = (record_id or "").strip()
     if not wanted:
@@ -489,7 +489,7 @@ def run_load(
                     logger.exception("Failed local manifest %s", path)
                     errors.append(f"{path}: {exc}")
         else:
-            from db.blob_store import (
+            from common.db.blob_store import (
                 download_blob_bytes,
                 ensure_blob_ready,
                 list_blobs_with_suffixes,

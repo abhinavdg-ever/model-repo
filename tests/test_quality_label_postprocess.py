@@ -75,7 +75,7 @@ def test_downgrade_by_ocr_overlap():
 def test_regrade_runs_before_the_azure_skip_and_never_twice():
     import json
 
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
     from modules.ocr.stage_final2 import regrade_by_ocr_overlap
 
     store = MemoryStore()
@@ -112,7 +112,7 @@ def test_regrade_leaves_pages_pass_1_settled_alone():
     duplicate, but their quality is not updated from it."""
     import json
 
-    from db.memory_store import MemoryStore
+    from common.db.memory_store import MemoryStore
     from modules.ocr.stage_final2 import regrade_by_ocr_overlap
 
     store = MemoryStore()

@@ -21,9 +21,9 @@ import time
 import traceback
 from typing import Any, Callable, Optional
 
-from db import connect, create_job, get_chart, set_chart_status, update_job
-from db.chart_status import refresh_chart_status
-from stages._support import stage_label
+from common.db import connect, create_job, get_chart, set_chart_status, update_job
+from common.db.chart_status import refresh_chart_status
+from apps.worker.stages._support import stage_label
 # Each stage runner lives next to its engine in module/<module>/.
 # OpenCV's own thread pool off process-wide before any stage runs (heap corruption on
 # the VM with page threads in OpenCV at once; 2026-11-01).
@@ -42,7 +42,7 @@ from modules.page_classify import stage as page_subtype
 from modules.continuity import stage as continuity
 from modules.imaging_final import stage as imaging_final
 from modules.sequencing import stage as page_sequencing
-from stages.utilities.download_blob import run_download
+from apps.worker.stages.utilities.download_blob import run_download
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +121,8 @@ def _clear_for_rerun(
     ``pages/`` is always kept (``skip_page_download=false`` clears it at intake).
     ``keep_ocr`` (skip_ocr) also keeps ``ocr/`` and ``ocr_results``.
     """
-    from db import clear_chart_outputs
-    from db.paths import clear_chart_subdirs
+    from common.db import clear_chart_outputs
+    from common.db.paths import clear_chart_subdirs
 
     with connect() as conn:
         db_rows = clear_chart_outputs(conn, chart_id, keep_ocr=keep_ocr, keep_quality=keep_quality)
@@ -174,7 +174,7 @@ def run_pipeline_for_chart(
     stop_at = resolve_stage(through) if through else None
     from datetime import datetime
 
-    from orchestrator import run_stats
+    from apps.worker import run_stats
 
     run_started = datetime.now().astimezone()
     with connect() as conn:
@@ -182,7 +182,7 @@ def run_pipeline_for_chart(
         if not chart:
             raise RuntimeError(f"chart_id={chart_id} not found")
         if not force:
-            from db import clear_stuck_processing
+            from common.db import clear_stuck_processing
 
             stuck = clear_stuck_processing(conn, chart_id)
             if stuck:
@@ -197,16 +197,16 @@ def run_pipeline_for_chart(
         update_job(conn, job_id, started=True)
         progress = refresh_chart_status(conn, chart_id)
 
-    from logging_setup import (
+    from common.logging_setup import (
         reset_current_chart,
         reset_current_stage,
         set_current_chart,
         set_current_stage,
     )
-    from stages.utilities.download_blob import ensure_chart_images
+    from apps.worker.stages.utilities.download_blob import ensure_chart_images
 
     chart_token = set_current_chart(chart["chart_name"])
-    from jobs.outputs_cleanup import mark_chart_used
+    from apps.worker.jobs.outputs_cleanup import mark_chart_used
 
     mark_chart_used(chart["chart_name"])  # the outputs purge counts days from here
     try:
@@ -278,7 +278,7 @@ def run_pipeline_for_chart(
         old_presence: dict[int, Any] = {}
         gate_delta_applied = False
 
-        from config import SKIP_OCR
+        from common.config import SKIP_OCR
         from modules.ocr.reuse import apply_skip_ocr, should_skip_ocr_stages
 
         skip_requested = (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force
@@ -293,7 +293,7 @@ def run_pipeline_for_chart(
         # skip_ocr always refreshes quality/rotation/corrected-pages.
         if skip_requested:
             force_quality_for_skip = True
-            from stages.utilities.gate_delta import snapshot_gates, snapshot_ocr_presence
+            from apps.worker.stages.utilities.gate_delta import snapshot_gates, snapshot_ocr_presence
 
             with connect() as conn:
                 old_gates = snapshot_gates(conn, chart_id)
@@ -363,7 +363,7 @@ def run_pipeline_for_chart(
                     )
                     results["stages"][key] = fn(chart_id, force=True)
                     if adaptive_gates:
-                        from stages.utilities.gate_delta import apply_adaptive_gate_delta
+                        from apps.worker.stages.utilities.gate_delta import apply_adaptive_gate_delta
 
                         with connect() as conn:
                             plan = apply_adaptive_gate_delta(
@@ -562,14 +562,14 @@ def ingest_and_run(
     if skip_db_write and not local_path:
         raise ValueError("test_mode / skip_db_write requires local_path (no Postgres / blob)")
 
-    from db import (
+    from common.db import (
         disable_skip_db_write,
         enable_skip_db_write,
         is_skip_db_write,
         test_chart_name,
     )
-    from db.path_ids import resolve_run_batch
-    from logging_setup import reset_current_chart, set_current_chart
+    from common.db.path_ids import resolve_run_batch
+    from common.logging_setup import reset_current_chart, set_current_chart
     from pathlib import Path as _Path
 
     # Own the memory store only when we turned it on (batch may enable once).
@@ -601,7 +601,7 @@ def ingest_and_run(
 
     try:
         if local_path:
-            from stages.utilities.download_blob import import_local_folder
+            from apps.worker.stages.utilities.download_blob import import_local_folder
 
             intake = import_local_folder(
                 local_path,

@@ -27,8 +27,8 @@ import sys
 from datetime import date, datetime
 from typing import Any, Optional
 
-from config import MEMBER_NER_ENABLED, MEMBER_NER_MODEL_ID
-from db import (
+from common.config import MEMBER_NER_ENABLED, MEMBER_NER_MODEL_ID
+from common.db import (
     connect,
     get_blank_junk_flags,
     get_ocr_texts,
@@ -39,9 +39,9 @@ from db import (
     upsert_member_summary,
     upsert_manifest_member,
 )
-from db.paths import imaging_csv, write_csv
+from common.db.paths import imaging_csv, write_csv
 from modules import confidence as conf
-from stages._support import (
+from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
     mark_completed,
@@ -394,7 +394,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if not manifest_rows:
             # Test mode / empty MemoryStore / unswept Postgres: same CSVs
             # review-ui Local Mode reads under data/metadata or folders/manifest.
-            from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+            from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
 
             rid = source_record_id(chart_name)
             disk_rows = lookup_manifest_members_on_disk(rid)

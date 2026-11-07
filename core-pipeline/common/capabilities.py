@@ -23,7 +23,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
-from config import (
+from common.config import (
     AZURE_CLIENT_ID,
     AZURE_DI_FEATURES,
     AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
@@ -42,7 +42,7 @@ from config import (
 def blob_status() -> dict[str, Any]:
     """Can we reach a blob container at all, and as whom?
 
-    Mirrors the precedence in `db.blob_store.get_blob_service_client` — connection
+    Mirrors the precedence in `common.db.blob_store.get_blob_service_client` — connection
     string, then Entra / managed identity, then account key — so this cannot say
     "ready" for a credential that function would not use.
     """
@@ -69,7 +69,7 @@ def blob_status() -> dict[str, Any]:
         )
         return status
 
-    from db.blob_store import (
+    from common.db.blob_store import (
         ENTRA_INTERACTIVE_MODES,
         ENTRA_MODES,
         MANAGED_IDENTITY_MODES,
@@ -133,7 +133,7 @@ def _blob_round_trip(status: dict[str, Any], timeout: int) -> None:
     previous = identity.level
     identity.setLevel(logging.ERROR)
     try:
-        from db.blob_store import get_container_client
+        from common.db.blob_store import get_container_client
 
         client = get_container_client(AZURE_STORAGE_CONTAINER)
         client.get_container_properties(timeout=timeout)
@@ -230,7 +230,7 @@ def ner_status() -> dict[str, Any]:
 
 def hw_model_status() -> dict[str, Any]:
     """Stage-1 handwriting classifier weights on disk (ConvNeXt preferred, RF backup)."""
-    from config import HW_MODEL_PATH, CORE_ROOT
+    from common.config import HW_MODEL_PATH, CORE_ROOT
 
     convnext = Path(HW_MODEL_PATH)
     if not convnext.is_file():
@@ -308,7 +308,7 @@ def blank_junk_model_status() -> dict[str, Any]:
     try:
         import sys
 
-        junk = str(Path(__file__).resolve().parent / "modules" / "blank_junk")
+        junk = str(Path(__file__).resolve().parents[1] / "modules" / "blank_junk")
         if junk not in sys.path:
             sys.path.insert(0, junk)
         from model_bridge import model_status
