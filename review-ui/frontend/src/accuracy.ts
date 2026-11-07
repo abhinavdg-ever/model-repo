@@ -137,6 +137,7 @@ export type ChartAccuracy = {
   sourceName?: string | null;
   measure?: string | null;
   rrMethod?: string | null;
+  tags?: string[];
   metrics: Record<MetricId, Tally>;
   overall: Tally;
   /** Class 1 = a blank or junk page. */

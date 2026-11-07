@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * chart_list.tags (v1.sql, 2026-11-07): free-text tags on a chart (JSON array), set with
+--    utilities/tag_chart.py, for review-ui's Tag filter on History and Accuracy
+--    (changes_2026-11-07.sql).
 --  * blank_junk_classification.junk_subtype (v1.sql, 2026-10-31): 'Cards' added to the
 --    CHECK, for ID / insurance cards found by the blank / junk rule R3C
 --    (changes_2026-10-31.sql).

@@ -166,3 +166,20 @@ python utilities/harvest_keys.py --field all     # every staged field
 - `member_labels.csv` (member fields) — from the OCR text, driven by the manifest like the member stage: where the chart's expected name (last name required), DOB (any printed format) or Member ID appears, the words in front of it (`Patient Name:`, `DOB:`, `MRN`), counted per field; `(no label)` = keyless; `known_key` is blank when that field's keys.json does not cover it. Expected members come from `--metadata` (default `review-ui/data/metadata`, `metadata_R*_B*.csv`).
 
 `keys_rows.csv` columns follow the field: DOS rows carry `dos_from` / `dos_to`, provider rows `profile` / `member_hint`, e-signature rows `provider_name` / `designation` / `signature_date` (its value is the name, else the date).
+
+## Tag charts → `chart_list.tags` (2026-11-07)
+
+`tag_chart.py` adds or removes free-text tags on charts. They are stored as a JSON array in
+`chart_list.tags`, and review-ui's **History** and **Accuracy** offer them as the **Tag** filter
+(a chart passes with any picked tag; `(Blank)` = no tag). Name a chart by its `chart_list` id or
+its chart name. Tagging leaves the chart's Last Run At alone. The column is added on first use
+(or run `schema/changes_2026-11-07.sql`).
+
+```bash
+python ../utilities/tag_chart.py 1234 --tag "Pilot"
+python ../utilities/tag_chart.py 1234 1235 52743839_44976074 --tag Pilot --tag Recheck
+python ../utilities/tag_chart.py --from-file charts.txt --tag Pilot     # one chart per line
+python ../utilities/tag_chart.py 1234 --remove Pilot                    # or --clear
+python ../utilities/tag_chart.py 1234                                   # show its tags
+python ../utilities/tag_chart.py --list-tags                            # every tag, with counts
+```

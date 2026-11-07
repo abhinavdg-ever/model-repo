@@ -24,6 +24,7 @@ from app.services.chart_run_batch import (
     with_run_batch_default,
 )
 from app.services.chart_metadata import chart_metadata_map
+from app.services.chart_tags import chart_tags_map
 
 # The metadata filters' option for a chart with no value.
 BLANK_OPTION = "(Blank)"
@@ -99,6 +100,8 @@ class FolderListParams:
     measure: list[str] = field(default_factory=list)
     retrieval: list[str] = field(default_factory=list)
     scope: list[str] = field(default_factory=list)
+    # 2026-11-07 (user): charts with any of these tags ("(Blank)": charts with none).
+    tag: list[str] = field(default_factory=list)
     # 2026-11-05 (user): Reviewed / Not Reviewed and With / No Ground Truth.
     reviewed: list[str] = field(default_factory=list)
     truth: list[str] = field(default_factory=list)
@@ -131,6 +134,7 @@ class FolderListResult:
     offset: int
     reviewed_options: list[str] = field(default_factory=list)
     truth_options: list[str] = field(default_factory=list)
+    tag_options: list[str] = field(default_factory=list)
 
 
 def quick_page_count(folder_dir: Path) -> int:
@@ -337,6 +341,11 @@ def filter_sort_page(
         for attr, _ in metadata_filters
     }
     run_after = _aware(params.run_after) if params.run_after else None
+    # Tags (2026-11-07, user): a chart has any number; it passes with any one wanted.
+    tag_set = {s for s in params.tag if s}
+    tag_options = sorted({t for f in active for t in f.tags}, key=lambda s: s.casefold()) + (
+        [BLANK_OPTION] if any(not f.tags for f in active) else []
+    )
 
     # Batch options are locked to selected run(s).
     # Reviewed / Ground Truth (2026-11-05, user): two fixed options each.
@@ -368,6 +377,8 @@ def filter_sort_page(
         if run_after and (f.last_updated_at is None or _aware(f.last_updated_at) < run_after):
             continue
         if any(wanted and (getattr(f, attr) or BLANK_OPTION) not in wanted for attr, wanted in metadata_filters):
+            continue
+        if tag_set and not (set(f.tags or [BLANK_OPTION]) & tag_set):
             continue
         if reviewed_set and reviewed_label(f) not in reviewed_set:
             continue
@@ -412,6 +423,7 @@ def filter_sort_page(
         retrieval_options=metadata_options["rr_method"],
         reviewed_options=REVIEWED_OPTIONS,
         truth_options=TRUTH_OPTIONS,
+        tag_options=tag_options,
         limit=eff_limit,
         offset=offset,
     )
@@ -459,6 +471,12 @@ def build_folder_list(
             })
             for row in merged
         ]
+        try:
+            tags = chart_tags_map(database_url, db_schema)
+        except Exception as exc:
+            logger.warning("chart_tag lookup failed: %s", exc)
+            tags = {}
+        merged = [row.model_copy(update={"tags": tags[row.name]}) if row.name in tags else row for row in merged]
         return filter_sort_page(with_metadata(merged), params)
 
     # No DB — use caller-provided full local scan (existing behaviour).

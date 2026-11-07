@@ -216,6 +216,10 @@ CREATE TABLE chart_list (
     output_path         TEXT,
     run_id              VARCHAR(50),
     batch_id            VARCHAR(50),
+    -- Free-text tags (2026-11-07), a JSON array of strings, set with utilities/tag_chart.py;
+    -- review-ui's History and Accuracy filter on them. Setting them leaves updated_at (the
+    -- chart's Last Run At) alone.
+    tags                JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 

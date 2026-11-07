@@ -31,6 +31,8 @@ export type FolderSummary = {
   source_name?: string | null;
   measure?: string | null;
   rr_method?: string | null;
+  /** The chart's tags (2026-11-07). */
+  tags?: string[];
 };
 
 export type FolderListParams = {
@@ -46,6 +48,8 @@ export type FolderListParams = {
   measure?: string[];
   /** RR Method. */
   retrieval?: string[];
+  /** Chart tags: any of these ("(Blank)" = no tag). */
+  tag?: string[];
   /** Reviewed / Not Reviewed. */
   reviewed?: string[];
   /** With / No Ground Truth. */
@@ -87,6 +91,7 @@ export type FolderListResponse = {
   source_options?: string[];
   measure_options?: string[];
   retrieval_options?: string[];
+  tag_options?: string[];
   reviewed_options?: string[];
   truth_options?: string[];
   limit: number | null;
@@ -636,6 +641,7 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.source ?? []) sp.append("source", s);
   for (const s of params?.measure ?? []) sp.append("measure", s);
   for (const s of params?.retrieval ?? []) sp.append("retrieval", s);
+  for (const s of params?.tag ?? []) sp.append("tag", s);
   for (const s of params?.reviewed ?? []) sp.append("reviewed", s);
   for (const s of params?.truth ?? []) sp.append("truth", s);
   if (params?.run_after) sp.set("run_after", params.run_after);
@@ -733,6 +739,7 @@ export type AccuracyChartPayload = {
   sourceName?: string | null;
   measure?: string | null;
   rrMethod?: string | null;
+  tags?: string[];
   metrics?: Record<string, { correct: number; wrong: number; scored: number }> | null;
   overall?: { correct: number; wrong: number; scored: number } | null;
   document?: ImagingDocumentResponse | null;

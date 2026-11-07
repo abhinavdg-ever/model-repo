@@ -495,6 +495,7 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             sourceName=folder.source_name,
             measure=folder.measure,
             rrMethod=folder.rr_method,
+            tags=list(folder.tags),
             document=ImagingDocumentResponse(
                 folder_id=folder.id,
                 manifest=ImagingManifestDetails(

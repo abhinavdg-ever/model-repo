@@ -795,17 +795,24 @@ function RunAfterColumnFilter({
   );
 }
 
-/** A chart's value for one metadata filter. */
-function metaValue(row: ChartAccuracy, key: MetaFilterKey): string | null | undefined {
-  if (key === "scope") return row.projectScope;
-  return key === "source" ? row.sourceName : key === "measure" ? row.measure : row.rrMethod;
+/** A chart's values for one metadata filter: one for Scope / Source / Measure / Retrieval,
+ * any number for Tag (2026-11-07). None reads "(Blank)". */
+function metaValues(row: ChartAccuracy, key: MetaFilterKey): string[] {
+  if (key === "tag") return row.tags ?? [];
+  const value =
+    key === "scope" ? row.projectScope
+    : key === "source" ? row.sourceName
+    : key === "measure" ? row.measure
+    : row.rrMethod;
+  return value ? [value] : [];
 }
 
 function passesMeta(row: ChartAccuracy, filters: MetaFilters): boolean {
   return CHART_META_FILTERS.every(({ key }) => {
     const wanted = filters[key];
     if (!wanted?.length) return true;
-    return wanted.includes(metaValue(row, key) || BLANK_META);
+    const values = metaValues(row, key);
+    return (values.length ? values : [BLANK_META]).some((value) => wanted.includes(value));
   });
 }
 
@@ -922,9 +929,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
       const values = new Set<string>();
       let blank = false;
       for (const row of allRows) {
-        const value = metaValue(row, key);
-        if (value) values.add(value);
-        else blank = true;
+        const found = metaValues(row, key);
+        for (const value of found) values.add(value);
+        if (!found.length) blank = true;
       }
       // A chart with no value is offered as "(Blank)", last.
       out[key] = [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -1024,6 +1031,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           row.sourceName = chart.sourceName ?? null;
           row.measure = chart.measure ?? null;
           row.rrMethod = chart.rrMethod ?? null;
+          row.tags = chart.tags ?? [];
           // Runs before MIN_LAST_RUN used older rules; leave them out.
           const ranAt = row.lastUpdatedAt ? new Date(row.lastUpdatedAt) : null;
           const recent = ranAt != null && !Number.isNaN(ranAt.getTime()) && ranAt >= new Date(`${MIN_LAST_RUN}T00:00:00+05:30`);
