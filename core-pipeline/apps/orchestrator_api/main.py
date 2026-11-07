@@ -526,11 +526,15 @@ def _enqueue_charts(
     trigger_id: str,
     *,
     min_run_date: Optional[str] = None,
+    job_stage: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Register each chart, record a ``queued_run`` job per chart, send one message each.
 
     The job id is the ``run_id`` (GET /api/runs/{run_id}). A send failure marks the
     jobs failed and is a 503: nothing was queued, so the caller should retry.
+    ``job_stage`` / ``target``: the /v1 step APIs (steps.py) record ``v1_<target>`` jobs
+    and put ``target`` in the message; the worker reads neither.
     """
     from apps.worker.jobs.batch_intake import _pre_register
     from common import queue as q
@@ -557,7 +561,7 @@ def _enqueue_charts(
         for req in requests:
             chart_id = chart_ids.get(req.chart_name)
             run_id = create_job(
-                conn, chart_id=chart_id, stage_name=q.JOB_STAGE, status="queued",
+                conn, chart_id=chart_id, stage_name=job_stage or q.JOB_STAGE, status="queued",
                 queue_name=SERVICEBUS_QUEUE,
             )
             queued.append({"run_id": run_id, "chart_id": chart_id, "chart_name": req.chart_name, "req": req})
@@ -568,6 +572,9 @@ def _enqueue_charts(
         ))
         for item in queued
     ]
+    if target:
+        for _sid, body in messages:
+            body["target"] = target
     try:
         q.send(messages)
     except Exception as exc:
@@ -1060,6 +1067,12 @@ def list_jobs(
     with connect() as conn:
         rows = db_list_jobs(conn, chart_id=chart_id, limit=limit)
     return {"jobs": rows}
+
+
+# Phase 5: the /v1 step-by-step chart APIs (apps/orchestrator_api/steps.py).
+from apps.orchestrator_api.steps import router as _steps_router  # noqa: E402
+
+app.include_router(_steps_router)
 
 
 def main() -> None:

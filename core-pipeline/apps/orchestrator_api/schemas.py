@@ -285,3 +285,35 @@ class WriteRequest(BaseModel):
     @classmethod
     def _norm_folder_names(cls, value: Any) -> Any:
         return normalize_folder_name(value) if value is not None else value
+
+
+class StepRequest(BaseModel):
+    """Body of the /v1 step APIs (steps.py). All optional on ``/v1/charts/{chart_name}/...``.
+
+    A chart already registered needs no body. A new chart (or one to re-fetch) takes the
+    source fields of ``RunRequest``: ``input_type`` + ``input_path`` (+ ``container_name``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    input_type: Optional[Literal["local", "blob"]] = Field(
+        None, description="Where the chart folder is read from. Omit for a registered chart."
+    )
+    container_name: Optional[str] = Field(None, description="Blob container (input_type=blob).")
+    input_path: Optional[str] = Field(None, description="Folder holding the chart folder.")
+    output_path: Optional[str] = Field(None, description="Write results here after the run.")
+    chart_name: Optional[str] = Field(
+        None, description="The chart folder. Required on /v1/charts/run; else the path names it."
+    )
+    skip_ocr: bool = Field(False, description="Reuse existing OCR (no Azure final2 billing).")
+    rerun: bool = Field(
+        False, description="Run every stage of the target, even those already completed."
+    )
+
+    @field_validator("chart_name", mode="before")
+    @classmethod
+    def _norm_chart_name(cls, value: Any) -> Any:
+        return normalize_folder_name(value) if value is not None else value
+
+    def has_source(self) -> bool:
+        return self.input_type is not None

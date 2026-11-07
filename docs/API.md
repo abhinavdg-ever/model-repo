@@ -326,3 +326,71 @@ Invoke-RestMethod "http://172.20.4.170:8001/api/runs/$($run.run_id)?wait=60"
 
 Without `API_KEY_REQUIRED=true`, leave the header out. A queued run that fails five times is in
 the queue's dead-letter sub-queue (Azure portal → Service Bus → `chart-runs` → Dead-letter).
+
+## 6. Step-by-step chart APIs (phase 5)
+
+New routes under `/v1` (the `/api/...` routes are unchanged). Each names a **target**; the
+call runs only the target's stages that are not yet done, then stops.
+
+| Endpoint | Target | Stages (in chain order) | `result` |
+|---|---|---|---|
+| `POST /v1/charts/run` | `full` | all 15 | chart status, page types, member verdict, dates |
+| `POST /v1/charts/{chart_name}/ocr` | `ocr` | ocr_quality, ocr_prelim, blank_junk:1, ocr_final1, ocr_final2, section_headers | per page: `engine` (best of azuredocintel / docling / tesseract), `chars`, `chars_by_engine`, `quality` |
+| `POST /v1/charts/{chart_name}/page-type` | `page-type` | ocr + kv_extract, blank_junk:2, page_subtype | per page: `page_type`, `page_subtype`, `blank_junk` |
+| `POST /v1/charts/{chart_name}/member-verify` | `member-verify` | ocr + kv_extract, blank_junk:2, member_verify | `summary` (member_verification_summary) + `wrong_member_pages` |
+| `POST /v1/charts/{chart_name}/dos` | `dos` | page-type + dos_extract | per page dates + `documents` (consecutive pages sharing document-level dates) |
+| `GET /v1/runs/{run_id}?wait=N` | — | — | `/api/runs/{run_id}` plus `target` and, when completed, `result` |
+
+The map lives in `core-pipeline/apps/worker/targets.py`.
+
+**Body** (all optional on `/v1/charts/{chart_name}/...`; `chart_name` required on `/v1/charts/run`):
+`input_type`, `container_name`, `input_path`, `output_path`, `chart_name`, `skip_ocr`, `rerun`.
+A chart already registered needs no body: blob charts are re-read from their stored
+`blob_path`, local charts run on their workspace (in `RUN_MODE=queue` a local chart needs
+`input_type` + `input_path`). An unregistered chart without a source is a 404.
+
+**What runs.** For each stage of the target, in order, `page_stage_status` is read
+(`pages_needing_stage`). The run starts at the first stage not `completed`/`skipped` on every
+page and takes every later stage of the target too (they read its output); `rerun=true` takes
+all of them. Nothing missing → **200 at once** with the stored `result` (a second call is
+instant, no run is created). Otherwise a run is created (`pipeline_jobs`, `stage_name`
+`v1_<target>`) and handed to the same path as `/api/charts/run` with `only` = those stages:
+a thread in the API (`inline`) or one Service Bus message (`queue`, the body also carries
+`target`). The answer is **202** with `run_id` and `stages`; `?wait=N` (max 60) waits and
+answers 200 with `result` when it finishes in time. A second call while the same target's
+run is queued/running returns that run (`already_running: true`). The stages that run
+reprocess every page (as `/api/charts/run` does); `skip_ocr: true` reuses OCR and avoids the
+stage-5 bill. With `API_KEY_REQUIRED=true` every `/v1` POST needs `X-API-Key`.
+
+Not built yet: the plan's `version` / `input_hash` staleness — a canon or model change does
+not by itself make a completed stage count as missing; pass `rerun: true`.
+
+```bash
+# macOS / Ubuntu VM — DOS for a chart already registered, wait up to 60 s
+curl -s -X POST "localhost:8001/v1/charts/52743839_44976074/dos?wait=60" \
+  -H "X-API-Key: $KEY" | python3 -m json.tool
+
+# a new chart from Blob: OCR only, then poll
+RUN=$(curl -s -X POST localhost:8001/v1/charts/52743839_44976074/ocr -H 'Content-Type: application/json' \
+  -H "X-API-Key: $KEY" \
+  -d '{"input_type":"blob","container_name":"imaging-pipeline","input_path":"Raw_Input/Run1/Batch1/DEID_PNGs"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("run_id",""))')
+curl -s "localhost:8001/v1/runs/$RUN?wait=60" | python3 -m json.tool
+```
+
+```powershell
+# Windows (PowerShell), API on the VM
+$h = @{ 'X-API-Key' = $key }
+Invoke-RestMethod -Method Post -Headers $h "http://172.20.4.170:8001/v1/charts/52743839_44976074/dos?wait=60"
+
+$body = @{ input_type='blob'; container_name='imaging-pipeline'
+           input_path='Raw_Input/Run1/Batch1/DEID_PNGs' } | ConvertTo-Json
+$run = Invoke-RestMethod -Method Post -Headers $h -ContentType 'application/json' -Body $body `
+       -Uri http://172.20.4.170:8001/v1/charts/52743839_44976074/member-verify
+Invoke-RestMethod "http://172.20.4.170:8001/v1/runs/$($run.run_id)?wait=60"
+
+# or curl.exe (not curl)
+curl.exe -s -X POST -H "X-API-Key: $key" "http://172.20.4.170:8001/v1/charts/52743839_44976074/page-type?wait=60"
+```
+
+Without `API_KEY_REQUIRED=true`, leave the header out.
