@@ -58,7 +58,7 @@ PAGE_FIELDS = {
 TUPLE_FIELDS = {"ocr": "ocr", "blank_junk": "blank_junk", "page_stages": "stages"}
 WRITE_PREFIXES = ("upsert_", "set_", "init_", "reset_", "clear_", "delete_", "mark_", "revise_",
                   "create_", "update_", "heartbeat_", "insert_", "prune_")
-CROSS_CHART = {"list_stages", "list_jobs", "list_run_usage_daily", "list_finished_chart_names",
+CROSS_CHART = {"list_stages", "list_jobs", "get_job", "list_run_usage_daily", "list_finished_chart_names",
                "list_manifest_members", "count_manifest_members", "upsert_manifest_member",
                "upsert_manifest_members", "create_job", "update_job", "heartbeat_job", "insert_run_usage"}
 
@@ -364,6 +364,15 @@ class CosmosStore(MemoryStore):
             self._c["runs"].upsert_item(_json({"id": f"usage-{uuid.uuid4().hex}", "chart_name": chart_name,
                                                "type": "usage", "usage": row}))
             return None
+        if name == "get_job":
+            job_id = int(kwargs.get("job_id") if "job_id" in kwargs else args[0])
+            if job_id not in self.jobs:
+                found = list(self._c["runs"].query_items(
+                    "SELECT * FROM c WHERE c.type = 'job' AND c.id = @id",
+                    parameters=[{"name": "@id", "value": f"job-{job_id}"}], enable_cross_partition_query=True))
+                if found:
+                    self.jobs[job_id] = found[0]["job"]
+            return method(*args, **kwargs)
         if name == "list_jobs":
             chart_id = kwargs.get("chart_id")
             limit = int(kwargs.get("limit") or 50)

@@ -8,6 +8,10 @@
 #
 # Database: new  -> psql "$DATABASE_URL" -f ../schema/schema.sql
 #           existing -> psql "$DATABASE_URL" -f ../schema/migrate.sql
+#
+# Queue mode (RUN_MODE=queue in .env): the api only queues charts on Service Bus
+# and the workers run them, one chart each:
+#   docker compose up -d --build --scale worker=3
 
 services:
   api:
@@ -19,7 +23,7 @@ services:
       - "${API_PORT:-8001}:8001"
     env_file:
       - ./.env
-    environment:
+    environment: &core-env
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/imaging_outputs}
       DB_POOL_MIN: ${DB_POOL_MIN:-1}
       DB_POOL_MAX: ${DB_POOL_MAX:-20}
@@ -78,7 +82,7 @@ services:
       LOG_BACKUP_DAYS: ${LOG_BACKUP_DAYS:-30}
       # Colour worker tags in stdout (docker compose logs preserves ANSI).
       LOG_COLOR: ${LOG_COLOR:-true}
-    volumes:
+    volumes: &core-volumes
       # core-pipeline/outputs/ on the host: scratch, not shared with review-ui.
       - ${OUTPUTS_HOST_PATH:-./outputs}:/data/outputs
       # core-pipeline/models/ on the host: large checkpoints plus the small
@@ -99,3 +103,25 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # Runs charts from the Service Bus queue chart-runs (RUN_MODE=queue), one at a time.
+  # Same image, env and mounts as api; no port. Scale with --scale worker=N
+  # (each holds the models, about 10-14 GB: docs/specials/VM_GUIDE.md §3).
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: advantmed/core-pipeline:latest
+    command: ["python", "-m", "apps.worker.queue_worker"]
+    env_file:
+      - ./.env
+    environment: *core-env
+    volumes: *core-volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    # SIGTERM = finish the current chart, then exit. A chart still running after this
+    # is killed; its message comes back after the 5-minute lock and another worker runs it.
+    stop_grace_period: 30m
+    healthcheck:
+      disable: true

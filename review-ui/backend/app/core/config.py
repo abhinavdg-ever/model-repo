@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     # off. The only place review-ui calls core-pipeline.
     core_pipeline_urls: str = "VM=http://172.20.4.170:8001,Local=http://localhost:8001"
     playground_container: str = "imaging-pipeline"
+    # Sent as X-API-Key on Playground runs: core-pipeline's ORCHESTRATOR_API_KEY (needed when
+    # core-pipeline has API_KEY_REQUIRED=true). Empty = no header.
+    orchestrator_api_key: str = ""
     # The client's copy (CLIENT_VIEW=true, review-ui-client): Page Details shows only the
     # Final values, headed Algorithm.
     client_view: bool = False

@@ -165,12 +165,12 @@ Azure cost (`run_usage`).
 
 ---
 
-## 9. Next: the Service Bus queue (planned, not built yet)
+## 9. The Service Bus queue (built 2026-11-08, off until RUN_MODE=queue)
 
-Today the API runs the stages itself, in the background of the same process (§2). The
-Service Bus queue `chart-runs` exists in Azure and `SERVICEBUS_CONNECTION_STRING` /
-`SERVICEBUS_QUEUE` are in `core-pipeline/.env`, but **no code reads them yet**. After that
-phase the flow splits into a small API and separate workers:
+With `RUN_MODE=inline` (the default) the API runs the stages itself, in the background of the
+same process (§2). With `RUN_MODE=queue` in `core-pipeline/.env` it hands each chart to the
+Service Bus queue `chart-runs` and separate workers run it
+(`docker compose up -d --build --scale worker=3`; worker = `python -m apps.worker.queue_worker`):
 
 ```
  caller ──X-API-Key──► orchestrator API (1 copy, small, no models)
@@ -186,9 +186,9 @@ phase the flow splits into a small API and separate workers:
                                Postgres (Cosmos later) + Blob directly
 ```
 
-- **The API stops processing charts.** It checks the key, records the run, queues one
-  message per chart and answers `202` with a `run_id`. Status: `GET /v1/runs/{run_id}`,
-  or `?wait=60` for a small chart.
+- **The API stops processing charts.** It checks the key (`API_KEY_REQUIRED=true`), records
+  the run, queues one message per chart and answers `202` with a `run_id`. Status:
+  `GET /api/runs/{run_id}`, or `?wait=60` for a small chart.
 - **Workers pull one chart at a time.** A batch spreads itself over the workers; adding a
   worker needs no code change.
 - **Session = chart_id**, so the same chart never runs twice at once.

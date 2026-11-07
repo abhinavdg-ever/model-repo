@@ -82,12 +82,16 @@ def batch_body(
     return body
 
 
-def start_batch(base_url: str, body: dict[str, Any]) -> dict[str, Any]:
-    """POST the run to core-pipeline; its JSON answer (202: queued in the background)."""
+def start_batch(base_url: str, body: dict[str, Any], api_key: str = "") -> dict[str, Any]:
+    """POST the run to core-pipeline; its JSON answer (202: queued in the background).
+    ``api_key`` goes in X-API-Key when set (core-pipeline's ORCHESTRATOR_API_KEY)."""
+    headers = {"Content-Type": "application/json"}
+    if api_key.strip():
+        headers["X-API-Key"] = api_key.strip()
     request = urllib.request.Request(
         base_url.rstrip("/") + "/api/charts/batch-run",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:

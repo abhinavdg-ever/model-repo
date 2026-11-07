@@ -13,6 +13,7 @@ azure-storage-blob>=12.20
 azure-identity>=1.17
 azure-ai-documentintelligence>=1.0.0
 azure-cosmos>=4.7
+azure-servicebus>=7.11
 Pillow>=10.0
 pytesseract>=0.3.10
 numpy>=1.24

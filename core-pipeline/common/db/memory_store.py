@@ -544,6 +544,10 @@ class MemoryStore(StoreBackend):
 
     # -- jobs ----------------------------------------------------------------
 
+    def get_job(self, job_id: int) -> Optional[dict[str, Any]]:
+        with self._lock:
+            return self._copy(self.jobs.get(int(job_id)))
+
     def list_jobs(self, *, chart_id: Optional[int] = None, limit: int = 50) -> list[dict[str, Any]]:
         with self._lock:
             rows = [j for j in self.jobs.values() if chart_id is None or j.get("chart_id") == chart_id]

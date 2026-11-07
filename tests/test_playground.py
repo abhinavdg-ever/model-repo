@@ -33,7 +33,7 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
     app.dependency_overrides[get_settings] = lambda: s
     sent: dict = {}
 
-    def fake_start(base_url, body):
+    def fake_start(base_url, body, api_key=""):
         sent.update(base_url=base_url, body=body)
         return {"status": "accepted"}
 

@@ -155,6 +155,28 @@ DB_BACKEND = _db_backend()
 # The store reads come from: cosmos, or postgres (also for "both", which copies writes to Cosmos).
 DB_BACKEND_ACTIVE = "cosmos" if DB_BACKEND == "cosmos" else "postgres"
 
+# Phase 4 (docs/specials/PLATFORM_PLAN.md §4.3): how /run and /batch-run do the work.
+# inline = in the API process (BackgroundTasks, as before); queue = one Service Bus message
+# per chart (session = chart name), processed by `python -m apps.worker.queue_worker`.
+RUN_MODES = ("inline", "queue")
+
+
+def _run_mode() -> str:
+    raw = (os.environ.get("RUN_MODE") or "inline").strip().casefold()
+    if raw not in RUN_MODES:
+        raise ValueError(f"RUN_MODE={raw!r}: use one of {', '.join(RUN_MODES)}")
+    return raw
+
+
+RUN_MODE = _run_mode()
+SERVICEBUS_CONNECTION_STRING = (os.environ.get("SERVICEBUS_CONNECTION_STRING") or "").strip()
+SERVICEBUS_QUEUE = (os.environ.get("SERVICEBUS_QUEUE") or "chart-runs").strip()
+# A chart can take longer than one 5-minute message lock: the worker renews it up to this long.
+WORKER_LOCK_RENEW_HOURS = float(os.environ.get("WORKER_LOCK_RENEW_HOURS") or "6")
+# X-API-Key on every POST, only when both are set (review-ui's Playground does not send it yet).
+ORCHESTRATOR_API_KEY = (os.environ.get("ORCHESTRATOR_API_KEY") or "").strip()
+API_KEY_REQUIRED = _flag("API_KEY_REQUIRED", False)
+
 
 # When true, ocr_prelim / ocr_final1 / ocr_final2 reuse existing artifacts if
 # the chart's *output folder* ``ocr/`` (or workspace ``ocr/``) already has

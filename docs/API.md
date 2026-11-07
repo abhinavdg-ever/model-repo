@@ -249,3 +249,80 @@ cd "$REPO/core-pipeline" && source .venv/bin/activate && python cli.py usage --d
 
 To run again without paying for OCR again, add `"skip_ocr": true`. To run one stage only, add `"only": ["dos_extract"]`.
 
+
+---
+
+## 5. Queue mode and the API key (phase 4)
+
+Two settings in `core-pipeline/.env` (section 14) change how `/api/charts/run` and
+`/api/charts/batch-run` do the work. Both default to today's behaviour.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `RUN_MODE` | `inline` | `inline`: the API runs the chart itself, in the background. `queue`: the API puts one message per chart on the Service Bus queue and the workers run it |
+| `SERVICEBUS_CONNECTION_STRING`, `SERVICEBUS_QUEUE` | —, `chart-runs` | The queue (sessions on). Never logged: logs and `/health` show only `sb://<namespace>/ (key ***)` |
+| `WORKER_LOCK_RENEW_HOURS` | `6` | How long a worker keeps renewing the 5-minute session lock for one chart |
+| `API_KEY_REQUIRED` | `false` | `true` **and** `ORCHESTRATOR_API_KEY` set: every POST needs `X-API-Key: <key>`, else 401. GETs, `/health`, `/ready`, `/docs` stay open. review-ui's Playground does not send the key yet, so keep `false` while it is used |
+
+**How a queued run works.**
+
+- `POST /api/charts/run` registers the chart, creates a `pipeline_jobs` row (`stage_name`
+  `queued_run`, status `queued`) and sends one message with `session_id` = the chart name.
+  It answers 202 with `run_id` (the job id) and `poll: /api/runs/{run_id}`.
+- `POST /api/charts/batch-run` lists the charts with the same filters as inline (`chart_list`,
+  `skip_completed` / `only_completed` / `min_run_date`, `sample`) and sends one message per
+  chart. A local folder is listed at once (the reply has `charts_queued` and every `run_id`);
+  a blob prefix is listed in the background (the reply says so; `GET /api/jobs` shows the runs).
+- The message body: `{"kind":"run","run_id":123,"trigger_id":"T…","request":{<the run body>},"min_run_date":null}`.
+- A worker (`python -m apps.worker.queue_worker`) takes the next free session, runs the chart
+  exactly as inline mode does, then completes the message and marks the job `completed`.
+  A failed run is abandoned and marked `failed`; Service Bus delivers it again (to any worker)
+  and moves it to the dead-letter queue after 5 deliveries. Two runs of one chart never overlap
+  (same session). SIGTERM lets the current chart finish first.
+- `GET /api/runs/{run_id}` returns the job row and the chart's status; `?wait=60` (max 60)
+  waits for `completed` / `failed`.
+- `/health` shows `run_mode`, `api_key_required` and, in queue mode, `queue.reachable`
+  (checked once at API start; restart the API to check again).
+
+Start a worker without Docker (one terminal per worker; each loads its own models):
+
+```bash
+# macOS / Ubuntu VM
+cd core-pipeline && source .venv/bin/activate
+python -m apps.worker.queue_worker
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+python -m apps.worker.queue_worker
+```
+
+With Docker: `docker compose up -d --build --scale worker=3` (in `core-pipeline/`).
+
+Run a chart and wait for it, with the key:
+
+```bash
+# macOS / Ubuntu VM
+KEY=$(grep '^ORCHESTRATOR_API_KEY=' core-pipeline/.env | cut -d= -f2-)
+RUN=$(curl -s -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -H "X-API-Key: $KEY" \
+  -d '{"input_type":"blob","container_name":"imaging-pipeline",
+       "input_path":"Raw_Input/Run1/Batch1/DEID_PNGs","chart_name":"52743839_44976074",
+       "output_path":"Processed/Run1"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["run_id"])')
+curl -s "localhost:8001/api/runs/$RUN?wait=60" | python3 -m json.tool
+```
+
+```powershell
+# Windows (PowerShell), API on the VM
+$key = ((Get-Content core-pipeline\.env | Select-String '^ORCHESTRATOR_API_KEY=') -replace '^ORCHESTRATOR_API_KEY=','')
+$body = @{ input_type='blob'; container_name='imaging-pipeline'
+           input_path='Raw_Input/Run1/Batch1/DEID_PNGs'; chart_name='52743839_44976074'
+           output_path='Processed/Run1' } | ConvertTo-Json
+$run = Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/run `
+       -Headers @{ 'X-API-Key' = $key } -ContentType 'application/json' -Body $body
+Invoke-RestMethod "http://172.20.4.170:8001/api/runs/$($run.run_id)?wait=60"
+```
+
+Without `API_KEY_REQUIRED=true`, leave the header out. A queued run that fails five times is in
+the queue's dead-letter sub-queue (Azure portal → Service Bus → `chart-runs` → Dead-letter).

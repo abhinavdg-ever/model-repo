@@ -102,13 +102,54 @@ Progress: `GET /api/charts/{chart_id}`, or the chart list in review-ui.
 - **Workers pull.** Each worker takes one chart at a time. A free worker takes the next message,
   so a batch of 100 charts spreads itself over the workers. Add a worker and it simply starts
   pulling. No code changes and no restart of the others.
-- **Sessions = chart id.** Two runs of the same chart are never processed at once.
+- **Session = chart name.** Two runs of the same chart are never processed at once.
 - **A crash is safe.**
   - If a worker dies, its message returns to the queue after the 5-minute lock expires.
-    Another worker picks it up and skips the stages that already finished.
+    Another worker picks it up and runs the chart again (its pages are reused; the stages
+    re-run, as every API run does).
   - After 5 failed deliveries the message goes to the dead-letter queue, where you can see it.
 - **Workers write to the database themselves.** Results never pass back through the API.
-- **Status:** `GET /v1/runs/{run_id}`, or `?wait=60` to wait for a small chart.
+- **Status:** `GET /api/runs/{run_id}`, or `?wait=60` to wait for a small chart.
+- **Built (2026-11-08), off by default.** `RUN_MODE=inline` (default) keeps today's flow (§2).
+  Settings and the message format: [API.md §5](../API.md#5-queue-mode-and-the-api-key-phase-4).
+
+**Switching the VM to queue mode** (Ubuntu VM, bash, in `core-pipeline/`):
+
+```bash
+# .env section 14: RUN_MODE=queue (SERVICEBUS_* already filled in)
+sed -i 's/^RUN_MODE=.*/RUN_MODE=queue/' .env
+docker compose up -d --build --scale worker=3
+curl -s localhost:8001/health | python3 -c 'import json,sys; h=json.load(sys.stdin); print(h["run_mode"], h.get("queue"))'
+docker compose logs -f worker                     # "run 123: chart ... starting / completed"
+docker compose ps                                 # api + worker-1..3
+```
+
+Back to inline: `sed -i 's/^RUN_MODE=.*/RUN_MODE=inline/' .env`, then
+`docker compose up -d --scale worker=0`. A worker stopped with `docker compose stop worker`
+finishes its current chart first (up to 30 minutes, `stop_grace_period`); a chart cut off
+after that comes back on the queue and another worker runs it.
+
+**Turning on the API key** (after review-ui's Playground sends it): `API_KEY_REQUIRED=true` in
+`.env`, `docker compose up -d api`. Every POST then needs `X-API-Key`:
+
+```bash
+# Ubuntu VM
+KEY=$(grep '^ORCHESTRATOR_API_KEY=' .env | cut -d= -f2-)
+curl -s -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' -H "X-API-Key: $KEY" \
+  -d '{"input_type":"blob","container_name":"imaging-pipeline","input_path":"Raw_Input/Run1/Batch1/DEID_PNGs","chart_name":"52743839_44976074","output_path":"Processed/Run1"}'
+curl -s "localhost:8001/api/runs/<run_id>?wait=60"
+```
+
+```powershell
+# Windows laptop (PowerShell); paste the key from the VM's .env
+$key = Read-Host 'ORCHESTRATOR_API_KEY'
+$body = @{ input_type='blob'; container_name='imaging-pipeline'; input_path='Raw_Input/Run1/Batch1/DEID_PNGs'
+           chart_name='52743839_44976074'; output_path='Processed/Run1' } | ConvertTo-Json
+$run = Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/run `
+       -Headers @{ 'X-API-Key' = $key } -ContentType 'application/json' -Body $body
+Invoke-RestMethod "http://172.20.4.170:8001/api/runs/$($run.run_id)?wait=60"
+curl.exe -s http://172.20.4.170:8001/health      # run_mode, api_key_required, queue
+```
 
 **How many workers on the 16 CPU / 64 GB VM:**
 - one worker uses about 10–14 GB of memory (Docling, GLiNER and BERT) and about 4–5 CPUs;
@@ -217,7 +258,7 @@ come from Blob automatically.
 | Health | `curl -s localhost:8001/health` | `curl.exe -s http://172.20.4.170:8001/health` |
 | Run one chart | see below | same body with `curl.exe` |
 | Chart progress | `curl -s localhost:8001/api/charts/by-name/<chart>` | `curl.exe -s http://172.20.4.170:8001/api/charts/by-name/<chart>` |
-| Live logs | `docker compose logs -f api` (in `core-pipeline/`) | — |
+| Live logs | `docker compose logs -f api` (queue mode: `logs -f worker`), in `core-pipeline/` | — |
 | Log files | `core-pipeline/logs/` | — |
 | Cost and time per day | `docker compose exec api python cli.py usage --days 7` | — |
 | Stage list | `curl -s localhost:8001/api/stages` | `curl.exe -s http://172.20.4.170:8001/api/stages` |
@@ -324,6 +365,6 @@ VM unless you are chasing a problem.
 |---|---|
 | 2: DB toggle | `DB_BACKEND=postgres\|cosmos\|both` in **both** core-pipeline and review-ui `.env` (already there and checked at start; `/health` shows `db_backend`). `both` writes to both stores and reads Postgres. Only `postgres` is wired today, so keep it until cutover |
 | 3: outputs and debug | Nothing to do. Scratch is wiped after each run, and debug also goes to Blob |
-| 4: queue and workers | `docker compose up -d --build --scale worker=3`; callers send `X-API-Key: <ORCHESTRATOR_API_KEY>` (use a long random value, 32+ characters); Playground sends it for you |
+| 4: queue and workers | **Built 2026-11-08, off by default.** `RUN_MODE=queue` in `.env`, then `docker compose up -d --build --scale worker=3` (§3). The key: `API_KEY_REQUIRED=true` once the Playground sends `X-API-Key: <ORCHESTRATOR_API_KEY>` (use a long random value, 32+ characters); until then leave it `false` |
 | 7: Postgres → Cosmos | Run the migration utility once. `DB_BACKEND=both` for a week (both stores written), then `DB_BACKEND=cosmos` in both `.env` files |
 | 8: resources from Blob | No more `scp` of weights. A new model or canon version is published to Blob, and workers pick it up |

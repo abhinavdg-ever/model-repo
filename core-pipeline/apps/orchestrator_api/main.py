@@ -4,17 +4,19 @@ Deployed on its own (see core-pipeline/docker-compose.yml). The review UI is a
 separate deployment and does not call this service — the two share the Postgres
 database and the `outputs/charts` volume, not an HTTP boundary.
 
-Long work runs in a BackgroundTask: every mutating endpoint returns 202 with a
-chart_id, and progress is read back from GET /api/charts/{id}. See
-docs/API.md for the full request/response reference.
+Long work runs in a BackgroundTask (RUN_MODE=inline, the default) or on the
+``chart-runs`` Service Bus queue, one message per chart, processed by
+``python -m apps.worker.queue_worker`` (RUN_MODE=queue). Every mutating endpoint
+returns 202; progress is read back from GET /api/charts/{id}, and in queue mode
+from GET /api/runs/{run_id}. With API_KEY_REQUIRED=true every POST needs
+``X-API-Key: <ORCHESTRATOR_API_KEY>``. See docs/API.md for the full reference.
 """
 from __future__ import annotations
 
 import logging
 import sys
-from datetime import date
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional
+from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -30,31 +32,37 @@ try:
 except ImportError:
     pass
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+import secrets
+import time
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from common.config import (
     API_HOST,
+    API_KEY_REQUIRED,
     API_PORT,
     MEMBER_NER_ENABLED,
+    ORCHESTRATOR_API_KEY,
+    RUN_MODE,
+    SERVICEBUS_QUEUE,
     STAGE_WORKERS,
     DB_BACKEND,
     DB_BACKEND_ACTIVE,
 )
 from common.db import (
-    close_pool, connect, get_chart, get_chart_by_name, get_member_summary, list_jobs,
-    list_manifest_members, list_pages, list_stages,
+    close_pool, connect, create_job, get_chart, get_chart_by_name, get_member_summary,
+    list_jobs as db_list_jobs, list_manifest_members, list_pages, list_stages, update_job,
 )
 from common.db.chart_status import refresh_chart_status
-from common.db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
-from apps.worker.jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
-from apps.worker import run_stats
-from apps.worker.runner import (
-    STAGE_NAMES,
-    ingest_and_run,
-    resolve_stage,
-    run_pipeline_for_chart,
+from apps.orchestrator_api.schemas import (  # noqa: F401 - re-exported: tests and callers import them from here
+    BatchRequest,
+    ChartRunOptions,
+    RunRequest,
+    WriteRequest,
 )
+from apps.worker import chart_run, run_stats
+from apps.worker.runner import resolve_stage, run_pipeline_for_chart
 
 from common.logging_setup import configure_logging
 
@@ -72,6 +80,55 @@ app = FastAPI(
         "asynchronous: they return 202 and work continues in the background."
     ),
 )
+
+# Methods that change something. GET / HEAD / OPTIONS (/health, /ready, /docs, status)
+# stay open even when the key is required.
+_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _api_key_enforced() -> bool:
+    return bool(API_KEY_REQUIRED and ORCHESTRATOR_API_KEY)
+
+
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):
+    """X-API-Key on every mutating route when API_KEY_REQUIRED=true and ORCHESTRATOR_API_KEY is set."""
+    if request.method in _MUTATING_METHODS and _api_key_enforced():
+        given = request.headers.get("x-api-key") or ""
+        if not secrets.compare_digest(given.encode("utf-8"), ORCHESTRATOR_API_KEY.encode("utf-8")):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "missing or wrong X-API-Key header"},
+            )
+    return await call_next(request)
+
+
+# Set once at startup in queue mode (no network on /health): can the API reach the queue?
+_QUEUE_STATUS: dict[str, Any] = {}
+
+
+def _probe_queue() -> dict[str, Any]:
+    """Queue reachability, checked once at startup. Never raises; never logs the key."""
+    from common import queue as q
+
+    conn_str, queue_name = q.settings()
+    status: dict[str, Any] = {"queue": queue_name, "namespace": q.mask(conn_str)}
+    if not conn_str:
+        return {**status, "reachable": False, "reason": "SERVICEBUS_CONNECTION_STRING not set"}
+    try:
+        from azure.servicebus.management import ServiceBusAdministrationClient
+
+        admin = ServiceBusAdministrationClient.from_connection_string(conn_str)
+        with admin:
+            props = admin.get_queue_runtime_properties(queue_name)
+        return {
+            **status,
+            "reachable": True,
+            "active_messages_at_start": props.active_message_count,
+            "dead_letter_messages_at_start": props.dead_letter_message_count,
+        }
+    except Exception as exc:  # a status probe must never stop the server
+        return {**status, "reachable": False, "reason": str(exc).splitlines()[0][:300]}
 
 
 def _mirror_failures() -> int:
@@ -136,11 +193,22 @@ def _startup() -> None:
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
-    # Phase 8: models (and optionally canon) from Blob, before anything loads them.
-    # Off unless RESOURCES_FROM_BLOB=true; never raises (Blob down = use what is on disk).
-    from common.resources import ensure_resources
+    logger.info("  run mode    : %s", RUN_MODE)
+    logger.info("  api key     : %s", "required on POST" if _api_key_enforced() else "not required")
+    if RUN_MODE == "queue":
+        # Charts run in the workers, which fetch their own models: the API needs none.
+        _QUEUE_STATUS.clear()
+        _QUEUE_STATUS.update(_probe_queue())
+        logger.info(
+            "  queue       : %s on %s, %s", _QUEUE_STATUS.get("queue"), _QUEUE_STATUS.get("namespace"),
+            "reachable" if _QUEUE_STATUS.get("reachable") else f"UNREACHABLE — {_QUEUE_STATUS.get('reason')}",
+        )
+    else:
+        # Phase 8: models (and optionally canon) from Blob, before anything loads them.
+        # Off unless RESOURCES_FROM_BLOB=true; never raises (Blob down = use what is on disk).
+        from common.resources import ensure_resources
 
-    ensure_resources()
+        ensure_resources()
 
     # Optional features: OK / off only — no path dumps.
     try:
@@ -159,303 +227,15 @@ def _shutdown() -> None:
     close_pool()
 
 
-# --- request models ---------------------------------------------------------
-
-
-_STAGE_HELP = (
-    "Stage name, 'name' for pass 1 or 'name:2' for pass 2. "
-    f"Known: {', '.join(STAGE_NAMES)}"
-)
-
-
-class ChartRunOptions(BaseModel):
-    """What run and batch-run share. Everything else is a fixed default.
-
-    Fixed, not settable: every stage reprocesses (``force``), written outputs
-    replace what is at the destination (``overwrite``), original pages are not
-    re-sent to the source they came from (``skip_orig_pages``), run/batch ids
-    come from the path (Run1/Batch1 → R1/B1), batch concurrency is
-    ``BATCH_WORKERS``.
-
-    Unknown fields are rejected (422) so a caller still sending a removed
-    option (``force``, ``blob_read_path``, …) is told, not silently ignored.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    input_type: Literal["local", "blob"] = Field(
-        ..., description="Where the chart folders are read from."
-    )
-    container_name: Optional[str] = Field(
-        None,
-        description="Azure Blob container (input_type=blob only). Used for read and write.",
-        examples=["imaging-pipeline"],
-    )
-    input_path: str = Field(
-        ...,
-        description=(
-            "Folder holding the chart folder(s): a directory ON THE SERVER for "
-            "local (Windows \\ or / both fine), a prefix inside the container for blob."
-        ),
-        examples=["C:/data/inbox", "Raw_Input/Run1/Batch1/DEID_PNGs"],
-    )
-    output_path: Optional[str] = Field(
-        None,
-        description=(
-            "Where results are written, one sub-folder per chart. Same backend "
-            "as input_type. Omit to run without writing."
-        ),
-        examples=["C:/data/processed", "Processed/Run1"],
-    )
-    only: Optional[list[str]] = Field(
-        None,
-        description=f"Run only these stages, against what is already on disk. {_STAGE_HELP}",
-        examples=[["dos_extract"]],
-    )
-    run_through: Optional[str] = Field(
-        None,
-        description=f"Run the chain from the top and stop after this stage. {_STAGE_HELP}",
-        examples=["ocr_final2"],
-    )
-    skip_ocr: bool = Field(
-        False,
-        description=(
-            "Reuse existing OCR (workspace, else Processed output, else DB) "
-            "instead of re-running the OCR engines — no Azure final2 billing. "
-            "Quality/rotation and every non-OCR stage still re-run."
-        ),
-    )
-    skip_completed: bool = Field(
-        False,
-        description=(
-            "Skip charts whose status is already finished "
-            "(completed / needs_review / rejected)."
-        ),
-    )
-    skip_page_download: bool = Field(
-        True,
-        description=(
-            "Reuse page images already in the workspace (default). false = "
-            "wipe pages/ + corrected-pages/ and fetch them again from input_path."
-        ),
-    )
-
-    # --- derived: what the internals were written against ---------------
-    @property
-    def force(self) -> bool:
-        # skip_ocr is implemented as a resume (force off) that re-runs the
-        # non-OCR stages itself; everything else always reprocesses.
-        return not self.skip_ocr
-
-    @property
-    def through(self) -> Optional[str]:
-        return self.run_through
-
-    @property
-    def redownload_pages(self) -> bool:
-        return not self.skip_page_download
-
-    @property
-    def is_blob(self) -> bool:
-        return self.input_type == "blob"
-
-    @property
-    def blob_container(self) -> Optional[str]:
-        return self.container_name if self.is_blob else None
-
-    @property
-    def blob_read_path(self) -> Optional[str]:
-        return self.input_path if self.is_blob else None
-
-    @property
-    def blob_write_path(self) -> Optional[str]:
-        return self.output_path if self.is_blob else None
-
-    @property
-    def local_read_path(self) -> Optional[str]:
-        return None if self.is_blob else self.input_path
-
-    @property
-    def local_write_path(self) -> Optional[str]:
-        return None if self.is_blob else self.output_path
-
-    write_mode: ClassVar[str] = SKIP_ORIG_PAGES
-    overwrite: ClassVar[bool] = True
-
-    def wants_offline(self) -> bool:
-        return False
-
-    @model_validator(mode="after")
-    def _normalise_paths(self) -> "ChartRunOptions":
-        norm = normalize_blob_path if self.is_blob else normalize_fs_path
-        self.input_path = norm(self.input_path) or ""
-        if self.output_path is not None:
-            self.output_path = norm(self.output_path)
-        if self.container_name is not None:
-            self.container_name = self.container_name.strip().strip("/") or None
-        return self
-
-
-class RunRequest(ChartRunOptions):
-    """One chart: ``<input_path>/<chart_name>`` → pipeline → ``<output_path>/<chart_name>``.
-
-    Running a chart that was run before resumes it: its workspace pages are
-    reused (``skip_page_download``) and every stage reprocesses.
-    """
-
-    chart_name: str = Field(
-        ...,
-        description="The chart folder under input_path. It is the chart's name everywhere.",
-        examples=["52754737_48221214"],
-    )
-
-    @field_validator("chart_name", mode="before")
-    @classmethod
-    def _norm_chart_name(cls, value: Any) -> Any:
-        return normalize_folder_name(value) if value is not None else value
-
-
-class BatchRequest(ChartRunOptions):
-    """Every chart folder under ``input_path`` (or just ``chart_list``)."""
-
-    chart_list: Optional[list[str]] = Field(
-        None,
-        description=(
-            "Only these chart folders (list, or one comma-separated string). "
-            "Default: every chart folder under input_path. Names not found are "
-            "reported as charts_missing."
-        ),
-        examples=[["52743839_44976074", "52754737_48221214"]],
-    )
-    sample: Optional[int] = Field(
-        None,
-        ge=1,
-        description=(
-            "Run at most N charts (not-yet-finished ones first). Default: all. "
-            '"completed" is shorthand for only_completed=true.'
-        ),
-        examples=[3],
-    )
-    only_completed: bool = Field(
-        False,
-        description=(
-            "Re-run only the charts under input_path whose status is already "
-            "finished (completed / needs_review / rejected) — e.g. with "
-            "skip_ocr=true to apply new rules without new OCR. The opposite of "
-            "skip_completed."
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _sample_completed(cls, data: Any) -> Any:
-        # "sample": "completed" -> only_completed=true (no cap).
-        if isinstance(data, dict) and isinstance(data.get("sample"), str):
-            if data["sample"].strip().casefold() == "completed":
-                data = {**data, "sample": None, "only_completed": True}
-        return data
-
-    min_run_date: Optional[date] = Field(
-        None,
-        description=(
-            "With skip_completed or only_completed: a chart counts as finished only "
-            "when it finished on or after this date (YYYY-MM-DD). skip_completed then "
-            "skips the charts finished since this date and re-runs the older ones; "
-            "only_completed runs just the charts finished since this date."
-        ),
-        examples=["2026-10-17"],
-    )
-
-    @model_validator(mode="after")
-    def _completed_flags(self) -> "BatchRequest":
-        if self.only_completed and self.skip_completed:
-            raise ValueError("only_completed and skip_completed cannot both be true")
-        if self.min_run_date and not (self.skip_completed or self.only_completed):
-            raise ValueError("min_run_date needs skip_completed or only_completed")
-        return self
-
-    def charts_cap(self) -> Optional[int]:
-        return int(self.sample) if self.sample is not None else None
-
-    @field_validator("chart_list", mode="before")
-    @classmethod
-    def _norm_chart_list(cls, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            value = [p.strip() for p in value.replace(";", ",").split(",")]
-        if not isinstance(value, list):
-            return value
-        out: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            name = normalize_folder_name(item)
-            if not name or name.casefold() in seen:
-                continue
-            seen.add(name.casefold())
-            out.append(name)
-        return out or None
-
-
-class WriteRequest(BaseModel):
-    """Legacy body for the removed ``/write`` endpoint (returns 410)."""
-
-    chart_name: str = Field(
-        ...,
-        description="Folder name under outputs/charts — the chart to write",
-        examples=["52743839_44976074"],
-    )
-    local_write_path: Optional[str] = Field(
-        None, description="Destination directory ON THE SERVER"
-    )
-    blob_container: Optional[str] = None
-    blob_write_path: Optional[str] = Field(
-        None, description="Destination prefix inside the container"
-    )
-    write_mode: str = Field(SKIP_ORIG_PAGES)
-    overwrite: bool = False
-
-    @field_validator("local_write_path", mode="before")
-    @classmethod
-    def _norm_local_paths(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
-
-    @field_validator("blob_write_path", mode="before")
-    @classmethod
-    def _norm_blob_paths(cls, value: Any) -> Any:
-        return normalize_blob_path(value) if value is not None else value
-
-    @field_validator("chart_name", mode="before")
-    @classmethod
-    def _norm_folder_names(cls, value: Any) -> Any:
-        return normalize_folder_name(value) if value is not None else value
-
-
 # --- background wrappers ----------------------------------------------------
 
 
 # A BackgroundTask runs after the 202 has been sent, so its outcome can only
-# ever reach the operator through the log. Logging failures alone left a
-# successful run indistinguishable from one that never started.
-def _is_credential_failure(exc: BaseException) -> bool:
-    """Azure could not authenticate at all, as opposed to anything else.
-
-    Matched by name rather than by import so this works whether or not the
-    identity package is installed.
-    """
-    seen: BaseException | None = exc
-    while seen is not None:
-        if type(seen).__name__ == "ClientAuthenticationError":
-            return True
-        seen = seen.__cause__ or seen.__context__
-    return False
-
-
-def _join(prefix: Optional[str], folder: str) -> str:
-    """`<prefix>/<folder>`, tolerant of missing / slash-wrapped / Windows ``\\``."""
-    clean = (prefix or "").replace("\\", "/").strip().strip("/")
-    name = (folder or "").replace("\\", "/").strip().strip("/")
-    return f"{clean}/{name}" if clean else name
+# ever reach the operator through the log. The run itself lives in
+# apps/worker/chart_run.py, shared with the queue worker (RUN_MODE=queue).
+_is_credential_failure = chart_run.is_credential_failure
+_join = chart_run.join
+_write_after_run = chart_run.write_after_run
 
 
 def _write_summary(
@@ -474,66 +254,6 @@ def _write_summary(
         "write_mode": body.write_mode,
         "overwrite": body.overwrite,
     }
-
-
-def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
-    """Write the chart out, if a write path was given.
-
-    Deliberately separate from the pipeline call: a write failure must not
-    make a completed run look failed. Retry by calling /run again with
-    chart_id/chart_name and the write path (sync skips files already there).
-    """
-    if not (payload.blob_write_path or payload.local_write_path):
-        return
-
-    write = payload.blob_write_path or payload.local_write_path
-    try:
-        from common.db import connect, get_chart_by_name, set_chart_output_path
-        from common.db.path_ids import resolve_output_path
-
-        out_path = resolve_output_path(chart_name, write_path=write)
-        if out_path:
-            with connect() as conn:
-                row = get_chart_by_name(conn, chart_name)
-                if row:
-                    # Explicit write path wins as-is (no Raw_Input→Processed remap).
-                    set_chart_output_path(conn, int(row["id"]), out_path)
-    except Exception:
-        logger.debug(
-            "could not persist output_path for %s", chart_name, exc_info=True
-        )
-
-    from apps.worker.jobs.export_chart import write_chart
-
-    # After skip_ocr, quality refreshed corrected-pages/; push outputs over
-    # whatever is already on Processed (ocr / corrected-pages / imaging).
-    overwrite = bool(payload.overwrite) or bool(payload.skip_ocr)
-
-    try:
-        result = write_chart(
-            chart_name,
-            local_path=payload.local_write_path,
-            blob_container=payload.blob_container,
-            blob_path=payload.blob_write_path,
-            overwrite=overwrite,
-            write_mode=payload.write_mode,
-        )
-        logger.info(
-            "Wrote %s -> %s (%d written, %d skipped, %s)",
-            chart_name,
-            result["destination"],
-            result["files_written"],
-            result.get("files_skipped", 0),
-            result["write_mode"],
-        )
-    except Exception:
-        logger.exception(
-            "Chart %s ran, but writing it out FAILED. The results are in the "
-            "workspace; retry with POST /api/charts/run "
-            '{"chart_name":"%s","local_write_path"|"blob_write_path":...}.',
-            chart_name,
-            chart_name,
-        )
 
 
 def _bg_pipeline_then_write(
@@ -558,41 +278,20 @@ def _bg_pipeline_then_write(
 
 def _bg_run(payload: "RunRequest") -> None:
     folder = payload.chart_name
-    blob_path = _join(payload.blob_read_path, folder)
-    source = f"{payload.blob_container}/{blob_path}"
+    source = f"{payload.blob_container}/{_join(payload.blob_read_path, folder)}"
     logger.info("Background run starting: %s", source)
     try:
-        result = ingest_and_run(
-            blob_container=payload.blob_container,
-            blob_path=blob_path,
-            chart_name=folder,
-            force=payload.force,
-            only=payload.only,
-            through=payload.through,
-            skip_ocr=payload.skip_ocr,
-            redownload_pages=payload.redownload_pages,
-        )
+        result = chart_run.run_blob_chart(payload)
         logger.info(
             "Background run finished: %s -> chart_id=%s",
             source, (result or {}).get("chart_id"),
         )
-        _write_after_run(payload, result.get("chart_name") or folder)
     except Exception as exc:
         if _is_credential_failure(exc):
             # The traceback is fifteen frames of SDK plumbing and the message
             # is the same nine-source list already in the log. Neither tells
             # the operator the one thing to do.
-            logger.error(
-                "Background run FAILED for %s — no usable Azure Storage "
-                "credential. Set AZURE_STORAGE_AUTH=managed_identity with "
-                "AZURE_CLIENT_ID (user-assigned MI on a VM), or "
-                "AZURE_STORAGE_AUTH=key with AZURE_STORAGE_ACCOUNT_KEY, or "
-                "make a managed identity / `az login` available to THIS "
-                "process (it reads PATH at start, so a terminal opened "
-                "before installing the CLI will not see it). Local runs "
-                "with local_path are unaffected.",
-                source,
-            )
+            logger.error("Background run FAILED for %s — %s", source, chart_run.CREDENTIAL_HINT)
         else:
             logger.exception("Background run FAILED for %s", source)
 
@@ -728,6 +427,11 @@ def health() -> dict[str, Any]:
         "db_backend": {"configured": DB_BACKEND, "active": DB_BACKEND_ACTIVE,
                        **({"cosmos_copy_failures": _mirror_failures()} if DB_BACKEND == "both" else {})},
         "stage_workers": STAGE_WORKERS,
+        # inline = charts run in this process; queue = on Service Bus, run by the workers.
+        # queue.reachable was checked once at startup (restart the API to re-check).
+        "run_mode": RUN_MODE,
+        **({"queue": dict(_QUEUE_STATUS)} if RUN_MODE == "queue" else {}),
+        "api_key_required": _api_key_enforced(),
     }
 
 
@@ -807,6 +511,149 @@ def _options_echo(body: ChartRunOptions) -> dict[str, Any]:
     }
 
 
+# --- queue mode (RUN_MODE=queue) ----------------------------------------------
+
+
+def _chart_source(req: RunRequest) -> str:
+    """Where the chart is read from, as batch_intake._pre_register expects it."""
+    if req.is_blob:
+        return _join(req.input_path, req.chart_name)
+    return str(Path(req.input_path) / req.chart_name)
+
+
+def _enqueue_charts(
+    requests: list[RunRequest],
+    trigger_id: str,
+    *,
+    min_run_date: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Register each chart, record a ``queued_run`` job per chart, send one message each.
+
+    The job id is the ``run_id`` (GET /api/runs/{run_id}). A send failure marks the
+    jobs failed and is a 503: nothing was queued, so the caller should retry.
+    """
+    from apps.worker.jobs.batch_intake import _pre_register
+    from common import queue as q
+    from common.db.path_ids import resolve_run_batch
+
+    if not requests:
+        return []
+    first = requests[0]
+    run_label, batch_label = resolve_run_batch(
+        None, None, first.blob_read_path, first.local_read_path
+    )
+    registered = _pre_register(
+        [(_chart_source(r), r.chart_name, r.input_type) for r in requests],
+        blob_container=first.blob_container,
+        run_id=run_label,
+        batch_id=batch_label,
+        blob_write_path=first.blob_write_path,
+        local_write_path=first.local_write_path,
+    )
+    chart_ids = {row["chart_name"]: row["chart_id"] for row in registered}
+
+    queued: list[dict[str, Any]] = []
+    with connect() as conn:
+        for req in requests:
+            chart_id = chart_ids.get(req.chart_name)
+            run_id = create_job(
+                conn, chart_id=chart_id, stage_name=q.JOB_STAGE, status="queued",
+                queue_name=SERVICEBUS_QUEUE,
+            )
+            queued.append({"run_id": run_id, "chart_id": chart_id, "chart_name": req.chart_name, "req": req})
+
+    messages = [
+        (item["chart_name"], q.run_message(
+            item["run_id"], item["req"].model_dump(mode="json"), trigger_id, min_run_date=min_run_date
+        ))
+        for item in queued
+    ]
+    try:
+        q.send(messages)
+    except Exception as exc:
+        error = f"could not queue on {SERVICEBUS_QUEUE}: {type(exc).__name__}: {str(exc).splitlines()[0][:300]}"
+        with connect() as conn:
+            for item in queued:
+                update_job(conn, item["run_id"], status="failed", completed=True, error_message=error)
+        logger.error(error)
+        raise HTTPException(status_code=503, detail=error) from exc
+    return [{k: v for k, v in item.items() if k != "req"} for item in queued]
+
+
+def _batch_sources(body: BatchRequest) -> dict[str, Any]:
+    """The charts a batch-run would run: listing + chart_list + skip/only_completed + sample.
+
+    Same filters as batch_intake.run_batch, without running anything. Raises ValueError
+    with a readable message when nothing matches.
+    """
+    from apps.worker.jobs.batch_intake import (
+        filter_sources_by_chart_names,
+        find_local_chart_folders,
+        finished_chart_names,
+        select_batch_sources,
+    )
+
+    if body.is_blob:
+        from common.db.blob_store import chart_name_from_blob_path, ensure_blob_ready, list_chart_prefixes
+
+        ensure_blob_ready(body.blob_container)
+        prefixes = list_chart_prefixes(body.blob_container, body.blob_read_path)
+        sources = [(p, chart_name_from_blob_path(p), "blob") for p in prefixes]
+    else:
+        sources = [(str(f), f.name, "local") for f in find_local_chart_folders(body.input_path)]
+    found = len(sources)
+    if not found:
+        raise ValueError(f"No chart folders with images under {body.input_path}")
+    missing: list[str] = []
+    if body.chart_list:
+        sources, missing = filter_sources_by_chart_names(sources, body.chart_list)
+        if not sources:
+            raise ValueError(
+                f"None of chart_list exists under {body.input_path}"
+                + (f" (missing: {', '.join(missing[:20])})" if missing else "")
+            )
+    skipped: list[str] = []
+    if body.skip_completed:
+        finished = finished_chart_names([n for _s, n, _m in sources], body.min_run_date)
+        skipped = [n for _s, n, _m in sources if n in finished]
+        sources = [x for x in sources if x[1] not in finished]
+    elif body.only_completed:
+        finished = finished_chart_names([n for _s, n, _m in sources], body.min_run_date)
+        sources = [x for x in sources if x[1] in finished]
+    sources = select_batch_sources(sources, body.charts_cap())
+
+    shared = body.model_dump(
+        mode="json", include=set(ChartRunOptions.model_fields)
+    )
+    requests = []
+    for src, name, mode in sources:
+        # Blob prefixes are direct children of input_path; a local root may itself be the chart.
+        parent = body.input_path if mode == "blob" else str(Path(src).parent)
+        requests.append(RunRequest.model_validate({**shared, "input_path": parent, "chart_name": name}))
+    return {"requests": requests, "found": found, "missing": missing, "skipped": skipped}
+
+
+def _bg_enqueue_batch(body: BatchRequest, trigger_id: str) -> None:
+    """Blob batch in queue mode: list in the background (as inline does), then queue."""
+    source = f"{body.blob_container}/{body.blob_read_path}"
+    try:
+        listed = _batch_sources(body)
+        queued = _enqueue_charts(
+            listed["requests"], trigger_id,
+            min_run_date=body.min_run_date.isoformat() if body.min_run_date else None,
+        )
+        logger.info(
+            "Batch %s: %d chart(s) found, %d queued on %s (missing %d, skipped as finished %d)",
+            source, listed["found"], len(queued), SERVICEBUS_QUEUE,
+            len(listed["missing"]), len(listed["skipped"]),
+        )
+    except Exception as exc:
+        if _is_credential_failure(exc):
+            logger.error("Batch listing FAILED for %s — %s", source, chart_run.CREDENTIAL_HINT)
+        else:
+            logger.exception("Batch queueing FAILED for %s", source)
+
+
 @app.post("/api/charts/run", status_code=202, tags=["charts"])
 def run_chart(
     body: RunRequest, background_tasks: BackgroundTasks, response: Response
@@ -842,6 +689,24 @@ def run_chart(
         **_options_echo(body),
         "write": _write_summary(body, folder, write_to),
     }
+
+    if RUN_MODE == "queue":
+        source = (
+            f"{body.container_name}/{_join(body.input_path, folder)}"
+            if body.is_blob else str(Path(body.input_path) / folder)
+        )
+        if not body.is_blob and not Path(source).is_dir():
+            raise HTTPException(status_code=400, detail=f"Not a directory: {source}")
+        queued = _enqueue_charts([body], trigger[0])[0]
+        return {
+            **base,
+            "status": "queued",
+            "trigger_id": trigger[0],
+            "run_id": queued["run_id"],
+            "chart_id": queued["chart_id"],
+            "source": source,
+            "poll": f"/api/runs/{queued['run_id']}",
+        }
 
     if not body.is_blob:
         from apps.worker.stages.utilities.download_blob import import_local_folder
@@ -924,6 +789,53 @@ def batch_run(
     return _batch_run_impl(body, background_tasks)
 
 
+def _queue_batch(body: BatchRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """batch-run in queue mode: one message per chart. Local drops are listed and queued
+    now (the reply has the count and the run ids); blob drops in the background."""
+    _require_db()
+    trigger_id = run_stats.new_trigger("batch-run")
+    source = f"{body.container_name}/{body.input_path}" if body.is_blob else body.input_path
+    reply: dict[str, Any] = {
+        "status": "queued",
+        "trigger_id": trigger_id,
+        "input_type": body.input_type,
+        "source": source,
+        "queue": SERVICEBUS_QUEUE,
+        "chart_list": body.chart_list,
+        "sample": body.sample,
+        "only_completed": body.only_completed,
+        "min_run_date": body.min_run_date.isoformat() if body.min_run_date else None,
+        **_options_echo(body),
+    }
+    if body.is_blob:
+        background_tasks.add_task(run_stats.in_trigger, (trigger_id, "batch-run"), _bg_enqueue_batch, body, trigger_id)
+        return {
+            **reply,
+            "status": "accepted",
+            "charts_found": None,
+            "charts_queued": None,
+            "note": "blob drops are listed in the background; GET /api/jobs shows the queued_run rows",
+            "poll": "/api/jobs",
+        }
+    try:
+        listed = _batch_sources(body)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    queued = _enqueue_charts(
+        listed["requests"], trigger_id,
+        min_run_date=body.min_run_date.isoformat() if body.min_run_date else None,
+    )
+    return {
+        **reply,
+        "charts_found": listed["found"],
+        "charts_queued": len(queued),
+        "charts_missing": listed["missing"] or None,
+        "charts_skipped_completed": listed["skipped"] if body.skip_completed else None,
+        "runs": queued,
+        "poll": "/api/runs/{run_id}",
+    }
+
+
 def _batch_run_impl(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
@@ -936,6 +848,8 @@ def _batch_run_impl(
     )
 
     _check_source(body)
+    if RUN_MODE == "queue":
+        return _queue_batch(body, background_tasks)
     try:
         workers = resolve_batch_workers(None)  # BATCH_WORKERS, checked against DB_POOL_MAX
     except ValueError as exc:
@@ -1099,6 +1013,44 @@ def get_manifest(record_id: str) -> dict[str, Any]:
     return {"record_id": rid, "source": "postgres", "members": rows}
 
 
+_RUN_DONE = frozenset({"completed", "failed"})
+_RUN_POLL_SECONDS = 2.0
+
+
+def _get_job(conn: Any, run_id: int) -> Optional[dict[str, Any]]:
+    """One pipeline_jobs row by id (common.db.get_job)."""
+    from common.db import get_job
+
+    row = get_job(conn, int(run_id))
+    return dict(row) if row else None
+
+
+@app.get("/api/runs/{run_id}", tags=["charts"])
+def get_run(
+    run_id: int,
+    wait: int = Query(0, ge=0, le=60, description="Wait up to N seconds (max 60) for the run to finish"),
+) -> dict[str, Any]:
+    """A queued run (RUN_MODE=queue): its pipeline_jobs row and the chart's status.
+
+    ``status`` is queued → running → completed | failed. A failed run is delivered
+    again by Service Bus (up to 5 times), so it can go back to running.
+    """
+    deadline = time.monotonic() + wait
+    while True:
+        with connect() as conn:
+            job = _get_job(conn, run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail="run not found")
+            done = job.get("status") in _RUN_DONE
+            if done or time.monotonic() >= deadline:
+                chart = (
+                    _chart_payload(conn, int(job["chart_id"]), include_pages=False)
+                    if job.get("chart_id") and get_chart(conn, int(job["chart_id"])) else None
+                )
+                return {"run_id": run_id, "status": job.get("status"), "done": done, "run": job, "chart": chart}
+        time.sleep(min(_RUN_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+
+
 @app.get("/api/jobs", tags=["ops"])
 def list_jobs(
     chart_id: Optional[int] = Query(None),
@@ -1106,7 +1058,7 @@ def list_jobs(
 ) -> dict[str, Any]:
     """Recent pipeline_jobs rows — the run log for a chart or the whole service."""
     with connect() as conn:
-        rows = list_jobs(conn, chart_id=chart_id, limit=limit)
+        rows = db_list_jobs(conn, chart_id=chart_id, limit=limit)
     return {"jobs": rows}
 
 

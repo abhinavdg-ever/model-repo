@@ -57,7 +57,7 @@ def playground_batch_run(
         skip_completed=body.skip_completed,
     )
     try:
-        answer = playground.start_batch(base_url, request)
+        answer = playground.start_batch(base_url, request, settings.orchestrator_api_key)
     except playground.PipelineError as exc:
         logger.warning("playground run refused for %s: %s", request["input_path"], exc.detail)
         raise HTTPException(status_code=exc.status if 400 <= exc.status < 600 else 502, detail=exc.detail) from exc

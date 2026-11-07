@@ -384,7 +384,7 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 | 1 | Restructure, no logic change | `apps/`, `modules/`, `common/`, `resources/`; review-ui `backend/` + `frontend/` each with its own Dockerfile | same outputs on the test charts; tests pass | **Done** except: the API is still one `main.py` (not split into routers), and the API and worker are one image, one process |
 | 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **Built for core-pipeline and db-utilities** (2026-11-07): `common/db` + `CosmosStore`, `both` mirror, a full test chart on Cosmos (outputs match Postgres except number formatting and one page type under investigation); db-utilities `--to postgres\|cosmos\|both`. review-ui: chart views only |
 | 3 | Outputs and debug | every file written inventoried; stage-to-stage data into page docs; `artifacts.write`; scratch wiped per run; debug to disk and Blob | a non-debug run writes only to the DB and Blob | **Partly:** scratch with a 7-day purge; debug goes to local disk only; `staging/*.json` still carries data between stages |
-| 4 | Service Bus + API key | orchestrator enqueues, workers consume (sessions, lock renewal, dead-letter); `X-API-Key` | kill a worker mid-chart and the chart finishes on another | **Not started** |
+| 4 | Service Bus + API key | orchestrator enqueues, workers consume (sessions, lock renewal, dead-letter); `X-API-Key` | kill a worker mid-chart and the chart finishes on another | **Built 2026-11-08, off by default** (`RUN_MODE=queue`, `API_KEY_REQUIRED=true`): `apps/worker/queue_worker.py`, compose `worker` (`--scale worker=3`), `GET /api/runs/{id}?wait=`; Playground sends the key. Checked with a smoke message on the real queue. Not yet: the kill-a-worker test on the VM, separate API / worker images |
 | 5 | Step-by-step APIs | stage graph, version / input-hash check, `/v1/...` endpoints | `/member-verify` runs only what it needs; a second call is instant | **Not started** |
 | 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Built 2026-11-08** (`DB_BACKEND=cosmos` / `both`): chart views, landing list, ground truth (read + save), users and sign-in, review log, tags, encounters, delete, OCR search, Manual Review. **501 on Cosmos:** accuracy report, search by value (need precomputed docs). Not yet synced to review-ui-client |
 | 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Not started** |
@@ -500,8 +500,8 @@ In build order:
    on Cosmos (precomputed `metrics` docs), and the sync to review-ui-client.
 3. **Models and canon from Blob (phase 8):** built (off by default); left: the canon re-check
    before each chart and model / canon versions stamped on results.
-4. **Service Bus and separate workers (phase 4).** The API enqueues, workers pull one
-   chart each (sessions, lock renewal, dead-letter), the `X-API-Key` check, two images.
+4. **Service Bus and separate workers (phase 4):** built (off by default); left: the
+   kill-a-worker test on the VM, and a slim API image without the models.
 5. **Outputs (phase 3).** Stage-to-stage data out of `staging/*.json` into the page docs;
    scratch wiped after each run; debug files to Blob as well as disk.
 6. **Step-by-step APIs (phase 5).** `/v1/charts/{id}/ocr`, `/page-type`, `/member-verify`,

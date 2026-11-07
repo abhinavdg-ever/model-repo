@@ -2090,6 +2090,12 @@ def count_manifest_members(conn: Any, record_id: str) -> int:
 
 
 @_dispatch
+def get_job(conn: Any, job_id: int) -> Optional[dict[str, Any]]:
+    """One pipeline_jobs row by id (a queued run's run_id), or None."""
+    return conn.execute("SELECT * FROM pipeline_jobs WHERE id = %s", (int(job_id),)).fetchone()
+
+
+@_dispatch
 def list_jobs(conn: Any, *, chart_id: Optional[int] = None, limit: int = 50) -> list[dict[str, Any]]:
     """Recent pipeline_jobs rows, newest first: one chart's, or the whole service's."""
     if chart_id is not None:
