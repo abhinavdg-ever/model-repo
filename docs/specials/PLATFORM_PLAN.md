@@ -205,7 +205,14 @@ imaging-models/                              (Blob container)
 
 ### 4.1 Cosmos (NoSQL API, provisioned throughput)
 
-Partition key is `/chart_id` everywhere except users.
+**Created 2026-11-07:** account `medicalimagingtest` (South India, free tier), database
+`imaging` at **1,000 RU/s manual, shared by its containers**. No containers yet: they are
+created with the Cosmos code (phase 2), because a partition key cannot be changed later.
+
+Partition key: **`/chart_name`** for the chart-level containers (proposed 2026-11-07, was
+`/chart_id`). The chart name is the client's record id: it is known before a chart is
+ingested, and manifests and ground truth are already keyed on it. A Postgres `chart_id` has
+no Cosmos equivalent. `users` uses `/id`; `metrics` uses `/period` (`day:2026-11-07`).
 
 | Container | Document | Replaces |
 |---|---|---|
@@ -213,17 +220,23 @@ Partition key is `/chart_id` everywhere except users.
 | `pages` | One doc per page, with one sub-object per stage (`quality`, `ocr` refs and text, `blank_junk`, `classification`, `kv`, `member`, `dos`, `continuity`, `sequence`, `final`) | ~20 per-page result tables, plus the staging JSONs |
 | `runs` | One doc per run: request, stages run, timings, errors | `pipeline_jobs`, `page_stage_status`, run logs |
 | `ground_truth` | One doc per page, plus a chart-level doc | the ground-truth tables |
-| `users` (pk `/id`), `manifest` (pk `/record_id`), `metrics` | — | users, manifest, accuracy snapshots |
+| `users` (pk `/id`), `manifest` (pk `/chart_name`, the record id), `metrics` (pk `/period`) | — | users, manifest, accuracy snapshots |
 
 - **Stage writes** use a Cosmos patch on the stage's own sub-object, so two stages never overwrite each other.
 - **Stage completion** is recorded as `stages.<name> = {done_at, version, input_hash}`. A redelivered message is then a no-op. `skip_ocr` and the step-by-step APIs read the same record.
 - **Size limit:** a document can be at most 2 MB. Word boxes and the full Docling / Azure JSON go to Blob; the page doc keeps the text and the blob path.
-- **Throughput:** provisioned, at the database level and shared by the containers, with autoscale. Start at 4,000 RU/s maximum and tune from the metrics. The `pages` container gets its own dedicated throughput only if batch runs throttle it.
+- **Throughput (free tier):** 1,000 RU/s manual at the database level, shared by all its
+  containers, and 25 GB of storage free. Batch runs may hit the limit (HTTP 429); the SDK
+  retries, and the worker count keeps writes under it. Raise it (or switch to autoscale) from
+  the metrics when it throttles; anything over 1,000 RU/s or 25 GB is billed.
+- **Indexing:** large text (page OCR text, kv candidates) is excluded from the index, so each
+  write costs fewer RUs.
 - **Network: private endpoint** (2026-11-07). Cosmos is reachable from the VM and from the
   Mac, so the Cosmos code is developed and checked from the Mac as well. The unit tests use an
   in-memory store behind the same interface.
 - **review-ui-client gets a replica:** its own database in the same account (for example
-  `imaging_client`), with the same containers, filled from the main database by the clone job
+  `imaging_client`, created when the client copy moves to Cosmos: a second database's
+  throughput is outside the free 1,000 RU/s), with the same containers, filled from the main database by the clone job
   (today's `utilities/clone_client_db.py`, rewritten for Cosmos): the chosen charts, users, and
   no ground truth. It never reads the main database.
 - **History is migrated** (§7, phase 7). Every Postgres chart, page result, run, ground truth and user is copied into Cosmos by a one-off utility, and counts are compared before cutover.
@@ -362,7 +375,7 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 
 | # | Phase | What | Done when | Status (2026-11-07) |
 |---|---|---|---|---|
-| 0 | Access | Cosmos, Service Bus and Blob details in `core-pipeline/.env`; `infra/` (Bicep) creates the database, containers and queue | the code connects to all three from the Mac and from the VM | **Partly:** settings in `.env`, queue `chart-runs` created, Cosmos reachable. No `infra/`, and no code connects to Cosmos or Service Bus yet |
+| 0 | Access | Cosmos, Service Bus and Blob details in `core-pipeline/.env`; `infra/` (Bicep) creates the database, containers and queue | the code connects to all three from the Mac and from the VM | **Partly:** settings in `.env`; queue `chart-runs` created; Cosmos reached from the Mac and database `imaging` created (1,000 RU/s). No containers, no `infra/`, no pipeline code on Cosmos or Service Bus yet |
 | 1 | Restructure, no logic change | `apps/`, `modules/`, `common/`, `resources/`; review-ui `backend/` + `frontend/` each with its own Dockerfile | same outputs on the test charts; tests pass | **Done** except: the API is still one `main.py` (not split into routers), and the API and worker are one image, one process |
 | 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **Toggle only:** the setting is checked and shown; no interface, no Cosmos implementation |
 | 3 | Outputs and debug | every file written inventoried; stage-to-stage data into page docs; `artifacts.write`; scratch wiped per run; debug to disk and Blob | a non-debug run writes only to the DB and Blob | **Partly:** scratch with a 7-day purge; debug goes to local disk only; `staging/*.json` still carries data between stages |
@@ -416,7 +429,7 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | Cosmos throughput | **Provisioned** (database level, autoscale) |
+| 1 | Cosmos throughput | **Provisioned** at the database level (see 23: 1,000 RU/s on the free tier) |
 | 2 | History | **Migrate everything** from Postgres |
 | 3 | Step-by-step APIs: sync or async | **Default chosen:** async with an optional `?wait=` (§6) |
 | 4 | Blob retention | **Keep everything for now**, debug included. Debug files go to both local disk and Blob |
@@ -437,6 +450,8 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 | 19 | Models | Blob container **`imaging-models`**, fetched at start (phase 8); never built into images |
 | 20 | Hosting | The Ubuntu VM; **AKS parked** |
 | 21 | Cosmos network | **Private endpoint**; reachable from the VM and the Mac |
+| 23 | Cosmos throughput | **Free tier: 1,000 RU/s manual**, shared by the containers of `imaging` (created); 25 GB free |
+| 24 | review-ui key | The **same read-write key**: review-ui edits ground truth |
 | 22 | review-ui-client data | A **replica database** (same containers) in the same Cosmos account, filled by the clone job |
 
 ## 10. What I need from you
@@ -445,11 +460,8 @@ Already in `core-pipeline/.env`: the Cosmos endpoint, key and database; the Serv
 connection string and queue; the API key; the Blob account. Still open:
 
 **Cosmos DB**
-- Is 4,000 RU/s autoscale (maximum) acceptable to start?
-- A read-only key for review-ui, or the same key?
-- Permission to create the containers in §4.1 (and the replica database for review-ui-client),
-  or who creates them?
-- The replica database's name (default `imaging_client`).
+- Done: database `imaging` at 1,000 RU/s; review-ui uses the same read-write key.
+- Agree the partition key `/chart_name` (§4.1) before the containers are created.
 
 **Blob**
 - Permission to create the `imaging-models` container, or who creates it?
