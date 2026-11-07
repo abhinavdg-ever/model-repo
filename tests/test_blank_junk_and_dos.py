@@ -1015,12 +1015,14 @@ class TestCardRule:
         assert self._decide(self.CARD.replace("Card ", "")).code != classify.CODE_CARDS
         assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code != classify.CODE_CARDS
 
-    def test_over_150_words_or_half_the_page_is_not_a_card(self):
-        """2026-11-05 (user)."""
+    def test_over_150_words_or_three_quarters_of_the_page_is_not_a_card(self):
+        """2026-11-05 (user); the area limit is 75% since 2026-11-07 (was half)."""
         long = self.CARD + " " + " ".join(["word"] * 140)
         assert self._decide(long).code != classify.CODE_CARDS
-        big = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.62)
+        big = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.80)
         assert method.decide(big).code != classify.CODE_CARDS
+        within = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.62)
+        assert method.decide(within).code == classify.CODE_CARDS
         small = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.20)
         assert method.decide(small).code == classify.CODE_CARDS
 
@@ -1122,3 +1124,14 @@ def test_licence_on_a_visual_page_is_a_card_without_card_or_name_words():
     assert not printed.is_card and "no word 'card'" in printed.blocked_by
     form = card_rules.detect(LICENCE_TEXT + "\nPlease complete this form", visual=True)
     assert not form.is_card
+
+
+def test_a_state_id_on_a_visual_page_is_a_card_despite_headers_and_area():
+    """2026-11-07 (user, page 13): a visual page with a state ID's words is Junk / Cards even with
+    section headers, no name label and its text over most of the page."""
+    import card_rules
+
+    text = ("IDENTIFICATION CARD 4d DLN B12345678 4b EXP 07/05/2029 4a ISS 07/05/2024 "
+            "15 SEX F 16 HGT 5'-07\" 18 EYES BLU 9a ENDORSEMENTS NONE 12 RESTRICTIONS NONE")
+    r = card_rules.detect(text, visual=True, headings=("Demographics", "Insurance"), text_area=0.58)
+    assert r.is_card and r.card_type == "state_id"

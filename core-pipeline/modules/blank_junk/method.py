@@ -84,7 +84,7 @@ CARD_DOCUMENT_TYPES = frozenset({"printed", "visual"})
 # DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
     "JUNK_INVOICE": "Invoice",
-    "JUNK_INSURANCE_ID": "Invoice",
+    "JUNK_INSURANCE_ID": "Cards",       # 2026-11-07 (user): a card is never an invoice
     "JUNK_COVER_PAGE": "Cover Page",
     "JUNK_RECORD_REQUEST": "Record Request/Transmittal",
     "JUNK_COVER_REQUEST": "Record Request/Transmittal",
@@ -736,6 +736,12 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
                          conf.score(p_keep))
         subtype = _service_subtype(service)
+        # 2026-11-07 (user): a card is Junk / Cards, never Invoice. The model files insurance
+        # cards under JUNK_INVOICE; the card rule's near miss (a card type it recognised but
+        # whose strict guards blocked it) or the service's insurance-ID audit tag says card.
+        near_card = subtype == "Invoice" and card is not None and bool(card.card_type)
+        if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
+            subtype = "Cards"
         return ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
                      conf.score(float(service["confidence"])))
     if service["flag"] == "BLANK":
@@ -840,9 +846,30 @@ def _keep_clinical_content(verdict: Verdict, inputs: PageInputs) -> Verdict:
                    CLINICAL_CONTENT_RULE, f"{verdict.reason}; {why} -> Main (never junk)", verdict.votes)
 
 
+# 2026-11-07 (user): an invoice is kept only when it shows a money amount and a date.
+MONEY = re.compile(r"\$\s*\d[\d,]*(?:\.\d{2})?|(?<![\d.])\d{1,3}(?:,\d{3})*\.\d{2}(?![\d])")
+ANY_DATE = re.compile(
+    r"(?<!\d)(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})(?!\d)"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b",
+    re.IGNORECASE)
+
+
+def invoice_evidence(inputs: PageInputs) -> Optional[str]:
+    """Why a Junk / Invoice page is a real invoice (a money amount and a date on it), or None."""
+    text = f"{inputs.text or ''}\n{inputs.prelim_text or ''}"
+    money, date = MONEY.search(text), ANY_DATE.search(text)
+    if money and date:
+        return "an amount and a date on the page"
+    return None
+
+
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """A Junk / Invoice page is Main; page_classify gives it Invoice / Invoice Page."""
+    """A Junk / Invoice page with a money amount and a date on it is Main; page_classify gives
+    it Invoice / Invoice Page. Without both it stays Junk / Invoice (2026-11-07, user)."""
     if verdict.code != CODE_INVOICE:
+        return verdict
+    if invoice_evidence(inputs) is None:
+        verdict.votes["invoice_not_kept"] = "no money amount and date on the page"
         return verdict
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE

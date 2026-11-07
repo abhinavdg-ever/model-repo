@@ -11,7 +11,7 @@ clinical word list), and the answer is binary -- a card or not (no strong / medi
 A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
 2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
-no section header but Insurance / Subscriber / Policy ID / PCP (stage 6), at most 150 words, its text over at most half the page.
+no section header but Insurance / Subscriber / Policy ID / PCP (stage 6), at most 150 words, its text over at most 75% of the page (2026-11-07; was half).
 
     detect(text) -> CardResult(is_card, card_type, matched, blocked_by, words)
 
@@ -31,10 +31,11 @@ MAX_WORDS = 150
 # 2026-11-05 (user), to cut false positives -- a card also needs all of:
 #   the word "card" on the page, and a name on it (a name label: Name, Cardholder, LN / FN);
 #   none of the allowed section headers (stage 6) on the page;
-#   its text over at most half the page (the box round every OCR word, share of the page).
+#   its text over at most 75% of the page (the box round every OCR word, share of the page;
+#   2026-11-07, user: was half).
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
 NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
-MAX_TEXT_AREA = 0.50
+MAX_TEXT_AREA = 0.75
 # Section headers a card itself can carry (2026-11-05, user): resources/canon/
 # section_header_classes.json ``card_allowed`` (Insurance, Subscriber ...). Any other header,
 # clinical or not (Demographics), blocks a card.

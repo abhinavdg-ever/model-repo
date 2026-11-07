@@ -387,10 +387,29 @@ class TestInvoiceKept:
     Invoice Page."""
 
     def test_a_junk_invoice_page_is_main_by_the_invoice_rule(self):
-        inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.99))
+        """Only with a money amount and a date on it (2026-11-07, user)."""
+        text = INVOICE_TEXT + " Statement date 03/10/2026, total $120.00"
+        inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
         v = method.post_process(decide(inputs), inputs)
         assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
         assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
+
+    def test_an_invoice_without_an_amount_and_a_date_stays_junk(self):
+        for text in (INVOICE_TEXT, INVOICE_TEXT + " total $120.00", INVOICE_TEXT + " dated 03/10/2026"):
+            inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
+            v = method.post_process(decide(inputs), inputs)
+            assert v.code == method.CODE_INVOICE and v.votes.get("invoice_not_kept")
+
+    def test_a_card_the_model_calls_invoice_is_junk_cards(self):
+        """2026-11-07 (user): an insurance card (card rule near miss, or the model's insurance-ID
+        label) is Junk / Cards, never Invoice, and the invoice keep does not touch it."""
+        card_text = ("UnitedHealthcare Member ID: 912345678 Payer ID 87726 PCP copay $25 "
+                     "Group 70123 Rx Bin 610279 " + FILLER)
+        inputs = PageInputs(text=card_text + " 03/10/2026", pass_no=2, bert=bert(0.97), document_type="printed")
+        v = method.post_process(decide(inputs), inputs)
+        assert v.code == classify.CODE_CARDS, v.reason
+        b = bert(0.99, "JUNK_INSURANCE_ID")
+        assert decide(PageInputs(text=FILLER, pass_no=2, bert=b)).code == classify.CODE_CARDS
 
     def test_other_junk_stays_junk(self):
         inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.99, "JUNK_RECORD_REQUEST"))
