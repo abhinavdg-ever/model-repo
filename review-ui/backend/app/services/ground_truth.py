@@ -57,12 +57,12 @@ CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
 );
 CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
     ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
--- Who saved it (2026-10-19). schema/changes_2026-10-19.sql adds these with their
+-- Who saved it (2026-10-19). schema/migrations/2026-10-19.sql adds these with their
 -- users(id) reference; a database without it still saves, with the id unreferenced.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS user_id BIGINT;
 ALTER TABLE page_ground_truth_entry ADD COLUMN IF NOT EXISTS user_id BIGINT;
 -- The page's encounter type (2026-10-27): encounter_type holds the client sheet's page
--- type. schema/changes_2026-10-27.sql adds it too.
+-- type. schema/migrations/2026-10-27.sql adds it too.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS encounter_label TEXT;
 -- In v1.sql already; a database made before them still saves.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS mirrored TEXT;

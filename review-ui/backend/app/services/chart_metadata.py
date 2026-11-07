@@ -48,7 +48,7 @@ def fetch_db_chart_metadata(database_url: str, *, db_schema: str = "public") -> 
                            j ->> 'measure', j ->> 'rr_method', j ->> 'project_scope'
                       FROM (SELECT id, record_id, to_jsonb(m) AS j FROM manifest_member_list m) rows
                      -- Read through to_jsonb so a database without a column (before
-                     -- schema/changes_2026-10-19.sql, or project_scope before 2026-10-21)
+                     -- schema/migrations/2026-10-19.sql, or project_scope before 2026-10-21)
                      -- answers NULL for it instead of failing the whole lookup.
                      WHERE COALESCE(j ->> 'source_name', j ->> 'measure', j ->> 'rr_method',
                                     j ->> 'project_scope') IS NOT NULL

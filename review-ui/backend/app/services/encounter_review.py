@@ -13,7 +13,7 @@ from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, clean_label
 
-# Kept in step with schema/v1.sql (and schema/changes_2026-10-21.sql).
+# Kept in step with schema/v1.sql (and schema/migrations/2026-10-21.sql).
 # The users(id) reference is left out so a database without users still saves.
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS encounter_review (

@@ -1,8 +1,8 @@
 -- Database changes of 2026-10-31 for a database that already has schema/v1.sql
 -- applied (a new database gets this from v1.sql itself). Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-31.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-31.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-31.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-31.sql        (Windows PowerShell)
 
 -- 1. blank_junk_classification.junk_subtype gains 'Cards' (2026-10-31): an ID or
 --    insurance card found by the blank / junk rule R3C. The CHECK is replaced with the

@@ -86,7 +86,7 @@ _OVERLAY_SQL: dict[str, str] = {
     "blank_junk": """
                             SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
                                    b.confidence, orig.page_name,
-                                   -- NULL until changes_2026-10-22.sql has replaced the view.
+                                   -- NULL until migrations/2026-10-22.sql has replaced the view.
                                    to_jsonb(b) ->> 'duplicate_confidence',
                                    b.reason
                             FROM v_page_blank_junk_final b
@@ -99,7 +99,7 @@ _OVERLAY_SQL: dict[str, str] = {
                             SELECT p.page_name,
                                    m.extracted_name, m.extracted_dob, m.extracted_member_id,
                                    m.confidence, m.page_status,
-                                   -- NULL until changes_2026-10-27.sql adds the column.
+                                   -- NULL until migrations/2026-10-27.sql adds the column.
                                    to_jsonb(m) -> 'other_names'
                             FROM member_extraction_results m
                             JOIN chart_list c ON c.id = m.chart_id
@@ -171,7 +171,7 @@ _OVERLAY_SQL: dict[str, str] = {
                                        to_jsonb(f) -> 'signers',
                                        to_jsonb(f) ->> 'provider_version',
                                        to_jsonb(f) ->> 'provider_confidence',
-                                       -- NULL until changes_2026-10-25.sql adds them.
+                                       -- NULL until migrations/2026-10-25.sql adds them.
                                        to_jsonb(f) -> 'confidences',
                                        to_jsonb(f) -> 'review_fields'
                                 FROM imaging_final f

@@ -2,8 +2,8 @@
 -- applied (a new database gets this from v1.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-25.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-25.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-25.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-25.sql        (Windows PowerShell)
 
 -- 1. imaging_final.confidences / review_fields (2026-10-25): every Final value's
 --    confidence on one scale (>= 0.80 good, 0.50-0.80 passable, < 0.50 review;

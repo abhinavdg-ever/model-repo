@@ -8,7 +8,7 @@
 #   DATABASE_URL=postgresql://… ./scripts/reset_db.sh --yes
 #
 # Applies, in order:
-#   schema/clear_schema.sql
+#   schema/tools/clear_schema.sql
 #   schema/v1.sql
 #   schema/v2.sql
 #
@@ -76,8 +76,8 @@ if [[ "$YES" -ne 1 ]]; then
   fi
 fi
 
-echo "→ schema/clear_schema.sql"
-psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/clear_schema.sql" >/dev/null
+echo "→ schema/tools/clear_schema.sql"
+psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/tools/clear_schema.sql" >/dev/null
 
 echo "→ schema/v1.sql"
 psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/v1.sql" >/dev/null

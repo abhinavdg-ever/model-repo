@@ -69,17 +69,17 @@ The leading space on the `export` lines keeps passwords out of shell history.
 CREATE DATABASE imaging_outputs_client OWNER DBUSER;
 \c imaging_outputs_client
 \i /path/to/schema/v1.sql
-\i /path/to/schema/changes_2026-10-27.sql
+\i /path/to/schema/migrations/2026-10-27.sql
 SELECT count(*) FROM pipeline_stage;   -- 13
 
 -- our database needs the new ground-truth columns too
 \c imaging_outputs
-\i /path/to/schema/changes_2026-10-27.sql
+\i /path/to/schema/migrations/2026-10-27.sql
 \q
 ```
 
 No repo on that VM: `curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/v1.sql`
-(and the same for `changes_2026-10-27.sql`), then `\i` them from that folder.
+(and the same for `migrations/2026-10-27.sql`), then `\i` them from that folder.
 
 ### Step 2. App VM: the chart list
 
@@ -228,7 +228,7 @@ psql "$TARGET_DATABASE_URL" -f /tmp/u.sql && rm /tmp/u.sql
 | `permission denied for table …` | the schema was applied as `postgres`: in the new DB run `REASSIGN OWNED BY postgres TO DBUSER;` |
 | Page loads, no charts or no sign-in | `DATABASE_URL` in `~/ui-temp/.env`; `docker compose logs backend` |
 | Pages show no images | the Azure lines are missing from `~/ui-temp/.env` |
-| Saving ground truth fails with a column error | `changes_2026-10-27.sql` was not run (step 1) |
+| Saving ground truth fails with a column error | `migrations/2026-10-27.sql` was not run (step 1) |
 
 ### On the laptop: put a UI change into the client repo
 
@@ -290,7 +290,7 @@ docker run --rm -v /opt/advantmed/advantmed-imaging-pipeline/schema:/schema:ro p
 The database user needs the right to create databases; if it lacks it, ask whoever runs
 the Postgres server to create `imaging_outputs_client` owned by that user.
 
-`v1.sql` is the whole current schema; the dated `changes_*.sql` files only upgrade an
+`v1.sql` is the whole current schema; the dated `migrations/*.sql` files only upgrade an
 old database. It also seeds `pipeline_stage`, so that table's data is left out of the
 copy below.
 

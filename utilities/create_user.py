@@ -18,7 +18,7 @@ Examples::
     python ../utilities/create_user.py simran.priya --sql > create_users.sql
 
 Needs DATABASE_URL (env or core-pipeline/.env) and, on an existing database,
-schema/changes_2026-10-19.sql (the users table).
+schema/migrations/2026-10-19.sql (the users table).
 """
 from __future__ import annotations
 

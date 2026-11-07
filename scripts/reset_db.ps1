@@ -7,7 +7,7 @@
 #   $env:DATABASE_URL = "postgresql://…"; .\scripts\reset_db.ps1 -Yes
 #
 # Applies, in order:
-#   schema\clear_schema.sql
+#   schema\tools\clear_schema.sql
 #   schema\v1.sql
 #   schema\v2.sql
 #
@@ -62,8 +62,8 @@ if (-not $Yes) {
     }
 }
 
-Write-Host "-> schema/clear_schema.sql"
-psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\clear_schema.sql") | Out-Null
+Write-Host "-> schema/tools/clear_schema.sql"
+psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\tools\clear_schema.sql") | Out-Null
 
 Write-Host "-> schema/v1.sql"
 psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\v1.sql") | Out-Null

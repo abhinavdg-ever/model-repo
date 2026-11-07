@@ -2,11 +2,11 @@
 -- applied (a new database gets this from v1.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-21.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-21.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-21.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-21.sql        (Windows PowerShell)
 --
 -- Run the earlier change file first:
---   schema/changes_2026-10-19.sql (sections for 2026-10-18 to 2026-10-20)
+--   schema/migrations/2026-10-19.sql (sections for 2026-10-18 to 2026-10-20)
 
 -- 1. encounter_review (2026-10-21): a reviewer's encounters (page ranges with page
 --    type, encounter type, DOS) saved on review-ui's Encounter tab. Not ground truth.

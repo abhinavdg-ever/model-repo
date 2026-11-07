@@ -35,7 +35,7 @@ pip install -r requirements.txt
 cp ../.env.example ../.env
 ```
 
-Apply the schema once. `v1.sql` is required. `v2.sql` is optional. An existing database is recreated, not patched: dump it, then `clear_schema.sql`, then `v1.sql`.
+Apply the schema once. `v1.sql` is required. `v2.sql` is optional. An existing database is upgraded with `schema/migrate.sql` (safe to re-run); to start over instead, dump it, then `schema/tools/clear_schema.sql`, then `v1.sql`.
 
 ```bash
 psql "$DATABASE_URL" -f schema/v1.sql

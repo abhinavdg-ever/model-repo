@@ -2,8 +2,8 @@
 -- applied (a new database gets this from v1.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-22.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-22.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-22.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-22.sql        (Windows PowerShell)
 
 -- 1. blank_junk_classification.duplicate_confidence (2026-10-22): each page's highest
 --    duplicate similarity, whatever its verdict, for review-ui's Duplicate confidence.

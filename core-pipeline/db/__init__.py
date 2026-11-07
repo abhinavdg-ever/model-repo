@@ -1357,7 +1357,7 @@ def upsert_encounter(
     )
 
 
-# The encounter columns (schema/changes_2026-10-25.sql), added on first write so a database
+# The encounter columns (schema/migrations/2026-10-25.sql), added on first write so a database
 # that has not run the file still gets them.
 _ADD_ENCOUNTER_COLUMNS = (
     "ALTER TABLE encounter_type_results "
@@ -1466,7 +1466,7 @@ def upsert_provider_signature(conn: Any, *, chart_id: int, page_id: int, fields:
         missing = [c for c in PROVIDER_SIGNATURE_COLUMNS if c not in present]
         if missing:
             logger.warning(
-                "provider_signature_results lacks %s: apply schema/temp_changes_to_db.sql",
+                "provider_signature_results lacks %s: apply schema/migrations/2026-10-16.sql",
                 ", ".join(missing),
             )
     columns = _PROVIDER_SIGNATURE_PRESENT
@@ -1608,7 +1608,7 @@ _IMAGING_FINAL_JSON = ("signers", "confidences", "review_fields")
 
 def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
     """IMAGING_FINAL_COLUMNS the table has. A database from before a column was added
-    (schema/temp_changes_to_db.sql not run yet) keeps working without it. Read once."""
+    (schema/migrations/2026-10-16.sql not run yet) keeps working without it. Read once."""
     global _IMAGING_FINAL_PRESENT
     if _IMAGING_FINAL_PRESENT is None:
         rows = conn.execute(
@@ -1619,7 +1619,7 @@ def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
         missing = [c for c in IMAGING_FINAL_COLUMNS if c not in present]
         if missing:
             logger.warning(
-                "imaging_final lacks %s: not written until schema/temp_changes_to_db.sql is applied",
+                "imaging_final lacks %s: not written until schema/migrations/2026-10-16.sql is applied",
                 ", ".join(missing),
             )
         _IMAGING_FINAL_PRESENT = tuple(c for c in IMAGING_FINAL_COLUMNS if c in present) if present else IMAGING_FINAL_COLUMNS
@@ -1821,12 +1821,12 @@ _MEMBER_OTHER_NAMES: Optional[bool] = None
 
 
 def _member_other_names_column(conn: Any) -> bool:
-    """member_extraction_results.other_names exists (schema/changes_2026-10-27.sql). Read once."""
+    """member_extraction_results.other_names exists (schema/migrations/2026-10-27.sql). Read once."""
     global _MEMBER_OTHER_NAMES
     if _MEMBER_OTHER_NAMES is None:
         _MEMBER_OTHER_NAMES = "other_names" in _table_columns(conn, "member_extraction_results")
         if not _MEMBER_OTHER_NAMES:
-            logger.warning("member_extraction_results lacks other_names: run schema/changes_2026-10-27.sql")
+            logger.warning("member_extraction_results lacks other_names: run schema/migrations/2026-10-27.sql")
     return _MEMBER_OTHER_NAMES
 
 

@@ -2,8 +2,8 @@
 -- applied (a new database gets this from v1.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-28.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-28.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-28.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-28.sql        (Windows PowerShell)
 
 -- 1. chart_review (2026-10-28): a chart marked Reviewed in review-ui's History. While the
 --    row exists the chart's ground truth is frozen. review-ui also creates the table on its

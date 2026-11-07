@@ -67,63 +67,68 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * schema/ layout (2026-11-07): the dated changes_*.sql files and temp_changes_to_db.sql
+--    are now schema/migrations/<date>.sql, run in order by schema/migrate.sql (safe to
+--    re-run on any v1 database). clear_*.sql moved to schema/tools/. v1.sql no longer
+--    creates the unused pgcrypto extension. migrations/2026-11-07.sql also brings
+--    v_accuracy_page, the page_subtype stage label and users NOT NULL in line with v1.sql.
 --  * chart_list.tags (v1.sql, 2026-11-07): free-text tags on a chart (JSON array), set with
 --    utilities/tag_chart.py, for review-ui's Tag filter on History and Accuracy
---    (changes_2026-11-07.sql).
+--    (migrations/2026-11-07.sql).
 --  * blank_junk_classification.junk_subtype (v1.sql, 2026-10-31): 'Cards' added to the
 --    CHECK, for ID / insurance cards found by the blank / junk rule R3C
---    (changes_2026-10-31.sql).
+--    (migrations/2026-10-31.sql).
 --  * chart_review_entry (v1.sql, 2026-10-28): every chart-level review action, append-only
 --    -- Reviewed marked and cleared, member decision, encounters -- for the Review Log
---    (changes_2026-10-28.sql).
+--    (migrations/2026-10-28.sql).
 --  * chart_review, idx_page_ground_truth_entry_user_id_entry_mode (v1.sql, 2026-10-28): a
 --    chart marked Reviewed freezes its ground truth; the per-user Review Log
---    (changes_2026-10-28.sql).
+--    (migrations/2026-10-28.sql).
 --  * idx_blank_junk_classification_duplicate_of_page_id, idx_imaging_final_duplicate_of_page_id
---    (v1.sql, 2026-10-28): page deletes no longer scan those tables (changes_2026-10-27.sql).
+--    (v1.sql, 2026-10-28): page deletes no longer scan those tables (migrations/2026-10-27.sql).
 --  * chart_ground_truth (v1.sql, 2026-10-28): the reviewer's member Accept / Reject per chart
---    (changes_2026-10-27.sql).
+--    (migrations/2026-10-27.sql).
 --  * member_extraction_results.other_names (v1.sql, 2026-10-27): the people a page names
---    who are not the manifest member (changes_2026-10-27.sql).
+--    who are not the manifest member (migrations/2026-10-27.sql).
 --  * page_ground_truth.encounter_label (v1.sql, 2026-10-27): the page's encounter type as
 --    entered in review-ui; encounter_type keeps the client sheet's page type
---    (changes_2026-10-27.sql).
+--    (migrations/2026-10-27.sql).
 --  * imaging_final.confidences / review_fields (v1.sql, 2026-10-25): every Final value's
---    confidence on one scale and the values below the review line (changes_2026-10-25.sql).
+--    confidence on one scale and the values below the review line (migrations/2026-10-25.sql).
 --  * Production Mode from Postgres only (v1.sql, 2026-10-25): encounter_type_results gains
 --    encounter_seq / decided_by / reason / conflict / contenders (the encounter grouping),
 --    additional_page_details.extraction_fields (the Extraction tab),
 --    page_continuity_results.label (the continuity label as shown).
 --  * blank_junk_classification.duplicate_confidence (v1.sql, 2026-10-22): each page's
 --    highest duplicate similarity, appended to v_page_blank_junk_final
---    (changes_2026-10-22.sql).
+--    (migrations/2026-10-22.sql).
 --  * encounter_review (v1.sql, 2026-10-21): a reviewer's encounters (page ranges with
 --    page type, encounter type, DOS) from review-ui's Encounter tab; not ground truth
---    (changes_2026-10-21.sql).
+--    (migrations/2026-10-21.sql).
 --  * encounter_type_results (v1.sql, 2026-10-20): encounter_type allows 'not_applicable'
 --    (encounters that are not Progress Note / Discharge Summary; section 10).
 --  * page_continuity_results.confidence (v1.sql, 2026-10-20): the 0-1 confidence of each
---    page's Break Before decision, beside score (changes_2026-10-19.sql section 9).
+--    page's Break Before decision, beside score (migrations/2026-10-19.sql section 9).
 --  * page_continuity_results (v1.sql, 2026-10-20): decided_by gains the gap scorer's reasons;
 --    its scores go to <chart>/staging/continuity.json.
 --  * chart_deletion (v1.sql, 2026-10-20): charts an admin deleted in review-ui.
 --  * users moved to v1.sql (review-ui sign-in: username, password_hash, last_login_*,
 --    login_count; email optional), with user_login (every sign-in).
 --    page_ground_truth and page_ground_truth_entry gain user_id (who saved it).
---    Existing databases: schema/changes_2026-10-19.sql.
+--    Existing databases: schema/migrations/2026-10-19.sql.
 --  * manifest_member_list (v1.sql) gains project_scope (2026-10-21; the client's "Project
---    Scope", review-ui's Scope filter). Existing databases: schema/changes_2026-10-21.sql
+--    Scope", review-ui's Scope filter). Existing databases: schema/migrations/2026-10-21.sql
 --    (core-pipeline also adds it on the first manifest load).
 --  * additional_page_details (v1.sql) gains heading_candidates (2026-10-21): every heading
 --    row the key/value detector found, accepted or not, for review-ui's Production Mode.
 --  * manifest_member_list (v1.sql) gains client_id, project_id, source_name, rr_method,
 --    measure and service_note (TEXT): the client's chart metadata. Existing
---    databases: schema/changes_2026-10-19.sql (which also holds the 2026-10-18 changes).
+--    databases: schema/migrations/2026-10-19.sql (which also holds the 2026-10-18 changes).
 --  * provider_signature_results moved to v1.sql (2026-10-18): kv_extract writes it
 --    and imaging_final reads it, with provider_credentials, signers (every
 --    accepted signer) and provider_version. imaging_final gains
 --    provider_credentials, signers and provider_version. Existing databases:
---    schema/temp_changes_to_db.sql.
+--    schema/migrations/2026-10-16.sql.
 --  * imaging_final.specialty (v1.sql): the page's own specialty from the page
 --    axes. Existing databases:
 --      ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);

@@ -2,10 +2,10 @@
 -- schema/v1.sql applied (a new database gets all of this from v1.sql itself). Additive
 -- only: nothing is dropped or rewritten, existing rows keep their values. Safe to run
 -- more than once, so a database that already ran the 2026-10-18 file can run this too.
--- (Replaces schema/changes_2026-10-18.sql, which held sections 1-4.)
+-- (Replaces the earlier 2026-10-18 file, which held sections 1-4.)
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-19.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-19.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-19.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/migrations/2026-10-19.sql        (Windows PowerShell)
 --
 -- Sections 1-3 (2026-10-18), docs/PROVIDER_LOGIC.md: the provider signature rule v2
 -- (every accepted signer, credentials in their own column, a confidence), stored in

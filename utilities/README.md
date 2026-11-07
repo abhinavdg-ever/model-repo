@@ -29,7 +29,7 @@ columns to the batch file. A blank in the dump keeps the file's value, and names
 are never touched. With `--load` it then upserts the batch files into
 `manifest_member_list` (`client_id`, `project_id`, `project_scope`, `source_name`, `rr_method`, `measure`,
 `service_note`). The dump itself is never loaded as a batch. An existing database first
-needs `schema/changes_2026-10-19.sql`.
+needs `schema/migrations/2026-10-19.sql`.
 
 ```bash
 cd core-pipeline && source .venv/bin/activate
@@ -173,7 +173,7 @@ python utilities/harvest_keys.py --field all     # every staged field
 `chart_list.tags`, and review-ui's **History** and **Accuracy** offer them as the **Tag** filter
 (a chart passes with any picked tag; `(Blank)` = no tag). Name a chart by its `chart_list` id or
 its chart name. Tagging leaves the chart's Last Run At alone. The column is added on first use
-(or run `schema/changes_2026-11-07.sql`).
+(or run `schema/migrations/2026-11-07.sql`).
 
 ```bash
 python ../utilities/tag_chart.py 1234 --tag "Pilot"

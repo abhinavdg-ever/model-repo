@@ -3,7 +3,7 @@
 -- schema/v2.sql (that file also creates tables nothing writes yet).
 -- Safe to run more than once.
 --
---   psql "$DATABASE_URL" -f schema/temp_changes_to_db.sql
+--   psql "$DATABASE_URL" -f schema/migrations/2026-10-16.sql
 
 -- Morning: ground-truth Member ID, the key/value stage, DOS method 'kv'.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS member_id TEXT;
@@ -294,8 +294,11 @@ UPDATE pipeline_stage SET seq = 75 WHERE stage_name = 'page_subtype' AND pass_no
 -- 2026-10-11: the accuracy report failed with
 -- "column pc.page_type does not exist" until the columns above exist.
 -- Replace the view only after those columns are added. Same statement as
--- schema/v1.sql and review-ui accuracy_cache.py.
-CREATE OR REPLACE VIEW v_accuracy_page AS
+-- schema/v1.sql and review-ui accuracy_cache.py at the time; migrations/2026-11-07.sql
+-- replaces it with today's. Dropped first, so running this file again on a newer
+-- database (whose view has more columns) still works. Nothing depends on the view.
+DROP VIEW IF EXISTS v_accuracy_page;
+CREATE VIEW v_accuracy_page AS
 SELECT
     g.chart_name,
     g.page_number,

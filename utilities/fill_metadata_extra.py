@@ -29,7 +29,7 @@ Same job over HTTP (core-pipeline API)::
       -H 'Content-Type: application/json' -d '{"metadata_dir": "/path/to/metadata", "load": true}'
 
 Requires the core-pipeline virtualenv; ``--load`` also needs ``DATABASE_URL`` (env or
-``core-pipeline/.env``) and, on an existing database, ``schema/changes_2026-10-19.sql``.
+``core-pipeline/.env``) and, on an existing database, ``schema/migrations/2026-10-19.sql``.
 """
 from __future__ import annotations
 

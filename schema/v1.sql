@@ -75,7 +75,6 @@
 -- Naming/shape changes from v7 are listed at the top of v2.sql.
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 SET search_path TO public;
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
@@ -609,7 +608,7 @@ CREATE TABLE ocr_quality_results (
 CREATE INDEX idx_ocr_quality_results_chart_id ON ocr_quality_results(chart_id);
 CREATE INDEX idx_ocr_quality_results_page_id ON ocr_quality_results(page_id);
 -- Also marks the database as already on the counter-clockwise convention, so
--- schema/temp_changes_to_db.sql does not flip its angles.
+-- schema/migrations/2026-10-16.sql does not flip its angles.
 COMMENT ON COLUMN ocr_quality_results.orientation_angle
     IS 'Text orientation, degrees counter-clockwise';
 

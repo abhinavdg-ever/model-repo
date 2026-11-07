@@ -8,12 +8,12 @@
 --
 -- Does NOT drop the schema. Does NOT re-apply v1.sql.
 --
---     psql "$DATABASE_URL" -f schema/clear_results_keep_manifest.sql
+--     psql "$DATABASE_URL" -f schema/tools/clear_results_keep_manifest.sql
 --
 -- After this, re-run charts (or batch-run). Sweep the manifest again only
 -- if you also need fresh chart_list placeholders; roster rows stay.
 --
--- For a full wipe including the roster, use schema/clear_schema.sql instead.
+-- For a full wipe including the roster, use schema/tools/clear_schema.sql instead.
 -- =====================================================================
 
 SET client_min_messages TO WARNING;

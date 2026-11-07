@@ -1037,9 +1037,9 @@ class TestChartResetKeepsTheAuditTrail:
         )
 
     def test_clear_results_keep_manifest_preserves_roster_and_stages(self):
-        """schema/clear_results_keep_manifest.sql must not wipe the roster."""
+        """schema/tools/clear_results_keep_manifest.sql must not wipe the roster."""
         text = (
-            REPO_ROOT / "schema" / "clear_results_keep_manifest.sql"
+            REPO_ROOT / "schema" / "tools" / "clear_results_keep_manifest.sql"
         ).read_text(encoding="utf-8")
         # Strip SQL comments so a mention in a comment does not count.
         code = "\n".join(

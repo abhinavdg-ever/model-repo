@@ -168,7 +168,7 @@ psql "$DATABASE_URL" -f schema/v1.sql
 ```
 
 An existing database is recreated from those files. Dump it first if the data
-matters, then `schema/clear_schema.sql` and `schema/v1.sql`.
+matters, then `schema/tools/clear_schema.sql` and `schema/v1.sql`.
 
 Confirm stages (and that blob credentials are live):
 

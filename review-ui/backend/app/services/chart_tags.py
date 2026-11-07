@@ -31,7 +31,7 @@ def clean_tags(tags: list[str]) -> list[str]:
 
 def chart_tags_map(database_url: str, db_schema: str = "public") -> dict[str, list[str]]:
     """chart name -> its tags. Read through to_jsonb, so a database without the column
-    (before schema/changes_2026-11-07.sql) answers no tags instead of failing."""
+    (before schema/migrations/2026-11-07.sql) answers no tags instead of failing."""
     with connection(database_url, db_schema) as conn:
         with conn.cursor() as cur:
             cur.execute(

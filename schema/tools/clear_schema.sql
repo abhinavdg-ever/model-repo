@@ -4,7 +4,7 @@
 -- Wipes every V1/V2 table, view, function and trigger in ``public``, then
 -- leaves an empty schema ready for a fresh apply of v1.sql (+ optional v2.sql).
 --
---     psql "$DATABASE_URL" -f schema/clear_schema.sql
+--     psql "$DATABASE_URL" -f schema/tools/clear_schema.sql
 --     psql "$DATABASE_URL" -f schema/v1.sql
 --     psql "$DATABASE_URL" -f schema/v2.sql          # optional
 --

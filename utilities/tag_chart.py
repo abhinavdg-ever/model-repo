@@ -18,7 +18,7 @@ Examples::
     python ../utilities/tag_chart.py --list-tags                        # every tag in use
 
 Needs DATABASE_URL (env or core-pipeline/.env). The column is added when missing
-(schema/changes_2026-11-07.sql).
+(schema/migrations/2026-11-07.sql).
 """
 from __future__ import annotations
 
