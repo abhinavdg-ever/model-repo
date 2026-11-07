@@ -2,64 +2,49 @@
 
 Page images come from Azure Blob using ``chart_list.blob_container`` +
 ``blob_path`` (Raw_Input), with Processed ``output_path`` pages/corrected as
-fallbacks. OCR text, manifest, quality, blank/junk, member, verification, and
-DOS come from schema tables. ``DATA_ROOT`` is optional (used when a local
-workspace copy exists).
+fallbacks (store/blob_pages.py). OCR text, manifest, quality, blank/junk, member,
+verification, and DOS come from schema tables; the rows become responses in
+store/rows.py, which the Cosmos repository shares.
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
-from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from fastapi import HTTPException
 
 from app.store.base import FolderRepository
-from app.store.shared import _fmt_dos_display, _normalize_kind
+from app.store.blob_pages import BLOB_LIST_TTL_SEC as _BLOB_LIST_TTL_SEC, BlobPageImages
+from app.store.shared import _normalize_kind
+from app.store import rows as _rows
+# Re-exported: services and tests import these from here.
+from app.store.rows import (  # noqa: F401
+    CHART_STATUS_TO_OCR,
+    DUPLICATE_CONTENT_MARK,
+    IMAGING_DONE_STATUSES as _IMAGING_DONE_STATUSES,
+    IMAGING_STAGES,
+    KIND_TO_OCR_TYPE,
+    _blank_junk_ui,
+    _fmt_date,
+    _skip_on_error,
+)
 from app.core.schemas import (
     FolderDetail,
     FolderSummary,
     ImagingDocumentResponse,
     ImagingManifestDetails,
-    with_service_window,
-    ImagingPageResult,
-    ImagingSectionsProcessed,
     ImagingVerificationDetails,
-    OcrSectionHeader,
     OcrTextResponse,
-    PageSummary,
 )
 from app.services import db
-from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import psycopg_url as _psycopg_url
 from app.services.ground_truth import attach_ground_truth
-from app.services.imaging_overlays import (
-    inherit_duplicate_blank_junk,
-    compose_page_type,
-    continuity_label,
-    empty_imaging_pages,
-    page_type_fields,
-    signer_fields,
-    subtype_confidence,
-)
 
 logger = logging.getLogger("review_ui.postgres")
-
-
-@contextmanager
-def _skip_on_error(name: str, folder_id: str) -> Iterator[None]:
-    """One part of a chart's overlay: a failure while applying its rows skips that part
-    with a warning; the parts after it still load."""
-    try:
-        yield
-    except Exception as exc:
-        logger.warning("imaging overlay %s skipped for %s: %s", name, folder_id, exc)
 
 
 # The overlay's queries run at the same time, each on its own pooled connection (no
@@ -209,96 +194,8 @@ SELECT count(p.id), max(p.updated_at),
  GROUP BY c.id
 """
 
-# API kind → ocr_results.ocr_type
-KIND_TO_OCR_TYPE: dict[str, str] = {
-    "preliminary": "tesseract",
-    "final1": "docling",
-    "final2": "azuredocintel",
-}
 
-# schema v7 lifecycle values.
-CHART_STATUS_TO_OCR: dict[str, str] = {
-    "received": "QUEUED",
-    "downloading": "IN_PROGRESS",
-    "processing": "IN_PROGRESS",
-    "completed": "IMAGING_COMPLETED",
-    "failed": "FAILED",
-    "needs_review": "IMAGING_COMPLETED",
-    "rejected": "IMAGING_COMPLETED",
-    # v6 packed the stage name into status. Kept so a database that has not run
-    # migration 002 yet still renders sensibly.
-    "ocr_prelim": "IN_PROGRESS",
-    "ocr_quality": "IN_PROGRESS",
-    "blank_junk": "IMAGING_IN_PROGRESS",
-    "ocr_final1": "IN_PROGRESS",
-    "ocr_final2": "IN_PROGRESS",
-    "section_headers": "IMAGING_IN_PROGRESS",
-    "kv_extract": "IMAGING_IN_PROGRESS",
-    "member_verify": "IMAGING_IN_PROGRESS",
-    "dos_extract": "IMAGING_IN_PROGRESS",
-    "page_subtype": "IMAGING_IN_PROGRESS",
-    "encounter_type": "IMAGING_IN_PROGRESS",
-    "page_sequencing": "IMAGING_IN_PROGRESS",
-}
-
-# v7: once status is just "processing", which stage it is in comes from
-# current_stage. These stages mean the imaging modules are running.
-IMAGING_STAGES = frozenset(
-    {
-        "blank_junk",
-        "section_headers",
-        "kv_extract",
-        "member_verify",
-        "dos_extract",
-        "page_subtype",
-        "continuity",
-        "encounter_type",
-        "page_sequencing",
-        "imaging_final",
-    }
-)
-
-# A chart is Imaging Completed only when every stage in pipeline_stage is done
-# for every page — chart_list.status 'completed' / 'needs_review' / 'rejected'.
-_IMAGING_DONE_STATUSES = frozenset({"completed", "needs_review", "rejected"})
-
-# How long page → blob locations are cached (Raw_Input listing order = page_number).
-_BLOB_LIST_TTL_SEC = 300.0
-
-
-def _fmt_date(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d")
-    if isinstance(value, date):
-        return value.strftime("%Y-%m-%d")
-    return _fmt_dos_display(value)
-
-
-# The reason a copied page carries when its encounter is not a copy (core-pipeline's
-# modules/continuity/duplicates.py writes it).
-DUPLICATE_CONTENT_MARK = "duplicate_content_of_page_id:"
-
-
-def _blank_junk_ui(flag: str | None, subtype: str | None) -> tuple[str | None, bool | None, str | None]:
-    """Map DB blank_junk_flag → UI blankOrJunk / isDuplicate / pageType."""
-    if not flag:
-        return None, None, None
-    f = flag.strip().lower()
-    if f == "blank":
-        return "Yes (Blank)", False, "Not Available"
-    if f == "duplicate":
-        # A duplicate is not junk (2026-10-29, user): Blank / Junk No, Duplicate Yes.
-        return "No", True, "Not Available"
-    if f == "junk":
-        return "Yes (Junk)", False, subtype or "Junk"
-    if f == "not_blank_junk":
-        return "No", False, "Not Available"
-    return None, None, None
-
-
-class PostgresFolderRepository(FolderRepository):
+class PostgresFolderRepository(BlobPageImages, FolderRepository):
     def __init__(
         self,
         database_url: str,
@@ -313,20 +210,7 @@ class PostgresFolderRepository(FolderRepository):
         self.database_url = _psycopg_url(database_url)
         self._disk_data = disk_data
         self.db_schema = (db_schema or "public").strip() or "public"
-        # Per-chart caches for the page image route (TTL _BLOB_LIST_TTL_SEC):
-        # folder_id → sorted (key, etag) under the Raw_Input prefix
-        self._raw_blob_lists: dict[str, tuple[float, list[tuple[str, str]]]] = {}
-        # folder_id → page_number → page_list/chart_list location row
-        self._page_rows_cache: dict[str, tuple[float, dict[int, tuple]]] = {}
-        # (folder_id, page_number) → resolved blob location
-        self._resolved_blobs: dict[tuple[str, int, bool], tuple[float, dict[str, str]]] = {}
-        # Processed <output_path>/pages/ per chart: page file name -> (key, etag).
-        self._processed_pages: dict[str, tuple[float, dict[str, tuple[str, str]]]] = {}
-        # Charts whose missing Blob image was already logged; the last listing error per chart.
-        self._no_blob_logged: set[str] = set()
-        # Why the last lookup found no blob for a page, for the image route's error.
-        self._no_blob_reasons: dict[tuple[str, int], str] = {}
-        self._blob_list_errors: dict[str, str] = {}
+        self._init_blob_caches()
 
     def _optional_local(self) -> None:
         """No disk fallback (2026-11-07): kept so old callers still get an answer."""
@@ -463,86 +347,13 @@ class PostgresFolderRepository(FolderRepository):
         except Exception as exc:
             logger.warning("folder_from_db failed for %s: %s", folder_id, exc)
             return None
-        if not found["chart"] or not found["pages"]:
-            return None
-        _chart_id, status_raw, stage_raw, run_id, batch_id = found["chart"][0]
-        page_rows = found["pages"]
-        flag_rows = found["flags"]
-        imaging_done = {str(r[0]) for r in found["imaging_done"]}
-        man = found["manifest"][0] if found["manifest"] else None
-
-        pages: list[tuple[int, str]] = []
-        for idx, (num, name) in enumerate(page_rows, start=1):
-            pages.append((int(num or idx), str(name)))
-
-        flags: dict[str, dict[str, bool]] = {}
-        for page_name, ocr_type in flag_rows:
-            flags.setdefault(str(page_name), {})[str(ocr_type)] = True
-
-        page_summaries = [
-            PageSummary(
-                page_number=num,
-                filename=name,
-                image_url=f"/api/folders/{folder_id}/pages/{num}/image",
-                has_preliminary_ocr=bool(flags.get(name, {}).get("tesseract")),
-                has_final1_ocr=bool(flags.get(name, {}).get("docling")),
-                has_final2_ocr=bool(flags.get(name, {}).get("azuredocintel")),
-                has_imaging=name in imaging_done
-                or str(status_raw or "").lower() in _IMAGING_DONE_STATUSES,
-            )
-            for num, name in pages
-        ]
-        kinds_present = {
-            k
-            for page_flags in flags.values()
-            for k, ok in page_flags.items()
-            if ok
-        }
-        ocr_processed = sum(
-            1
-            for k in ("tesseract", "docling", "azuredocintel")
-            if k in kinds_present
-        )
-
-        status = str(status_raw or "").lower()
-        stage = str(stage_raw or "").lower()
-        if status == "processing" and stage:
-            chart_status = stage
-        else:
-            chart_status = status or None
-        ocr_status = CHART_STATUS_TO_OCR.get(
-            str(chart_status or "").lower(), "QUEUED"
-        )
-        if ocr_status == "IN_PROGRESS" and ocr_processed == 3:
-            ocr_status = "IMAGING_IN_PROGRESS"
-        elif ocr_status == "QUEUED" and ocr_processed > 0:
-            ocr_status = "IN_PROGRESS"
-
-        manifest = None
-        if man:
-            name, dob, member_id = man
-            manifest = ImagingManifestDetails(
-                member=name,
-                dob=_fmt_date(dob),
-                memberId=member_id,
-            )
-
-        shown_run, shown_batch = with_run_batch_default(
-            str(run_id) if run_id else None,
-            str(batch_id) if batch_id else None,
-        )
-        return FolderDetail(
-            id=folder_id,
-            name=folder_id,
-            page_count=len(pages),
-            ocr_processed=ocr_processed,
-            imaging_processed=sum(1 for p in page_summaries if p.has_imaging),
-            ocr_status=ocr_status,  # type: ignore[arg-type]
-            last_updated_at=None,
-            run_id=shown_run,
-            batch_id=shown_batch,
-            manifest=manifest,
-            pages=page_summaries,
+        return _rows.folder_detail(
+            folder_id,
+            found["chart"][0] if found["chart"] else None,
+            found["pages"],
+            found["flags"],
+            {str(r[0]) for r in found["imaging_done"]},
+            found["manifest"][0] if found["manifest"] else None,
         )
 
     def get_folder(self, folder_id: str) -> FolderDetail:
@@ -562,221 +373,23 @@ class PostgresFolderRepository(FolderRepository):
             detail="No page image: review-ui serves page images from Azure Blob only",
         )
 
-    def _page_rows(self, folder_id: str) -> dict[int, tuple] | None:
-        """page_number → (container, blob_path, output_path, page_name,
-        use_corrected, image_path, ingest_index), cached per chart.
-
-        Every page image request needs this; querying the whole chart's
-        page_list per image made a filmstrip of N thumbnails cost N queries.
-        """
-        now = time.monotonic()
-        cached = self._page_rows_cache.get(folder_id)
-        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
-            return cached[1]
-        try:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT c.blob_container, c.blob_path, c.output_path,
-                               p.page_name, p.page_number, p.use_corrected, p.image_path
-                          FROM page_list p
-                          JOIN chart_list c ON c.id = p.chart_id
-                         WHERE c.chart_name = %s
-                         ORDER BY p.page_number NULLS LAST, p.id
-                        """,
-                        (folder_id,),
-                    )
-                    rows = cur.fetchall()
-        except Exception as exc:
-            logger.warning("resolve_page_blob DB failed for %s: %s", folder_id, exc)
-            return None
-
-        by_num: dict[int, tuple] = {}
-        for idx, (container, blob_path, output_path, page_name, db_num, use_corrected, image_path) in enumerate(
-            rows, start=1
-        ):
-            num = int(db_num or idx)
-            by_num.setdefault(
-                num,
-                (
-                    (container or "").strip(),
-                    blob_path,
-                    output_path,
-                    str(page_name),
-                    bool(use_corrected),
-                    str(image_path or ""),
-                    idx,
-                ),
-            )
-        self._page_rows_cache[folder_id] = (now, by_num)
-        return by_num
-
-    def resolve_page_blob(
-        self, folder_id: str, page_number: int, *, corrected: bool = False
-    ) -> dict[str, str] | None:
-        """Locate the Azure blob for a page using chart_list + page_list.
-
-        Processed (``chart_list.output_path``) first: ``corrected-pages/`` when
-        ``corrected``, then ``pages/``; then the scan as it arrived in
-        Raw_Input. The pipeline uploads ``pages/`` to Processed only with
-        ``write_mode=all_files``, so most charts take their originals from
-        Raw_Input.
-
-        Returns ``container``, ``key``, ``filename`` and ``etag`` (empty when
-        unknown). Results are cached per page for ``_BLOB_LIST_TTL_SEC``.
-        """
-        now = time.monotonic()
-        cache_key = (folder_id, page_number, corrected)
-        cached = self._resolved_blobs.get(cache_key)
-        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
-            return cached[1]
-
-        rows = self._page_rows(folder_id)
-        hit = rows.get(page_number) if rows else None
-        if hit is None:
-            self._no_blob(folder_id, page_number, "no page_list row for this page")
-            return None
-        container, blob_path, output_path, page_name, _use_corrected, image_path, idx = hit
-        if not container:
-            # chart_list.blob_container wins; BLOB_CONTAINER is the default.
-            from app.core.config import get_settings
-
-            container = get_settings().blob_container.strip().strip("/")
-        if not container:
-            self._no_blob(folder_id, page_number, "no chart_list.blob_container and no BLOB_CONTAINER")
-            return None
-
-        out = (output_path or "").strip().strip("/")
-        stem = Path(page_name).stem
-        candidates: list[str] = []
-        if corrected and out:
-            candidates.append(f"{out}/corrected-pages/{stem}.jpg")
-            candidates.append(f"{out}/corrected-pages/{page_name}")
-            rel = image_path.replace("\\", "/").lstrip("/")
-            if rel.startswith("corrected-pages/"):
-                candidates.append(f"{out}/{rel}")
-
-        ordered = list(dict.fromkeys(k.lstrip("/") for k in candidates if k.lstrip("/")))
-        found = self._first_existing_blob(container, ordered) if ordered else None
-        if found is None and out:
-            # Processed pages/: one listing per chart, not a probe per image.
-            found = self._processed_page_blob(folder_id, container, out, page_name)
-
-        # Raw_Input comes from a live listing, so the key is known to exist.
-        raw = None if found else self._raw_input_blob(folder_id, container, blob_path, idx)
-        if found is None and raw:
-            key, etag = raw
-            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
-            self._resolved_blobs[cache_key] = (now, out_loc)
-            return out_loc
-        if found is None:
-            listing_error = self._blob_list_errors.pop(folder_id, None)
-            self._no_blob(
-                folder_id, page_number,
-                f"could not list Blob ({listing_error}); the paths are "
-                f"{container}/{out or '(no output_path)'} and {container}/{blob_path or '(no blob_path)'}"
-                if listing_error else
-                f"not in {container}/{out or '(no output_path)'}/pages/{page_name} "
-                f"nor in the Raw_Input listing of {container}/{blob_path or '(no blob_path)'}",
-            )
-            return None
-        key, etag = found
-        out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
-        self._resolved_blobs[cache_key] = (now, out_loc)
-        return out_loc
-
-    def _no_blob(self, folder_id: str, page_number: int, why: str) -> None:
-        """Say once per chart why its page images are not in Blob (the route then tries the
-        workspace copy), and keep the reason for the page's error."""
-        self._no_blob_reasons[(folder_id, page_number)] = why
-        if folder_id in self._no_blob_logged:
-            return
-        self._no_blob_logged.add(folder_id)
-        logger.warning("page image not in Blob: chart=%s page=%s — %s", folder_id, page_number, why)
-
-    def no_blob_reason(self, folder_id: str, page_number: int) -> str | None:
-        """Why the last lookup found no blob for this page, or None."""
-        return self._no_blob_reasons.get((folder_id, page_number))
-
-    def _processed_page_blob(
-        self, folder_id: str, container: str, output_path: str, page_name: str
-    ) -> tuple[str, str] | None:
-        """(key, etag) of ``<output_path>/pages/<page_name>`` when Processed has it."""
-        now = time.monotonic()
-        cached = self._processed_pages.get(folder_id)
-        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
-            by_name = cached[1]
-        else:
-            try:
-                from app.services.blob_store import list_image_blobs
-
-                by_name = {
-                    Path(key).name: (key, etag)
-                    for key, etag in list_image_blobs(container, f"{output_path}/pages")
-                }
-            except Exception as exc:
-                # Not cached: a sign-in failure must not hide the pages once Blob is back.
-                self._blob_list_errors[folder_id] = str(getattr(exc, "detail", None) or exc)
-                if getattr(exc, "status_code", None) != 503:
-                    logger.warning("Processed pages list failed for %s: %s", folder_id, exc)
-                return None
-            self._processed_pages[folder_id] = (now, by_name)
-        return by_name.get(page_name)
-
-    def _first_existing_blob(self, container: str, keys: list[str]) -> tuple[str, str] | None:
-        """First key that exists, with its ETag (fallback path only)."""
-        try:
-            from app.services.blob_store import _blob_service_client
-
-            client = _blob_service_client()
-            for key in keys:
-                blob = client.get_blob_client(container=container, blob=key)
-                try:
-                    props = blob.get_blob_properties()
-                    return key, str(props.etag or "").strip('"')
-                except Exception:
-                    continue
-        except Exception as exc:
-            logger.debug("blob existence probe skipped: %s", exc)
-            return (keys[0], "") if keys else None
-        return None
-
-    def _raw_input_blob(
-        self,
-        folder_id: str,
-        container: str,
-        blob_path: str | None,
-        page_index_1based: int,
-    ) -> tuple[str, str] | None:
-        """Map page index → (Raw_Input blob key, etag), same sort order as ingest."""
-        prefix = (blob_path or "").strip()
-        if not container or not prefix:
-            return None
-        now = time.monotonic()
-        cached = self._raw_blob_lists.get(folder_id)
-        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
-            blobs = cached[1]
-        else:
-            try:
-                from app.services.blob_store import list_image_blobs
-
-                blobs = list_image_blobs(container, prefix)
-                self._raw_blob_lists[folder_id] = (now, blobs)
-            except Exception as exc:
-                self._blob_list_errors[folder_id] = str(getattr(exc, "detail", None) or exc)
-                if getattr(exc, "status_code", None) != 503:  # 503: Blob sign-in failed, reported once
-                    logger.warning(
-                        "Raw_Input blob list failed for %s (%s/%s): %s",
-                        folder_id,
-                        container,
-                        prefix,
-                        exc,
-                    )
-                return None
-        if page_index_1based < 1 or page_index_1based > len(blobs):
-            return None
-        return blobs[page_index_1based - 1]
+    def _page_location_rows(self, folder_id: str) -> list[tuple]:
+        """(blob_container, blob_path, output_path, page_name, page_number, use_corrected,
+        image_path) per page, in page order."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT c.blob_container, c.blob_path, c.output_path,
+                           p.page_name, p.page_number, p.use_corrected, p.image_path
+                      FROM page_list p
+                      JOIN chart_list c ON c.id = p.chart_id
+                     WHERE c.chart_name = %s
+                     ORDER BY p.page_number NULLS LAST, p.id
+                    """,
+                    (folder_id,),
+                )
+                return cur.fetchall()
 
     def get_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """The chart's OCR text for ``kind``, rebuilt only when its rows changed: a small
@@ -804,8 +417,6 @@ class PostgresFolderRepository(FolderRepository):
 
     def _build_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """Assemble OCR from ocr_results into ===== page ===== marker text for the UI."""
-        from app.store.shared import FINAL2_QUALITY_SKIP_MESSAGE
-
         normalized = _normalize_kind(kind)
         ocr_type = KIND_TO_OCR_TYPE[normalized]
 
@@ -851,104 +462,7 @@ class PostgresFolderRepository(FolderRepository):
                 status_code=503,
                 detail=f"Postgres OCR lookup failed: {exc}",
             ) from exc
-
-        if not rows:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No ocr_results for chart={folder_id!r} ocr_type={ocr_type!r}",
-            )
-
-        chunks: list[str] = []
-        headers_by_file: dict[str, list[OcrSectionHeader]] = {}
-        for page_name, raw_text, skip_reason in rows:
-            body = (raw_text or "").strip()
-            parsed: dict[str, Any] | None = None
-            if ocr_type in {"azuredocintel", "docling"} and body.startswith("{"):
-                try:
-                    import json
-
-                    maybe = json.loads(body)
-                    if isinstance(maybe, dict) and (
-                        "content" in maybe or "markdown" in maybe
-                    ):
-                        parsed = maybe
-                        body = str(
-                            maybe.get("content")
-                            or maybe.get("markdown")
-                            or ""
-                        ).strip()
-                except Exception:
-                    pass
-            if (
-                ocr_type in {"azuredocintel", "docling"}
-                and not body
-                and parsed is not None
-            ):
-                reason = str(
-                    parsed.get("skippedReason") or parsed.get("skipped_reason") or ""
-                ).strip().lower()
-                if reason == "high_quality_printed":
-                    body = FINAL2_QUALITY_SKIP_MESSAGE
-                elif reason in {
-                    "blank_junk_pass1",
-                    "blank_junk",
-                    "blank_junk_pass2",
-                }:
-                    from app.store.shared import (
-                        FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
-                    )
-
-                    body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
-            if (
-                ocr_type == "azuredocintel"
-                and not body
-                and str(skip_reason or "").strip().lower() == "high_quality_printed"
-            ):
-                body = FINAL2_QUALITY_SKIP_MESSAGE
-            if (
-                ocr_type in {"azuredocintel", "docling"}
-                and not body
-                and str(skip_reason or "").strip().lower()
-                in {"blank_junk_pass1", "blank_junk", "blank_junk_pass2"}
-            ):
-                from app.store.shared import (
-                    FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
-                )
-
-                body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
-            if body and ocr_type in {"azuredocintel", "docling"}:
-                from app.store.shared import clean_ocr_display_text
-
-                if not body.startswith("Skipped for "):
-                    body = clean_ocr_display_text(body)
-            if ocr_type in {"docling", "azuredocintel"} and parsed is not None:
-                from app.store.shared import (
-                    _filter_headers_against_canon,
-                    _section_headers_from_page,
-                )
-
-                headers = _filter_headers_against_canon(
-                    _section_headers_from_page(parsed)
-                )
-                if headers:
-                    headers_by_file[str(page_name)] = headers
-                    headers_by_file[str(page_name).lower()] = headers
-            chunks.append(f"===== {page_name} =====\n{body}".rstrip())
-
-        if ocr_type == "azuredocintel" and not any(
-            (c.split("\n", 1)[-1] if "\n" in c else "").strip() for c in chunks
-        ):
-            raise HTTPException(
-                status_code=404,
-                detail=f"No ocr_results for chart={folder_id!r} ocr_type={ocr_type!r}",
-            )
-
-        return OcrTextResponse(
-            folder_id=folder_id,
-            kind=normalized,
-            text="\n\n".join(chunks),
-            section_headers_by_file=headers_by_file,
-        )
+        return _rows.ocr_text(folder_id, kind, rows)
 
     def _manifest_from_db(self, folder_id: str) -> ImagingManifestDetails | None:
         try:
@@ -972,16 +486,7 @@ class PostgresFolderRepository(FolderRepository):
                 detail=f"Postgres manifest lookup failed: {exc}",
             ) from exc
 
-        if not row:
-            return None
-        name, dob, member_id, measure, service_note = row
-        return with_service_window(ImagingManifestDetails(
-            member=name,
-            dob=_fmt_date(dob),
-            memberId=member_id,
-            measure=measure,
-            serviceNote=service_note,
-        ))
+        return _rows.manifest_details(row)
 
     def _verification_from_db(self, folder_id: str) -> ImagingVerificationDetails | None:
         try:
@@ -1004,15 +509,7 @@ class PostgresFolderRepository(FolderRepository):
             return None
         if not row:
             return None
-        return ImagingVerificationDetails(
-            finalStatus=row[0],
-            matchedName=row[1],
-            matchedMemberId=row[2],
-            matchedConfidence=float(row[3]) if row[3] is not None else None,
-            pagesMatched=row[4],
-            pagesChecked=row[5],
-            decisionReason=row[6],
-        )
+        return _rows.verification_details(row)
 
     def _table_exists(self, table: str) -> bool:
         """Whether ``table`` exists (db.table_exists, cached)."""
@@ -1039,266 +536,10 @@ class PostgresFolderRepository(FolderRepository):
 
     def _page_imaging_from_db(self, folder_id: str) -> dict[str, dict[str, Any]]:
         """page_name → field dict from quality / BJ / member / DOS tables."""
-        by_page: dict[str, dict[str, Any]] = {}
+        return _rows.page_imaging_fields(folder_id, self._overlay_rows(folder_id))
 
-        def _ensure(name: str) -> dict[str, Any]:
-            return by_page.setdefault(name, {})
-
-        rows = self._overlay_rows(folder_id)
-        try:
-            # codable display, shared by page_classification and imaging_final
-            codeable_display = {
-                "codeable": "Codable",
-                "non_codeable": "Non-Codable",
-                "discharge_summary": "Discharge",
-                "discharge_frequency": "Discharge",
-                "not_sure": "Not Sure",
-            }
-
-            with _skip_on_error("quality", folder_id):
-                # Quality
-                for (
-                    page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
-                    doc_type, visible, hw_area, measured,
-                ) in rows["quality"] or []:
-                    fields = _ensure(str(page_name))
-                    if hw:
-                        label = str(hw).strip().lower()
-                        if "hand" in label:
-                            fields["handwrittenOrPrinted"] = "Handwritten"
-                        elif "uncertain" in label:
-                            fields["handwrittenOrPrinted"] = "Uncertain"
-                        elif "mix" in label:
-                            fields["handwrittenOrPrinted"] = "Mixed"
-                        else:
-                            fields["handwrittenOrPrinted"] = "Printed"
-                    if conf is not None:
-                        fields["handwrittenOrPrintedConfidence"] = float(conf)
-                    if qscore is not None:
-                        fields["pageQualityConfidence"] = float(qscore)
-                    if qtag:
-                        fields["pageQualityTag"] = str(qtag)
-                    if orient is not None:
-                        fields["orientationAngle"] = float(orient)
-                    if tilt is not None:
-                        fields["tiltAngle"] = float(tilt)
-                    if mirrored is not None:
-                        fields["mirrored"] = bool(mirrored)
-                    fields.update(
-                        page_type_fields(doc_type, visible, hw_area)
-                    )
-                    if isinstance(measured, dict) and measured:
-                        fields["measuredConfidences"] = {
-                            k: float(v) for k, v in measured.items() if isinstance(v, (int, float))
-                        }
-
-            # 2026-11-02 (user): a blank / junk page shows only what blank / junk reports, even
-            # when a later stage wrote a row for it (continuity junks a short page contained in a
-            # nearby page after page type, DOS and member ran on it).
-            junk_pages: set[str] = set()
-            with _skip_on_error("blank_junk", folder_id):
-                # Blank/junk — v7 stamps exactly one final row per page,
-                # so precedence is not re-derived here any more.
-                for page_name, flag, subtype, conf, duplicate_of, best, reason in rows["blank_junk"] or []:
-                    fields = _ensure(str(page_name))
-                    if (flag or "").strip().lower() in ("blank", "junk"):
-                        junk_pages.add(str(page_name))
-                    blank, dup, page_type = _blank_junk_ui(flag, subtype)
-                    fields["blankOrJunk"] = blank
-                    fields["isDuplicate"] = dup
-                    pointing = (flag or "").strip().lower() in ("not_blank_junk", "junk") and bool(duplicate_of)
-                    # A copied page whose encounter is not a copy (continuity, 2026-10-29).
-                    content = pointing and DUPLICATE_CONTENT_MARK in (reason or "")
-                    fields["isDuplicateContent"] = content
-                    # Any other Main or junk page pointing at another is a partial (95-98%) duplicate.
-                    fields["isPartialDuplicate"] = pointing and not content
-                    fields["pageType"] = page_type
-                    if duplicate_of:
-                        fields["duplicateOf"] = str(duplicate_of)
-                    if conf is not None:
-                        fields["pageTypeConfidence"] = float(conf)
-                        fields["blankJunkConfidence"] = float(conf)
-                    if best is not None:
-                        fields["duplicateConfidence"] = float(best)
-
-            with _skip_on_error("member", folder_id):
-                # Member extraction
-                for page_name, name, dob, mid, conf, member_status, other_names in rows["member"] or []:
-                    # Blank / junk pages are read too since 2026-11-04 (user): shown, not verified.
-                    if not page_name:
-                        continue
-                    fields = _ensure(str(page_name))
-                    fields["memberName"] = name
-                    fields["memberDob"] = _fmt_date(dob)
-                    fields["memberId"] = mid
-                    if conf is not None:
-                        fields["memberConfidence"] = float(conf)
-                    fields["memberPageStatus"] = member_status
-                    if isinstance(other_names, list):
-                        fields["memberOtherNames"] = [str(n) for n in other_names if str(n).strip()]
-
-            with _skip_on_error("dos", folder_id):
-                # DOS (Extracted): the DOS stage's own row per page, the same values it
-                # writes to <chart>_dos.csv. schema/schema.sql is the only schema.
-                for page_name, d_from, d_to, doc_from, doc_to, conf in rows["dos"] or []:
-                    if str(page_name) in junk_pages:
-                        continue
-                    fields = _ensure(str(page_name))
-                    fields["dosFrom"] = _fmt_date(d_from)
-                    fields["dosTo"] = _fmt_date(d_to)
-                    fields["docDosFrom"] = _fmt_date(doc_from)
-                    fields["docDosTo"] = _fmt_date(doc_to)
-                    if conf is not None:
-                        fields["dosConfidence"] = float(conf)
-
-            with _skip_on_error("page_classification", folder_id):
-                # Codable / non-codable / discharge (page_classification)
-                for page_name, subtype, cat, conf, page_type, specialty, specialty_conf, axes_json in rows["page_classification"] or []:
-                    if str(page_name) in junk_pages:
-                        continue
-                    fields = _ensure(str(page_name))
-                    if isinstance(axes_json, dict):
-                        sub = subtype_confidence(axes_json.get("l2"), axes_json.get("l2_confidence"),
-                                                 axes_json.get("l3"), axes_json.get("l3_confidence"))
-                        if sub is not None:
-                            fields["subtypeConfidence"] = sub
-                    fields["specialty"] = specialty or "Unknown"
-                    if specialty_conf:
-                        fields["specialtyConfidence"] = float(specialty_conf)
-                    key = str(cat or "").strip()
-                    shown = compose_page_type(page_type, subtype)
-                    if shown:
-                        fields["pageType"] = shown
-                    fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
-                    if conf is not None:
-                        fields["pageTypeConfidence"] = float(conf)
-
-            # Main pages with no page_classification row keep junk's
-            # pageType=\"Not Available\" — stamp Not Sure for codability.
-            for fields in by_page.values():
-                pt = str(fields.get("pageType") or "").strip()
-                if (
-                    pt == "Not Available"
-                    and not fields.get("isCodeable")
-                ):
-                    fields["isCodeable"] = "Not Sure"
-
-            with _skip_on_error("encounter_type", folder_id):
-                # Encounter type (DOS-wide TF)
-                enc_display = {
-                    "outpatient_f2f": "Outpatient (F2F)",
-                    "outpatient_tele": "Outpatient (Tele)",
-                    "inpatient": "Inpatient",
-                    "home": "Home",
-                    "not_applicable": "",  # 2026-11-02 (user): not a visit document -> blank
-                }
-                for page_name, et, conf in rows["encounter_type"] or []:
-                    if str(page_name) in junk_pages:
-                        continue
-                    fields = _ensure(str(page_name))
-                    key = str(et or "").strip()
-                    fields["encounterType"] = enc_display.get(key, key)
-                    if conf is not None:
-                        fields["encounterConfidence"] = float(conf)
-
-            with _skip_on_error("sequencing", folder_id):
-                # Page sequencing
-                for page_name, page_num, orig, seq, conf in rows["sequencing"] or []:
-                    fields = _ensure(str(page_name))
-                    current = orig if orig is not None else page_num
-                    if current is not None:
-                        fields["currentSequence"] = int(current)
-                    if seq is not None:
-                        fields["actualSequence"] = int(seq)
-                    if conf is not None:
-                        fields["sequenceConfidence"] = float(conf)
-
-            with _skip_on_error("continuity", folder_id):
-                # Document continuity, then Final values. A database without
-                # these tables yet skips them, not the page.
-                if rows["continuity"]:
-                    # The gap scorer's columns (2026-10-20) may not exist yet: read the
-                    # row as JSON so an older database still shows its documents.
-                    members: dict[int, list[dict[str, Any]]] = {}
-                    for page_name, k in rows["continuity"] or []:
-                        k = k or {}
-                        document = k.get("document_seq")
-                        position = k.get("position")
-                        fields = _ensure(str(page_name))
-                        fields["documentSeq"] = int(document) if document is not None else None
-                        fields["documentPosition"] = position
-                        # The engine's own label (2026-10-25), else rebuilt from position.
-                        fields["documentLabel"] = k.get("label") or continuity_label(
-                            position, int(document) if document is not None else None,
-                            k.get("confidence_level"),
-                        )
-                        fields["continuityRelation"] = k.get("relation")
-                        fields["continuityDecidedBy"] = k.get("decided_by")
-                        fields["continuityEvidence"] = k.get("evidence")
-                        fields["continuityConfidence"] = (
-                            float(k["confidence"]) if k.get("confidence") is not None else None
-                        )
-                        if document is not None:
-                            members.setdefault(int(document), []).append(fields)
-                    # Documents and junk groups share the numbering: a group whose every
-                    # page is junk reads 'New (Junk 4)'.
-                    for document, group in members.items():
-                        if all(str(f.get("blankOrJunk") or "").lower().startswith("yes (junk)") for f in group):
-                            for f in group:
-                                f["documentLabel"] = (f.get("documentLabel") or "").replace(
-                                    f"(Doc {document})", f"(Junk {document})"
-                                )
-
-            with _skip_on_error("provider_signature", folder_id):
-                # The extraction stage's signature rows (Local reads provider_signature.csv);
-                # imaging_final, below, replaces them with the document's values once it ran.
-                for (page_name, provider, signed, credentials, signers, version,
-                     provider_confidence) in rows["provider_signature"] or []:
-                    fields = _ensure(str(page_name))
-                    people = signer_fields(signers, provider, credentials, version)
-                    fields.update({key: value for key, value in people.items() if value})
-                    if provider_confidence is not None:
-                        fields["providerSignatureConfidence"] = float(provider_confidence)
-                    if signed is not None:
-                        fields["providerSignature"] = "Yes" if signed else "No"
-
-            with _skip_on_error("imaging_final", folder_id):
-                if rows["imaging_final"]:
-                    for (page_name, final_type, category, final_from, final_to, final_sub,
-                         final_specialty, provider, signed, credentials, signers, version,
-                         provider_confidence, confidences, review) in rows["imaging_final"] or []:
-                        fields = _ensure(str(page_name))
-                        if isinstance(confidences, dict):
-                            fields["finalConfidences"] = {
-                                k: float(v) for k, v in confidences.items() if isinstance(v, (int, float))
-                            }
-                        if isinstance(review, list):
-                            fields["reviewFields"] = [str(k) for k in review]
-                        # Provider Extraction: the signature rows the extraction stage
-                        # writes (the same as provider_signature.csv); the name cell
-                        # carries the credentials ('Ramsey Luce, R.N.').
-                        people = signer_fields(signers, provider, credentials, version)
-                        fields.update({key: value for key, value in people.items() if value})
-                        if provider_confidence not in (None, ""):
-                            fields["providerSignatureConfidence"] = float(provider_confidence)
-                        if signed is not None:
-                            fields["providerSignature"] = "Yes" if signed == "true" else "No"
-                        fields["finalSpecialty"] = final_specialty or None
-                        fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
-                        fields["finalCodeable"] = codeable_display.get(category or "")
-                        fields["finalDosFrom"] = _fmt_date(final_from)
-                        fields["finalDosTo"] = _fmt_date(final_to)
-        except Exception as exc:
-            logger.warning("imaging overlay unavailable for %s: %s", folder_id, exc)
-            return by_page
-
-        return by_page
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
-        """Build imaging panel entirely from Postgres; page skeleton from page_list.
-
-        Prefer DB page names over a local disk walk — scanning DATA_ROOT for every
-        chart open was a major cost on large workspaces / external drives.
-        """
+        """Build imaging panel entirely from Postgres; page skeleton from page_list."""
         # The loaders below are independent: run them together (each on its own pooled
         # connection) instead of one after another.
         with ThreadPoolExecutor(max_workers=_OVERLAY_WORKERS) as pool:
@@ -1307,66 +548,14 @@ class PostgresFolderRepository(FolderRepository):
             manifest_job = pool.submit(self._manifest_from_db, folder_id)
             verification_job = pool.submit(self._verification_from_db, folder_id)
             flags_job = pool.submit(self._sections_from_db, folder_id)
-        page_files = [(num, Path(name)) for num, name in pages_job.result()]
-        pages = empty_imaging_pages(page_files)
-
-        db_fields = fields_job.result()
-        merged: list[ImagingPageResult] = []
-        for page in pages:
-            hit = db_fields.get(page.fileName) or db_fields.get(page.fileName.lower())
-            if not hit:
-                # try stem match
-                stem = Path(page.fileName).stem
-                for key, val in db_fields.items():
-                    if Path(key).stem == stem:
-                        hit = val
-                        break
-            if hit:
-                merged.append(page.model_copy(update=hit))
-            else:
-                merged.append(page)
-        merged = inherit_duplicate_blank_junk(merged)
-        merged = attach_ground_truth(
-            merged, folder_id, self.database_url, self.db_schema
-        )
-
-        manifest = manifest_job.result() or ImagingManifestDetails()
-        verification = verification_job.result()
-        # "Processed" means the stage wrote rows — not that it found a value.
-        # Using non-empty memberName/dosFrom here made empty-but-finished charts
-        # show "Yet to Process" instead of "Not Found".
-        stage_flags = flags_job.result()
-        sections = ImagingSectionsProcessed(
-            member=stage_flags["member"] or verification is not None,
-            dos=stage_flags["dos"],
-            hw=stage_flags["hw"]
-            or any(p.handwrittenOrPrinted for p in merged),
-            quality=stage_flags["quality"]
-            or any(
-                p.pageQualityTag or p.pageQualityConfidence is not None for p in merged
-            ),
-            rotation=stage_flags["rotation"]
-            or any(
-                p.orientationAngle is not None or p.tiltAngle is not None for p in merged
-            ),
-            junk=stage_flags["junk"]
-            or any(p.blankOrJunk is not None or p.isDuplicate is not None for p in merged),
-            codeable=stage_flags["codeable"]
-            or any(p.isCodeable is not None for p in merged),
-            encounter=stage_flags["encounter"]
-            or any(p.encounterType is not None for p in merged),
-            sequencing=stage_flags["sequencing"]
-            or any(p.actualSequence is not None for p in merged),
-            verification=verification is not None,
-        )
-
-        return ImagingDocumentResponse(
-            folder_id=folder_id,
-            manifest=manifest,
-            verification=verification,
-            verifications=[verification] if verification else [],
-            pages=merged,
-            sectionsProcessed=sections,
+        return _rows.imaging_document(
+            folder_id,
+            pages_job.result(),
+            fields_job.result(),
+            manifest_job.result(),
+            verification_job.result(),
+            flags_job.result(),
+            lambda pages: attach_ground_truth(pages, folder_id, self.database_url, self.db_schema),
         )
 
     def _sections_from_db(self, folder_id: str) -> dict[str, bool]:

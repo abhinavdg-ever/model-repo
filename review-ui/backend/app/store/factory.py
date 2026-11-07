@@ -25,9 +25,17 @@ def get_repository(request: Request) -> FolderRepository:
 
 
 def build_repository(settings: Settings, production: bool | None = None) -> FolderRepository:
-    """Postgres, never disk: no fallback for a chart, its page list or the folder list, and
-    nothing from a chart folder. Page images come from Azure Blob only. ``production`` is
-    accepted for old callers and ignored."""
+    """DB_BACKEND=cosmos: Cosmos DB; otherwise (postgres, both) Postgres. Never disk: page
+    images come from Azure Blob only. ``production`` is accepted for old callers and ignored."""
+    if settings.db_backend == "cosmos":
+        from app.store.cosmos.repository import CosmosFolderRepository
+
+        logger.info("repository=cosmos database=%s (page images from Azure Blob)", settings.cosmos_database)
+        return CosmosFolderRepository(
+            endpoint=settings.cosmos_endpoint,
+            key=settings.cosmos_key,
+            database=settings.cosmos_database,
+        )
     logger.info("repository=postgres schema=%s (page images from Azure Blob)", settings.db_schema)
     return PostgresFolderRepository(
         settings.database_url,

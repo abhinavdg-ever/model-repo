@@ -182,38 +182,46 @@ def fetch_chart_summaries_from_db(
         return []
 
     out: list[FolderSummary] = []
-    for chart_name, page_count, status, updated_at, current_stage, run_id, batch_id in rows:
-        name = str(chart_name or "").strip()
-        if not name:
-            continue
-        page_n = int(page_count or 0)
-        status_ui = ocr_status_for(status, current_stage)
-        # Approximate progress columns from chart status (no per-page disk scan).
-        imaging_n = page_n if status_ui == "IMAGING_COMPLETED" else 0
-        ocr_n = (
-            page_n
-            if status_ui
-            in {"COMPLETED", "IMAGING_COMPLETED", "IMAGING_IN_PROGRESS", "IN_PROGRESS"}
-            else 0
-        )
-        stored_run, stored_batch = with_run_batch_default(
-            str(run_id) if run_id else None,
-            str(batch_id) if batch_id else None,
-        )
-        out.append(
-            FolderSummary(
-                id=name,
-                name=name,
-                page_count=page_n,
-                ocr_processed=ocr_n,
-                imaging_processed=imaging_n,
-                ocr_status=status_ui,
-                last_updated_at=updated_at,
-                run_id=stored_run,
-                batch_id=stored_batch,
-            )
-        )
+    for row in rows:
+        summary = chart_summary(*row)
+        if summary is not None:
+            out.append(summary)
     return out
+
+
+def chart_summary(
+    chart_name, page_count, status, updated_at, current_stage, run_id, batch_id
+) -> FolderSummary | None:
+    """One landing row from a chart_list row's columns (None when it has no name). The
+    Cosmos repository builds its rows here too."""
+    name = str(chart_name or "").strip()
+    if not name:
+        return None
+    page_n = int(page_count or 0)
+    status_ui = ocr_status_for(status, current_stage)
+    # Approximate progress columns from chart status (no per-page disk scan).
+    imaging_n = page_n if status_ui == "IMAGING_COMPLETED" else 0
+    ocr_n = (
+        page_n
+        if status_ui
+        in {"COMPLETED", "IMAGING_COMPLETED", "IMAGING_IN_PROGRESS", "IN_PROGRESS"}
+        else 0
+    )
+    stored_run, stored_batch = with_run_batch_default(
+        str(run_id) if run_id else None,
+        str(batch_id) if batch_id else None,
+    )
+    return FolderSummary(
+        id=name,
+        name=name,
+        page_count=page_n,
+        ocr_processed=ocr_n,
+        imaging_processed=imaging_n,
+        ocr_status=status_ui,
+        last_updated_at=updated_at,
+        run_id=stored_run,
+        batch_id=stored_batch,
+    )
 
 
 def quick_disk_status(folder_dir: Path) -> str:
