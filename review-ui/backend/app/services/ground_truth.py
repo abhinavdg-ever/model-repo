@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from app.core.schemas import ImagingPageResult, PageGroundTruth, PageSequenceLabel
+from app.services import backend
 from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 
@@ -188,6 +189,12 @@ def _labelled_row_sql() -> str:
 
 def charts_with_ground_truth(database_url: str | None, db_schema: str = "public") -> set[str]:
     """Chart folder names with at least one page that has a ground-truth value."""
+    if backend.reads_cosmos():
+        try:
+            return backend.cosmos().charts_with_ground_truth()
+        except Exception as exc:
+            logger.warning("ground_truth chart lookup failed: %s", exc)
+            return set()
     if not database_url or not database_url_usable(database_url):
         return set()
     try:
@@ -215,6 +222,14 @@ def ground_truth_by_page(
     chart_name: str,
     db_schema: str = "public",
 ) -> dict[int, PageGroundTruth]:
+    if backend.reads_cosmos():
+        if not chart_name:
+            return {}
+        try:
+            return backend.cosmos().ground_truth_by_page(chart_name)
+        except Exception as exc:
+            logger.warning("ground_truth page lookup failed: %s", exc)
+            return {}
     if not database_url or not database_url_usable(database_url) or not chart_name:
         return {}
     try:
@@ -442,7 +457,10 @@ def upsert_page_ground_truth(
         clean_label(body.isDuplicate),
         clean_label(body.handwrittenPct),
     )
-    labels = json.dumps(dict(zip(_MANUAL_COLUMNS, params[3:])))
+    values = dict(zip(_MANUAL_COLUMNS, params[3:]))
+    if backend.reads_cosmos():
+        return backend.cosmos().upsert_page_ground_truth(chart, body.pageNumber, params[2], values, user_id)
+    labels = json.dumps(values)
     with connection(database_url, db_schema) as conn:
         ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -452,6 +470,8 @@ def upsert_page_ground_truth(
             raise RuntimeError("ground truth upsert returned no row")
         conn.commit()
         reviews = _last_reviews(conn, database_url, chart, db_schema)
+    backend.mirror("ground truth page save", lambda store: store.upsert_page_ground_truth(
+        chart, body.pageNumber, params[2], values, user_id))
     return _with_review(_ground_truth_from_row(row), reviews)
 
 
@@ -495,6 +515,10 @@ def save_page_sequences(
             raise ValueError(
                 f"page {page.pageNumber}: sequence must be a whole number from 1, or J1, J2 … for blank / junk"
             )
+    sequences = [(page.pageNumber, clean_label(page.sourcePageId), clean_label(page.pageSequence)) for page in pages]
+    if backend.reads_cosmos():
+        backend.cosmos().save_page_sequences(chart, sequences, user_id)
+        return ground_truth_by_page(database_url, chart, db_schema)
     with connection(database_url, db_schema) as conn:
         ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -507,6 +531,7 @@ def save_page_sequences(
                         json.dumps({"page_sequence": value}), user_id,
                     ),
                 )
+    backend.mirror("page sequence save", lambda store: store.save_page_sequences(chart, sequences, user_id))
     return ground_truth_by_page(database_url, chart, db_schema)
 
 
@@ -571,6 +596,8 @@ def latest_bulk_labels(
 
 def ground_truth_charts(database_url: str, db_schema: str = "public") -> list[str]:
     """Every chart with at least one ground-truth page."""
+    if backend.reads_cosmos():
+        return backend.cosmos().ground_truth_charts()
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute("SELECT DISTINCT chart_name FROM page_ground_truth ORDER BY chart_name")
         return [str(row[0]) for row in cur.fetchall()]
@@ -584,6 +611,8 @@ def ground_truth_labels(
 ) -> list[tuple[str, int, dict]]:
     """(chart, page number, labels keyed by page_ground_truth column) for the
     given charts: the latest values, or each page's latest bulk upload."""
+    if backend.reads_cosmos():
+        return backend.cosmos().ground_truth_labels(chart_names, source)
     with connection(database_url, db_schema) as conn:
         if source == "bulk_upload":
             bulk = latest_bulk_labels(conn, database_url, chart_names, db_schema)
@@ -614,11 +643,15 @@ def bulk_ground_truth(
 ) -> list[ImagingPageResult]:
     """Each page's ground truth as of its latest bulk upload; a page with no
     bulk upload shows none, so manual edits are hidden."""
-    if not database_url or not database_url_usable(database_url) or not chart_name:
+    cosmos = backend.reads_cosmos()
+    if not chart_name or (not cosmos and (not database_url or not database_url_usable(database_url))):
         return pages
     try:
-        with connection(database_url, db_schema) as conn:
-            bulk = latest_bulk_labels(conn, database_url, [chart_name], db_schema)
+        if cosmos:
+            bulk = backend.cosmos().latest_bulk_labels([chart_name])
+        else:
+            with connection(database_url, db_schema) as conn:
+                bulk = latest_bulk_labels(conn, database_url, [chart_name], db_schema)
     except Exception as exc:
         logger.warning("page_ground_truth_entry lookup failed: %s", exc)
         return pages

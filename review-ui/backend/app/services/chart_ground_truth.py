@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 
 from app.core.schemas import ChartGroundTruth
+from app.services import backend
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, clean_label
 
@@ -75,6 +76,8 @@ def member_decision(value: str | None) -> str | None:
 
 def load_chart_ground_truth(database_url: str, folder_id: str, db_schema: str = "public") -> ChartGroundTruth:
     chart = _chart_name(folder_id)
+    if backend.reads_cosmos():
+        return backend.cosmos().load_chart_ground_truth(chart)
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -111,6 +114,8 @@ def save_chart_ground_truth(
     chart = _chart_name(folder_id)
     decision = member_decision(body.memberDecision)
     reason = clean_label(body.memberDecisionReason)
+    if backend.reads_cosmos():
+        return backend.cosmos().save_chart_ground_truth(chart, decision, reason, user_id, decision_changes)
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -121,18 +126,24 @@ def save_chart_ground_truth(
             )
             before = cur.fetchone() or (None, None)
             cur.execute(_UPSERT, (chart, decision, reason, user_id))
-        # The Review Log: what the save changed, Accept / Reject as the tab shows them.
-        changed = [
-            {"field": field, "before": shown(old), "after": shown(new)}
-            for field, old, new, shown in (
-                ("member_decision", before[0], decision, _decision_label),
-                ("member_decision_reason", before[1], reason, lambda v: v),
-            )
-            if (old or None) != (new or None)
-        ]
+        changed = decision_changes(before, decision, reason)
         if changed:
             record_entry(conn, database_url, db_schema, chart, "member_decision", changed, user_id=user_id)
+    backend.mirror("member decision", lambda store: store.save_chart_ground_truth(
+        chart, decision, reason, user_id, decision_changes))
     return load_chart_ground_truth(database_url, folder_id, db_schema)
+
+
+def decision_changes(before: tuple, decision: str | None, reason: str | None) -> list[dict]:
+    """The Review Log: what the save changed, Accept / Reject as the tab shows them."""
+    return [
+        {"field": field, "before": shown(old), "after": shown(new)}
+        for field, old, new, shown in (
+            ("member_decision", before[0], decision, _decision_label),
+            ("member_decision_reason", before[1], reason, lambda v: v),
+        )
+        if (old or None) != (new or None)
+    ]
 
 
 def _decision_label(value: str | None) -> str | None:

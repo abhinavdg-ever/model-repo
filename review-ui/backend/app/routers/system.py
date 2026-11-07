@@ -8,6 +8,7 @@ from app.core.schemas import (
     AppConfigResponse,
     HealthResponse,
 )
+from app.services.backend import store_usable
 from app.services.chart_run_batch import database_url_usable
 
 logger = logging.getLogger("review_ui.api")
@@ -35,7 +36,7 @@ def app_config(request: Request) -> AppConfigResponse:
     return AppConfigResponse(
         data_mode=data_mode,
         mode_label=label,
-        db_available=database_url_usable(settings.database_url),
+        db_available=store_usable(settings, database_url_usable),
         default_mode="production",
         file_viewer_blob_enabled=settings.file_viewer_blob_enabled,
         blob_auth_mode=settings.blob_auth_mode,

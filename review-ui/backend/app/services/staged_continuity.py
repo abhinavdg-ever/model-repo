@@ -52,8 +52,15 @@ def load_encounters_from_db(database_url: str, db_schema: str, folder_id: str) -
     """Production Mode: the encounter grouping from ``encounter_type_results`` (its
     ``encounter_seq`` and decision columns); [] when the columns are missing or the
     database cannot be read (logged, never raises)."""
+    from app.services import backend
     from app.services.db import connection
 
+    if backend.reads_cosmos():
+        try:
+            return backend.cosmos().encounters(folder_id, _LABELS)
+        except Exception as exc:
+            logger.warning("encounter grouping unreadable for %s: %s", folder_id, exc)
+            return []
     try:
         with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:

@@ -11,6 +11,7 @@ from app.store.base import FolderRepository
 from app.store.factory import get_repository
 from app.core.config import Settings, get_settings
 from app.core.schemas import ImagingDocumentResponse
+from app.services import backend
 from app.services.chart_run_batch import database_url_usable
 from app.services import excel_compare
 from app.services.ground_truth import (
@@ -47,6 +48,8 @@ class _PipelineCharts:
         self._settings = settings
         self._order = list(pdf_ids)
         self._use_db = database_url_usable(settings.database_url)
+        # DB_BACKEND=cosmos: each chart through the repository (its page docs, cached).
+        self._cosmos = getattr(settings, "db_backend", "postgres") == "cosmos"
         self._docs: dict[str, ImagingDocumentResponse | None] = {}
         self._runs: dict[str, datetime | None] | None = {} if self._use_db else None
 
@@ -65,6 +68,9 @@ class _PipelineCharts:
 
     def load(self, pdf_id: str) -> bytes | None:
         """None when there is no output for the chart."""
+        if self._cosmos:
+            doc = self._cosmos_doc(pdf_id)
+            return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
         if not self._use_db:
             return None  # the database is the only source (2026-11-07)
         if pdf_id not in self._docs:
@@ -74,12 +80,27 @@ class _PipelineCharts:
 
     def last_run(self, pdf_id: str) -> str | None:
         """ISO time of the chart's last pipeline run; None when never run."""
+        if self._cosmos:
+            from app.store.cosmos.repository import _as_datetime
+
+            chart = backend.cosmos().repo._chart_doc(pdf_id) or {}
+            moment = _as_datetime((chart.get("chart") or {}).get("updated_at"))
+            return moment.isoformat() if moment else None
         if not self._use_db:
             return None
         if pdf_id not in self._docs:
             self._fetch_from(pdf_id)
         moment = self._runs.get(pdf_id)
         return moment.isoformat() if moment else None
+
+
+    def _cosmos_doc(self, pdf_id: str) -> ImagingDocumentResponse | None:
+        """The chart view's document (repo.get_imaging), as database_algo.fetch gives it: None
+        for a chart with no pages."""
+        if pdf_id not in self._docs:
+            doc = self._repo.get_imaging(pdf_id)
+            self._docs[pdf_id] = doc if doc.pages else None
+        return self._docs[pdf_id]
 
 
 def _system_from_pipeline(
@@ -109,7 +130,7 @@ def _ground_from_database(
 ) -> tuple[bytes, str]:
     """page_ground_truth as a Ground Truth sheet: for ``pdf_ids``, or every
     chart that has ground truth when None."""
-    if not database_url_usable(settings.database_url):
+    if not backend.store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
         if pdf_ids is None:

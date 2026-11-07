@@ -3,6 +3,7 @@
 import logging
 from fastapi import Depends, HTTPException, Request
 from app.core.config import Settings, get_settings
+from app.services.backend import store_usable
 from app.services.chart_run_batch import database_url_usable
 from app.services.auth import SignedInUser, read_token
 
@@ -24,7 +25,7 @@ def _admin_with_db(
         raise HTTPException(status_code=401, detail=f"Sign in again to {what}")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail=f"Only an admin can {what}")
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail=f"{kept} in the database, which is not configured")
     return user
 

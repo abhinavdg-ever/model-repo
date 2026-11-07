@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+from app.services import backend
 from app.services.db import connection
 
 MAX_TAG_CHARS = 60
@@ -31,7 +32,10 @@ def clean_tags(tags: list[str]) -> list[str]:
 
 def chart_tags_map(database_url: str, db_schema: str = "public") -> dict[str, list[str]]:
     """chart name -> its tags. Read through to_jsonb, so a database without the column
-    (before schema/migrations/2026-11-07.sql) answers no tags instead of failing."""
+    (before schema/migrations/2026-11-07.sql) answers no tags instead of failing. On Cosmos:
+    the chart documents' ``tags`` (charts container, id "chart")."""
+    if backend.reads_cosmos():
+        return _tag_map(backend.cosmos().chart_tags().items())
     with connection(database_url, db_schema) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -43,6 +47,10 @@ def chart_tags_map(database_url: str, db_schema: str = "public") -> dict[str, li
                 """
             )
             rows = cur.fetchall()
+    return _tag_map(rows)
+
+
+def _tag_map(rows) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for chart, tags in rows:
         cleaned = clean_tags([str(t) for t in (tags or []) if isinstance(t, (str, int, float))][:MAX_TAGS])

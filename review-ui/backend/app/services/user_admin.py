@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.services import backend
 from app.services.auth import hash_password
 from app.services.db import connection
 
@@ -34,6 +35,8 @@ def _check_password(password: str) -> None:
 
 def list_users(database_url: str, db_schema: str) -> list[dict[str, Any]]:
     """Every user, without the hash."""
+    if backend.reads_cosmos():
+        return backend.cosmos().list_users()
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute("SELECT username, name, role, is_active, last_login_at FROM users ORDER BY lower(username)")
         return [
@@ -51,6 +54,14 @@ def create_user(database_url: str, db_schema: str, *, username: str, name: str, 
     if role not in ROLES:
         raise UserError(400, f"The role must be one of {', '.join(ROLES)}")
     _check_password(password)
+    shown = (name or "").strip() or username
+    if backend.reads_cosmos():
+        store = backend.cosmos()
+        taken = store.find_user(username)
+        if taken:
+            raise UserError(409, f"The username {taken['username']} already exists: reset its password instead")
+        store.create_user(username=username, name=shown, role=role, password_hash=hash_password(password))
+        return {"username": username, "name": shown, "role": role}
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute("SELECT username FROM users WHERE lower(username) = lower(%s)", (username,))
         taken = cur.fetchone()
@@ -60,12 +71,27 @@ def create_user(database_url: str, db_schema: str, *, username: str, name: str, 
             "INSERT INTO users (username, name, role, password_hash, is_active) VALUES (%s, %s, %s, %s, TRUE)",
             (username, (name or "").strip() or username, role, hash_password(password)),
         )
+    backend.mirror("new user", lambda store: _copy_user(database_url, db_schema, store, username))
     return {"username": username, "name": (name or "").strip() or username, "role": role}
+
+
+def _copy_user(database_url: str, db_schema: str, store, username: str) -> None:
+    """DB_BACKEND=both: the users row as Postgres holds it (same id, same hash) to Cosmos."""
+    with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+        cur.execute("SELECT to_jsonb(u) FROM users u WHERE lower(username) = lower(%s)", (username,))
+        row = cur.fetchone()
+    if row and isinstance(row[0], dict):
+        store.put_user(row[0])
 
 
 def reset_password(database_url: str, db_schema: str, *, username: str, password: str) -> dict[str, Any]:
     """A new password for an existing user. 404 when there is no such user."""
     _check_password(password)
+    if backend.reads_cosmos():
+        doc = backend.cosmos().set_password((username or "").strip(), hash_password(password))
+        if doc is None:
+            raise UserError(404, f"No user named {username}: create it instead")
+        return {"username": doc.get("username"), "name": doc.get("name"), "role": doc.get("role")}
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE users SET password_hash = %s WHERE lower(username) = lower(%s) RETURNING username, name, role",
@@ -74,4 +100,5 @@ def reset_password(database_url: str, db_schema: str, *, username: str, password
         row = cur.fetchone()
     if row is None:
         raise UserError(404, f"No user named {username}: create it instead")
+    backend.mirror("password reset", lambda store: _copy_user(database_url, db_schema, store, row[0]))
     return {"username": row[0], "name": row[1], "role": row[2]}

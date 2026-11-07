@@ -13,6 +13,7 @@ encounters saved, no member decision.
 from __future__ import annotations
 
 from app.core.schemas import ChartGroundTruthUpdates, GroundTruthUpdate
+from app.services import backend
 from app.services.chart_review import _has_users, _iso, _who
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, ensure_entries
@@ -108,6 +109,8 @@ def ground_truth_updates(
     database_url: str, folder_id: str, db_schema: str = "public"
 ) -> ChartGroundTruthUpdates:
     chart = _chart_name(folder_id)
+    if backend.reads_cosmos():
+        return backend.cosmos().ground_truth_updates(chart)
     with connection(database_url, db_schema) as conn:
         ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:

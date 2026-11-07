@@ -740,9 +740,12 @@ def review_from_additional(
 def _additional_rows(database_url: str, db_schema: str, folder_id: str) -> dict[str, dict]:
     """The chart's additional_page_details rows by page name; {} when the table is missing
     or the database cannot be read (logged)."""
+    from app.services import backend
     from app.services.db import connection, table_exists
 
     try:
+        if backend.reads_cosmos():
+            return backend.cosmos().additional_rows(folder_id)
         if not table_exists(database_url, db_schema, "additional_page_details"):
             return {}
         with connection(database_url, db_schema) as conn:

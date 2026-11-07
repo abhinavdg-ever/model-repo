@@ -387,7 +387,12 @@ def load_report(
     settings: Settings, source: GroundTruthSource = "latest", fresh: bool = False
 ) -> AccuracyReportResponse:
     """The report, from the cache when it is under REPORT_TTL_SEC old and
-    ``fresh`` is not asked for."""
+    ``fresh`` is not asked for. Not on Cosmos yet: the report is a cross-chart join
+    (v_accuracy_page) over every ground-truth chart's pipeline pages (NotOnCosmos, 501)."""
+    if getattr(settings, "db_backend", "postgres") == "cosmos":
+        from app.services.backend import NotOnCosmos
+
+        raise NotOnCosmos("The accuracy report")
     key = (settings.database_url, settings.db_schema, source)
     asked = time.monotonic()
     if not fresh:

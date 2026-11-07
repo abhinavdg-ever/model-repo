@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from app.services import backend
 from app.services.chart_run_batch import db_lookup_enabled
 from app.services.db import connection
 from app.services.metadata_csv import _index_metadata
@@ -37,6 +38,8 @@ def _key(header: str) -> str:
 
 def fetch_db_chart_metadata(database_url: str, *, db_schema: str = "public") -> dict[str, ChartMetadata]:
     """record_id -> fields from manifest_member_list; {} when the columns are not there yet."""
+    if backend.reads_cosmos():
+        return cosmos_chart_metadata()
     if not db_lookup_enabled(database_url, db_schema):
         return {}
     try:
@@ -72,6 +75,28 @@ def fetch_db_chart_metadata(database_url: str, *, db_schema: str = "public") -> 
     }
 
 
+def cosmos_chart_metadata() -> dict[str, ChartMetadata]:
+    """record_id -> fields from the manifest documents: the record's lowest-id member with
+    any of them, as the Postgres DISTINCT ON (record_id) ... ORDER BY record_id, id. One
+    cross-partition query (four fields per manifest doc)."""
+    try:
+        rows = backend.cosmos().manifest_metadata()
+    except Exception as exc:
+        logger.warning("manifest metadata lookup failed: %s", exc)
+        return {}
+    out: dict[str, ChartMetadata] = {}
+    for rid, _id, source, measure, method, scope in sorted(rows, key=lambda r: (str(r[0]), r[1])):
+        if not rid or str(rid) in out or all(v is None for v in (source, measure, method, scope)):
+            continue
+        out[str(rid)] = {
+            "source_name": _text(source),
+            "measure": _text(measure),
+            "rr_method": _text(method),
+            "project_scope": _text(scope),
+        }
+    return out
+
+
 def csv_chart_metadata(metadata_dir: Path | None) -> dict[str, ChartMetadata]:
     """record_id -> fields from the stacked metadata CSVs (first row per record)."""
     if metadata_dir is None or not metadata_dir.is_dir():
@@ -96,7 +121,7 @@ def chart_metadata_map(
 ) -> dict[str, ChartMetadata]:
     """The database wins per field; the CSVs fill gaps."""
     merged = csv_chart_metadata(metadata_dir)
-    if database_url:
+    if database_url or backend.reads_cosmos():
         for rid, values in fetch_db_chart_metadata(database_url, db_schema=db_schema).items():
             row = merged.setdefault(rid, {name: None for name in FIELDS})
             for name, value in values.items():

@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.config import Settings, get_settings
 from app.core.schemas import AccuracyReportResponse
+from app.services.backend import NotOnCosmos, store_usable
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import load_report
 from app.services.ground_truth import GroundTruthSource
@@ -23,10 +24,12 @@ def get_accuracy(
 ) -> AccuracyReportResponse:
     """Saved scores. A chart whose results changed comes back unscored, with a slim document.
     Reused for up to a minute (see accuracy_cache.REPORT_TTL_SEC) unless ``refresh``."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
         return load_report(settings, ground_truth, fresh=refresh)
+    except NotOnCosmos as exc:
+        raise HTTPException(status_code=501, detail=exc.detail) from exc
     except Exception as exc:
         logger.warning("accuracy report failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not load accuracy") from exc

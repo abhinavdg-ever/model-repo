@@ -73,7 +73,7 @@ _TRUTH_COLUMNS = (
     "quality", "mirrored", "printed_or_handwritten", "is_duplicate", "handwritten_pct",
 )
 
-CONTAINERS = ("charts", "pages", "manifest", "ground_truth")
+CONTAINERS = ("charts", "pages", "manifest", "ground_truth", "runs", "users")
 # Charts whose page documents are kept in memory (least recently used out).
 _CHART_CACHE_SIZE = 16
 # A fingerprint whose newest _ts is this recent is not cached: _ts has one-second
@@ -513,29 +513,29 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
 
     # -- ground truth -------------------------------------------------------
 
+    @property
+    def review(self):
+        """The review store over these containers (services on Cosmos; store/cosmos/review.py)."""
+        with self._lock:
+            if getattr(self, "_review", None) is None:
+                from app.store.cosmos.review import CosmosReviewStore
+
+                self._review = CosmosReviewStore(self)
+            return self._review
+
     def _truth_attacher(self, folder_id: str) -> Callable[[list[ImagingPageResult]], list[ImagingPageResult]]:
-        """Attach ground truth from the ground_truth container (db-utilities writes it), as
-        services/ground_truth.attach_ground_truth does from page_ground_truth. Who last
-        saved a page (History) is not read: that lives in Postgres."""
-        from app.services.ground_truth import _ground_truth_from_row, _page_id
+        """Attach ground truth from the ground_truth container (db-utilities and review-ui
+        write it), with who last saved each page, as services/ground_truth.attach_ground_truth
+        does from page_ground_truth."""
+        from app.services.ground_truth import _page_id
 
         def attach(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
             try:
-                docs = self._query("ground_truth", "SELECT * FROM c", folder_id)
+                by_page = self.review.ground_truth_by_page(folder_id)
             except Exception as exc:
                 if _status(exc) != 404:
                     logger.warning("ground_truth lookup failed for %s: %s", folder_id, exc)
                 return pages
-            by_page = {}
-            for doc in docs:
-                try:
-                    row = (int(doc["page_number"]), R.json_text(doc.get("source_page_id")),
-                           *(R.json_text(doc.get(c)) for c in _TRUTH_COLUMNS))
-                    truth = _ground_truth_from_row(row)
-                except Exception as exc:
-                    logger.warning("ground_truth doc %s skipped for %s: %s", doc.get("id"), folder_id, exc)
-                    continue
-                by_page[truth.pageNumber] = truth
             if not by_page:
                 return pages
             out = []

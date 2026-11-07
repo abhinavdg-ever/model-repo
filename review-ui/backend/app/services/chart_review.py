@@ -17,6 +17,7 @@ import threading
 from datetime import datetime
 
 from app.core.schemas import ChartReview, ReviewLogEntry, ReviewLogResponse
+from app.services import backend
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, clean_label, ensure_entries
 
@@ -154,6 +155,8 @@ def _iso(value: datetime | None) -> str | None:
 
 def reviewed_charts(database_url: str, db_schema: str = "public") -> dict[str, ChartReview]:
     """Every chart marked Reviewed, by chart name."""
+    if backend.reads_cosmos():
+        return backend.cosmos().reviewed_charts()
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -168,6 +171,8 @@ def reviewed_charts(database_url: str, db_schema: str = "public") -> dict[str, C
 
 def load_chart_review(database_url: str, folder_id: str, db_schema: str = "public") -> ChartReview:
     chart = _chart_name(folder_id)
+    if backend.reads_cosmos():
+        return backend.cosmos().load_chart_review(chart)
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -192,6 +197,8 @@ def set_chart_review(
 ) -> ChartReview:
     """Mark the chart Reviewed (freezing its ground truth), or clear the mark."""
     chart = _chart_name(folder_id)
+    if backend.reads_cosmos():
+        return backend.cosmos().set_chart_review(chart, reviewed, user_id)
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -210,6 +217,7 @@ def set_chart_review(
                 conn, database_url, db_schema, chart,
                 "reviewed" if reviewed else "review_cleared", user_id=user_id,
             )
+    backend.mirror("Reviewed mark", lambda store: store.set_chart_review(chart, reviewed, user_id))
     return load_chart_review(database_url, folder_id, db_schema)
 
 
@@ -360,6 +368,8 @@ def review_log(
     changed (before -> after). ``all_users`` (admins) lists everyone's."""
     if not all_users and user_id is None:
         return ReviewLogResponse(items=[], total=0)
+    if backend.reads_cosmos():
+        return backend.cosmos().review_log(user_id=user_id, all_users=all_users, limit=limit, offset=offset)
     params: tuple = () if all_users else (user_id,)
     user_filter = "" if all_users else "AND user_id = %s"
     with connection(database_url, db_schema) as conn:

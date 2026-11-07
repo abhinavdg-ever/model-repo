@@ -16,6 +16,7 @@ import logging
 import re
 from typing import Any
 
+from app.services import backend
 from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import connection
 
@@ -124,6 +125,10 @@ def search_tesseract(
     if len(query) < MIN_QUERY:
         raise SearchError(400, f"Search for at least {MIN_QUERY} characters")
     like, regex, pattern = patterns(query, whole_word=whole_word)
+    if backend.reads_cosmos():
+        return _search_cosmos(query, whole_word, pattern, max(_words(query), key=len),
+                              run_id=(run_id or "").strip() or None, batch_id=(batch_id or "").strip() or None,
+                              max_pages=max_pages)
 
     filters, filter_params = "", []
     if (run_id or "").strip():
@@ -155,6 +160,19 @@ def search_tesseract(
         logger.warning("OCR search: headers from the OCR JSON skipped: %s", exc)
 
     truncated = len(rows) > max_pages or len(header_rows) > MAX_HEADERS
+
+    def page_counts(names: list[str]) -> dict[str, int]:
+        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+            cur.execute(_PAGE_COUNT_SQL, [names])
+            return {chart_name: int(total) for chart_name, total in cur.fetchall()}
+
+    return _assemble(query, whole_word, pattern, rows, header_rows, truncated, max_pages, page_counts)
+
+
+def _assemble(query: str, whole_word: bool, pattern: re.Pattern[str], rows: list, header_rows: list,
+              truncated: bool, max_pages: int, page_counts) -> dict[str, Any]:
+    """The response from (chart, run, batch, page number, page name, text) rows and the same
+    for headers; ``page_counts(chart names)`` gives each found chart's page count."""
     charts: dict[str, dict[str, Any]] = {}
     order: dict[str, tuple] = {}
 
@@ -191,11 +209,9 @@ def search_tesseract(
                                  "hits": count, "snippet": shown[0]})
 
     if charts:
-        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
-            cur.execute(_PAGE_COUNT_SQL, [list(charts)])
-            for chart_name, total in cur.fetchall():
-                if chart_name in charts:
-                    charts[chart_name]["total_pages"] = int(total)
+        for chart_name, total in page_counts(list(charts)).items():
+            if chart_name in charts:
+                charts[chart_name]["total_pages"] = int(total)
 
     ordered = [charts[name] for name in sorted(charts, key=order.__getitem__)]
     for chart in ordered:
@@ -224,3 +240,48 @@ def search_tesseract(
         "truncated": truncated,
         "max_pages": max_pages,
     }
+
+
+def _search_cosmos(query: str, whole_word: bool, pattern: re.Pattern[str], word: str, *,
+                   run_id: str | None, batch_id: str | None, max_pages: int) -> dict[str, Any]:
+    """The same search over the page documents: CONTAINS (case-insensitive) on the query's
+    longest word as the prefilter, the Python pattern as the judge. Cross-partition and a full
+    scan of the page documents' Tesseract text, so each search costs RU in proportion to the
+    pages stored; capped by TOP. Headers come from additional_details.section_headers only
+    (not the older Final OCR JSON headers). Without ORDER BY, a truncated search keeps an
+    arbitrary max_pages pages, not the first ones in run / batch / chart order."""
+    store = backend.cosmos()
+    scoped = store.chart_runs(run_id=run_id, batch_id=batch_id) if (run_id or batch_id) else None
+    if scoped is not None and not scoped:
+        return _assemble(query, whole_word, pattern, [], [], False, max_pages, lambda names: {})
+    scope_sql = " AND ARRAY_CONTAINS(@names, c.chart_name)" if scoped is not None else ""
+    params = [{"name": "@w", "value": word}, {"name": "@n", "value": max_pages + 1}]
+    header_params = [{"name": "@w", "value": word}, {"name": "@n", "value": MAX_HEADERS + 1}]
+    if scoped is not None:
+        params.append({"name": "@names", "value": sorted(scoped)})
+        header_params.append({"name": "@names", "value": sorted(scoped)})
+    pages = store.query_all(
+        "pages",
+        "SELECT TOP @n c.chart_name, c.page.page_number AS page_number, c.page.page_name AS page_name, "
+        "c.ocr.tesseract.raw_text AS text FROM c "
+        f"WHERE CONTAINS(c.ocr.tesseract.raw_text, @w, true){scope_sql}",
+        params,
+    )
+    headers = store.query_all(
+        "pages",
+        "SELECT TOP @n c.chart_name, c.page.page_number AS page_number, c.page.page_name AS page_name, "
+        "h.text AS text FROM c JOIN h IN c.additional_details.section_headers "
+        f"WHERE IS_STRING(h.text) AND CONTAINS(h.text, @w, true){scope_sql}",
+        header_params,
+    )
+    truncated = len(pages) > max_pages or len(headers) > MAX_HEADERS
+    names = sorted({str(d["chart_name"]) for d in pages + headers})
+    runs = scoped if scoped is not None else (store.chart_runs(names) if names else {})
+    key = lambda d: (str(d["chart_name"]), d.get("page_number") is None, d.get("page_number") or 0)  # noqa: E731
+
+    def as_rows(docs: list[dict], limit: int) -> list[tuple]:
+        return [(str(d["chart_name"]), *runs.get(str(d["chart_name"]), (None, None)), d.get("page_number"),
+                 d.get("page_name"), d.get("text")) for d in sorted(docs, key=key)[:limit]]
+
+    return _assemble(query, whole_word, pattern, as_rows(pages, max_pages), as_rows(headers, MAX_HEADERS),
+                     truncated, max_pages, lambda found: {n: store.page_count(n) for n in found})

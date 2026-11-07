@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services import backend
 from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import connection
 from app.services.ocr_search import SearchError
@@ -58,6 +59,13 @@ _FROM = """
 """
 
 
+def _not_on_cosmos() -> None:
+    """Search by value joins every chart's Final values to page ground truth: on Cosmos that
+    is two containers across every partition, so it waits for a search index (501)."""
+    if backend.reads_cosmos():
+        raise backend.NotOnCosmos("Search by value")
+
+
 def columns() -> list[dict[str, str]]:
     return [{"key": key, "label": label} for key, (label, _, _) in COLUMNS.items()]
 
@@ -89,6 +97,7 @@ def _run_batch(run_id: str | None, batch_id: str | None) -> tuple[str, list[Any]
 def options(database_url: str, db_schema: str, column: str, side: str, *,
             run_id: str | None = None, batch_id: str | None = None) -> list[dict[str, Any]]:
     """The column's values on that side, most pages first (for the value picker)."""
+    _not_on_cosmos()
     expr = _expr(column, side)
     filters, params = _run_batch(run_id, batch_id)
     sql = (f"SELECT btrim(({expr})::text) AS v, count(*) {_FROM}"
@@ -102,6 +111,7 @@ def options(database_url: str, db_schema: str, column: str, side: str, *,
 def search_values(database_url: str, db_schema: str, conditions: list[dict[str, Any]], *,
                   run_id: str | None = None, batch_id: str | None = None,
                   max_pages: int = MAX_PAGES) -> dict[str, Any]:
+    _not_on_cosmos()
     if not conditions:
         raise SearchError(400, "Add at least one condition")
     if len(conditions) > MAX_CONDITIONS:

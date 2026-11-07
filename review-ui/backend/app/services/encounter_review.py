@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 
 from app.core.schemas import EncounterReview, EncounterReviewRow
+from app.services import backend
 from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, clean_label
@@ -103,6 +104,8 @@ def load_encounter_review(
     database_url: str | None, folder_id: str, db_schema: str = "public"
 ) -> EncounterReview:
     """The chart's reviewed encounters; empty when none were saved (or no database)."""
+    if backend.reads_cosmos():
+        return backend.cosmos().load_encounter_review(_chart_name(folder_id))
     if not database_url or not database_url_usable(database_url):
         return EncounterReview()
     chart = _chart_name(folder_id)
@@ -138,6 +141,14 @@ def save_encounter_review(
             )
     from app.services.chart_review import record_entry
 
+    cleaned = [
+        {"seq": seq, "start_page": row.startPage, "end_page": row.endPage,
+         "page_type": clean_label(row.pageType), "encounter_type": clean_label(row.encounterType),
+         "dos_from": clean_label(row.dosFrom), "dos_to": clean_label(row.dosTo)}
+        for seq, row in enumerate(ordered, start=1)
+    ]
+    if backend.reads_cosmos():
+        return backend.cosmos().save_encounter_review(chart, cleaned, user_id, encounter_changes)
     with connection(database_url, db_schema) as conn:
         has_users = _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
@@ -161,7 +172,8 @@ def save_encounter_review(
         changed = encounter_changes(before, saved.rows)
         if changed:
             record_entry(conn, database_url, db_schema, chart, "encounters", changed, user_id=user_id)
-        return saved
+    backend.mirror("encounters", lambda store: store.save_encounter_review(chart, cleaned, user_id, encounter_changes))
+    return saved
 
 
 def _encounter_text(row: EncounterReviewRow) -> str:

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.core.config import Settings
+from app.services import backend
 from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 
@@ -144,6 +145,8 @@ def authenticate(
         and hmac.compare_digest(password, settings.login_password)
     ):
         return SignedInUser(id=None, username=username, name=username, role="admin")
+    if backend.reads_cosmos():
+        return _authenticate_cosmos(username, password, ip_address=ip_address, user_agent=user_agent)
     if not database_url_usable(settings.database_url):
         return None
 
@@ -179,4 +182,34 @@ def authenticate(
                 "INSERT INTO user_login (user_id, ip_address, user_agent) VALUES (%s, %s, %s)",
                 (user_id, ip_address, user_agent),
             )
+    if backend.mirrors_cosmos():
+        # DB_BACKEND=both: the signed-in user's row (password hash as stored) and this sign-in.
+        backend.mirror("users row", lambda store: _copy_user(settings, store, int(user_id), ip_address, user_agent))
     return SignedInUser(id=int(user_id), username=str(name_db), name=str(display or name_db), role=str(role))
+
+
+def _copy_user(settings: Settings, store, user_id: int, ip_address: str | None, user_agent: str | None) -> None:
+    with connection(settings.database_url, settings.db_schema) as conn, conn.cursor() as cur:
+        cur.execute("SELECT to_jsonb(u) FROM users u WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+    if row and isinstance(row[0], dict):
+        store.put_user(row[0])
+        store.record_login(user_id, ip_address, user_agent)
+
+
+def _authenticate_cosmos(
+    username: str, password: str, *, ip_address: str | None, user_agent: str | None
+) -> Optional[SignedInUser]:
+    """The users container (pk /id), same rules and hash format as the users table."""
+    store = backend.cosmos()
+    doc = store.find_user(username)
+    if doc is None:
+        verify_password(password, _dummy_hash())
+        return None
+    if not doc.get("is_active") or not verify_password(password, doc.get("password_hash")):
+        return None
+    user_id = int(doc["id"])
+    store.record_login(user_id, ip_address, user_agent)
+    name_db = str(doc.get("username") or username)
+    return SignedInUser(id=user_id, username=name_db, name=str(doc.get("name") or name_db),
+                        role=str(doc.get("role") or "reviewer"))

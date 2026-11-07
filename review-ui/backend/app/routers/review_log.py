@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.config import Settings, get_settings
 from app.core.schemas import ReviewLogResponse
+from app.services.backend import store_usable
 from app.services.chart_run_batch import database_url_usable
 from app.services.auth import SignedInUser
 from app.services.chart_review import review_log
@@ -24,7 +25,7 @@ def get_review_log(
 ) -> ReviewLogResponse:
     """The signed-in user's ground-truth saves, newest first. An admin may ask for another
     user's (user_id) or everyone's (all_users)."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in to see your review log")

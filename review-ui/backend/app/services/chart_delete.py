@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app.services import backend
 from app.services.db import connection
 
 
@@ -25,7 +26,13 @@ def delete_chart(
     db_schema: str = "public",
     user_id: Optional[int] = None,
 ) -> dict:
-    """Delete one chart; returns what was removed. Raises ChartNotFound."""
+    """Delete one chart; returns what was removed. Raises ChartNotFound. On Cosmos: its
+    documents in charts, pages and runs (ground_truth and manifest stay)."""
+    if backend.reads_cosmos():
+        removed = backend.cosmos().delete_chart(chart_name, user_id)
+        if removed is None:
+            raise ChartNotFound(chart_name)
+        return {**removed, "kept": ["ground truth", "manifest", "files on disk"]}
     with connection(database_url, db_schema) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -46,6 +53,7 @@ def delete_chart(
                 """,
                 (name, page_count, run_id, batch_id, user_id),
             )
+    backend.mirror("chart delete", lambda store: store.delete_chart(chart_name, user_id))
     return {
         "chart_id": int(chart_id),
         "chart_name": str(name),

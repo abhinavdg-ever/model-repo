@@ -30,6 +30,7 @@ from app.services.extraction_review import (
 )
 from app.services.staged_continuity import load_encounters_from_db
 from app.services.imaging_csv import filter_folder, iter_csv_lines
+from app.services.backend import store_usable
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache
 from app.services.auth import SignedInUser
@@ -315,7 +316,7 @@ def get_folder_extraction_pages(
     """Every page's extraction review in one response, so the Additional tab (Section
     Headers, Page Numbers) is ready on every page as soon as the chart opens. Same sources
     as /extraction: additional_page_details."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return ExtractionPagesResponse(folder_id=folder_id, available=False)
     return load_extraction_pages_from_db(settings.database_url, settings.db_schema, folder_id)
 
@@ -329,7 +330,7 @@ def get_folder_extraction(
     """Selected key/value extraction for one page. Processed equals extracted.
 
     Read from the database (additional_page_details): Page Number and Section Headers."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return ExtractionReviewResponse(folder_id=folder_id, available=False)
     return load_extraction_review_from_db(
         settings.database_url, settings.db_schema, folder_id, page
@@ -348,7 +349,7 @@ def delete_folder(
         raise HTTPException(status_code=401, detail="Sign in again to delete a chart")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can delete a chart")
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
         result = delete_chart(settings.database_url, folder_id, db_schema=settings.db_schema, user_id=user.id)
@@ -375,7 +376,7 @@ def _refuse_if_frozen(settings: Settings, folder_id: str) -> None:
 @router.get("/folders/{folder_id}/review", response_model=ChartReview)
 def get_folder_review(folder_id: str, settings: Settings = Depends(get_settings)) -> ChartReview:
     """Whether the chart is marked Reviewed (its ground truth frozen), by whom and when."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return ChartReview()
     try:
         return load_chart_review(settings.database_url, folder_id, settings.db_schema)
@@ -395,7 +396,7 @@ def put_folder_review(
 ) -> ChartReview:
     """Mark the chart Reviewed (reviewers and admins), freezing its ground truth; or clear
     the mark (admins, or the user who marked it)."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to mark the chart")
@@ -425,7 +426,7 @@ def get_folder_ground_truth_updates(
     folder_id: str, settings: Settings = Depends(get_settings)
 ) -> ChartGroundTruthUpdates:
     """Who last updated each ground-truth tab (a user, or the bulk upload), and when."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return ChartGroundTruthUpdates()
     try:
         return ground_truth_updates(settings.database_url, folder_id, settings.db_schema)
@@ -445,7 +446,7 @@ def save_folder_page_sequences(
 ) -> list[PageGroundTruth]:
     """Set the ground-truth actual sequence of the given pages (Sequencing tab).
     Returns the chart's ground-truth pages."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save ground truth")
@@ -485,7 +486,7 @@ def save_folder_encounter_review(
     user: SignedInUser | None = Depends(current_user),
 ) -> EncounterReview:
     """Replace the reviewer's encounters for the chart (Encounter tab). Not ground truth."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save encounters")
@@ -506,7 +507,7 @@ def get_folder_chart_ground_truth(
     folder_id: str, settings: Settings = Depends(get_settings)
 ) -> ChartGroundTruth:
     """The reviewer's member decision for the chart (Rejection Rules tab)."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return ChartGroundTruth()
     try:
         return load_chart_ground_truth(settings.database_url, folder_id, settings.db_schema)
@@ -525,7 +526,7 @@ def save_folder_chart_ground_truth(
     user: SignedInUser | None = Depends(current_user),
 ) -> ChartGroundTruth:
     """Save the reviewer's member decision, Accept or Reject (empty clears it)."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save the decision")
@@ -550,7 +551,7 @@ def save_folder_ground_truth(
 ) -> PageGroundTruth:
     """Upsert one page of ground truth. A later save of the same page updates that row.
     The signed-in user is recorded on the row and its manual_entry (user_id)."""
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save ground truth")

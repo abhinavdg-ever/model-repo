@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.config import Settings, get_settings
 from pydantic import BaseModel
 from app.services import ocr_search, value_search
+from app.services.backend import NotOnCosmos
 from app.services.auth import SignedInUser
 from app.routers.deps import _admin_with_db, current_user
 
@@ -29,6 +30,8 @@ def search_ocr(
         )
     except ocr_search.SearchError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except NotOnCosmos as exc:
+        raise HTTPException(status_code=501, detail=exc.detail) from exc
     except Exception as exc:
         logger.warning("ocr search failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not search the OCR text") from exc
@@ -75,6 +78,8 @@ def value_search_options(
                                                 run_id=run, batch_id=batch)}
     except ocr_search.SearchError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except NotOnCosmos as exc:
+        raise HTTPException(status_code=501, detail=exc.detail) from exc
     except Exception as exc:
         logger.warning("value options failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not read the values") from exc
@@ -95,6 +100,8 @@ def search_values(
         )
     except ocr_search.SearchError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except NotOnCosmos as exc:
+        raise HTTPException(status_code=501, detail=exc.detail) from exc
     except Exception as exc:
         logger.warning("value search failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not search the values") from exc
