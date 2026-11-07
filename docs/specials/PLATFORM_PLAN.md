@@ -219,9 +219,9 @@ Partition key is `/chart_id` everywhere except users.
 - **Stage completion** is recorded as `stages.<name> = {done_at, version, input_hash}`. A redelivered message is then a no-op. `skip_ocr` and the step-by-step APIs read the same record.
 - **Size limit:** a document can be at most 2 MB. Word boxes and the full Docling / Azure JSON go to Blob; the page doc keeps the text and the blob path.
 - **Throughput:** provisioned, at the database level and shared by the containers, with autoscale. Start at 4,000 RU/s maximum and tune from the metrics. The `pages` container gets its own dedicated throughput only if batch runs throttle it.
-- **Network: private endpoint only** (2026-11-07). Cosmos is reachable from inside the VNet
-  (the VM), not from the Mac or the internet. Development and the tests use an in-memory store
-  behind the same interface; the Cosmos code is exercised on the VM (or the Cosmos emulator).
+- **Network: private endpoint** (2026-11-07). Cosmos is reachable from the VM and from the
+  Mac, so the Cosmos code is developed and checked from the Mac as well. The unit tests use an
+  in-memory store behind the same interface.
 - **review-ui-client gets a replica:** its own database in the same account (for example
   `imaging_client`), with the same containers, filled from the main database by the clone job
   (today's `utilities/clone_client_db.py`, rewritten for Cosmos): the chosen charts, users, and
@@ -436,7 +436,7 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 | 18 | Manifests and ground truth | Loaded only by **db-utilities**, a separate Docker job; not part of core-pipeline or review-ui |
 | 19 | Models | Blob container **`imaging-models`**, fetched at start (phase 8); never built into images |
 | 20 | Hosting | The Ubuntu VM; **AKS parked** |
-| 21 | Cosmos network | **Private endpoint only**: reachable from the VM, not from the Mac |
+| 21 | Cosmos network | **Private endpoint**; reachable from the VM and the Mac |
 | 22 | review-ui-client data | A **replica database** (same containers) in the same Cosmos account, filled by the clone job |
 
 ## 10. What I need from you
@@ -473,7 +473,7 @@ In build order. Everything listed runs on Postgres today; nothing below is built
 
 1. **Storage interface (phase 2).** One `store` interface in core-pipeline, review-ui and
    db-utilities, with the Postgres code moved behind it. Without it nothing else can switch.
-2. **Cosmos implementation (phases 2 and 6), tested on the VM** (private endpoint). The containers in §4.1, `store/cosmos/` in each
+2. **Cosmos implementation (phases 2 and 6)**, checked from the Mac and the VM. The containers in §4.1, `store/cosmos/` in each
    deployment, precomputed `metrics` docs for review-ui's cross-chart pages, and the
    rewrite of every SQL join (§4.4a). The largest item.
 3. **`DB_BACKEND=both` writing to both stores** (phase 7), then the history migration
