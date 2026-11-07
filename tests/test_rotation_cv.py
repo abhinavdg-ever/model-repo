@@ -84,6 +84,18 @@ def _run_cv_side(monkeypatch, tmp_path, cv_turn, search_turn, reads_by_turn, doc
     return stage._detect_rotation(path)
 
 
+def test_agreed_turn_is_undone_when_the_page_reads_better_as_it_arrived(monkeypatch, tmp_path):
+    """2026-11-07 (user): an upright form that OSD and CV both called 180 stays at 0. The
+    agreed turn stands when the page reads better turned (or equally well)."""
+    for agreed, reads, expected in ((180, {0: 60, 180: 3}, (0.0, "readability")),
+                                    (180, {0: 3, 180: 60}, (180.0, "osd_cv_agree")),
+                                    (90, {0: 40, 90: 40}, (90.0, "osd_cv_agree"))):
+        _run_cv_side(monkeypatch, tmp_path, agreed, 0, reads, document_type="printed")  # page + patches
+        monkeypatch.setattr(osd_module, "detect_rotation", lambda image, t=agreed: {"rotation": t, "confidence": 5.0})
+        out = stage._detect_rotation(tmp_path / "p.png")
+        assert (out["orientation_angle"], out["method"]) == expected
+
+
 def test_cv_quarter_turn_is_final_on_a_visual_page(monkeypatch, tmp_path):
     """2026-11-06 (user): on a visual page CV's 90 / 270 is final, whatever OSD says or the page
     reads. A printed page goes through the reading rule as before."""

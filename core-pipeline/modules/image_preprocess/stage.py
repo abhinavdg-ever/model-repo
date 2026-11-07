@@ -247,6 +247,13 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                     flipped = read_page(small, 0, mirrored=True)
                     if flipped.reads and flipped.english > chosen_read.english:
                         mirrored, chosen_read, method = True, flipped, "readability"
+                elif proposed != 0:
+                    # 2026-11-07 (user): both can agree on a wrong turn (an upright form
+                    # read as 180 by both). The agreed turn stands only when the page as it
+                    # arrived does not read better.
+                    as_is = read_page(small, 0)
+                    if as_is.reads and as_is.english > chosen_read.english:
+                        orientation, chosen_read, method = 0.0, as_is, "readability"
             else:
                 turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
                 orientation = float(turn)
