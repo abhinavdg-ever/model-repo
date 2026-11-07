@@ -14,6 +14,31 @@ shares only the tables (`schema/schema.sql`).
 Every job upserts, so running it again is safe. A manifest can be loaded before or after
 its charts run: `record_id` is the chart name, and member verification reads the table.
 
+## Quick load: one command (Postgres and Cosmos)
+
+```bash
+# Mac / Ubuntu VM
+./load.sh manifest     /path/to/metadata_R1_B1.csv
+./load.sh ground-truth /path/to/ground_truth.csv
+./load.sh manifest     /path/to/metadata_R1_B1.csv --to postgres     # or --to cosmos
+```
+
+```powershell
+# Windows (PowerShell)
+.\load.ps1 manifest     C:\data\metadata_R1_B1.csv
+.\load.ps1 ground-truth C:\data\ground_truth.csv
+.\load.ps1 manifest     C:\data\metadata_R1_B1.csv -To postgres
+```
+
+- Writes to **both Postgres and Cosmos** by default (`--to` / `-To` picks one). Without it,
+  `DB_BACKEND` in `.env` decides.
+- A file, an `.xlsx`, or a folder of them. With Docker running it copies the file into
+  `./input` and uses the image; otherwise it uses `.venv` (made on first use).
+- Column templates: `templates/manifest_template.csv` (one row per member: `recordId` is the
+  chart name) and `templates/ground_truth_template.csv` (one row per page: `Chart_Name`, `Id` =
+  page number or file stem). Only the columns a sheet has are written.
+- `.env` needs `DATABASE_URL` and the `COSMOS_*` values (the same as `core-pipeline/.env`).
+
 ## Docker (the VM)
 
 ```bash
