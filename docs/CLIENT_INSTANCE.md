@@ -37,7 +37,7 @@ What the client folder fixes, whatever its `.env` says (`docker-compose.yml` the
 |---|---|
 | Docker project | `client-review`, so its containers never replace ours |
 | Ports | 5000 (API) / 5001 (web) by default |
-| Data | Postgres only (`DATA_MODE=production`); the disk folders are empty |
+| Data | Postgres and Azure Blob only (review-ui has no Local mode since 2026-11-07) |
 | Playground | off (`CORE_PIPELINE_URLS` is empty), so nobody on 5001 can start a run |
 | Connections | 12 kept open, at most 16 (`DB_POOL_MIN` / `DB_POOL_MAX`): 3 reviewers at once |
 
@@ -395,8 +395,8 @@ Section 0 has the commands. What its `.env` needs:
 | `BACKEND_PORT` / `FRONTEND_PORT` | only to move off 5000 / 5001 |
 | `SEMANTIC_MODEL_HOST_PATH` | optional: our `core-pipeline/models/semantic-model`, for Accuracy's semantic page-type match |
 
-`DATA_MODE`, the empty disk folders and the Playground switch are set in its
-`docker-compose.yml`, not in `.env`, so a copied `.env` cannot turn them back on.
+The Playground switch is set in its `docker-compose.yml`, not in `.env`, so a copied `.env`
+cannot turn it back on.
 
 If a firewall or NSG sits in front of the VM, open port 5001 there; 5000 can stay internal.
 

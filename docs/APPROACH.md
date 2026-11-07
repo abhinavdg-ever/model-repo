@@ -1657,7 +1657,7 @@ the fix.
 | `page_continuity_results` | per Main / junk page: `document_seq`, `seq`, tag, label, relation, `decided_by`, `break_before`, `break_after`, `score`, `confidence`, `confidence_level`, `link_strength`, `start_confirmed`, `page_no` / `page_total`, `review_required`, `evidence` (the strongest signals in words), `signals` (both gaps) |
 | `staging/continuity.json` | `documents` (number, kind, carried page type and DOS, pages); per page `prev_to_this` / `this_to_next` in words ("same DOS −5", "visit heading 'reason for visit' +3") and `final`; then `encounters`, appended by the encounter stage (9.5) |
 | `staging/continuity_detail.json` | per page every fact the scorer used (dos_trust, printed, signed, title, visit_ids) and both gaps in full: `ending`, `opening`, `pair`, `sub_scores`, `recorded` (text_start, conflict pattern), `flags`, `final_pass`, `evidence` |
-| `imaging/<chart>_continuity.csv` | the same per page, for Local Mode, plus `layout_source` (final2 / final1 / text) |
+| `imaging/<chart>_continuity.csv` | the same per page (scratch, for debugging), plus `layout_source` (final2 / final1 / text) |
 
 ### 4.12 Not built yet [to build]
 
@@ -2484,7 +2484,7 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 
 ### 9.5 Per-chart staging JSON
 
-All under `<DATA_ROOT>/<chart>/staging/`, written atomically (a temp file, then
+All under `<DATA_ROOT>/<chart>/staging/` (`core-pipeline/outputs/charts/<chart>/staging/`), written atomically (a temp file, then
 replace). Values below are invented, in the real files' shapes.
 
 **`page_classification.json`** (`page_classify/stage.write_staged`, version 1): one
@@ -2559,8 +2559,7 @@ each gap in words, and the encounters:
 ```
 
 `because` lists the four strongest signals in words, after any rule that forced the
-gap. review-ui's Local Mode reads `encounters` (`services/staged_continuity.py`); in
-Production Mode the same grouping comes from `encounter_type_results.encounter_seq`.
+gap. review-ui reads the same grouping from `encounter_type_results.encounter_seq`.
 `final.page_type` is continuity's carried value (the first page's Extracted L1), not the
 Final page type.
 
@@ -2880,7 +2879,7 @@ from the encounter decision, run the vote at seq < 87. *Measure:* boundary F1 on
 charts that mix inpatient and office documents.
 
 **S18. Use or drop `staging/page_classification.json`.** It is written on every run
-and read by nothing; either make it review-ui's Local Mode source for the Extracted
+and read by nothing; either make it a database source for the Extracted
 page type (with `paths` and `under_l1`, which review-ui does not show today) or stop
 writing it.
 

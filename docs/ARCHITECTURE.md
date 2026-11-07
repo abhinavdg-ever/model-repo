@@ -193,10 +193,9 @@ The `===== <page_name> =====` marker is a real contract: the DOS driver's
 `UI_PAGE_MARKER_RE` splits on exactly it. Pinned by
 `tests/test_contracts.py::test_dos_splitter_reads_the_same_marker`.
 
-**Precedence in review-ui Local Mode:** per-chart `imaging/*.csv` first, then the
-legacy combined packs (`01-ocr-extraction/output/…`) from the older pipeline.
-Per-chart always wins; the fallback exists so pre-existing `05-imaging-ui` data
-still renders.
+review-ui reads none of these files: since 2026-11-07 it reads only the database and Azure
+Blob. The per-chart CSVs stay in the chart's scratch folder (`core-pipeline/outputs/charts/`)
+for partial re-runs and debugging.
 
 ---
 
@@ -395,7 +394,6 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | File | Role |
 |---|---|
 | `dos_logic.py` | The DOS engine: page splitting, the date parser, the edge-keyword rule (labels, admit/discharge pairing, ranges, the dictation guard), ISO normalisation, and `detect_dos_per_page` — the driver the stage calls: key/value date, else edge keyword. |
-| `extract_dos.py` | Standalone CLI running the edge-keyword rule outside the pipeline, for comparison. |
 | `__init__.py` | Package marker. |
 
 ### `review-ui/backend/app/`
@@ -403,17 +401,16 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app: CORS, router mount, static frontend serving. |
-| `api/routes.py` | Every viewer endpoint: health, config, folder list and detail, page images (local and blob-proxied), OCR text by kind, imaging results, CSV export. All `GET`. |
-| `core/config.py` | Pydantic settings: `DATA_MODE`, data roots, database URL, blob viewer configuration, CORS. Derives `mode_label` for the UI pill. |
+| `api/routes.py` | Every endpoint: health, config, folder list and detail, page images (from Azure Blob), OCR text by kind, imaging results, ground truth, accuracy, CSV export. |
+| `core/config.py` | Pydantic settings: database URL, Azure Blob, CORS, sign-in, Playground. One mode: the database (`DATA_MODE` is ignored). |
 | `core/schemas.py` | Response models — `FolderSummary`, `FolderDetail`, `ImagingDocumentResponse`, `OcrTextResponse` — the contract the frontend types against. |
-| `adapters/base.py` | The `FolderRepository` interface both modes implement. |
-| `adapters/factory.py` | Chooses the adapter from `DATA_MODE`. |
-| `adapters/local/repository.py` | **Local Mode.** Reads charts from `outputs/charts`: pages, OCR files, per-chart imaging CSVs with the legacy-pack fallback. Owns the scan cache and its mtime-based invalidation, and the per-chart stream marking that drives the folder-list badges. |
-| `adapters/postgres/repository.py` | **Production Mode.** The same interface over the v8 tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. `DATA_ROOT` is optional. |
-| `services/imaging_overlays.py` | The CSV → UI field mapping: per-result `index_*_rows` functions, the column aliases each accepts, the canonical page-type labels, date formatting, and `collect_rows`' per-chart-then-legacy precedence. |
+| `adapters/base.py` | The `FolderRepository` interface. |
+| `adapters/factory.py` | Builds the Postgres repository (the only one since 2026-11-07). |
+| `adapters/local/repository.py` | Shared helpers the Postgres repository still imports (OCR display cleanup, section-header matching, labels). No longer a data source; it goes with the `store/` split (docs/PLATFORM_PLAN.md). |
+| `adapters/postgres/repository.py` | **The repository.** The interface over the schema.sql tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. Nothing is read from disk. |
+| `services/imaging_overlays.py` | Field mapping and labels shared by the screens: the canonical page-type labels, date formatting, provider and name cleanup. |
 | `services/imaging_csv.py` | Streams the combined export CSV. |
-| `services/metadata_csv.py` | Reads manifest CSVs for Local Mode. |
-| `services/blob_store.py` | Proxies page images from Azure Blob (Entra or SAS). |
+| `services/blob_store.py` | Proxies page images from Azure Blob (managed identity, Entra, key or SAS). |
 | `requirements.txt`, `Dockerfile` | Dependencies and runtime image. |
 | `__init__.py` ×5 | Package markers. |
 

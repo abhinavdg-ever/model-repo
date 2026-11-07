@@ -239,7 +239,7 @@ python cli.py run \
 - Writes workspace to `outputs/charts/52743839_44976074-test/` (pages, ocr, imaging)
 - Never opens Postgres (in-memory stage state for this process only)
 - Rejects blob sources and `--chart-id` / `--chart-name` resume
-- review-ui Local Mode: open the `…-test` folder to inspect
+- Inspect the `…-test` folder directly (review-ui reads only the database)
 - Member verify: if MemoryStore has no manifesto row, loads matching
 `recordId` from on-disk CSVs under `core-pipeline/outputs/metadata/` or
 `core-pipeline/outputs/charts/manifest/` (strips the `-test` suffix for the lookup)
