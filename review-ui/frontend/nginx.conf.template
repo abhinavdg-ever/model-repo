@@ -13,7 +13,7 @@ server {
     gzip_types text/css application/javascript application/json image/svg+xml text/csv;
 
     location /api/ {
-        proxy_pass http://backend:3000/api/;
+        proxy_pass ${BACKEND_URL}/api/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -26,7 +26,7 @@ server {
     # pass each line on as it arrives, and give a large upload or a full
     # report time to finish.
     location /api/excel-compare {
-        proxy_pass http://backend:3000/api/excel-compare;
+        proxy_pass ${BACKEND_URL}/api/excel-compare;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

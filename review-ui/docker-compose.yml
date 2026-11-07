@@ -59,6 +59,9 @@ services:
       context: ./frontend
     ports:
       - "${FRONTEND_PORT:-4001}:3001"
+    environment:
+      # The backend to send /api to. Another host when the frontend is deployed alone.
+      BACKEND_URL: ${BACKEND_URL:-http://backend:3000}
     depends_on:
       - backend
     restart: unless-stopped
