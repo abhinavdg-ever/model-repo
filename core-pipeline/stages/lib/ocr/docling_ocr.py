@@ -815,7 +815,23 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     result = engine.convert(str(image_path))
     doc = result.document
     words, page_width, page_height = _words_from_docling_result(result)
+    # 2026-11-06: a dense page read as one table exports empty cells when cell matching is off
+    # (the default, for speed), though the OCR read every line. The empty cells are filled
+    # with the OCR lines inside them -- the tables and the rest of the layout stay as Docling
+    # made them. Only when the markdown has still lost most of the OCR's words (no table found,
+    # say) are the OCR lines added below it.
+    cells = _line_cells(result)
+    filled = fill_empty_table_cells(doc, cells, _page_height(result))
     markdown = clean_docling_markdown(export_markdown(doc))
+    ocr_text = ocr_lines_text(cells)
+    if filled:
+        logger.info("Docling: %d empty table cells filled from the OCR on %s", filled, image_path.name)
+    if markdown_lost_text(markdown, ocr_text):
+        logger.info(
+            "Docling markdown kept %d chars of %d OCR'd on %s: OCR lines added below",
+            len(markdown), len(ocr_text), image_path.name,
+        )
+        markdown = markdown.rstrip() + "\n\n" + ocr_text + "\n"
     candidates = _renorm_headers_for_image(extract_section_headers(doc), image_path)
     section_headers = list(candidates)
     try:
@@ -857,6 +873,105 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
         "section_headers": section_headers,
         "elapsed_seconds": elapsed,
     }
+
+
+# The markdown has lost the page's text when it holds less than this share of the distinct words
+# the OCR read (and the OCR read at least OCR_MIN_WORDS of them).
+MARKDOWN_MIN_WORD_SHARE = 0.5
+OCR_MIN_WORDS = 20
+
+
+def _line_cells(result: Any) -> list[tuple[float, float, float, float, str]]:
+    """Every OCR line Docling kept: (left, top, right, bottom, text), top-left origin."""
+    out: list[tuple[float, float, float, float, str]] = []
+    for page in getattr(result, "pages", None) or []:
+        size = getattr(page, "size", None)
+        page_h = float(getattr(size, "height", 0) or 0)
+        parsed = getattr(page, "parsed_page", None)
+        for cell in getattr(parsed, "textline_cells", None) or []:
+            text = str(getattr(cell, "text", "") or getattr(cell, "orig", "") or "").strip()
+            if not text:
+                continue
+            try:
+                box = cell.to_bounding_box()
+                if page_h > 0 and hasattr(box, "to_top_left_origin"):
+                    box = box.to_top_left_origin(page_h)
+                top, bottom = min(float(box.t), float(box.b)), max(float(box.t), float(box.b))
+                out.append((float(box.l), top, float(box.r), bottom, text))
+            except (AttributeError, TypeError, ValueError):
+                continue
+    return out
+
+
+def _page_height(result: Any) -> float:
+    for page in getattr(result, "pages", None) or []:
+        height = float(getattr(getattr(page, "size", None), "height", 0) or 0)
+        if height > 0:
+            return height
+    return 0.0
+
+
+def fill_empty_table_cells(
+    doc: Any, cells: list[tuple[float, float, float, float, str]], page_height: float
+) -> int:
+    """Fill each empty table cell with the OCR lines whose centre lies inside it (top to
+    bottom, left to right). Docling rebuilds the table grid from these cells, so the export
+    keeps the table. The number of cells filled."""
+    filled = 0
+    for table in getattr(doc, "tables", None) or []:
+        data = getattr(table, "data", None)
+        for cell in getattr(data, "table_cells", None) or []:
+            if str(getattr(cell, "text", "") or "").strip():
+                continue
+            box = getattr(cell, "bbox", None)
+            if box is None:
+                continue
+            try:
+                if page_height > 0 and hasattr(box, "to_top_left_origin"):
+                    box = box.to_top_left_origin(page_height)
+                left, right = float(box.l), float(box.r)
+                top, bottom = min(float(box.t), float(box.b)), max(float(box.t), float(box.b))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            inside = [
+                c for c in cells
+                if left <= (c[0] + c[2]) / 2 <= right and top <= (c[1] + c[3]) / 2 <= bottom
+            ]
+            if not inside:
+                continue
+            cell.text = " ".join(c[4] for c in sorted(inside, key=lambda c: (round(c[1]), c[0])))
+            filled += 1
+    return filled
+
+
+def ocr_lines_text(cells: list[tuple[float, float, float, float, str]]) -> str:
+    """OCR lines as rows: lines whose vertical middles fall inside one another's height are a
+    row, read left to right; rows top to bottom."""
+    rows: list[list[tuple[float, float, float, float, str]]] = []
+    for cell in sorted(cells, key=lambda c: (c[1] + c[3]) / 2):
+        middle = (cell[1] + cell[3]) / 2
+        if rows:
+            last = rows[-1]
+            top = min(c[1] for c in last)
+            bottom = max(c[3] for c in last)
+            if top <= middle <= bottom:
+                last.append(cell)
+                continue
+        rows.append([cell])
+    return "\n".join("  ".join(c[4] for c in sorted(row, key=lambda c: c[0])) for row in rows)
+
+
+def markdown_lost_text(markdown: str, ocr_text: str) -> bool:
+    """The markdown carries under MARKDOWN_MIN_WORD_SHARE of the OCR's distinct words."""
+    import re
+
+    def distinct(text: str) -> set[str]:
+        return {w for w in re.findall(r"[a-z0-9]+", text.casefold()) if len(w) > 1}
+
+    read = distinct(ocr_text)
+    if len(read) < OCR_MIN_WORDS:
+        return False
+    return len(read & distinct(markdown)) < MARKDOWN_MIN_WORD_SHARE * len(read)
 
 
 def _words_from_docling_result(result: Any) -> tuple[list[dict[str, Any]], Optional[float], Optional[float]]:
