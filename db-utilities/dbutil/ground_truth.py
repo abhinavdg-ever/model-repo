@@ -26,9 +26,6 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 _HEADER = {
     "chartname": "chart_name",
@@ -311,7 +308,23 @@ def entry_labels(row: dict[str, Any], columns: Sequence[str] = _TEXT_FIELDS) -> 
 
 
 def upsert_rows(conn: Any, rows: list[dict[str, Any]], columns: Optional[Sequence[str]] = None) -> int:
-    """Upsert parsed rows, each with the label columns its file had (or ``columns``
+    """Upsert parsed rows on the backend DB_BACKEND names (both: Postgres, then Cosmos).
+    Returns the number of rows given (Postgres) or pages written (Cosmos only)."""
+    from dbutil import cosmos
+
+    count = 0
+    if cosmos.wants_postgres():
+        count = _upsert_rows_pg(conn, rows, columns)
+    if cosmos.wants_cosmos():
+        writable = [row for row in rows if not row.get("_skip")]
+        written = cosmos.upsert_ground_truth(
+            cosmos.sink(), writable, lambda row: columns if columns is not None else row["_columns"])
+        count = count or written
+    return count
+
+
+def _upsert_rows_pg(conn: Any, rows: list[dict[str, Any]], columns: Optional[Sequence[str]] = None) -> int:
+    """Postgres: upsert parsed rows, each with the label columns its file had (or ``columns``
     for every row). Returns the number of rows written."""
     groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     for row in rows:

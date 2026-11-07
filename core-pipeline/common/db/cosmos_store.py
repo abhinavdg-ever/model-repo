@@ -409,17 +409,118 @@ def get_cosmos_store() -> CosmosStore:
     global _STORE, _IF_MATCH
     with _STORE_LOCK:
         if _STORE is None:
-            from azure.core import MatchConditions
-            from azure.cosmos import CosmosClient
-
-            _IF_MATCH = MatchConditions.IfNotModified
-            endpoint = (os.environ.get("COSMOS_ENDPOINT") or "").strip()
-            key = (os.environ.get("COSMOS_KEY") or "").strip()
-            if not endpoint or not key:
-                raise RuntimeError("DB_BACKEND=cosmos needs COSMOS_ENDPOINT and COSMOS_KEY in .env")
-            database = CosmosClient(endpoint, credential=key).get_database_client(
-                (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
-            _STORE = CosmosStore({name: database.get_container_client(name)
-                                  for name in ("charts", "pages", "runs", "manifest")})
-            logger.info("storage: Cosmos database %s", database.id)
+            _STORE = CosmosStore(_containers())
+            logger.info("storage: Cosmos database %s", os.environ.get("COSMOS_DATABASE") or "imaging")
         return _STORE
+
+
+# ---------------------------------------------------------------------------
+# DB_BACKEND=both: Postgres is the source of truth, every write is copied to Cosmos
+# ---------------------------------------------------------------------------
+
+class MirrorStore(CosmosStore):
+    """A CosmosStore that takes its ids from Postgres. ``mirror()`` is called after each
+    Postgres write with that write's result; a chart Cosmos has not seen is first copied
+    from Postgres (chart row and page rows)."""
+
+    name = "cosmos-mirror"
+
+    def _adopt_chart(self, row: dict[str, Any]) -> None:
+        with self._lock:
+            cid = int(row["id"])
+            self.charts[cid] = _json(row)
+            self.charts_by_name[row["chart_name"]] = cid
+            self._name_by_id[cid] = row["chart_name"]
+            self._loaded.add(row["chart_name"])
+
+    def _adopt_pages(self, rows: list[dict[str, Any]]) -> None:
+        with self._lock:
+            for row in rows:
+                pid, cid = int(row["id"]), int(row["chart_id"])
+                self.pages[pid] = _json(row)
+                ids = self.pages_by_chart.setdefault(cid, [])
+                if pid not in ids:
+                    ids.append(pid)
+
+    def seed_from_postgres(self, conn: Any, chart_id: Optional[int]) -> Optional[str]:
+        """Make sure Cosmos has this chart: from the cache, from Cosmos, else from Postgres."""
+        if chart_id is None:
+            return None
+        name = self._chart_name_for_id(chart_id)
+        if name:
+            self.load_chart(name)
+            if int(chart_id) in self.charts:
+                return name
+        from common.db import get_chart, list_pages
+
+        row = get_chart(conn, int(chart_id))
+        if row is None:
+            return None
+        self._adopt_chart(row)
+        self._adopt_pages(list_pages(conn, int(chart_id)))
+        self.flush_chart(row["chart_name"])
+        return row["chart_name"]
+
+    def mirror(self, name: str, conn: Any, args: tuple, kwargs: dict, result: Any) -> None:
+        if name == "upsert_chart" and isinstance(result, dict):
+            self.load_chart(result["chart_name"])
+            self._adopt_chart(result)
+            self.flush_chart(result["chart_name"])
+            return
+        chart_id = kwargs.get("chart_id", args[0] if args and isinstance(args[0], int) else None)
+        chart_name = self.seed_from_postgres(conn, chart_id) if chart_id is not None else None
+        if name == "upsert_pages" and isinstance(result, list):
+            self._adopt_pages(result)
+            if chart_name:
+                self.flush_chart(chart_name)
+            return
+        if name == "create_job" and result is not None:
+            with self._lock:
+                fields = {k: v for k, v in kwargs.items()}
+                self.jobs[int(result)] = _json({"id": int(result), **fields, "status": kwargs.get("status", "queued")})
+            self._flush_job(int(result))
+            return
+        method = getattr(self, name, None)
+        if method is None:
+            return
+        method(*args, **kwargs)
+
+
+_MIRROR: Optional[MirrorStore] = None
+_MIRROR_FAILURES = 0
+
+
+def mirror_write(name: str, conn: Any, args: tuple, kwargs: dict, result: Any) -> None:
+    """Copy one Postgres write to Cosmos. Never raises: a failure is logged and counted."""
+    global _MIRROR, _MIRROR_FAILURES
+    if not name.startswith(WRITE_PREFIXES):
+        return
+    try:
+        with _STORE_LOCK:
+            if _MIRROR is None:
+                _MIRROR = MirrorStore(_containers())
+        _MIRROR.mirror(name, conn, args, kwargs, result)
+    except Exception as exc:  # noqa: BLE001 - the Postgres run must not fail on the copy
+        _MIRROR_FAILURES += 1
+        logger.warning("DB_BACKEND=both: Cosmos copy of %s failed (%d so far): %s",
+                       name, _MIRROR_FAILURES, str(exc).splitlines()[0][:200])
+
+
+def mirror_failures() -> int:
+    return _MIRROR_FAILURES
+
+
+def _containers() -> dict[str, Any]:
+    from azure.cosmos import CosmosClient
+
+    global _IF_MATCH
+    from azure.core import MatchConditions
+
+    _IF_MATCH = MatchConditions.IfNotModified
+    endpoint = (os.environ.get("COSMOS_ENDPOINT") or "").strip()
+    key = (os.environ.get("COSMOS_KEY") or "").strip()
+    if not endpoint or not key:
+        raise RuntimeError("DB_BACKEND=cosmos / both needs COSMOS_ENDPOINT and COSMOS_KEY in .env")
+    database = CosmosClient(endpoint, credential=key).get_database_client(
+        (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
+    return {name: database.get_container_client(name) for name in ("charts", "pages", "runs", "manifest")}

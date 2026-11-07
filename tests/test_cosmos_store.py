@@ -136,3 +136,37 @@ def test_two_stores_never_hand_out_the_same_id(containers):
     a, b = CosmosStore(containers), CosmosStore(containers)
     ids = {a._alloc() for _ in range(5)} | {b._alloc() for _ in range(5)}
     assert len(ids) == 10
+
+
+def test_both_mode_copies_postgres_writes_with_postgres_ids(containers):
+    """DB_BACKEND=both: MirrorStore copies each write, keeping the source's ids; a chart the
+    mirror has not seen is first copied from the source. (A MemoryStore stands in for Postgres.)"""
+    import common.db as db
+    from common.db.cosmos_store import MirrorStore
+    from common.db.memory_store import MemoryStore
+
+    pg, mirror = MemoryStore(), MirrorStore(containers)
+    chart = pg.upsert_chart(chart_name="C9", page_count=1)
+    pages = pg.upsert_pages(chart["id"], [{"page_name": "1.jpg", "page_number": 1}])
+    pid = pages[0]["id"]
+    # the mirror sees only the later page write: it copies the chart and its pages first
+    kwargs = {"chart_id": chart["id"], "page_id": pid, "ocr_type": "tesseract", "raw_text": "copied"}
+    pg.upsert_ocr_result(**kwargs)
+    mirror.mirror("upsert_ocr_result", pg, (), kwargs, None)
+
+    fresh = CosmosStore(containers)
+    assert db.get_chart_by_name(fresh, "C9")["id"] == chart["id"]
+    assert db.get_ocr_texts(fresh, chart["id"], "tesseract") == {pid: "copied"}
+
+
+def test_a_failed_copy_never_breaks_the_postgres_write(monkeypatch):
+    from common.db import cosmos_store
+
+    class Boom(cosmos_store.MirrorStore):
+        def mirror(self, *a, **k):
+            raise RuntimeError("cosmos down")
+
+    monkeypatch.setattr(cosmos_store, "_MIRROR", Boom({}))
+    before = cosmos_store.mirror_failures()
+    cosmos_store.mirror_write("upsert_ocr_result", None, (), {}, None)   # logs, does not raise
+    assert cosmos_store.mirror_failures() == before + 1

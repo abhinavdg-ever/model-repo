@@ -63,6 +63,16 @@ _WRITE_PREFIXES = ("upsert_", "insert_", "set_", "mark_", "revise_", "delete_", 
 _SAVEPOINT = "page_write"
 
 
+def _mirror(name: str, conn: Any, args: tuple, kwargs: dict, result: Any) -> None:
+    """DB_BACKEND=both: copy a Postgres write to Cosmos (common/db/cosmos_store.MirrorStore)."""
+    from common.config import DB_BACKEND
+
+    if DB_BACKEND == "both":
+        from common.db.cosmos_store import mirror_write
+
+        mirror_write(name, conn, args, kwargs, result)
+
+
 def _dispatch(fn):
     """Route to MemoryStore.<same name> when conn is the in-memory backend; run a Postgres
     write inside its own savepoint."""
@@ -76,7 +86,9 @@ def _dispatch(fn):
             method = getattr(conn, fn.__name__)
             return method(*args, **kwargs)
         if not is_write or not hasattr(conn, "execute"):
-            return fn(conn, *args, **kwargs)
+            result = fn(conn, *args, **kwargs)
+            _mirror(fn.__name__, conn, args, kwargs, result)
+            return result
         conn.execute(f"SAVEPOINT {_SAVEPOINT}")
         try:
             result = fn(conn, *args, **kwargs)
@@ -85,6 +97,7 @@ def _dispatch(fn):
             conn.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
             raise
         conn.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
+        _mirror(fn.__name__, conn, args, kwargs, result)
         return result
 
     return wrapper

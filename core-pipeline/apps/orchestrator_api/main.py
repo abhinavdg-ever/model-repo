@@ -74,6 +74,12 @@ app = FastAPI(
 )
 
 
+def _mirror_failures() -> int:
+    from common.db.cosmos_store import mirror_failures
+
+    return mirror_failures()
+
+
 class _StartupDone(Exception):
     """Ends the startup probe early (the Cosmos backend needs no schema check)."""
 
@@ -713,7 +719,8 @@ def health() -> dict[str, Any]:
         # blob.ready=false means run/batch-run work locally but not from blob.
         **caps,
         # configured = DB_BACKEND in .env; active = what runs (Postgres until Cosmos is wired).
-        "db_backend": {"configured": DB_BACKEND, "active": DB_BACKEND_ACTIVE},
+        "db_backend": {"configured": DB_BACKEND, "active": DB_BACKEND_ACTIVE,
+                       **({"cosmos_copy_failures": _mirror_failures()} if DB_BACKEND == "both" else {})},
         "stage_workers": STAGE_WORKERS,
     }
 

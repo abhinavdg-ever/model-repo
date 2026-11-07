@@ -270,6 +270,11 @@ def refresh_chart_status(
         """,
         (status, progress["current_stage"], progress["current_pass"], chart_id),
     )
+    from common.db import _mirror
+
+    _mirror("set_chart_status", conn, (), {"chart_id": chart_id, "status": status,
+                                           "current_stage": progress["current_stage"],
+                                           "current_pass": progress["current_pass"]}, None)
     progress["status"] = status
     progress["chart_id"] = chart_id
     return progress

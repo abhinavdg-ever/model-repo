@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Optional
 
 try:
     from dotenv import load_dotenv
@@ -30,7 +30,14 @@ def database_url() -> str:
 
 @contextmanager
 def connect() -> Iterator[Any]:
-    """One connection; commits on a clean exit, rolls back on an exception."""
+    """One connection; commits on a clean exit, rolls back on an exception. With
+    DB_BACKEND=cosmos there is no Postgres connection: yields None and the writes go to
+    Cosmos (dbutil/cosmos.py)."""
+    from dbutil.cosmos import backend
+
+    if backend() == "cosmos":
+        yield None
+        return
     import psycopg
     from psycopg.rows import dict_row
 
@@ -119,7 +126,21 @@ def _manifest_dedupe_key(m: dict[str, Any], *, has_id: bool) -> tuple[Any, ...]:
     return (m["record_id"], (m["member_name"] or "").casefold(), dob)
 
 
-def upsert_manifest_members(
+def upsert_manifest_members(conn: Any, members: list[dict[str, Any]], **kwargs: Any) -> dict[str, int]:
+    """manifest_member_list upsert on the backend DB_BACKEND names (both: Postgres, then Cosmos;
+    the Postgres counts are returned)."""
+    from dbutil import cosmos
+
+    stats: Optional[dict[str, int]] = None
+    if cosmos.wants_postgres():
+        stats = _upsert_manifest_members_pg(conn, members, **kwargs)
+    if cosmos.wants_cosmos():
+        cosmos_stats = cosmos.upsert_manifest_members(cosmos.sink(), members)
+        stats = stats or cosmos_stats
+    return stats or {"inserted": 0, "updated": 0}
+
+
+def _upsert_manifest_members_pg(
     conn: Any,
     members: list[dict[str, Any]],
     *,
