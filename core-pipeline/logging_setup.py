@@ -30,8 +30,10 @@ from __future__ import annotations
 import contextvars
 import logging
 import os
+import re
 import sys
 import threading
+from datetime import date, timedelta
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional
@@ -64,8 +66,9 @@ LOG_FORMAT = (
     "%(asctime)s %(levelname)s [%(chart)s][%(page)s] [%(stage)s] %(message)s"
 )
 LOG_FORMAT_COLOR = LOG_FORMAT
-# Keep a month of daily files; older ones are removed on rotate.
-LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "30")
+# 2026-11-07 (user): keep a week. Rotation drops older backups only when a process runs
+# across midnight, so purge_old_logs() also checks on the first trigger of each day.
+LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "7")
 
 # Stable palette for worker tags (not hash()-based — process-stable).
 _WORKER_COLORS = (
@@ -194,6 +197,77 @@ def resolve_log_dir() -> Path:
     if raw:
         return Path(raw).expanduser()
     return Path(__file__).resolve().parent / "logs"
+
+
+_PURGE_LOCK = threading.Lock()
+_PURGE_MARK = ".last_purge"
+_DATED_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
+_KEEP_FILES = {"README.md", _PURGE_MARK}
+
+
+def purge_old_logs(days: int | None = None, *, today: date | None = None, force: bool = False) -> list[Path]:
+    """Delete files in the log folder older than ``days`` (LOG_BACKUP_DAYS, default 7):
+    a dated file (``core-pipeline.log.2026-10-07``) by the date in its name, any other file
+    by its last change. Lines of ``rotation.log`` older than that are dropped too.
+
+    Runs once a day: the first call of the day leaves ``.last_purge`` with the date and
+    later calls that day return at once (``force`` skips the check). Never raises.
+    """
+    days = LOG_BACKUP_COUNT if days is None else days
+    today = today or date.today()
+    cutoff = today - timedelta(days=max(1, days))
+    log_dir = resolve_log_dir()
+    removed: list[Path] = []
+    with _PURGE_LOCK:
+        mark = log_dir / _PURGE_MARK
+        try:
+            if not force and mark.read_text(encoding="utf-8").strip() == today.isoformat():
+                return removed
+        except OSError:
+            pass
+        if not log_dir.is_dir():
+            return removed
+        active = {"core-pipeline.log", "rotation.log", "run_stats.jsonl",
+                  "run_stats_charts.csv", "run_stats_hourly.csv"}
+        for path in log_dir.iterdir():
+            if not path.is_file() or path.name in _KEEP_FILES or path.name.startswith("._"):
+                continue
+            try:
+                found = _DATED_NAME.search(path.name)
+                if found:
+                    day = date.fromisoformat(found.group(1))
+                elif path.name in active:
+                    continue
+                else:
+                    day = date.fromtimestamp(path.stat().st_mtime)
+                if day < cutoff:
+                    path.unlink()
+                    removed.append(path)
+            except (OSError, ValueError):
+                continue
+        _trim_dated_lines(log_dir / "rotation.log", cutoff)
+        try:
+            mark.write_text(today.isoformat() + "\n", encoding="utf-8")
+        except OSError:
+            pass
+    if removed:
+        logging.getLogger("core-pipeline").info(
+            "Log purge: removed %d file(s) older than %d days", len(removed), days)
+    return removed
+
+
+def _trim_dated_lines(path: Path, cutoff: date) -> None:
+    """Drop lines of an appended log whose leading date (``2026-11-04T...``) is before ``cutoff``."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return
+    kept = [line for line in lines if not ((m := _DATED_NAME.match(line)) and m.group(1) < cutoff.isoformat())]
+    if len(kept) != len(lines):
+        try:
+            path.write_text("".join(kept), encoding="utf-8")
+        except OSError:
+            pass
 
 
 def _flag(name: str, default: bool = True) -> bool:

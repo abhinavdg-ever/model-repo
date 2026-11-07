@@ -42,6 +42,12 @@ def new_trigger(kind: str) -> str:
     ``in_trigger``). One per run / batch-run call."""
     trigger_id = datetime.now().strftime("T%Y%m%d-%H%M%S-") + secrets.token_hex(2)
     _TRIGGER.set((trigger_id, kind))
+    try:  # 2026-11-07 (user): the day's first trigger deletes logs older than 7 days
+        from logging_setup import purge_old_logs
+
+        purge_old_logs()
+    except Exception as exc:  # noqa: BLE001 - housekeeping never fails a run
+        logger.warning("log purge skipped: %s", exc)
     return trigger_id
 
 
