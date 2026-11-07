@@ -68,7 +68,7 @@ The leading space on the `export` lines keeps passwords out of shell history.
 -- sudo -u postgres psql   (or however you open psql)
 CREATE DATABASE imaging_outputs_client OWNER DBUSER;
 \c imaging_outputs_client
-\i /path/to/schema/v1.sql
+\i /path/to/schema/schema.sql
 \i /path/to/schema/migrations/2026-10-27.sql
 SELECT count(*) FROM pipeline_stage;   -- 13
 
@@ -78,7 +78,7 @@ SELECT count(*) FROM pipeline_stage;   -- 13
 \q
 ```
 
-No repo on that VM: `curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/v1.sql`
+No repo on that VM: `curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/schema.sql`
 (and the same for `migrations/2026-10-27.sql`), then `\i` them from that folder.
 
 ### Step 2. App VM: the chart list
@@ -275,7 +275,7 @@ With `psql`, as in section 0. Or from a shell:
 
 ```bash
 psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
-psql "$TARGET_DATABASE_URL" -f /opt/advantmed/advantmed-imaging-pipeline/schema/v1.sql
+psql "$TARGET_DATABASE_URL" -f /opt/advantmed/advantmed-imaging-pipeline/schema/schema.sql
 ```
 
 No `psql` on the VM: run it from the Postgres image instead (same two commands):
@@ -284,13 +284,13 @@ No `psql` on the VM: run it from the Postgres image instead (same two commands):
 docker run --rm -v /opt/advantmed/advantmed-imaging-pipeline/schema:/schema:ro postgres:16 \
   psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
 docker run --rm -v /opt/advantmed/advantmed-imaging-pipeline/schema:/schema:ro postgres:16 \
-  psql "$TARGET_DATABASE_URL" -f /schema/v1.sql
+  psql "$TARGET_DATABASE_URL" -f /schema/schema.sql
 ```
 
 The database user needs the right to create databases; if it lacks it, ask whoever runs
 the Postgres server to create `imaging_outputs_client` owned by that user.
 
-`v1.sql` is the whole current schema; the dated `migrations/*.sql` files only upgrade an
+`schema.sql` is the whole current schema; the dated `migrations/*.sql` files only upgrade an
 old database. It also seeds `pipeline_stage`, so that table's data is left out of the
 copy below.
 

@@ -6,7 +6,7 @@
 --   * page_ground_truth      (client page labels — same idea as the roster)
 --   * pipeline_stage         (static stage registry — needed for /ready)
 --
--- Does NOT drop the schema. Does NOT re-apply v1.sql.
+-- Does NOT drop the schema. Does NOT re-apply schema.sql.
 --
 --     psql "$DATABASE_URL" -f schema/tools/clear_results_keep_manifest.sql
 --
@@ -35,7 +35,7 @@ TRUNCATE TABLE
     pipeline_jobs
     RESTART IDENTITY CASCADE;
 
--- Optional V2 result tables (no-op when v2.sql was never applied).
+-- schema.sql Part 2 result tables (no-op on a database that never created them).
 DO $$
 BEGIN
     IF to_regclass('public.page_classification') IS NOT NULL THEN
@@ -69,7 +69,7 @@ BEGIN
     SELECT count(*) INTO roster FROM manifest_member_list;
     IF stages = 0 THEN
         RAISE EXCEPTION
-            'pipeline_stage is empty after clear — re-apply schema/v1.sql';
+            'pipeline_stage is empty after clear — re-apply schema/schema.sql';
     END IF;
     RAISE NOTICE
         'Cleared chart results. Kept pipeline_stage=% row(s), manifest_member_list=% row(s).',

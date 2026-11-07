@@ -25,7 +25,7 @@ the target (matched by chart name) and copies them again, so a batch of re-run c
 brought up to date and every other chart is left alone. Ground truth is never touched.
 
 Needs SOURCE_DATABASE_URL (ours) and TARGET_DATABASE_URL (the client's, created with
-schema/v1.sql). "Last run" is chart_list.updated_at, which a run writes last.
+schema/schema.sql). "Last run" is chart_list.updated_at, which a run writes last.
 
 Copied, for the chosen charts only: chart_list, page_list, every pipeline result table
 review-ui reads (not pipeline_jobs) and the charts' manifest_member_list rows; ids are kept, so a page is the
@@ -42,7 +42,7 @@ member decision (chart_ground_truth) comes too, for a chart the target has none 
 first and ours copied in its place -- the client's own labels on those charts are lost.
 
 Never copied: encounter_review, user_login, chart_deletion; pipeline_stage is seeded by
-v1.sql. The client's own ground truth is keyed by chart name and page number, so
+schema.sql. The client's own ground truth is keyed by chart name and page number, so
 --replace leaves it in place.
 """
 from __future__ import annotations
@@ -286,7 +286,7 @@ def main() -> int:
             statuses[row["status"]] = statuses.get(row["status"], 0) + 1
         print(f"charts {_describe(cutoff, names_wanted)}: copying {len(ids)} {statuses}")
         if not dst.execute("SELECT count(*) AS n FROM pipeline_stage").fetchone()["n"]:
-            print("the target has no schema / pipeline_stage: run schema/v1.sql on it first", file=sys.stderr)
+            print("the target has no schema / pipeline_stage: run schema/schema.sql on it first", file=sys.stderr)
             return 1
         if args.replace:
             for table in reversed(CHART_TABLES):
@@ -294,7 +294,7 @@ def main() -> int:
             dst.execute("DELETE FROM chart_list")
             dst.execute("DELETE FROM manifest_member_list")
         # A page delete checks every column pointing at page_list; these two had no index
-        # (v1.sql, 2026-10-28), so each deleted page read both tables whole. Made once.
+        # (schema.sql, 2026-10-28), so each deleted page read both tables whole. Made once.
         for index, table, column in _DELETE_INDEXES:
             dst.execute(f"CREATE INDEX IF NOT EXISTS {index} ON {table}({column})")
         if args.update and target_ids:

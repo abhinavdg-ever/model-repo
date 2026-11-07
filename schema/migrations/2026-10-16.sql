@@ -1,6 +1,6 @@
--- One-time changes for a database that already has schema/v1.sql applied.
--- Covers 8–16 Oct 2026. Do not re-apply schema/v1.sql, and do not run
--- schema/v2.sql (that file also creates tables nothing writes yet).
+-- One-time changes for a database that already has schema/schema.sql applied.
+-- Covers 8–16 Oct 2026. Do not re-apply schema/schema.sql, and do not run
+-- the old schema/v2.sql (that file also creates tables nothing writes yet).
 -- Safe to run more than once.
 --
 --   psql "$DATABASE_URL" -f schema/migrations/2026-10-16.sql
@@ -294,7 +294,7 @@ UPDATE pipeline_stage SET seq = 75 WHERE stage_name = 'page_subtype' AND pass_no
 -- 2026-10-11: the accuracy report failed with
 -- "column pc.page_type does not exist" until the columns above exist.
 -- Replace the view only after those columns are added. Same statement as
--- schema/v1.sql and review-ui accuracy_cache.py at the time; migrations/2026-11-07.sql
+-- schema/schema.sql and review-ui accuracy_cache.py at the time; migrations/2026-11-07.sql
 -- replaces it with today's. Dropped first, so running this file again on a newer
 -- database (whose view has more columns) still works. Nothing depends on the view.
 DROP VIEW IF EXISTS v_accuracy_page;
@@ -387,7 +387,7 @@ ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decid
 -- page_ground_truth_entry as bulk_upload (spreadsheet load) or manual_entry
 -- (review-ui save); review-ui's "Hide manual ground truth" reads it.
 -- review-ui and the loader also create the table on first use, so this block
--- only does it up front. Same definition as schema/v1.sql.
+-- only does it up front. Same definition as schema/schema.sql.
 CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
     id                      BIGSERIAL PRIMARY KEY,
     page_ground_truth_id    BIGINT NOT NULL REFERENCES page_ground_truth(id) ON DELETE CASCADE,

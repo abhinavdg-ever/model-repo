@@ -1,5 +1,5 @@
--- Database changes of 2026-10-21 for a database that already has schema/v1.sql
--- applied (a new database gets this from v1.sql itself). Additive only: nothing is
+-- Database changes of 2026-10-21 for a database that already has schema/schema.sql
+-- applied (a new database gets this from schema.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
 --   psql "$DATABASE_URL" -f schema/migrations/2026-10-21.sql          (macOS / Linux / VM)
@@ -10,7 +10,7 @@
 
 -- 1. encounter_review (2026-10-21): a reviewer's encounters (page ranges with page
 --    type, encounter type, DOS) saved on review-ui's Encounter tab. Not ground truth.
---    review-ui also creates it on first use. Same definition as schema/v1.sql.
+--    review-ui also creates it on first use. Same definition as schema/schema.sql.
 CREATE TABLE IF NOT EXISTS encounter_review (
     id                      BIGSERIAL PRIMARY KEY,
     chart_name              VARCHAR(150) NOT NULL,
@@ -36,12 +36,12 @@ CREATE TRIGGER trg_encounter_review_updated_at
 
 -- 2. manifest_member_list.project_scope (2026-10-21): the client's "Project Scope" column
 --    of the metadata sheet, review-ui's Scope filter. core-pipeline also adds it on the
---    first manifest load. Same definition as schema/v1.sql.
+--    first manifest load. Same definition as schema/schema.sql.
 ALTER TABLE manifest_member_list ADD COLUMN IF NOT EXISTS project_scope VARCHAR(255);
 
 -- 3. additional_page_details.heading_candidates (2026-10-21): every heading row the
 --    key/value stage's detector found, accepted or not, with the page size. review-ui's
 --    Production Mode shows the headings and the lighter candidates from it. core-pipeline
---    also adds it on its first write. Same definition as schema/v1.sql.
+--    also adds it on its first write. Same definition as schema/schema.sql.
 ALTER TABLE additional_page_details
     ADD COLUMN IF NOT EXISTS heading_candidates JSONB NOT NULL DEFAULT '{}'::jsonb;

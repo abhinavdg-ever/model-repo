@@ -2,11 +2,10 @@
 -- Clear the imaging-pipeline schema (public) — DESTRUCTIVE
 -- =====================================================================
 -- Wipes every V1/V2 table, view, function and trigger in ``public``, then
--- leaves an empty schema ready for a fresh apply of v1.sql (+ optional v2.sql).
+-- leaves an empty schema ready for a fresh apply of schema.sql.
 --
 --     psql "$DATABASE_URL" -f schema/tools/clear_schema.sql
---     psql "$DATABASE_URL" -f schema/v1.sql
---     psql "$DATABASE_URL" -f schema/v2.sql          # optional
+--     psql "$DATABASE_URL" -f schema/schema.sql
 --
 -- Or:  ./scripts/reset_db.sh --yes
 --
@@ -23,4 +22,4 @@ CREATE SCHEMA public;
 GRANT ALL ON SCHEMA public TO CURRENT_USER;
 GRANT ALL ON SCHEMA public TO public;
 
-COMMENT ON SCHEMA public IS 'imaging pipeline — cleared; apply schema/v1.sql next';
+COMMENT ON SCHEMA public IS 'imaging pipeline — cleared; apply schema/schema.sql next';

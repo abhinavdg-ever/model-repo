@@ -1175,7 +1175,7 @@ class PostgresFolderRepository(FolderRepository):
 
             with _skip_on_error("dos", folder_id):
                 # DOS (Extracted): the DOS stage's own row per page, the same values it
-                # writes to <chart>_dos.csv. schema/v1.sql is the only schema.
+                # writes to <chart>_dos.csv. schema/schema.sql is the only schema.
                 for page_name, d_from, d_to, doc_from, doc_to, conf in rows["dos"] or []:
                     if str(page_name) in junk_pages:
                         continue

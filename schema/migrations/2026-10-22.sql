@@ -1,5 +1,5 @@
--- Database changes of 2026-10-22 for a database that already has schema/v1.sql
--- applied (a new database gets this from v1.sql itself). Additive only: nothing is
+-- Database changes of 2026-10-22 for a database that already has schema/schema.sql
+-- applied (a new database gets this from schema.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
 --   psql "$DATABASE_URL" -f schema/migrations/2026-10-22.sql          (macOS / Linux / VM)
@@ -8,7 +8,7 @@
 -- 1. blank_junk_classification.duplicate_confidence (2026-10-22): each page's highest
 --    duplicate similarity, whatever its verdict, for review-ui's Duplicate confidence.
 --    The blank_junk stage also adds the column on its first write. Same definition as
---    schema/v1.sql.
+--    schema/schema.sql.
 ALTER TABLE blank_junk_classification ADD COLUMN IF NOT EXISTS duplicate_confidence NUMERIC(5,4);
 
 -- The final-verdict view carries it, appended so the view can be replaced in place.

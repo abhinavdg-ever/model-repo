@@ -2,9 +2,11 @@
 
 ```
 schema/
-├── v1.sql              the full current schema. A NEW database needs only this.
-├── v2.sql              proposals for later; nothing reads or writes these tables. Optional.
-├── migrate.sql         upgrades an EXISTING database to v1.sql. Safe to run again and again.
+├── schema.sql          the whole database. A NEW database needs only this.
+│                         Part 1: implemented (core-pipeline / review-ui use every table)
+│                         Part 2: not implemented yet (created empty; nothing uses them)
+├── CHANGELOG.md        what changed, newest first
+├── migrate.sql         upgrades an EXISTING database to schema.sql. Safe to run again and again.
 ├── migrations/         one dated file per change day; migrate.sql runs them in order.
 │   └── 2026-10-16.sql … 2026-11-07.sql
 └── tools/              destructive helpers. Read the file before running it.
@@ -16,10 +18,10 @@ schema/
 
 | Situation | Run |
 |---|---|
-| New, empty database | `v1.sql` (then `v2.sql` only if you want the proposals) |
+| New, empty database | `schema.sql` |
 | Existing database, any age since 2026-10-07 | `migrate.sql` |
 | Not sure | `migrate.sql`: it skips whatever is already there |
-| Start over (data lost) | dump first, then `tools/clear_schema.sql`, then `v1.sql` |
+| Start over (data lost) | dump first, then `tools/clear_schema.sql`, then `schema.sql` |
 
 `migrate.sql` only adds columns, tables and indexes, widens CHECK lists and replaces views.
 It never drops a column or deletes a row. The only tables it drops are two retired ones that
@@ -34,7 +36,7 @@ nothing ever read (`accuracy_snapshot`, `encounter_results`). Run it as the data
 # existing database
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema/migrate.sql
 # new database
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema/v1.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema/schema.sql
 # check: 15 rows
 psql "$DATABASE_URL" -c "SELECT stage_name, pass_no, seq FROM pipeline_stage ORDER BY seq;"
 ```
@@ -52,26 +54,28 @@ psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f schema\migrate.sql
 ```
 
 The output prints one line per migration and ends with
-`Done: the database matches schema/v1.sql.` Any error stops the run at that file. Fix the
+`Done: the database matches schema/schema.sql.` Any error stops the run at that file. Fix the
 cause and run it again; the files that already ran are skipped harmlessly.
 
 ## Adding a change
 
-1. Edit `v1.sql` (the full schema).
+1. Edit `schema.sql`: Part 1 if code uses it, Part 2 if it is only a proposal. When a
+   Part 2 module ships, move its block into Part 1.
 2. Add the same change to `migrations/<today>.sql`, written so it can run twice
    (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`
    before `ADD CONSTRAINT`, `CREATE OR REPLACE VIEW` with columns only appended).
 3. Add one `\ir migrations/<today>.sql` line to `migrate.sql`.
-4. Add a line to the WHAT CHANGED block at the top of `v2.sql`.
+4. Add a line at the top of `CHANGELOG.md`.
 5. Run `python -m pytest tests/ -q`. `tests/test_schema_migrations.py` checks that every
    migration is listed in `migrate.sql`.
 
-Verified on 2026-11-07 against Postgres 16. A database built from the 2026-10-07 `v1.sql`,
-plus `migrate.sql`, matches a fresh `v1.sql`. Running `migrate.sql` twice, or on a fresh
-`v1.sql` database, gives no errors.
+Verified on 2026-11-07 against Postgres 16. A database built from the 2026-10-07 `schema.sql`,
+plus `migrate.sql`, matches a fresh `schema.sql`. Running `migrate.sql` twice, or on a fresh
+`schema.sql` database, gives no errors.
 
-## Later: Cosmos
+## Postgres → Cosmos
 
-Moving to Azure Cosmos DB (docs/PLATFORM_PLAN.md) is a data copy, not a SQL migration.
-While both stores run side by side, `DB_BACKEND=postgres|cosmos` picks one, and these files
-stay the Postgres side.
+These files keep the **Postgres** database current while it is still in use
+(`DB_BACKEND=postgres`). Moving to Azure Cosmos DB (docs/PLATFORM_PLAN.md, phase 7) is a
+different kind of migration: a data copy by `utilities/migrate_postgres_to_cosmos.py`, which
+reads a Postgres database at the `schema.sql` shape. So run `migrate.sql` first, then copy.

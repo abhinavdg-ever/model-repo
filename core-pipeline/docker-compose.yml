@@ -9,7 +9,7 @@
 # There is no HTTP call in either direction.
 #
 # Apply the schema once before the first run (one file, no migrations):
-#   psql "$DATABASE_URL" -f ../schema/v1.sql
+#   psql "$DATABASE_URL" -f ../schema/schema.sql
 
 services:
   api:

@@ -48,7 +48,7 @@ _CODEABLE = {
     "not_sure": "Not Sure",
 }
 
-# Kept in step with the statement at the bottom of schema/v1.sql.
+# Kept in step with the statement at the bottom of schema/schema.sql.
 _VIEW = """
 CREATE OR REPLACE VIEW v_accuracy_page AS
 SELECT

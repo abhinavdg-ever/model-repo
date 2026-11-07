@@ -1,5 +1,5 @@
--- Database changes of 2026-10-31 for a database that already has schema/v1.sql
--- applied (a new database gets this from v1.sql itself). Safe to run more than once.
+-- Database changes of 2026-10-31 for a database that already has schema/schema.sql
+-- applied (a new database gets this from schema.sql itself). Safe to run more than once.
 --
 --   psql "$DATABASE_URL" -f schema/migrations/2026-10-31.sql          (macOS / Linux / VM)
 --   psql $env:DATABASE_URL -f schema/migrations/2026-10-31.sql        (Windows PowerShell)

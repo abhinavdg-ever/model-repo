@@ -1,4 +1,4 @@
-# Clear the public schema and re-apply the latest schema\v1.sql + schema\v2.sql.
+# Clear the public schema and re-apply schema\schema.sql (Part 1 and Part 2).
 # Destructive — all chart/OCR/member/DOS rows are wiped.
 #
 # Usage:
@@ -8,8 +8,7 @@
 #
 # Applies, in order:
 #   schema\tools\clear_schema.sql
-#   schema\v1.sql
-#   schema\v2.sql
+#   schema\schema.sql
 #
 # DATABASE_URL is read from the environment, else core-pipeline\.env.
 # Accepts postgresql:// or postgresql+psycopg://.
@@ -53,7 +52,7 @@ $builder.Path = "/$dbName"
 $targetUrl = $builder.Uri.AbsoluteUri
 
 Write-Host "Will CLEAR public schema in database: $dbName"
-Write-Host "  then apply clear_schema.sql -> v1.sql -> v2.sql"
+Write-Host "  then apply clear_schema.sql -> schema.sql"
 if (-not $Yes) {
     $confirm = Read-Host "Type the database name to confirm"
     if ($confirm -ne $dbName) {
@@ -65,13 +64,10 @@ if (-not $Yes) {
 Write-Host "-> schema/tools/clear_schema.sql"
 psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\tools\clear_schema.sql") | Out-Null
 
-Write-Host "-> schema/v1.sql"
-psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\v1.sql") | Out-Null
-
-Write-Host "-> schema/v2.sql"
-psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\v2.sql") | Out-Null
+Write-Host "-> schema/schema.sql"
+psql $targetUrl -v ON_ERROR_STOP=1 -f (Join-Path $Root "schema\schema.sql") | Out-Null
 
 Write-Host "-> verify pipeline_stage"
 psql $targetUrl -v ON_ERROR_STOP=1 -c "SELECT count(*) AS stages FROM pipeline_stage;"
 
-Write-Host "Done. $dbName cleared and reloaded from latest v1 + v2."
+Write-Host "Done. $dbName cleared and reloaded from schema/schema.sql."

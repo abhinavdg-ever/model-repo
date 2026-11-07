@@ -20,7 +20,7 @@ from app.core.schemas import ChartReview, ReviewLogEntry, ReviewLogResponse
 from app.services.db import connection
 from app.services.ground_truth import _chart_name, clean_label, ensure_entries
 
-# Kept in step with schema/v1.sql and schema/migrations/2026-10-28.sql. The users(id)
+# Kept in step with schema/schema.sql and schema/migrations/2026-10-28.sql. The users(id)
 # reference is left out so a database without users still saves.
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS chart_review (
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS chart_review (
 );
 """
 
-# Every chart-level review action, append-only, for the Review Log (schema/v1.sql,
+# Every chart-level review action, append-only, for the Review Log (schema/schema.sql,
 # migrations/2026-10-28.sql): Reviewed marked / cleared, member decision, encounters.
 _CREATE_ENTRY_TABLE = """
 CREATE TABLE IF NOT EXISTS chart_review_entry (

@@ -43,7 +43,7 @@ _EMPTY = {"", "na", "n/a", "not found", "not available"}
 # each page's latest spreadsheet load with manual edits hidden.
 GroundTruthSource = Literal["latest", "bulk_upload"]
 
-# Kept in step with schema/v1.sql and core-pipeline's jobs/ground_truth_load.py.
+# Kept in step with schema/schema.sql and core-pipeline's jobs/ground_truth_load.py.
 _ADD_ENTRY_TABLE = """
 CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
     id                      BIGSERIAL PRIMARY KEY,
@@ -64,7 +64,7 @@ ALTER TABLE page_ground_truth_entry ADD COLUMN IF NOT EXISTS user_id BIGINT;
 -- The page's encounter type (2026-10-27): encounter_type holds the client sheet's page
 -- type. schema/migrations/2026-10-27.sql adds it too.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS encounter_label TEXT;
--- In v1.sql already; a database made before them still saves.
+-- In schema.sql already; a database made before them still saves.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS mirrored TEXT;
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS printed_or_handwritten TEXT;
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_duplicate TEXT;

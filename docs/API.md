@@ -35,10 +35,10 @@ pip install -r requirements.txt
 cp ../.env.example ../.env
 ```
 
-Apply the schema once. `v1.sql` is required. `v2.sql` is optional. An existing database is upgraded with `schema/migrate.sql` (safe to re-run); to start over instead, dump it, then `schema/tools/clear_schema.sql`, then `v1.sql`.
+Apply the schema once. `schema/schema.sql` is the whole database (Part 1 implemented, Part 2 not yet). An existing database is upgraded with `schema/migrate.sql` (safe to re-run); to start over instead, dump it, then `schema/tools/clear_schema.sql`, then `schema.sql`.
 
 ```bash
-psql "$DATABASE_URL" -f schema/v1.sql
+psql "$DATABASE_URL" -f schema/schema.sql
 psql "$DATABASE_URL" -c "SELECT stage_name, pass_no, seq FROM pipeline_stage ORDER BY seq;"
 ```
 

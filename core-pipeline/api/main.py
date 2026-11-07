@@ -795,7 +795,7 @@ def ready() -> dict[str, Any]:
     if not stages:
         raise HTTPException(
             status_code=503,
-            detail="pipeline_stage is empty — apply schema/v1.sql",
+            detail="pipeline_stage is empty — apply schema/schema.sql",
         )
     return {"status": "ready", "stages": len(stages)}
 

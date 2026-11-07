@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clear the public schema and re-apply the latest schema/v1.sql + schema/v2.sql.
+# Clear the public schema and re-apply schema/schema.sql (Part 1 and Part 2).
 # Destructive — all chart/OCR/member/DOS rows are wiped.
 #
 # Usage:
@@ -9,8 +9,7 @@
 #
 # Applies, in order:
 #   schema/tools/clear_schema.sql
-#   schema/v1.sql
-#   schema/v2.sql
+#   schema/schema.sql
 #
 # DATABASE_URL is read from the environment, else core-pipeline/.env.
 # Accepts postgresql:// or postgresql+psycopg://.
@@ -67,7 +66,7 @@ PY
 )"
 
 echo "Will CLEAR public schema in database: ${DB_NAME}"
-echo "  then apply clear_schema.sql → v1.sql → v2.sql"
+echo "  then apply clear_schema.sql → schema.sql"
 if [[ "$YES" -ne 1 ]]; then
   read -r -p "Type the database name to confirm: " confirm
   if [[ "$confirm" != "$DB_NAME" ]]; then
@@ -79,14 +78,11 @@ fi
 echo "→ schema/tools/clear_schema.sql"
 psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/tools/clear_schema.sql" >/dev/null
 
-echo "→ schema/v1.sql"
-psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/v1.sql" >/dev/null
-
-echo "→ schema/v2.sql"
-psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/v2.sql" >/dev/null
+echo "→ schema/schema.sql"
+psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "$ROOT/schema/schema.sql" >/dev/null
 
 echo "→ verify pipeline_stage"
 psql "$TARGET_URL" -v ON_ERROR_STOP=1 -c \
   "SELECT count(*) AS stages FROM pipeline_stage;"
 
-echo "Done. ${DB_NAME} cleared and reloaded from latest v1 + v2."
+echo "Done. ${DB_NAME} cleared and reloaded from schema/schema.sql."

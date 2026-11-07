@@ -85,7 +85,7 @@ service can be redeployed, scaled or taken down alone.
 
 ## 2. Data model
 
-Schema v8 — `schema/v1.sql` (implemented) and `schema/v2.sql` (next phase).
+Schema v8 — one file, `schema/schema.sql`: Part 1 (implemented) and Part 2 (next phase).
 
 ```mermaid
 erDiagram
@@ -215,8 +215,8 @@ still renders.
 
 | File | Role |
 |---|---|
-| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, `page_continuity_results`, `imaging_final`, `additional_page_details`, and the phase-1 stages. |
-| `v2.sql` | **Next phase. Nothing implemented.** Optional; apply after v1.sql. Proposals only (chunking, rejection, models, …) + `rejection_logic` stage. |
+| `schema.sql` Part 1 | **What is implemented.** Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, `page_continuity_results`, `imaging_final`, `additional_page_details`, and the phase-1 stages. |
+| `schema.sql` Part 2 | **Next phase. Nothing implemented.** Created with Part 1, empty. Proposals only (chunking, rejection, models, …) + `rejection_logic` stage. |
 
 ### `core-pipeline/` — top level
 
@@ -278,7 +278,7 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | `lib/ocr/stage_final1.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
 | `lib/ocr/stage_final2.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages (printed only, not visual). The billed stage, so the resume path matters most here. |
 | `lib/ocr/stage_section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
-| `lib/extraction/stage.py` | **After stage 6.** Key/value extraction from Final2 word boxes (member, DOB, ID, DOS, provider, e-signature, printed page number, headings). Stages `staging/extraction.json` and writes `imaging/<chart>_provider_signature.csv` and `imaging/<chart>_additional_page_details.csv`. The matching tables are in `schema/v2.sql`. Later stages add member, DOS and page number to their own rules. |
+| `lib/extraction/stage.py` | **After stage 6.** Key/value extraction from Final2 word boxes (member, DOB, ID, DOS, provider, e-signature, printed page number, headings). Stages `staging/extraction.json` and writes `imaging/<chart>_provider_signature.csv` and `imaging/<chart>_additional_page_details.csv`. The matching tables are in `schema/schema.sql`. Later stages add member, DOS and page number to their own rules. |
 | `utilities/gate_delta.py` | Adaptive skip_ocr: compare quality/rotation gate signatures and reopen only affected `page_stage_status` rows. |
 | `lib/member/stage.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
 | `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, takes each page's best key/value date from staging, calls `detect_dos_per_page` (key/value date, else edge keyword), persists the page's date, writes the DOS CSV. See `docs/DOS_LOGIC.md`. |
@@ -522,11 +522,10 @@ repository. Until both are installed, member verification runs rules-only and
 NER read off the page. `GET /health` names which of the three preconditions is
 unmet. Turning it on: [API.md](API.md) (the NER layer).
 
-**The SQL is syntax-validated, not run.** `v1.sql` and `v2.sql` parse
-clean under a real PostgreSQL parser (`pglast`), and the code paths that use them
-are unit-tested — but no PostgreSQL server was available in this environment, so
-neither file has been executed. Apply migration 002 to a restorable snapshot
-first.
+**The SQL has been run.** On 2026-11-07, `schema.sql` (both parts) and `migrate.sql` were
+applied to a local PostgreSQL 16: a fresh `schema.sql` and a 2026-10-07 database upgraded
+with `migrate.sql` have the same tables, columns, indexes, views and stages. Still take a
+dump of a live database before running `migrate.sql` on it.
 
 **`review-ui/` has forked from `05-imaging-ui/`.** They share ancestry and have
 diverged. Treat `05-imaging-ui` as frozen; changes belong here.

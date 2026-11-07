@@ -1,48 +1,69 @@
 -- =====================================================================
--- AI Imaging & Coding Pipeline — PostgreSQL Schema  ·  V1 (IMPLEMENTED)
+-- AI Imaging & Coding Pipeline — PostgreSQL schema (one database)
 -- =====================================================================
--- Everything in this file is built, wired and running today. Every table
--- here is written or read by core-pipeline or review-ui.
+-- The whole database in one file, in two parts:
 --
--- FIRST-TIME SETUP (empty database)
+--   PART 1  IMPLEMENTED       every table here is written or read by core-pipeline
+--                             or review-ui today.
+--   PART 2  NOT IMPLEMENTED   proposals: created so the design is reviewable and a
+--                             module can start writing without a schema change, but
+--                             nothing reads or writes them yet. Part 2 depends on
+--                             Part 1; Part 1 never references Part 2.
+--
+-- When a Part 2 module ships, move its block into Part 1 (tests/test_contracts.py
+-- TestSchemaSplit fails the moment code touches a Part 2 table).
+--
+-- NEW, EMPTY DATABASE: this file.
+--     Ubuntu VM / macOS:   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema/schema.sql
+--     Windows PowerShell:  psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f schema\schema.sql
+-- EXISTING DATABASE: schema/migrate.sql (never re-apply this file on a live database).
+-- History of changes: schema/CHANGELOG.md.
+--
+-- PART 1 — tables (implemented)
 -- ---------------------------------------------------------------------
---     psql "$DATABASE_URL" -f schema/v1.sql        # required — all of this
---     psql "$DATABASE_URL" -f schema/v2.sql        # optional — proposals only
---
--- EXISTING DATABASE (already applied an older v1 / early v2)
--- ---------------------------------------------------------------------
---     psql "$DATABASE_URL" -f schema/patch_output_path.sql
--- Do not re-apply v1.sql on a live DB — CREATE TABLE will fail. The patch
--- is additive and idempotent (output_path, encounter/sequencing tables,
--- stage registry, page_stage_status seeds).
---
--- Apply V1 first: V2 depends on it. V1 stands alone — nothing in V1
--- references a V2 table.
---
--- WHAT IS IN HERE — tables + the 12 phase-1 stages that write them
--- ---------------------------------------------------------------------
---   pipeline_stage               stage registry (12 phase-1 stages)
---   chart_list / page_list       identity + lifecycle (+ output_path)
+--   pipeline_stage               stage registry (15 phase-1 stages)
+--   chart_list / page_list       chart and page identity, lifecycle, tags
 --   page_stage_status            per-page per-stage per-pass progress
---   manifest_member_list         the client roster
---   ocr_results                  ocr_prelim / ocr_final1 / ocr_final2
---   ocr_quality_results          ocr_quality
---   blank_junk_classification    blank_junk pass 1+2 (+ v_page_blank_junk_final)
---   member_extraction_results    member_verify
---   member_verification_summary  member_verify
---   dos_extraction_results       dos_extract
---   page_classification          page_subtype (codeable / non-codable / discharge)
---   encounter_type_results       encounter_type  (was a V2 proposal)
---   page_sequencing_results      page_sequencing (was a V2 proposal)
 --   pipeline_jobs                run log
---   v_accuracy_page              ground truth joined to the pipeline page
---   v_chart_stage_progress       chart status rollup
+--   manifest_member_list         the client roster and chart metadata
+--   ocr_quality_results          rotation, quality, handwriting (stage 1)
+--   ocr_results                  prelim / final1 / final2 OCR
+--   blank_junk_classification    blank / junk / duplicate, pass 1 and 2
+--   additional_page_details      printed page number, section headers, kv fields
+--   provider_signature_results   provider signatures (kv_extract)
+--   member_extraction_results    member_verify, per page
+--   member_verification_summary  member_verify, per chart
+--   page_classification          page type / subtype / codeable
+--   dos_extraction_results       date of service
+--   page_continuity_results      document continuity
+--   encounter_type_results       encounter type
+--   page_sequencing_results      page sequencing
+--   imaging_final                Final values, one row per page
+--   users / user_login           review-ui sign-in
+--   page_ground_truth(_entry)    ground truth and every save
+--   chart_ground_truth           member Accept / Reject per chart
+--   chart_review(_entry)         Reviewed charts and the Review Log
+--   encounter_review             a reviewer's encounters
+--   chart_deletion               charts deleted in review-ui
+--   views: v_page_blank_junk_final, v_chart_stage_progress, v_accuracy_page
 --
--- Stage page_subtype (codeable TF) writes page_classification + CSV.
--- Anything else not listed above lives in v2.sql.
+-- PART 2 — tables (not implemented)
+-- ---------------------------------------------------------------------
+--   chunk_results                OCR text chunking
+--   rejection_results            reviewer accept / reject / flag
+--   invoice_matching_results     invoice reconciliation
+--   ground_truth_csv             labelled data import
+--   model_registry               model versions and storage
+--   field_accuracy_log           per-field prediction vs truth
+--   model_accuracy_snapshots     aggregate metrics per model
+--   manual_review                reviewer corrections
+--   audit_log                    who did what
+--   views: pipeline_stage_performance, model_accuracy_latest,
+--          consolidated_chart_results
+--   stage: rejection_logic (seq 120, is_phase1 = FALSE: never blocks a chart)
 --
 -- ---------------------------------------------------------------------
--- NAMING CONVENTIONS — every table in BOTH files obeys these. A new table
+-- NAMING CONVENTIONS — every table in both parts obeys these. A new table
 -- that breaks one of them is a bug, not a style preference.
 -- ---------------------------------------------------------------------
 --  1. snake_case everywhere. No camelCase, no abbreviations that are not
@@ -72,10 +93,17 @@
 -- 10. Indexes:  idx_<table>_<columns>.  Views:  v_<name> for helper views;
 --     report views keep their business name (consolidated_chart_results).
 --
--- Naming/shape changes from v7 are listed at the top of v2.sql.
 -- =====================================================================
 
 SET search_path TO public;
+
+-- #####################################################################
+-- #####################################################################
+-- ##                                                                 ##
+-- ##   PART 1 — IMPLEMENTED                                          ##
+-- ##                                                                 ##
+-- #####################################################################
+-- #####################################################################
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
@@ -125,7 +153,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),
     ('page_sequencing',  1, 95, 'Page Sequencing',               TRUE),
     ('imaging_final',    1, 100, 'Final Values',                 TRUE);
--- rejection_logic (seq 120, is_phase1 = FALSE) remains in v2.sql.
+-- rejection_logic (seq 120, is_phase1 = FALSE) is registered in Part 2.
 
 -- ---------------------------------------------------------------------
 -- MASTER + REFERENCE TABLES
@@ -136,7 +164,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
 -- last_login_* is the latest sign-in; user_login keeps every one.
 CREATE TABLE users (
     id                    BIGSERIAL PRIMARY KEY,
-    username              VARCHAR(100) NOT NULL UNIQUE,
+    username              VARCHAR(100) NOT NULL,
     name                  VARCHAR(150) NOT NULL,
     email                 VARCHAR(255) UNIQUE,
     role                  VARCHAR(20) NOT NULL DEFAULT 'reviewer' CHECK (role IN ('reviewer','admin','viewer')),
@@ -153,6 +181,9 @@ CREATE TABLE users (
 CREATE TRIGGER trg_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- One account per username (the same unique index migrations/2026-10-19.sql creates).
+CREATE UNIQUE INDEX idx_users_username ON users(username);
 
 -- One row per successful review-ui sign-in: who, from where, when (created_at).
 CREATE TABLE user_login (
@@ -1288,3 +1319,351 @@ LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
 LEFT JOIN page_classification pc ON pc.page_id = pl.id
 LEFT JOIN ocr_quality_results q ON q.page_id = pl.id
 LEFT JOIN imaging_final f ON f.page_id = pl.id;
+
+
+-- #####################################################################
+-- #####################################################################
+-- ##                                                                 ##
+-- ##   PART 2 — NOT IMPLEMENTED YET (proposals)                      ##
+-- ##   Nothing reads or writes these. Written to be re-runnable:     ##
+-- ##   migrations/2026-11-07.sql creates the same on an existing DB. ##
+-- ##                                                                 ##
+-- #####################################################################
+-- #####################################################################
+
+
+-- ---------------------------------------------------------------------
+-- STAGE REGISTRY — unorchestrated stages only
+-- ---------------------------------------------------------------------
+-- rejection_logic stays out of the chain (is_phase1 = FALSE), so registering it
+-- cannot stall a chart.
+
+INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
+    ('rejection_logic',  1, 120, 'Rejection Logic',              FALSE)
+ON CONFLICT (stage_name, pass_no) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- PAGE-LEVEL RESULT TABLES
+-- ---------------------------------------------------------------------
+-- page_classification lives in Part 1 (codeable / non-codable / discharge).
+
+CREATE TABLE IF NOT EXISTS chunk_results (
+    id           BIGSERIAL PRIMARY KEY,
+    chart_id     BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id      BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    seq          INT NOT NULL,
+    chunk_text   TEXT NOT NULL,
+    char_start   INT,
+    char_end     INT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id, seq)
+);
+
+DROP TRIGGER IF EXISTS trg_chunk_results_updated_at ON chunk_results;
+CREATE TRIGGER trg_chunk_results_updated_at
+    BEFORE UPDATE ON chunk_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_chunk_results_chart_id ON chunk_results(chart_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_results_page_id ON chunk_results(page_id);
+
+-- encounter_type_results + page_sequencing_results live in Part 1 now.
+
+-- ---------------------------------------------------------------------
+-- VERIFICATION & DECISION
+-- ---------------------------------------------------------------------
+-- Columns mirror the Part 1 Member_Verification contract so a ported run is
+-- diffable against the reference implementation.
+
+
+CREATE TABLE IF NOT EXISTS rejection_results (
+    id            BIGSERIAL PRIMARY KEY,
+    chart_id      BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    decision      VARCHAR(10) NOT NULL CHECK (decision IN ('accept','reject','flag')),
+    reason        TEXT,
+    user_id       BIGINT REFERENCES users(id),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_rejection_results_updated_at ON rejection_results;
+CREATE TRIGGER trg_rejection_results_updated_at
+    BEFORE UPDATE ON rejection_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_rejection_results_chart_id ON rejection_results(chart_id);
+
+
+
+
+CREATE TABLE IF NOT EXISTS invoice_matching_results (
+    id                  BIGSERIAL PRIMARY KEY,
+    chart_id            BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    invoice_reference   VARCHAR(100),
+    match_status        VARCHAR(30),
+    confidence          NUMERIC(5,4),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_invoice_matching_results_updated_at ON invoice_matching_results;
+CREATE TRIGGER trg_invoice_matching_results_updated_at
+    BEFORE UPDATE ON invoice_matching_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_invoice_matching_results_chart_id ON invoice_matching_results(chart_id);
+
+
+CREATE TABLE IF NOT EXISTS ground_truth_csv (
+    id              BIGSERIAL PRIMARY KEY,
+    chart_id        BIGINT REFERENCES chart_list(id) ON DELETE CASCADE,
+    csv_file_name   VARCHAR(255) NOT NULL,
+    row_number      INT,
+    labeled_fields  JSONB NOT NULL,
+    user_id         BIGINT REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_ground_truth_csv_updated_at ON ground_truth_csv;
+CREATE TRIGGER trg_ground_truth_csv_updated_at
+    BEFORE UPDATE ON ground_truth_csv
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_ground_truth_csv_chart_id ON ground_truth_csv(chart_id);
+
+-- ---------------------------------------------------------------------
+-- OPERATIONAL
+-- ---------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------
+-- OPERATIONAL
+-- ---------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS model_registry (
+    id                 BIGSERIAL PRIMARY KEY,
+    model_name         VARCHAR(100) NOT NULL,
+    model_type         VARCHAR(20) NOT NULL CHECK (model_type IN ('classification','ner','llm','ocr')),
+    model_algorithm    VARCHAR(50),
+    version            VARCHAR(30) NOT NULL,
+    storage_type       VARCHAR(10) NOT NULL CHECK (storage_type IN ('blob','docker')),
+    storage_location   TEXT NOT NULL,
+    training_metrics   JSONB,
+    trained_at         TIMESTAMPTZ,
+    is_active          BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (model_name, version)
+);
+
+DROP TRIGGER IF EXISTS trg_model_registry_updated_at ON model_registry;
+CREATE TRIGGER trg_model_registry_updated_at
+    BEFORE UPDATE ON model_registry
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_model_registry_name_active ON model_registry(model_name, is_active);
+
+-- Audit log today; a work queue when a worker process lands. lease_expires_at
+-- and heartbeat_at are what a claim/lease loop needs.
+
+CREATE OR REPLACE VIEW pipeline_stage_performance AS
+SELECT
+    stage_name,
+    COUNT(*)                                                             AS total_jobs,
+    COUNT(*) FILTER (WHERE status = 'completed')                         AS completed_jobs,
+    COUNT(*) FILTER (WHERE status = 'failed')                            AS failed_jobs,
+    ROUND(AVG(duration_seconds) FILTER (WHERE status = 'completed'), 2)  AS avg_duration_seconds,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'completed') / NULLIF(COUNT(*), 0), 2) AS success_rate_pct
+FROM pipeline_jobs
+GROUP BY stage_name;
+
+
+CREATE TABLE IF NOT EXISTS field_accuracy_log (
+    id                BIGSERIAL PRIMARY KEY,
+    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    model_id          BIGINT REFERENCES model_registry(id),
+    field_name        VARCHAR(100) NOT NULL,
+    predicted_value   TEXT,
+    actual_value      TEXT,
+    is_correct        BOOLEAN,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_field_accuracy_log_updated_at ON field_accuracy_log;
+CREATE TRIGGER trg_field_accuracy_log_updated_at
+    BEFORE UPDATE ON field_accuracy_log
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_field_accuracy_log_chart_id ON field_accuracy_log(chart_id);
+CREATE INDEX IF NOT EXISTS idx_field_accuracy_log_model_id ON field_accuracy_log(model_id);
+
+
+CREATE TABLE IF NOT EXISTS model_accuracy_snapshots (
+    id                BIGSERIAL PRIMARY KEY,
+    model_id          BIGINT NOT NULL REFERENCES model_registry(id) ON DELETE CASCADE,
+    evaluation_batch  VARCHAR(100),
+    metric_name       VARCHAR(50) NOT NULL,
+    metric_value      NUMERIC(7,4) NOT NULL,
+    sample_size       INT,
+    notes             TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_model_accuracy_snapshots_updated_at ON model_accuracy_snapshots;
+CREATE TRIGGER trg_model_accuracy_snapshots_updated_at
+    BEFORE UPDATE ON model_accuracy_snapshots
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX IF NOT EXISTS idx_model_accuracy_snapshots_model_id ON model_accuracy_snapshots(model_id);
+
+
+CREATE OR REPLACE VIEW model_accuracy_latest AS
+SELECT DISTINCT ON (mr.id, s.metric_name)
+    mr.id AS model_id, mr.model_name, mr.version, mr.storage_type,
+    s.metric_name, s.metric_value, s.sample_size, s.created_at
+FROM model_registry mr
+JOIN model_accuracy_snapshots s ON s.model_id = mr.id
+ORDER BY mr.id, s.metric_name, s.created_at DESC;
+
+
+CREATE TABLE IF NOT EXISTS manual_review (
+    id                BIGSERIAL PRIMARY KEY,
+    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id           BIGINT REFERENCES page_list(id) ON DELETE CASCADE,
+    user_id           BIGINT REFERENCES users(id),
+    module_type       VARCHAR(50) NOT NULL,
+    actual_value      TEXT,
+    feedback          TEXT,
+    suggested_value   TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_manual_review_chart_id ON manual_review(chart_id);
+CREATE INDEX IF NOT EXISTS idx_manual_review_page_id ON manual_review(page_id);
+CREATE INDEX IF NOT EXISTS idx_manual_review_user_id ON manual_review(user_id);
+CREATE INDEX IF NOT EXISTS idx_manual_review_module_type ON manual_review(module_type);
+
+DROP TRIGGER IF EXISTS trg_manual_review_updated_at ON manual_review;
+CREATE TRIGGER trg_manual_review_updated_at
+    BEFORE UPDATE ON manual_review
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          BIGSERIAL PRIMARY KEY,
+    chart_id    BIGINT REFERENCES chart_list(id) ON DELETE SET NULL,
+    user_id     BIGINT REFERENCES users(id),
+    action      VARCHAR(50) NOT NULL,
+    details     JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_audit_log_updated_at ON audit_log;
+CREATE TRIGGER trg_audit_log_updated_at
+    BEFORE UPDATE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_chart_id ON audit_log(chart_id);
+
+-- ---------------------------------------------------------------------
+-- DERIVED VIEWS
+-- ---------------------------------------------------------------------
+
+-- Per-chart, per-stage page rollup. The orchestrator's chart-status rule
+-- ("earliest stage where not every page is completed|skipped") reads this.
+
+CREATE OR REPLACE VIEW consolidated_chart_results AS
+SELECT
+    c.id                          AS chart_id,
+    c.chart_name,
+    c.blob_container,
+    c.blob_path,
+    c.page_count,
+    c.status                      AS chart_status,
+    c.current_stage,
+    c.run_id,
+    c.batch_id,
+
+    mv.final_status               AS verification_status,
+    mv.document_decision          AS verification_decision,
+    mv.matched_name               AS verified_name,
+    mv.confidence                 AS verification_confidence,
+    mv.wrong_member_pages,
+    mv.reject_threshold,
+
+    rj.decision                   AS rejection_decision,
+    rj.reason                     AS rejection_reason,
+
+    bj.blank_count,
+    bj.junk_count,
+    bj.duplicate_count            AS bj_duplicate_count,
+    pc.codeable_count,
+    pc.non_codeable_count,
+    pc.discharge_summary_count,
+    pc.duplicate_count,
+
+    seq.sequenced_page_count,
+    enc.encounter_count,
+    dos.earliest_dos,
+    dos.latest_dos,
+
+    COALESCE(sig.any_signature_present, false) AS signature_present,
+    im.match_status                AS invoice_match_status,
+    (gt.row_count > 0)             AS has_ground_truth,
+
+    c.created_at,
+    c.updated_at
+
+FROM chart_list c
+
+LEFT JOIN member_verification_summary mv ON mv.chart_id = c.id
+
+LEFT JOIN LATERAL (
+    SELECT * FROM rejection_results r
+    WHERE r.chart_id = c.id ORDER BY r.created_at DESC LIMIT 1
+) rj ON true
+
+LEFT JOIN LATERAL (
+    SELECT
+        COUNT(*) FILTER (WHERE blank_junk_flag = 'blank') AS blank_count,
+        COUNT(*) FILTER (WHERE blank_junk_flag = 'junk')  AS junk_count,
+        COUNT(*) FILTER (WHERE blank_junk_flag = 'duplicate') AS duplicate_count
+    FROM v_page_blank_junk_final b WHERE b.chart_id = c.id
+) bj ON true
+
+LEFT JOIN LATERAL (
+    SELECT
+        COUNT(*) FILTER (WHERE classification_category = 'codeable')         AS codeable_count,
+        COUNT(*) FILTER (WHERE classification_category = 'non_codeable')     AS non_codeable_count,
+        COUNT(*) FILTER (WHERE classification_category = 'discharge_summary') AS discharge_summary_count,
+        COUNT(*) FILTER (WHERE duplicate_flag)                                AS duplicate_count
+    FROM page_classification p WHERE p.chart_id = c.id
+) pc ON true
+
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS sequenced_page_count FROM page_sequencing_results s WHERE s.chart_id = c.id
+) seq ON true
+
+LEFT JOIN LATERAL (
+    SELECT COUNT(DISTINCT encounter_type) AS encounter_count FROM encounter_type_results e WHERE e.chart_id = c.id
+) enc ON true
+
+LEFT JOIN LATERAL (
+    SELECT MIN(date_of_service_from) AS earliest_dos, MAX(date_of_service_to) AS latest_dos
+    FROM dos_extraction_results d WHERE d.chart_id = c.id
+) dos ON true
+
+LEFT JOIN LATERAL (
+    SELECT bool_or(signature_present) AS any_signature_present
+    FROM provider_signature_results p WHERE p.chart_id = c.id
+) sig ON true
+
+LEFT JOIN LATERAL (
+    SELECT * FROM invoice_matching_results i WHERE i.chart_id = c.id ORDER BY i.created_at DESC LIMIT 1
+) im ON true
+
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS row_count FROM ground_truth_csv g WHERE g.chart_id = c.id
+) gt ON true;
+
+-- =====================================================================
+-- End of schema
+-- =====================================================================

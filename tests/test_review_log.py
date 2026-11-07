@@ -64,7 +64,7 @@ def test_the_log_reads_one_users_pages_and_the_review_mark_is_one_row_per_chart(
 
 
 def test_the_schema_defines_chart_review_and_the_changes_file_adds_it():
-    v1 = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+    v1 = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
     assert "CREATE TABLE chart_review (" in v1
     assert "CREATE TRIGGER trg_chart_review_updated_at" in v1
     assert "idx_page_ground_truth_entry_user_id_entry_mode" in v1
@@ -92,7 +92,7 @@ def test_reviewed_fields_ride_on_the_page_and_the_chart_list():
 
 
 def test_chart_review_entry_is_in_the_schema_and_the_changes_file():
-    v1 = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+    v1 = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
     assert "CREATE TABLE chart_review_entry (" in v1
     assert "CREATE TRIGGER trg_chart_review_entry_updated_at" in v1
     changes = (REPO_ROOT / "schema" / "migrations/2026-10-28.sql").read_text(encoding="utf-8")

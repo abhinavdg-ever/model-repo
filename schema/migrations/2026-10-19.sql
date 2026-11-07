@@ -1,5 +1,5 @@
 -- Database changes of 2026-10-18 and 2026-10-19 for a database that already has
--- schema/v1.sql applied (a new database gets all of this from v1.sql itself). Additive
+-- schema/schema.sql applied (a new database gets all of this from schema.sql itself). Additive
 -- only: nothing is dropped or rewritten, existing rows keep their values. Safe to run
 -- more than once, so a database that already ran the 2026-10-18 file can run this too.
 -- (Replaces the earlier 2026-10-18 file, which held sections 1-4.)

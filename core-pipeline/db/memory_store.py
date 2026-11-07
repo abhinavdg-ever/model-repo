@@ -44,7 +44,7 @@ def source_record_id(chart_name: str) -> str:
     return n
 
 
-# Seeded to match schema/v1.sql pipeline_stage (phase-1 rows).
+# Seeded to match schema/schema.sql pipeline_stage (phase-1 rows).
 DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
     {"stage_name": "ocr_quality", "pass_no": 1, "seq": 10,
      "label": "Rotation + Quality + Handwriting", "is_phase1": True},

@@ -86,7 +86,7 @@ class TestJunkSubtypeVocabulary:
         exactly those and nothing else, or rows become unrenderable."""
         from app.services.imaging_overlays import index_junk_rows  # noqa: F401
 
-        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+        schema_sql = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
         for label in SCHEMA_SUBTYPES:
             assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
@@ -283,15 +283,14 @@ class TestStageRegistry:
         execution. If they disagree, a chart can never reach 'completed'."""
         from orchestrator.runner import STAGE_CHAIN
 
-        # v1.sql seeds the implemented stages. v2.sql may register a stage the
-        # chain already runs (kv_extract) without editing v1.sql.
-        def _seed(name: str) -> str:
-            schema_sql = (REPO_ROOT / "schema" / name).read_text(encoding="utf-8")
-            seed_start = schema_sql.index("INSERT INTO pipeline_stage")
-            return schema_sql[seed_start : schema_sql.index(";", seed_start)]
+        # schema.sql Part 1 seeds the implemented stages; Part 2 registers stages that
+        # are not orchestrated yet (is_phase1 = FALSE).
+        def _seed(text: str) -> str:
+            seed_start = text.index("INSERT INTO pipeline_stage")
+            return text[seed_start : text.index(";", seed_start)]
 
-        seed = _seed("v1.sql")
-        registered = seed + "\n" + _seed("v2.sql")
+        seed = _seed(schema_part(1))
+        registered = seed + "\n" + _seed(schema_part(2))
 
         for name, pass_no, _fn in STAGE_CHAIN:
             assert f"('{name}',{' ' * (max(1, 16 - len(name)))}{pass_no}," in registered or \
@@ -319,49 +318,58 @@ class TestStageRegistry:
         assert "member_verify:1" in STAGE_NAMES
 
 
-# --- V1 / V2 schema split ----------------------------------------------------
+# --- schema.sql: Part 1 (implemented) / Part 2 (not implemented) -------------
+
+PART_2_BANNER = "PART 2 — NOT IMPLEMENTED YET"
+
+
+def schema_part(n: int) -> str:
+    """schema/schema.sql Part 1 (implemented) or Part 2 (not implemented yet)."""
+    text = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
+    cut = text.rfind("\n-- ####", 0, text.index(PART_2_BANNER))
+    return text[:cut] if n == 1 else text[cut:]
 
 
 class TestSchemaSplit:
-    """schema/v1.sql is what is implemented; schema/v2.sql is the next phase.
+    """schema.sql Part 1 is what is implemented; Part 2 is the next phase.
 
     The split is only meaningful while it stays true, and nothing else enforces
-    it — a stage that starts writing a V2 table would leave V1 silently wrong.
+    it — a stage that starts writing a Part 2 table would leave Part 1 silently wrong.
     """
 
     @staticmethod
-    def _relations(path):
+    def _relations(part):
         import re
 
-        text = (REPO_ROOT / "schema" / path).read_text(encoding="utf-8")
+        text = schema_part(part)
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
-        return set(re.findall(r"CREATE TABLE (\w+)", code)) | set(
-            re.findall(r"CREATE OR REPLACE VIEW (\w+)", code)
+        return set(re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)", code)) | set(
+            re.findall(r"CREATE (?:OR REPLACE )?VIEW (\w+)", code)
         )
 
-    def test_no_relation_is_defined_in_both_files(self):
-        overlap = self._relations("v1.sql") & self._relations("v2.sql")
+    def test_no_relation_is_defined_in_both_parts(self):
+        overlap = self._relations(1) & self._relations(2)
         assert not overlap, f"defined twice: {sorted(overlap)}"
 
-    def test_v1_never_references_a_v2_relation(self):
-        """V1 must apply and run on its own — v2.sql is optional."""
+    def test_part_1_never_references_a_part_2_relation(self):
+        """Part 1 stands on its own: nothing implemented may depend on a proposal."""
         import re
 
-        text = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+        text = schema_part(1)
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
-        v1, v2 = self._relations("v1.sql"), self._relations("v2.sql")
+        v1, v2 = self._relations(1), self._relations(2)
         referenced = set(re.findall(r"REFERENCES\s+(\w+)\s*\(", code)) | set(
             re.findall(r"(?<!DISTINCT )(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*)\b", code)
         )
-        assert not (referenced & v2), f"V1 depends on V2: {sorted(referenced & v2)}"
-        assert not (referenced - v1), f"V1 references undefined: {sorted(referenced - v1)}"
+        assert not (referenced & v2), f"Part 1 depends on Part 2: {sorted(referenced & v2)}"
+        assert not (referenced - v1), f"Part 1 references undefined: {sorted(referenced - v1)}"
 
-    def test_no_code_touches_a_v2_relation(self):
-        """If this fails, the module is implemented — move its table to v1.sql."""
+    def test_no_code_touches_a_part_2_relation(self):
+        """If this fails, the module is implemented — move its table to Part 1."""
         import ast
         import re
 
-        v2 = self._relations("v2.sql")
+        v2 = self._relations(2)
         offenders = []
         for path in repo_python_files(
             REPO_ROOT / "core-pipeline", REPO_ROOT / "review-ui" / "backend"
@@ -384,7 +392,7 @@ class TestSchemaSplit:
                     )
                     for rel in hits & v2:
                         offenders.append(f"{path.name}:{node.lineno} -> {rel}")
-        assert not offenders, "code touches V2 relations:\n  " + "\n  ".join(sorted(offenders))
+        assert not offenders, "code touches Part 2 relations:\n  " + "\n  ".join(sorted(offenders))
 
 
 # --- cross-platform text IO --------------------------------------------------
@@ -1066,11 +1074,11 @@ class TestChartResetKeepsTheAuditTrail:
 
         from db import CHART_RESULT_TABLES
 
-        schema = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+        schema = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in schema.splitlines())
         for table in CHART_RESULT_TABLES:
             m = re.search(rf"CREATE TABLE {table}\s*\((.*?)\n\);", code, re.S)
-            assert m, f"{table} is not in v1.sql"
+            assert m, f"{table} is not in schema.sql"
             assert "chart_id" in m.group(1), f"{table} has no chart_id column"
 
 
@@ -1808,11 +1816,11 @@ class TestCorrectedPages:
         import re
         from pathlib import Path
 
-        sql = (Path(__file__).resolve().parents[1] / "schema" / "v1.sql").read_text(
+        sql = (Path(__file__).resolve().parents[1] / "schema" / "schema.sql").read_text(
             encoding="utf-8"
         )
         m = re.search(r"CREATE TABLE page_list\s*\((.*?)\n\);", sql, re.S)
-        assert m, "page_list missing from v1.sql"
+        assert m, "page_list missing from schema.sql"
         body = m.group(1)
         assert "use_corrected" in body
         assert "image_path" in body
@@ -1857,7 +1865,7 @@ class TestCorrectedPages:
 
         from orchestrator.runner import STAGE_CHAIN
 
-        sql = (Path(__file__).resolve().parents[1] / "schema" / "v1.sql").read_text(
+        sql = (Path(__file__).resolve().parents[1] / "schema" / "schema.sql").read_text(
             encoding="utf-8"
         )
         block = sql[sql.index("INSERT INTO pipeline_stage") :]

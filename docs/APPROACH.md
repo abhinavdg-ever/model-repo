@@ -163,7 +163,7 @@ the 12-line title zone.
 
 ## 1. The order of work
 
-The stage order is the `pipeline_stage` table (`schema/v1.sql`). The stages this
+The stage order is the `pipeline_stage` table (`schema/schema.sql`). The stages this
 document is about are in bold:
 
 | seq | Stage (`stage_name`) | Reads | Writes |

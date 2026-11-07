@@ -16,7 +16,7 @@ def _script():
 
 
 def _tables() -> dict[str, str]:
-    sql = (REPO / "schema" / "v1.sql").read_text(encoding="utf-8")
+    sql = (REPO / "schema" / "schema.sql").read_text(encoding="utf-8")
     return {m.group(1): m.group(2) for m in re.finditer(r"CREATE TABLE (\w+) \((.*?)\n\);", sql, re.S)}
 
 

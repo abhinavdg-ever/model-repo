@@ -79,7 +79,7 @@ _TEXT_FIELDS = (
 _ADD_IS_VISIBLE = "ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_visible TEXT"
 
 # Databases created before page_ground_truth_entry gain it on first load.
-# Kept in step with schema/v1.sql and review-ui's services/ground_truth.py.
+# Kept in step with schema/schema.sql and review-ui's services/ground_truth.py.
 _ADD_ENTRY_TABLE = """
 CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
     id                      BIGSERIAL PRIMARY KEY,

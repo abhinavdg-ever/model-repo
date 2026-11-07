@@ -100,7 +100,7 @@ def test_csvs_and_upsert_use_the_schema_column_names():
     assert QUALITY_COLS[-1] == "review_required"
     params = inspect.signature(upsert_quality).parameters
     assert all(name in params for name in [*columns, "review_required"])
-    schema = (ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+    schema = (ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
     for name in [*columns, "review_required"]:
         assert f"    {name} " in schema, name
 

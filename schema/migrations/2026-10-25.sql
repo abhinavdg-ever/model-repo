@@ -1,5 +1,5 @@
--- Database changes of 2026-10-25 for a database that already has schema/v1.sql
--- applied (a new database gets this from v1.sql itself). Additive only: nothing is
+-- Database changes of 2026-10-25 for a database that already has schema/schema.sql
+-- applied (a new database gets this from schema.sql itself). Additive only: nothing is
 -- dropped or rewritten. Safe to run more than once.
 --
 --   psql "$DATABASE_URL" -f schema/migrations/2026-10-25.sql          (macOS / Linux / VM)

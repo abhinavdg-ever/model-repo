@@ -553,7 +553,7 @@ class TestSchema:
         the whole chart on insert."""
         import re
 
-        schema = (REPO / "schema/v1.sql").read_text(encoding="utf-8")
+        schema = (REPO / "schema/schema.sql").read_text(encoding="utf-8")
         check = re.search(r"decided_by\s+VARCHAR\(20\)[^;]*?CHECK \(decided_by IN \((.*?)\)\)", schema, re.S)
         allowed = set(re.findall(r"'([a-z_]+)'", check.group(1)))
         assert set(DECIDED_BY) <= allowed, sorted(set(DECIDED_BY) - allowed)

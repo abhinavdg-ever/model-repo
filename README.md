@@ -82,7 +82,7 @@ chart workspace, and never call each other.
 
 ```bash
 # 1. Create the schema — once, before either service starts
-psql "$DATABASE_URL" -f schema/v1.sql
+psql "$DATABASE_URL" -f schema/schema.sql
 
 # 2. The pipeline
 cd core-pipeline

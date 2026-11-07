@@ -12,7 +12,7 @@ The commits are `914cc49` and `4ccf508`. On a machine that already runs charts:
 1. Pull, then rebuild the core-pipeline image. `requirements.txt` is gone. The image installs `requirements-basic.txt` and `requirements-models.txt`, including XGBoost. The `WITH_NER` build argument is gone.
 2. Rebuild with `docker compose up -d --build` from `core-pipeline/` and from `review-ui/`. Weights are not in the image. Copy `page-family/`, `kv-extraction/`, `blank-junk/`, and `hw/image_type_classification.pkl` plus `hw/metadata.json` into `MODELS_HOST_PATH` (default `core-pipeline/models`). Leave the large weights already there (RapidOCR, ConvNeXt, GLiNER, Docling, layout, MiniLM).
 3. `PAGE_FAMILY_MODEL_DIR` defaults to `models/page-family/bert`. Add that line only if `.env` was copied from an older example that sets every model path by hand. Restart the API. `/health` should list the page-family model as ready. If XGBoost or the file is missing, page type falls back to keywords.
-4. Do not re-apply `schema/v1.sql`, and do not look for `schema/patch_output_path.sql` — that file was removed. On the existing database:
+4. Do not re-apply `schema/schema.sql`, and do not look for `schema/patch_output_path.sql` — that file was removed. On the existing database:
 
 ```sql
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS member_id TEXT;
@@ -33,7 +33,7 @@ ALTER TABLE dos_extraction_results
 
 Stage 1 (rotation, mirror, handwriting, page type) and review-ui changed.
 
-1. **Database, before the API restarts.** Stage 1 writes five new columns, so a chart fails without them. Do not re-apply `schema/v1.sql`:
+1. **Database, before the API restarts.** Stage 1 writes five new columns, so a chart fails without them. Do not re-apply `schema/schema.sql`:
 
 ```sql
 ALTER TABLE ocr_quality_results
@@ -163,12 +163,11 @@ unchanged.
 ## 0. One-time: apply the schema
 
 ```bash
-psql "$DATABASE_URL" -f schema/v1.sql
-# optional: psql "$DATABASE_URL" -f schema/v2.sql
+psql "$DATABASE_URL" -f schema/schema.sql
 ```
 
 An existing database is recreated from those files. Dump it first if the data
-matters, then `schema/tools/clear_schema.sql` and `schema/v1.sql`.
+matters, then `schema/tools/clear_schema.sql` and `schema/schema.sql`.
 
 Confirm stages (and that blob credentials are live):
 

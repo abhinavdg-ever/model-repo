@@ -1,10 +1,10 @@
--- Bring an existing imaging-pipeline database up to schema/v1.sql.
+-- Bring an existing imaging-pipeline database up to schema/schema.sql.
 --
 -- Runs every file in schema/migrations/ in date order. Each file only adds or replaces
 -- (ADD COLUMN IF NOT EXISTS, CREATE ... IF NOT EXISTS, CREATE OR REPLACE VIEW,
--- ON CONFLICT DO NOTHING), so this is safe to run on any database built from v1.sql, at
+-- ON CONFLICT DO NOTHING), so this is safe to run on any database built from schema.sql, at
 -- any age, as often as you like. Stops at the first error.
--- A NEW database does not need this: apply v1.sql alone.
+-- A NEW database does not need this: apply schema.sql alone.
 --
 --   Ubuntu VM / macOS:   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema/migrate.sql
 --   Windows PowerShell:  psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f schema\migrate.sql
@@ -12,7 +12,7 @@
 -- Run it as the owner of the tables (the DATABASE_URL user). \ir resolves each file
 -- next to this one, so it works from any folder.
 -- When you add a migration: a new dated file in migrations/, a new line below, the same
--- change in v1.sql, and a line in the WHAT CHANGED block of v2.sql.
+-- change in schema.sql, and a line at the top of schema/CHANGELOG.md.
 
 \set ON_ERROR_STOP on
 SET client_min_messages TO WARNING;
@@ -33,6 +33,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-10-28.sql
 \echo '2026-10-31  junk subtype Cards'
 \ir migrations/2026-10-31.sql
-\echo '2026-11-07  chart tags, stage label, accuracy view'
+\echo '2026-11-07  chart tags, stage label, accuracy view, Part 2 tables (one database)'
 \ir migrations/2026-11-07.sql
-\echo 'Done: the database matches schema/v1.sql.'
+\echo 'Done: the database matches schema/schema.sql.'

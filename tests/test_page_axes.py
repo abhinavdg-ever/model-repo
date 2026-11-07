@@ -360,7 +360,7 @@ class TestStorage:
     def test_every_written_column_is_in_the_schema(self):
         from db import PAGE_CLASSIFICATION_FIELDS
 
-        sql = (REPO / "schema" / "v1.sql").read_text(encoding="utf-8")
+        sql = (REPO / "schema" / "schema.sql").read_text(encoding="utf-8")
         table = re.search(r"CREATE TABLE page_classification \((.*?)\n\);", sql, re.S).group(1)
         columns = set(re.findall(r"^\s+([a-z_0-9]+)\s+[A-Z]", table, re.M))
         assert set(PAGE_CLASSIFICATION_FIELDS) <= columns
