@@ -457,3 +457,76 @@ LEFT JOIN LATERAL (
     SELECT COUNT(*) AS row_count FROM ground_truth_csv g WHERE g.chart_id = c.id
 ) gt ON true;
 -- <<< PART 2 END
+
+-- 6. run_usage (2026-11-07): monitoring, one row per chart run, plus daily / hourly views.
+-- Monitoring (2026-11-07): one row per chart run: time, pages, Doc Intel pages and cost, LLM
+-- tokens and cost. Written by core-pipeline when a run ends (orchestrator/usage.py). Prices
+-- come from .env (PRICE_*) and are stored with the row, so a later price change never
+-- rewrites history. v_run_usage_daily / v_run_usage_hourly add them up.
+CREATE TABLE IF NOT EXISTS run_usage (
+    id                       BIGSERIAL PRIMARY KEY,
+    chart_id                 BIGINT REFERENCES chart_list(id) ON DELETE SET NULL,
+    chart_name               VARCHAR(255) NOT NULL,
+    trigger_id               VARCHAR(40),
+    trigger_kind             VARCHAR(20),
+    status                   VARCHAR(20) NOT NULL,
+    partial                  TEXT,
+    started_at               TIMESTAMPTZ NOT NULL,
+    completed_at             TIMESTAMPTZ NOT NULL,
+    seconds                  NUMERIC(10,1) NOT NULL,
+    pages                    INT NOT NULL DEFAULT 0,
+    ocr_ran                  BOOLEAN NOT NULL DEFAULT FALSE,
+    stage_seconds            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    docintel_pages           INT NOT NULL DEFAULT 0,
+    docintel_price_per_1000  NUMERIC(10,4),
+    docintel_cost            NUMERIC(12,4) NOT NULL DEFAULT 0,
+    llm_prompt_tokens        BIGINT NOT NULL DEFAULT 0,
+    llm_completion_tokens    BIGINT NOT NULL DEFAULT 0,
+    llm_cost                 NUMERIC(12,4) NOT NULL DEFAULT 0,
+    llm_usage                JSONB NOT NULL DEFAULT '{}'::jsonb,
+    currency                 VARCHAR(3) NOT NULL DEFAULT 'USD',
+    error_message            TEXT,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_run_usage_updated_at ON run_usage;
+CREATE TRIGGER trg_run_usage_updated_at
+    BEFORE UPDATE ON run_usage
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_run_usage_started_at ON run_usage(started_at);
+CREATE INDEX IF NOT EXISTS idx_run_usage_chart_id ON run_usage(chart_id);
+CREATE INDEX IF NOT EXISTS idx_run_usage_trigger_id ON run_usage(trigger_id);
+
+
+-- Daily and hourly totals of run_usage (by the hour a run started).
+CREATE OR REPLACE VIEW v_run_usage_daily AS
+SELECT date_trunc('day', started_at)::date               AS day,
+       count(*)                                          AS runs,
+       count(*) FILTER (WHERE status = 'failed')          AS failed,
+       sum(pages)                                        AS pages,
+       round(sum(seconds), 1)                            AS seconds,
+       round(sum(seconds) / NULLIF(sum(pages), 0), 2)    AS seconds_per_page,
+       sum(docintel_pages)                               AS docintel_pages,
+       round(sum(docintel_cost), 2)                      AS docintel_cost,
+       sum(llm_prompt_tokens)                            AS llm_prompt_tokens,
+       sum(llm_completion_tokens)                        AS llm_completion_tokens,
+       round(sum(llm_cost), 2)                           AS llm_cost,
+       round(sum(docintel_cost + llm_cost), 2)           AS total_cost,
+       min(currency)                                     AS currency
+  FROM run_usage
+ GROUP BY 1;
+
+CREATE OR REPLACE VIEW v_run_usage_hourly AS
+SELECT date_trunc('hour', started_at)                    AS hour,
+       count(*)                                          AS runs,
+       count(*) FILTER (WHERE status = 'failed')          AS failed,
+       sum(pages)                                        AS pages,
+       round(sum(seconds), 1)                            AS seconds,
+       sum(docintel_pages)                               AS docintel_pages,
+       round(sum(docintel_cost), 2)                      AS docintel_cost,
+       sum(llm_prompt_tokens + llm_completion_tokens)    AS llm_tokens,
+       round(sum(llm_cost), 2)                           AS llm_cost
+  FROM run_usage
+ GROUP BY 1;

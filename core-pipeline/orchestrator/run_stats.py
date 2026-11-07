@@ -142,6 +142,9 @@ def record(
             with open(folder / "run_stats.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(row) + "\n")
             write_reports(folder)
+        from orchestrator import usage
+
+        usage.write(row, results)  # run_usage: the database copy, with cost (never raises)
         logger.info(
             "run stats — %ss, %d page(s), OCR %s, Doc Intel %d page(s)",
             seconds, pages, "yes" if row["ocr"] else "no", row["docintel_pages"],

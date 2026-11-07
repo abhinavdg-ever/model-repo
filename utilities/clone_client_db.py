@@ -76,7 +76,7 @@ CHART_TABLES = (
 )
 # Chart-linked tables review-ui never reads: not copied (2026-10-28, user: only what the
 # screens need). A chart's old rows in them go with it (ON DELETE CASCADE).
-NOT_COPIED = ("pipeline_jobs",)
+NOT_COPIED = ("pipeline_jobs", "run_usage")  # run log and monitoring: ours, not the client's
 USER_FIELDS = ("name", "email", "role", "password_hash", "is_active")
 DEFAULT_SINCE = "2026-10-26 00:00"
 

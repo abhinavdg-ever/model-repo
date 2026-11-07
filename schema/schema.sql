@@ -25,6 +25,7 @@
 --   chart_list / page_list       chart and page identity, lifecycle, tags
 --   page_stage_status            per-page per-stage per-pass progress
 --   pipeline_jobs                run log
+--   run_usage                    monitoring: time, Doc Intel and LLM cost per run
 --   manifest_member_list         the client roster and chart metadata
 --   ocr_quality_results          rotation, quality, handwriting (stage 1)
 --   ocr_results                  prelim / final1 / final2 OCR
@@ -45,7 +46,8 @@
 --   chart_review(_entry)         Reviewed charts and the Review Log
 --   encounter_review             a reviewer's encounters
 --   chart_deletion               charts deleted in review-ui
---   views: v_page_blank_junk_final, v_chart_stage_progress, v_accuracy_page
+--   views: v_page_blank_junk_final, v_chart_stage_progress, v_accuracy_page,
+--          v_run_usage_daily, v_run_usage_hourly
 --
 -- PART 2 — tables (not implemented)
 -- ---------------------------------------------------------------------
@@ -1194,6 +1196,78 @@ CREATE INDEX idx_pipeline_jobs_chart_id ON pipeline_jobs(chart_id);
 CREATE INDEX idx_pipeline_jobs_stage_status ON pipeline_jobs(stage_name, status);
 CREATE INDEX idx_pipeline_jobs_claim ON pipeline_jobs(status, queue_name, queued_at)
     WHERE status IN ('queued','retrying');
+
+
+-- Monitoring (2026-11-07): one row per chart run: time, pages, Doc Intel pages and cost, LLM
+-- tokens and cost. Written by core-pipeline when a run ends (orchestrator/usage.py). Prices
+-- come from .env (PRICE_*) and are stored with the row, so a later price change never
+-- rewrites history. v_run_usage_daily / v_run_usage_hourly add them up.
+CREATE TABLE run_usage (
+    id                       BIGSERIAL PRIMARY KEY,
+    chart_id                 BIGINT REFERENCES chart_list(id) ON DELETE SET NULL,
+    chart_name               VARCHAR(255) NOT NULL,
+    trigger_id               VARCHAR(40),
+    trigger_kind             VARCHAR(20),
+    status                   VARCHAR(20) NOT NULL,
+    partial                  TEXT,
+    started_at               TIMESTAMPTZ NOT NULL,
+    completed_at             TIMESTAMPTZ NOT NULL,
+    seconds                  NUMERIC(10,1) NOT NULL,
+    pages                    INT NOT NULL DEFAULT 0,
+    ocr_ran                  BOOLEAN NOT NULL DEFAULT FALSE,
+    stage_seconds            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    docintel_pages           INT NOT NULL DEFAULT 0,
+    docintel_price_per_1000  NUMERIC(10,4),
+    docintel_cost            NUMERIC(12,4) NOT NULL DEFAULT 0,
+    llm_prompt_tokens        BIGINT NOT NULL DEFAULT 0,
+    llm_completion_tokens    BIGINT NOT NULL DEFAULT 0,
+    llm_cost                 NUMERIC(12,4) NOT NULL DEFAULT 0,
+    llm_usage                JSONB NOT NULL DEFAULT '{}'::jsonb,
+    currency                 VARCHAR(3) NOT NULL DEFAULT 'USD',
+    error_message            TEXT,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_run_usage_updated_at
+    BEFORE UPDATE ON run_usage
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX idx_run_usage_started_at ON run_usage(started_at);
+CREATE INDEX idx_run_usage_chart_id ON run_usage(chart_id);
+CREATE INDEX idx_run_usage_trigger_id ON run_usage(trigger_id);
+
+
+-- Daily and hourly totals of run_usage (by the hour a run started).
+CREATE OR REPLACE VIEW v_run_usage_daily AS
+SELECT date_trunc('day', started_at)::date               AS day,
+       count(*)                                          AS runs,
+       count(*) FILTER (WHERE status = 'failed')          AS failed,
+       sum(pages)                                        AS pages,
+       round(sum(seconds), 1)                            AS seconds,
+       round(sum(seconds) / NULLIF(sum(pages), 0), 2)    AS seconds_per_page,
+       sum(docintel_pages)                               AS docintel_pages,
+       round(sum(docintel_cost), 2)                      AS docintel_cost,
+       sum(llm_prompt_tokens)                            AS llm_prompt_tokens,
+       sum(llm_completion_tokens)                        AS llm_completion_tokens,
+       round(sum(llm_cost), 2)                           AS llm_cost,
+       round(sum(docintel_cost + llm_cost), 2)           AS total_cost,
+       min(currency)                                     AS currency
+  FROM run_usage
+ GROUP BY 1;
+
+CREATE OR REPLACE VIEW v_run_usage_hourly AS
+SELECT date_trunc('hour', started_at)                    AS hour,
+       count(*)                                          AS runs,
+       count(*) FILTER (WHERE status = 'failed')          AS failed,
+       sum(pages)                                        AS pages,
+       round(sum(seconds), 1)                            AS seconds,
+       sum(docintel_pages)                               AS docintel_pages,
+       round(sum(docintel_cost), 2)                      AS docintel_cost,
+       sum(llm_prompt_tokens + llm_completion_tokens)    AS llm_tokens,
+       round(sum(llm_cost), 2)                           AS llm_cost
+  FROM run_usage
+ GROUP BY 1;
 
 
 -- ---------------------------------------------------------------------

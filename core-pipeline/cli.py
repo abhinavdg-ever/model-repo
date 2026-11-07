@@ -219,6 +219,11 @@ def main() -> None:
         "stats",
         help="Rebuild run_stats_charts.csv / run_stats_hourly.csv in the log folder and print the hourly table",
     )
+    p_usage = sub.add_parser(
+        "usage",
+        help="Monitoring: daily runs, pages, time, Doc Intel and LLM cost (run_usage in the database)",
+    )
+    p_usage.add_argument("--days", type=int, default=14, help="How many days back (default 14)")
 
     p_status = sub.add_parser("status", help="Show a chart's stage progress")
     p_status.add_argument("chart_id", type=int)
@@ -485,6 +490,25 @@ def main() -> None:
                   f"{r['avg_seconds_per_chart'] if r['avg_seconds_per_chart'] is not None else '-':>11} "
                   f"{r['avg_seconds_per_page'] if r['avg_seconds_per_page'] is not None else '-':>10}")
         print(f"\nwritten: {paths['charts']}\n         {paths['hourly']}")
+        return
+
+    if args.cmd == "usage":
+        from orchestrator import usage
+
+        try:
+            rows = usage.daily(args.days)
+        except Exception as exc:  # noqa: BLE001
+            raise SystemExit(f"run_usage not readable ({exc}); run schema/migrate.sql first")
+        print(f"{'day':<10} {'runs':>5} {'failed':>6} {'pages':>7} {'hours':>7} {'s/page':>7} "
+              f"{'docintel':>8} {'DI cost':>9} {'LLM tokens':>11} {'LLM cost':>9} {'total':>9}")
+        for r in rows:
+            tokens = int(r["llm_prompt_tokens"] or 0) + int(r["llm_completion_tokens"] or 0)
+            print(f"{str(r['day']):<10} {r['runs']:>5} {r['failed']:>6} {r['pages'] or 0:>7} "
+                  f"{float(r['seconds'] or 0) / 3600:>7.2f} {r['seconds_per_page'] or '-':>7} "
+                  f"{r['docintel_pages'] or 0:>8} {r['docintel_cost'] or 0:>9} {tokens:>11} "
+                  f"{r['llm_cost'] or 0:>9} {r['total_cost'] or 0:>9} {r['currency'] or ''}")
+        if not rows:
+            print(f"no runs in the last {args.days} days")
         return
 
     if args.cmd == "stages":

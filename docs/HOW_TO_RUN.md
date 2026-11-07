@@ -589,15 +589,44 @@ python cli.py batch-run \
 | `skip_ocr: true` | Usually none; rare pages if gate-delta reopens them |
 | CLI `--resume` | Bills only pages still pending Final2 |
 
+### What a run actually cost: `run_usage`
+
+Every chart run writes one `run_usage` row: seconds (and each stage's seconds), pages, Doc
+Intel pages and cost, LLM tokens and cost. Prices come from `.env` section 5
+(`PRICE_DOCINTEL_PER_1000_PAGES`, `PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000`) and are stored
+with the row. The table comes with `schema/migrate.sql`; until it has run, runs still finish
+and the log says so once.
+
+Ubuntu VM (bash):
+
+```bash
+cd ~/advantmed-imaging-pipeline/core-pipeline
+docker compose exec api python cli.py usage              # last 14 days
+docker compose exec api python cli.py usage --days 60
+psql "$DATABASE_URL" -c "SELECT * FROM v_run_usage_daily ORDER BY day DESC LIMIT 14;"
+psql "$DATABASE_URL" -c "SELECT * FROM v_run_usage_hourly ORDER BY hour DESC LIMIT 24;"
+```
+
+Windows laptop (PowerShell), with psql installed:
+
+```powershell
+psql $env:DATABASE_URL -c "SELECT * FROM v_run_usage_daily ORDER BY day DESC LIMIT 14;"
+```
+
+One chart's runs, slowest stages included:
+`SELECT chart_name, started_at, seconds, docintel_pages, docintel_cost, stage_seconds FROM run_usage WHERE chart_name = '52743839_44976074' ORDER BY started_at DESC;`
+
+`python cli.py stats` still prints the per-trigger hourly table from `logs/run_stats.jsonl`.
+
 ---
 
 ## 9. Write path / review-ui
 
 `output_path` writes results to `<output_path>/<chart_name>/`, replacing
-existing files (same backend as `input_type`; omit it to run without writing). Workspace CSVs under each chart’s `imaging/` are what Local Mode
-review-ui overlays (`*_codeable.csv`, `*_encounter.csv`, `*_sequencing.csv`, …).
-Production Mode reads Postgres (`encounter_type_results`,
-`page_sequencing_results`, …).
+existing files (same backend as `input_type`; omit it to run without writing). The chart's
+working folder is scratch under `core-pipeline/outputs/charts/` (deleted after 7 days without
+a run). review-ui reads only the database (`encounter_type_results`,
+`page_sequencing_results`, …) and page images from Azure Blob.
 
 ---
 

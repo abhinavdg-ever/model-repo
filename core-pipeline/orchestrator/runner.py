@@ -17,6 +17,7 @@ Two behaviours worth knowing:
 from __future__ import annotations
 
 import logging
+import time
 import traceback
 from typing import Any, Callable, Optional
 
@@ -347,6 +348,7 @@ def run_pipeline_for_chart(
 
             label = stage_label(name, pass_no)
             stage_token = set_current_stage(label)
+            stage_started = time.monotonic()
             try:
                 # Always re-measure quality under skip_ocr; with reuse, gate-delta
                 # reopens only pages whose path changed.
@@ -480,6 +482,10 @@ def run_pipeline_for_chart(
                 )
             finally:
                 reset_current_stage(stage_token)
+                # Monitoring (run_usage.stage_seconds): every stage that ran, skipped ones excluded.
+                if key not in results["skipped_stages"]:
+                    spent = results.setdefault("stage_seconds", {})
+                    spent[key] = round(spent.get(key, 0.0) + time.monotonic() - stage_started, 1)
 
         with connect() as conn:
             progress = refresh_chart_status(conn, chart_id)

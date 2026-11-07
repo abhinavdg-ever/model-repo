@@ -4,6 +4,9 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * run_usage + v_run_usage_daily / v_run_usage_hourly (Part 1, 2026-11-07): monitoring, one
+   row per chart run with time, stage seconds, Doc Intel pages and cost, LLM tokens and cost
+   (migrations/2026-11-07.sql).
  * schema/ layout (2026-11-07): the dated changes_*.sql files and temp_changes_to_db.sql
    are now schema/migrations/<date>.sql, run in order by schema/migrate.sql (safe to
    re-run on any v1 database). clear_*.sql moved to schema/tools/. v1.sql no longer
