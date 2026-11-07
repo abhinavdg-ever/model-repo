@@ -342,8 +342,8 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         }
 
 
-# Share of each side trimmed off a visual page before its turn is measured (2026-11-07, user).
-VISUAL_CROP = 0.02
+# Share of each side trimmed off a visual page before its turn is measured (2026-11-07, user: 5%).
+VISUAL_CROP = 0.05
 
 
 def _trim(image: Any, share: float) -> Any:

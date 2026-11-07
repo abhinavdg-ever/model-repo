@@ -152,5 +152,5 @@ def test_visual_page_turn_is_measured_without_its_border(monkeypatch, tmp_path):
         monkeypatch.setattr(stage, "_cv_result", lambda image: (seen.__setitem__("cv", image.shape[:2]) or 0, {}))
         stage._detect_rotation(tmp_path / "p.png")
         full = (1400, 1000)
-        want = (1400 - 2 * 28, 1000 - 2 * 20) if trimmed else full
+        want = (1400 - 2 * 70, 1000 - 2 * 50) if trimmed else full
         assert seen["osd"] == want and seen["cv"] == want
