@@ -197,4 +197,5 @@ phase the flow splits into a small API and separate workers:
   dead-letter queue.
 - The stage chain, the tables and review-ui do not change.
 
-The VM side (worker count, memory): [specials/VM_GUIDE.md §3](specials/VM_GUIDE.md).
+The VM side (worker count, memory): [specials/VM_GUIDE.md §3](specials/VM_GUIDE.md). The
+whole plan and what is still missing: [specials/PLATFORM_PLAN.md](specials/PLATFORM_PLAN.md).
