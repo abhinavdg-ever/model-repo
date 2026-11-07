@@ -1,4 +1,4 @@
-"""The page taxonomy pages are named in: ``keyword-canon/page_taxonomy.json``
+"""The page taxonomy pages are named in: ``resources/canon/page_taxonomy.json``
 → ``label_space`` (the page-axes model's L1 list, L2s per L1, L3s per
 "L1 > L2", specialties). The canon (``page_canon.json``) is converted into the
 same names by ``canon_convert``.

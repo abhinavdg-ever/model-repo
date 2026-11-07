@@ -19,7 +19,7 @@ After the ladder (`post_process`): a signature or provider details keep a junked
 Continuity later junks a short page whose words are all on a nearby page
 (`continuity/short_pages.py`).
 
-Settings: `../keyword-canon/blank_junk_context_canon.json`. The full logic with examples:
+Settings: `../../resources/canon/blank_junk_context_canon.json`. The full logic with examples:
 `docs/APPROACH.md` section 2A (duplicates: 4A).
 
 | File | Role |

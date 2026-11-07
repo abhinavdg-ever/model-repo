@@ -42,7 +42,7 @@ After the ladder (``post_process``, 2026-10-26, user):
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
 Confidence: R1 1.0, R2 0.99, R3 0.95, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
-probability for its verdict. Thresholds live in ``keyword-canon/blank_junk_context_canon.json``
+probability for its verdict. Thresholds live in ``resources/canon/blank_junk_context_canon.json``
 (``distilbert``), which reloads on change.
 """
 from __future__ import annotations

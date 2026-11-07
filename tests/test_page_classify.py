@@ -60,7 +60,7 @@ class TestTaxonomy:
             assert names(training[key]) == names(pipeline[key]), key
         canon = [REPO / "training" / "taxonomy" / "page_canon.json", CANON_DIR / "page_canon.json"]
         assert len({path.read_text(encoding="utf-8") for path in canon}) == 1, \
-            "copy core-pipeline/modules/keyword-canon/page_canon.json into training/taxonomy/"
+            "copy core-pipeline/resources/canon/page_canon.json into training/taxonomy/"
 
 
 

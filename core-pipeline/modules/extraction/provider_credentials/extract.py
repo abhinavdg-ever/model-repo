@@ -1,6 +1,6 @@
 """Provider credentials (MD, DO, PA-C, …) from the page text, with the provider they follow.
 
-The list is ``keyword-canon/provider_credentials_canon.json``. A token counts
+The list is ``resources/canon/provider_credentials_canon.json``. A token counts
 when it matches that list and sits after a name on the same line. A two-letter
 form that is also a state (MD, PA) is kept only when it is not followed by a
 ZIP code.

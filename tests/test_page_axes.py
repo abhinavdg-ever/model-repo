@@ -567,7 +567,7 @@ class TestCodeabilityTable:
         from modules.page_classify.canon_convert import codeability_table
 
         space = json.loads((REPO / "training" / "taxonomy" / "taxonomy.json").read_text(encoding="utf-8"))
-        pipeline = json.loads((CORE / "modules" / "keyword-canon" / "page_taxonomy.json").read_text(encoding="utf-8"))
+        pipeline = json.loads((CORE / "resources" / "canon" / "page_taxonomy.json").read_text(encoding="utf-8"))
         assert pipeline["codeability"] == codeability_table(space)
 
 
@@ -575,7 +575,7 @@ class TestSpecialtyLexicon:
     def test_the_pipeline_copy_is_the_training_lexicon(self):
         import json
 
-        pipeline = CORE / "modules" / "keyword-canon" / "specialty_canon.json"
+        pipeline = CORE / "resources" / "canon" / "specialty_canon.json"
         training = REPO / "training" / "taxonomy" / "rules" / "specialty.json"
         assert json.loads(pipeline.read_text(encoding="utf-8")) == json.loads(training.read_text(encoding="utf-8"))
 
@@ -584,7 +584,7 @@ class TestSpecialtyLexicon:
 
         from modules.page_classify import taxonomy
 
-        lexicon = json.loads((CORE / "modules" / "keyword-canon" / "specialty_canon.json").read_text(encoding="utf-8"))
+        lexicon = json.loads((CORE / "resources" / "canon" / "specialty_canon.json").read_text(encoding="utf-8"))
         assert set(lexicon["specialties"]) <= set(taxonomy.label_space()["specialty"])
 
 
@@ -593,7 +593,7 @@ class TestConvertedCanon:
     def _files():
         import json
 
-        folder = CORE / "modules" / "keyword-canon"
+        folder = CORE / "resources" / "canon"
         return (json.loads((folder / "page_canon.json").read_text(encoding="utf-8")),
                 json.loads((folder / "page_taxonomy.json").read_text(encoding="utf-8")))
 
@@ -728,13 +728,13 @@ class TestGenericCandidates:
 
 
 class TestClassKeywords:
-    """keyword-canon/class_keywords.json: curated words for every class (2026-10-25, user)."""
+    """resources/canon/class_keywords.json: curated words for every class (2026-10-25, user)."""
 
     @staticmethod
     def _classes():
         import json
 
-        return json.loads((CORE / "modules" / "keyword-canon" / "class_keywords.json").read_text(encoding="utf-8"))["classes"]
+        return json.loads((CORE / "resources" / "canon" / "class_keywords.json").read_text(encoding="utf-8"))["classes"]
 
     def test_every_key_is_a_taxonomy_path_and_every_class_has_words(self):
         from modules.page_classify import taxonomy
@@ -756,7 +756,7 @@ class TestClassKeywords:
     def test_no_filler_or_disease_word(self):
         import json
 
-        vocab = json.loads((CORE / "modules" / "keyword-canon" / "document_vocabulary.json").read_text(encoding="utf-8"))
+        vocab = json.loads((CORE / "resources" / "canon" / "document_vocabulary.json").read_text(encoding="utf-8"))
         banned = set(vocab["filler_words"]) | set(vocab["disease_words"])
         used = {w for words in self._classes().values() for tier in words.values() for w in tier}
         assert not used & banned, sorted(used & banned)
@@ -766,7 +766,7 @@ class TestClassKeywords:
         import json
         from collections import Counter
 
-        canon = json.loads((CORE / "modules" / "keyword-canon" / "page_canon.json").read_text(encoding="utf-8"))
+        canon = json.loads((CORE / "resources" / "canon" / "page_canon.json").read_text(encoding="utf-8"))
         repeated = [n for n, k in Counter(e["page_type"] for e in canon["page_types"]).items() if k > 1]
         assert not repeated, repeated
 

@@ -104,7 +104,7 @@ document (described, not changed: this document changes no code).
 | h | **Manual Review: any one match is a match** for cells with several values | `excel_compare/field_comparator._values_match` |
 | i | Stability: every OpenCV call in stage 1 one at a time and OpenCV's own thread pool off; shared models (blank / junk BERT, GLiNER, RapidOCR fallback) one call at a time (VM "double free or corruption" aborts) | `image_preprocess/_cv2.py`, `model_bridge`, `extraction/util/model`, `member/.../model` |
 | j | **Taxonomy v29.3** (`Taxonomy_v29_3_training_needs.xlsx`): HIPAA and Privacy → HIPAA Notice & Consent; new L1 Pharmacy Note; Clinical Summary gains Summary and Index Page. `training/taxonomy/import_taxonomy_xlsx.py` brings a workbook in; codeability already decided is kept | `page_taxonomy.json`, `training/taxonomy/taxonomy.json` |
-| k | **The page type as one leaf** (3L): a leaf model (`training/bert-training-leaf/`) and a per-leaf keyword canon (Must Have, Good To Have, Shared, Negative, Deciding; section headers ×2) combined by gates, Deciding and rank points; Others only when nothing else; codeability of the leaf. The cascade (3) stays for `PAGE_CLASSIFIER=axes` | `page_classify/leaf.py`, `leaf_canon.py`, `keyword-canon/leaf_keywords.json` |
+| k | **The page type as one leaf** (3L): a leaf model (`training/bert-training-leaf/`) and a per-leaf keyword canon (Must Have, Good To Have, Shared, Negative, Deciding; section headers ×2) combined by gates, Deciding and rank points; Others only when nothing else; codeability of the leaf. The cascade (3) stays for `PAGE_CLASSIFIER=axes` | `page_classify/leaf.py`, `leaf_canon.py`, `resources/canon/leaf_keywords.json` |
 | l | **DOS rules** (3A.3a): amended dates dropped, Exam Date last on Progress Notes, Report Date as the discharge date, a keyword pass, the electronic-signature fallback, consistency with neighbouring pages | `dos/dos_logic.py`, `dos_canon.json` |
 | m | **Non-codable credentials** (5.6): a Codable page whose only credentials are non-codable is Non-Codable; provider names lose signature role words | `non_codable_credentials.py`, `names.trim_provider_name` |
 | n | **Continuity**: a signed page (a mid-page signature too) always ends its document, over sticky visit headers, dates and page numbers; a Clinical Summary page stands apart from other families (4.6) | `continuity/engine.score_gap`, `continuity_canon.json` |
@@ -213,7 +213,7 @@ both jobs.
 
 ## 2. The taxonomy and the two answers per page
 
-**One taxonomy everywhere.** `core-pipeline/modules/keyword-canon/page_taxonomy.json`
+**One taxonomy everywhere.** `core-pipeline/resources/canon/page_taxonomy.json`
 (pipeline), `training/bert-training/taxonomy.json` (trainer) and
 `training/taxonomy/taxonomy.json` (labelling) carry the same v29.2 label space. The
 model folder's `label_space.json` must say `taxonomy_version: v29.2`
@@ -258,7 +258,7 @@ Cards, Others). Duplicates are found by the same stage but are not junk (section
 Code: `core-pipeline/modules/blank_junk/method.py: decide` (the rule ladder) and
 `post_process`, `blank_junk/stage.py: _classify` (passes, duplicates, writing),
 `blank_junk/card_rules.py: detect` (cards), `continuity/short_pages.py: find` (the short
-page contained in a nearby page). Settings: `keyword-canon/blank_junk_context_canon.json`
+page contained in a nearby page). Settings: `resources/canon/blank_junk_context_canon.json`
 (`distilbert`, `short_page`, `visual`, `handwritten_veto`, `duplicates`), reloaded on change.
 
 ```
@@ -532,7 +532,7 @@ level's Others. The trainer folds a leaf with fewer than 3 pages into its parent
   it that the keywords scored, else for its Others leaf.
 * No model at all: the keywords decide alone (`model_source: none`).
 
-### 3L.3 The keyword side (`keyword-canon/leaf_keywords.json`)
+### 3L.3 The keyword side (`resources/canon/leaf_keywords.json`)
 
 Five lists on any node; a leaf uses its own lists and every ancestor's (an ancestor's
 score counts half, `ancestor_share`).
@@ -652,10 +652,10 @@ at a time, for every page that is not blank, junk or duplicate. The decision is
 | **Heading lines** | the OCR layout's `section_header_candidates` and `section_headers` from the Final 2 JSON, else Final 1 | `page_classify/stage._headings` |
 | **The page-axes model** | `core-pipeline/models/page-family/page-axes/` (`encoder/`, `heads.pt`, `label_space.json`): Bio_ClinicalBERT, one encoder, hierarchical heads (L2 masked to the L1's L2s, L3 to the L2's L3s) + a specialty head; text cut to 512 tokens, **85% from the start, 15% from the end** (`head_fraction` 0.85) | `axes._load`, `axes_model.encode_texts`, `axes_model.decode` |
 | Model answer used | `distributions`: p(L1) over 16 L1s (+ `OTHER`), p(L2 \| L1) under every L1, p(L3 \| L2) under every L3 parent; `L1_top`; `specialty_top`; `paths` | `axes_model.distributions`, `top_paths` |
-| **Keyword canon** | `keyword-canon/page_canon.json`: 348 canon page types, each with a path in v29.2 names, a codeability tag, a specialty and a lexicon of `strong_terms`, `title_terms`, `body_terms`, `ambiguous_terms` (2,929 terms); `class_keywords.json`'s curated words are merged into it by `page_classify/class_keywords.py` | `keywords.build` |
-| **Keyword weights** | `keyword-canon/page_keyword_weights.json`: per level, feature → class → weight, fitted on the labelled training pages; plus the vote's settings and the strong-term table | `keyword_vote.weights`, `settings` |
+| **Keyword canon** | `resources/canon/page_canon.json`: 348 canon page types, each with a path in v29.2 names, a codeability tag, a specialty and a lexicon of `strong_terms`, `title_terms`, `body_terms`, `ambiguous_terms` (2,929 terms); `class_keywords.json`'s curated words are merged into it by `page_classify/class_keywords.py` | `keywords.build` |
+| **Keyword weights** | `resources/canon/page_keyword_weights.json`: per level, feature → class → weight, fitted on the labelled training pages; plus the vote's settings and the strong-term table | `keyword_vote.weights`, `settings` |
 | **Page rules** | `page_arbitration.json → axes_rules` | `page_rules.apply` |
-| **Specialty lexicon** | `keyword-canon/specialty_canon.json` | `specialty_keywords` |
+| **Specialty lexicon** | `resources/canon/specialty_canon.json` | `specialty_keywords` |
 
 ### 3.2 Keyword matching: which canon terms are on the page
 
@@ -1150,7 +1150,7 @@ Two answers, as for the page type. The **Extracted DOS** is the page's own date,
 from the page alone (stage `dos_extract`, seq 80). The **Final DOS** is the document's,
 set once continuity has grouped the pages (stage `imaging_final`, seq 100). Code:
 `core-pipeline/modules/dos/stage.py: run` and `dos/dos_logic.py:
-detect_dos_per_page`, settings `keyword-canon/dos_canon.json` (reloads on change); the
+detect_dos_per_page`, settings `resources/canon/dos_canon.json` (reloads on change); the
 key/value candidates come from `kv_extract` (`modules/extraction/dos/extract.py`,
 labels `extraction/dos/keys.json`). `docs/DOS_LOGIC.md` has every label and example;
 this section is the logic, with the settings read from the code on 2026-10-29. There is
@@ -1359,7 +1359,7 @@ for DOS.
 ## 4. Continuity: where one document ends and the next begins
 
 Stage `continuity` (`core-pipeline/modules/continuity/stage.py: run`), engine
-`continuity/engine.py: assign`, settings `keyword-canon/continuity_canon.json`
+`continuity/engine.py: assign`, settings `resources/canon/continuity_canon.json`
 (version 4). It writes only the grouping; Final values are written by `imaging_final`.
 
 ### 4.1 Overview
@@ -1688,7 +1688,7 @@ it on its words (pass 2 only), continuity checks a far copy
 encounter against encounter, and `imaging_final` gives it its original's values. Code:
 `core-pipeline/modules/blank_junk/stage.py: _classify` (rules in its module
 docstring), `blank_junk/classify.py: word_overlap`, settings
-`keyword-canon/blank_junk_context_canon.json → duplicates`;
+`resources/canon/blank_junk_context_canon.json → duplicates`;
 `modules/continuity/duplicates.py: review`, called from
 `continuity/stage.py: _review_duplicates`.
 
@@ -1974,7 +1974,7 @@ Report / Pathology Report" when `under_l1["Lab Report"]` carries no L3.
 `classification_category` its code (codeable / non_codeable / discharge_summary).
 
 **Non-codable credentials** (2026-11-01, user; `modules/non_codable_credentials.py`,
-list in `keyword-canon/non_codable_credentials.json`): a page Final calls **Codable** whose
+list in `resources/canon/non_codable_credentials.json`): a page Final calls **Codable** whose
 every provider credential (the signature row's and each signer's) is on the list (RN, LPN,
 MA, PharmD, PhD non-psychologist, LCSW-type counsellors, assistants, technicians ...) is
 **Non-Codable**. Matching ignores case, spaces, periods, hyphens and slashes; a credential
@@ -2275,7 +2275,7 @@ before `imaging_final`. It suggests a reading order and never moves or renames a
 ## 8. Confidence scores
 
 Every decided value carries a confidence in [0, 1] on one scale
-(`keyword-canon/confidence_canon.json`, applied by `modules/confidence.py`):
+(`resources/canon/confidence_canon.json`, applied by `modules/confidence.py`):
 **≥ 0.80 good · 0.50–0.80 passable · < 0.50 review** (flagged; review-ui colours the
 cell red and says Review).
 
@@ -2321,7 +2321,7 @@ and penalties, not measured hit rates (S10).
 
 Three kinds of JSON shape these decisions:
 
-* the **editable canon** (`core-pipeline/modules/keyword-canon/*.json`): every word
+* the **editable canon** (`core-pipeline/resources/canon/*.json`): every word
   list, weight, threshold and table the stages use. Change behaviour without a code
   change;
 * the **per-chart staging** (`<chart>/staging/*.json`): what each stage decided and
@@ -4198,7 +4198,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 
 **Codeability rules**: page_type_tag: the page type's own tag; context: depends on the document the page is bound into (continuity); needs_review until then; source: depends on the ingest source, which is not on the page; needs_review until supplied
 
-**Strong terms** are rare words only that page type carries: in the keyword vote (core-pipeline page_classify/keyword_vote.py) they score highest by default; every term's weight per level is then learned from the labelled pages (keyword-canon/page_keyword_weights.json).
+**Strong terms** are rare words only that page type carries: in the keyword vote (core-pipeline page_classify/keyword_vote.py) they score highest by default; every term's weight per level is then learned from the labelled pages (resources/canon/page_keyword_weights.json).
 
 | Page type | Family | Path | Codeability | Specialty | Strong terms | Title terms | Body terms | Ambiguous terms |
 |---|---|---|---|---|---|---|---|---|
@@ -4689,7 +4689,7 @@ Encounter type vocabulary. Four real settings plus Not Available. Scored per pag
 * **_comment_2026_10_24**: Prior key 'Lab Report/Result' renamed to 'Lab Report' to match taxonomy_v29 L1. With the old key the prior never fired on current data, and about 290 lab pages fell to 'no evidence'.
 * **_comment_asc_2026_10_24**: Client direction 2026-10-24: ambulatory surgery centre wording is a strong Outpatient (F2F) hit, so it overrides the Operative Note prior (Inpatient).
 
-### I. The pipeline's encounter canon (core-pipeline keyword-canon/encounter_canon.json)
+### I. The pipeline's encounter canon (core-pipeline resources/canon/encounter_canon.json)
 
 Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = the page's own matched page type that exists in one setting only, keyed on page_taxonomy.json sub-type names, else page type names. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change. 2026-10-20 (user): follow-up / return / established / new-patient / wellness visits are tier 2 Outpatient (F2F); more tele, inpatient and home phrases.
 
@@ -4744,9 +4744,9 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Negatives** (phrases that cancel a match): phrase: follow up with your primary care; cancels: follow up, phrase: outpatient follow up; cancels: follow up, phrase: follow up in the office; cancels: follow up, phrase: discharged home; cancels_setting: home, phrase: discharge to home; cancels_setting: home, phrase: discharged to home; cancels_setting: home, phrase: scheduled for admission; cancels: admission date, date of admission, admitted on, phrase: pending admission; cancels: admission date, date of admission, admitted on, phrase: if admitted; cancels: admission date, date of admission, admitted on, phrase: telephone message; cancels_setting: outpatient_tele, phrase: phone message; cancels_setting: outpatient_tele, phrase: left a message; cancels_setting: outpatient_tele, phrase: ambulatory surgery center; cancels_setting: inpatient; tier1: True, phrase: ambulatory surgery centre; cancels_setting: inpatient; tier1: True, phrase: ambulatory surgical center; cancels_setting: inpatient; tier1: True, phrase: discharged home same day; cancels_setting: inpatient; tier1: True, phrase: discharged home the same day; cancels_setting: inpatient; tier1: True
 
-**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient; confidence_note: 2026-10-25 (user: a percentage, model probability penalised, one scale: >= 0.80 good, 0.50-0.80 passable, < 0.50 review). Each page's vote: the encounter model's probability for the setting (normalised over the settings), lifted by the keyword support behind it (tier 1 page type 1.0, tier 2 phrase 0.8, 0.8 / 0.6 with a conflict on the page, a confirm word 0.5), x keywords_disagree (0.7) when the model's own answer (>= 0.5) is another setting or the vote overrode a phrase; a family default (Progress Note -> F2F): the model's probability for it x fallback (0.6); Not Applicable: the model's probability backed fully by the page type. Without a model answer: the support x no_model (0.85). The encounter's: the first page's own when it decides (x conflict 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it. Penalties: keyword-canon/confidence_canon.json.
+**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient; confidence_note: 2026-10-25 (user: a percentage, model probability penalised, one scale: >= 0.80 good, 0.50-0.80 passable, < 0.50 review). Each page's vote: the encounter model's probability for the setting (normalised over the settings), lifted by the keyword support behind it (tier 1 page type 1.0, tier 2 phrase 0.8, 0.8 / 0.6 with a conflict on the page, a confirm word 0.5), x keywords_disagree (0.7) when the model's own answer (>= 0.5) is another setting or the vote overrode a phrase; a family default (Progress Note -> F2F): the model's probability for it x fallback (0.6); Not Applicable: the model's probability backed fully by the page type. Without a model answer: the support x no_model (0.85). The encounter's: the first page's own when it decides (x conflict 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it. Penalties: resources/canon/confidence_canon.json.
 
-### J. The pipeline's continuity canon (keyword-canon/continuity_canon.json)
+### J. The pipeline's continuity canon (resources/canon/continuity_canon.json)
 
 * **version**: 4
 
@@ -4912,15 +4912,15 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 * **enabled**: True
 
 <!-- canon:end -->
-<!-- canon-extra:start (sections K-N, generated 2026-10-28 from keyword-canon/*.json for this edition; not regenerated by render_canon_doc.py) -->
+<!-- canon-extra:start (sections K-N, generated 2026-10-28 from resources/canon/*.json for this edition; not regenerated by render_canon_doc.py) -->
 
-### K. Page classification and Final settings (keyword-canon/page_arbitration.json)
+### K. Page classification and Final settings (resources/canon/page_arbitration.json)
 
 Version 2.0. Page classification settings. 2026-10-25: the old BERT + keyword ladder is gone; the Extracted page type is the page axes (axes, axes_rules: page_classify/axes.py, page_rules.py) in the page taxonomy's names (page_taxonomy.json); the Final page type is decided per continuity document (inside_progress_note, final_placement, document_agreement: page_classify/arbitration.py decide_final). bert_* / keyword_* columns of page_classification are no longer filled.
 
 #### K.1 axes
 
-The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). At every level (L1; L2 under the L1; L3 under the L2) the page-axes model and the keyword canon vote and the winner takes it (page_classify/keyword_vote.py; its settings -- the keywords' share, full evidence and the minimum vote per level, 0.2 -- and the learned term weights are in keyword-canon/page_keyword_weights.json). Below the minimum: L1 Others (decided_by others), L1 / Others, or L3 Others. The section L1's (Progress Note) L2 is the keywords' alone. axes.paths keeps the vote's best whole paths for the Final step; axes.model_paths the model's own. Then axes_rules (lab guard, hospital stay, clinical summary) may re-place the page. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min (0.5), ahead of the second by >= specialty_lead (0.1; 2026-10-25, user), trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability here is the page's own, from the canon entry behind the decided path; the Final codability is the Final type's (decide_final). route / route_model / route_margin / route_canon are reported only (axes.route). canon_min and l3_canon_min are the keyword canon's own thresholds where it answers alone (canon_match). taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the keywords decide.
+The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). At every level (L1; L2 under the L1; L3 under the L2) the page-axes model and the keyword canon vote and the winner takes it (page_classify/keyword_vote.py; its settings -- the keywords' share, full evidence and the minimum vote per level, 0.2 -- and the learned term weights are in resources/canon/page_keyword_weights.json). Below the minimum: L1 Others (decided_by others), L1 / Others, or L3 Others. The section L1's (Progress Note) L2 is the keywords' alone. axes.paths keeps the vote's best whole paths for the Final step; axes.model_paths the model's own. Then axes_rules (lab guard, hospital stay, clinical summary) may re-place the page. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min (0.5), ahead of the second by >= specialty_lead (0.1; 2026-10-25, user), trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability here is the page's own, from the canon entry behind the decided path; the Final codability is the Final type's (decide_final). route / route_model / route_margin / route_canon are reported only (axes.route). canon_min and l3_canon_min are the keyword canon's own thresholds where it answers alone (canon_match). taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the keywords decide.
 
 | Setting | Value |
 |---|---|
@@ -5036,7 +5036,7 @@ The keyword canon's own confidence (axes canon_min / l3_canon_min compare agains
 
 `decided_by_values`: model, canon, rule, others, blank_junk, duplicate_of:<page id>, no_text
 
-### L. Codeability per path (keyword-canon/page_taxonomy.json → codeability)
+### L. Codeability per path (resources/canon/page_taxonomy.json → codeability)
 
 The tag the Final step reads (section 5.6): the deepest listed level of the Final path decides. Fixed in code over these tags (`taxonomy.L1_CODEABILITY`): Progress Note and Operative Note codeable; Consent and Authorization, Administrative, Demographics non_codeable.
 
@@ -5211,7 +5211,7 @@ The tag the Final step reads (section 5.6): the deepest listed level of the Fina
 | Lab Report > Diagnostic Study > Visual Field Report | non_codeable |
 | Lab Report > Diagnostic Study > Others | non_codeable |
 
-### M. The keyword vote's settings and strong-term pins (keyword-canon/page_keyword_weights.json)
+### M. The keyword vote's settings and strong-term pins (resources/canon/page_keyword_weights.json)
 
 Keyword weights per level for the keyword vote (page_classify/keyword_vote.py): feature 'term\|title' or 'term\|body' -> class -> weight. Fitted on the labelled training pages (train split: {'train': 2005, 'val': 382, 'test': 397}); defaults from the canon tiers for terms the pages rarely show. Regenerate after a canon change: keyword_vote fit.
 
@@ -5533,7 +5533,7 @@ Keyword weights per level for the keyword vote (page_classify/keyword_vote.py): 
 
 Fitted weight tables: L1 4278 features; L2 under 16 L1s (8595 features); L3 under 4 L2s (2785 features). The weights themselves are not reproduced (about 1.2 MB).
 
-### N. Confidence settings (keyword-canon/confidence_canon.json)
+### N. Confidence settings (resources/canon/confidence_canon.json)
 
 2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file; docs/APPROACH.md section 10 explains it per module.
 

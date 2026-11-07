@@ -6,7 +6,7 @@ from ..rule_based.name_common import is_ignore, is_label, member_keywords, token
 
 
 def load_key_groups() -> dict[str, tuple[str, ...]]:
-    """Key groups from keyword-canon/member_keywords_canon.json (live — reloads on edit)."""
+    """Key groups from resources/canon/member_keywords_canon.json (live — reloads on edit)."""
     return member_keywords().key_groups
 
 

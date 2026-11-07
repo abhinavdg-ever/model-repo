@@ -1,6 +1,6 @@
 """Page axes for a page — the **Extracted** page type: L1, L2, L3, specialty
 and codeability, decided from the page alone (``page_arbitration.json`` →
-``axes``), in the names of the page taxonomy (``keyword-canon/page_taxonomy.json``).
+``axes``), in the names of the page taxonomy (``resources/canon/page_taxonomy.json``).
 
 At every level -- L1; L2 under the L1; L3 under the L2 -- the page-axes model and the
 keyword canon **vote** and the winner takes it (``keyword_vote``):
@@ -9,7 +9,7 @@ keyword canon **vote** and the winner takes it (``keyword_vote``):
 
 ``keywords`` are the canon's terms on the page, each weighted per level by how much it
 says about each class (rare, unique terms high; common ones low; learned from labelled
-pages, ``keyword-canon/page_keyword_weights.json``). ``k`` is the keywords' share,
+pages, ``resources/canon/page_keyword_weights.json``). ``k`` is the keywords' share,
 smaller when their evidence is thin. A winner below the level's minimum (0.2) is not
 taken: L1 Others (``decided_by`` others), "L1 / Others", or L3 Others. Without a model
 the keywords vote alone; with no keyword the model does. The section L1's L2 (Progress

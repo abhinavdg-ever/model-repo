@@ -19,7 +19,7 @@ used as a heading in the title zone; "body": anywhere else). Its weight per clas
   ambiguous 0.3. Learned and default blend by how often the term was seen
   (n / (n + ``shrink``)).
 
-Weights live in ``keyword-canon/page_keyword_weights.json`` (numbers keyed by canon
+Weights live in ``resources/canon/page_keyword_weights.json`` (numbers keyed by canon
 terms; no page text). Without a model the keywords vote alone; with no keyword on the
 page the model votes alone. The winner's vote is the level's confidence; below
 ``min[level]`` (0.2) the level is Others, and the Final step revisits the page with its

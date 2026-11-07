@@ -3,7 +3,7 @@
 The key/value extraction and NER sometimes hand the member stage a phrase that is not a
 name -- "Sars Cov 2", "Elderly Woman", "Dear Ms", "Vitamin D Deficiency", "Amy N
 MDOccurred". Those must not become a page's name or count as another member.
-keyword-canon/member_name_filter_canon.json holds the word lists; it reloads on change.
+resources/canon/member_name_filter_canon.json holds the word lists; it reloads on change.
 """
 from __future__ import annotations
 

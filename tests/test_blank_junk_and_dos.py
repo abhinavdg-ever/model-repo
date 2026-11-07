@@ -1085,7 +1085,7 @@ def test_section_header_classes_cover_the_canon():
 
     import card_rules
 
-    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "modules" / "keyword-canon"
+    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "resources" / "canon"
     canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
     classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
     assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)

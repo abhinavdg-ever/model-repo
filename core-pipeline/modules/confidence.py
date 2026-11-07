@@ -20,7 +20,7 @@ A confidence is never a fixed constant. It is built in three steps:
    handwritten or nearly empty, a dependency was missing.
 
 Then an optional per-module calibration (fitted from labelled pages) and a clip to
-[0, 1]. The numbers live in ``keyword-canon/confidence_canon.json``.
+[0, 1]. The numbers live in ``resources/canon/confidence_canon.json``.
 """
 from __future__ import annotations
 

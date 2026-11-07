@@ -301,7 +301,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `dos/` | Date-of-service driver: key/value date, else edge keyword |
 | `member/` | Member extraction + verification engine |
 | `sequencing/` | Page sequencing |
-| `keyword-canon/` | Every editable keyword JSON, reloaded on change (see `canon_store.py`) |
+| `resources/canon/` | Every editable keyword JSON, reloaded on change (see `canon_store.py`) |
 
 ### `core-pipeline/modules/image_preprocess/` — rotation + handwriting + quality
 
@@ -321,7 +321,7 @@ Live code for stage 1, not reference material.
 | File | Role |
 |---|---|
 | `docling_ocr.py` | Docling + RapidOCR `.pth` converter for final1. |
-| `section_header_match.py` | Lexical (+ optional MiniLM) match against `keyword-canon/section_header_canon.json`. |
+| `section_header_match.py` | Lexical (+ optional MiniLM) match against `resources/canon/section_header_canon.json`. |
 | `section_headers_io.py` | Reads / rewrites `section_headers` in final1/final2 JSON (stage 6, no OCR). |
 
 Weight files live under **`core-pipeline/models/`** (gitignored), not under
@@ -373,7 +373,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `modules/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` (the v29.2 label space + canon conversion tables) / `page_canon.json` (page keyword canon) / `page_arbitration.json` (page axes gates and rules, Final placement), `continuity_canon.json`, `encounter_canon.json`. Loaded via `modules/canon_store.py`. |
+| `resources/canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` (the v29.2 label space + canon conversion tables) / `page_canon.json` (page keyword canon) / `page_arbitration.json` (page axes gates and rules, Final placement), `continuity_canon.json`, `encounter_canon.json`. Loaded via `modules/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |

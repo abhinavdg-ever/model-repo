@@ -1,4 +1,4 @@
-"""The per-leaf keyword canon: ``keyword-canon/leaf_keywords.json`` (2026-11-01, user).
+"""The per-leaf keyword canon: ``resources/canon/leaf_keywords.json`` (2026-11-01, user).
 
 Keywords sit on any node of the taxonomy -- an L1, an "L1 > L2" or a whole leaf -- and a
 leaf takes its own and every ancestor's. Five lists per node:

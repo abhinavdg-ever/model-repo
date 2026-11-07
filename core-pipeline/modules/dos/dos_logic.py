@@ -27,7 +27,7 @@ Otherwise the page has no date of service.
 Each page keeps its own date here: this is the Extracted DOS. The Final DOS
 (the document's first page's, on every page) is ``continuity.engine.document_finals``.
 
-Labels and settings live in ``keyword-canon/dos_canon.json`` (reloads on change).
+Labels and settings live in ``resources/canon/dos_canon.json`` (reloads on change).
 """
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
     )
 
 
-# keyword-canon/dos_canon.json — reloaded when the file changes.
+# resources/canon/dos_canon.json — reloaded when the file changes.
 _PROFILE: CanonFile[DosProfile] = CanonFile(CANON_DIR / "dos_canon.json", _build_profile)
 
 

@@ -264,7 +264,7 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
     )
 
 
-# keyword-canon/encounter_canon.json — reloaded when the file changes. A bad
+# resources/canon/encounter_canon.json — reloaded when the file changes. A bad
 # edit is refused; the last good version keeps serving.
 _CANON: CanonFile[Canon] = CanonFile(CANON_PATH, _parse_canon)
 

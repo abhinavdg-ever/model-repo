@@ -1,8 +1,8 @@
 """Puts the keyword canon's paths in the page taxonomy's names, once, in place.
 
-The keyword canon (``keyword-canon/page_canon.json``) keeps its page types and
+The keyword canon (``resources/canon/page_canon.json``) keeps its page types and
 lexicons; this rewrites each entry's ``path`` (L1 / L2 / L3) and ``specialty``
-to the taxonomy in ``keyword-canon/page_taxonomy.json`` (the label space the
+to the taxonomy in ``resources/canon/page_taxonomy.json`` (the label space the
 page-axes model is trained on, plus the rules taxonomy's tables), so the axes
 gate stores the model's names and the canon's names alike.
 

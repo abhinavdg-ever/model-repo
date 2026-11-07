@@ -10,7 +10,7 @@
 and proposes, at every level (L1; L2 under each L1, Progress Note's sections included;
 L3 under each L2), the **single words** (2026-10-25, user: standalone words) that
 
-* are **generic document words**: in ``keyword-canon/document_vocabulary.json`` (the
+* are **generic document words**: in ``resources/canon/document_vocabulary.json`` (the
   words of forms, sections and fields, by kind: consent and legal, billing, laboratory,
   imaging, note sections, orders, medications, immunizations, demographics,
   communication, hospital, operative, questionnaires) or in the canon's page-type titles,

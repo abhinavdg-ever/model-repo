@@ -1,4 +1,4 @@
-"""Keyword matching for the keyword canon (``keyword-canon/page_canon.json``):
+"""Keyword matching for the keyword canon (``resources/canon/page_canon.json``):
 a page type with a score.
 
 The axes gate (``axes.py``) builds the canon with ``build`` and ranks its page

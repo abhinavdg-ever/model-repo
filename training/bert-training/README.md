@@ -228,7 +228,7 @@ pages. `predictions_*.csv` carry `specialty_top3` for the specialty lead.
 1. Copy `encoder/`, `heads.pt` and `label_space.json` from `output/page-axes/`
    (Colab: `BASE_PATH/page-axes/`) into `core-pipeline/models/page-family/page-axes/`.
 2. Pick the gates from the validation predictions and copy the suggestions
-   into `core-pipeline/modules/keyword-canon/page_arbitration.json` → `axes`:
+   into `core-pipeline/resources/canon/page_arbitration.json` → `axes`:
 
    ```bash
    python tune_thresholds.py                      # output/page-axes/predictions_val.csv

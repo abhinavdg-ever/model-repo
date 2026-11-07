@@ -1,4 +1,4 @@
-"""A page's specialty from its words (``keyword-canon/specialty_canon.json``).
+"""A page's specialty from its words (``resources/canon/specialty_canon.json``).
 
 The axes gate reads it when the model asserts no specialty (Unknown, unsure or
 undertrained). The strongest evidence is the practice name in the letterhead, so a

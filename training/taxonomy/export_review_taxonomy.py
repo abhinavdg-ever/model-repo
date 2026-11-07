@@ -4,7 +4,7 @@
     python training/taxonomy/export_review_taxonomy.py           # write the file
     python training/taxonomy/export_review_taxonomy.py --check   # exit 1 when it is stale
 
-Reads ``core-pipeline/modules/keyword-canon/page_taxonomy.json`` (label_space) and writes
+Reads ``core-pipeline/resources/canon/page_taxonomy.json`` (label_space) and writes
 ``review-ui/frontend/src/pageTaxonomy.json``: the Page Type ground truth offers the L1s, Page
 Subtype the L2s of the L1 picked, and Specialty the specialties (2026-10-26, user). review-ui is built on its own, so
 it reads this copy rather than the pipeline's file. Also the Provider Credentials master list
@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SOURCE = REPO / "core-pipeline" / "modules" / "keyword-canon" / "page_taxonomy.json"
-CANON = REPO / "core-pipeline" / "modules" / "keyword-canon"
+SOURCE = REPO / "core-pipeline" / "resources" / "canon" / "page_taxonomy.json"
+CANON = REPO / "core-pipeline" / "resources" / "canon"
 OUT = REPO / "review-ui" / "frontend" / "src" / "pageTaxonomy.json"
 VARIANTS_OUT = REPO / "review-ui" / "backend" / "app" / "data" / "name_variants.json"
 

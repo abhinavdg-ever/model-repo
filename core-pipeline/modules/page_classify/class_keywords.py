@@ -1,4 +1,4 @@
-"""Apply the curated per-class keywords (``keyword-canon/class_keywords.json``) to the
+"""Apply the curated per-class keywords (``resources/canon/class_keywords.json``) to the
 keyword canon.
 
     python -m modules.page_classify.class_keywords        # both copies of page_canon.json

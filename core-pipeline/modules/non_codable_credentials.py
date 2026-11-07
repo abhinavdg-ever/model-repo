@@ -1,4 +1,4 @@
-"""Credentials that cannot make a page codable (``keyword-canon/non_codable_credentials.json``).
+"""Credentials that cannot make a page codable (``resources/canon/non_codable_credentials.json``).
 
 2026-11-01 (user): a page Final calls Codable whose every provider credential is on the
 list (RN, LPN, MA, PharmD, LCSW-type counsellors ...) is Non-Codable. ``only_non_codable``

@@ -35,10 +35,10 @@ MAX_WORDS = 150
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
 NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.50
-# Section headers a card itself can carry (2026-11-05, user): keyword-canon/
+# Section headers a card itself can carry (2026-11-05, user): resources/canon/
 # section_header_classes.json ``card_allowed`` (Insurance, Subscriber ...). Any other header,
 # clinical or not (Demographics), blocks a card.
-_CLASSES_FILE = Path(__file__).resolve().parents[1] / "keyword-canon" / "section_header_classes.json"
+_CLASSES_FILE = Path(__file__).resolve().parents[2] / "resources" / "canon" / "section_header_classes.json"
 
 
 def _card_allowed() -> frozenset[str]:

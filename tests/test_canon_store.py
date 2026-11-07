@@ -1,4 +1,4 @@
-"""Editable keyword-canon/*.json files reload on change without a restart."""
+"""Editable resources/canon/*.json files reload on change without a restart."""
 from __future__ import annotations
 
 import json

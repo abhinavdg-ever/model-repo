@@ -79,9 +79,9 @@ import json; \
 from modules.image_preprocess.stage import text_orientation; \
 orient = [text_orientation(c) for c in (0, 90, 180, 270)]; \
 assert orient == [0, 90, 180, 270], ('text_orientation', orient); \
-tax = json.load(open('modules/keyword-canon/page_taxonomy.json')); \
+tax = json.load(open('resources/canon/page_taxonomy.json')); \
 assert tax['label_space']['L1'] and tax['label_space']['L2'], tax.get('version'); \
-dos = json.load(open('modules/keyword-canon/dos_canon.json')); \
+dos = json.load(open('resources/canon/dos_canon.json')); \
 assert 'certification period' in dos['labels']['encounter'], 'dos_canon labels'; \
 print('orientation + canons ok')"
 

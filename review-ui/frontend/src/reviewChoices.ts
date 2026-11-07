@@ -1,4 +1,4 @@
-// Generated from core-pipeline/modules/keyword-canon/page_taxonomy.json
+// Generated from core-pipeline/resources/canon/page_taxonomy.json
 // (version 1.1): 49 page types, 190 sub-types. Regenerate
 // rather than edit by hand when the taxonomy changes.
 

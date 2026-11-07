@@ -33,7 +33,7 @@ def _build_keywords(data: dict[str, Any]) -> MemberKeywords:
     )
 
 
-# keyword-canon/member_keywords_canon.json — reloaded when the file changes.
+# resources/canon/member_keywords_canon.json — reloaded when the file changes.
 _KEYWORDS: CanonFile[MemberKeywords] = CanonFile(
     CANON_DIR / "member_keywords_canon.json", _build_keywords
 )
@@ -53,7 +53,7 @@ def _build_variants(data: dict[str, Any]) -> dict[str, frozenset[str]]:
     return {name: frozenset(same) for name, same in out.items()}
 
 
-# keyword-canon/member_name_variants_canon.json (2026-10-27, user): Bill = William, Bob = Robert.
+# resources/canon/member_name_variants_canon.json (2026-10-27, user): Bill = William, Bob = Robert.
 _VARIANTS: CanonFile[dict[str, frozenset[str]]] = CanonFile(
     CANON_DIR / "member_name_variants_canon.json", _build_variants
 )

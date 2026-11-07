@@ -272,7 +272,7 @@ BLANK_JUNK_MODEL_DIR = _path_under_core(
 # Page-axes model (L1 / L2 / L3 / specialty / codeability; folder written by
 # training/bert-training/train_axes.py: encoder/, heads.pt, label_space.json).
 # Decides page_type / page_subtype. Missing folder, or no transformers / torch,
-# means the keyword canon (keyword-canon/page_canon.json) decides alone.
+# means the keyword canon (resources/canon/page_canon.json) decides alone.
 PAGE_AXES_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_AXES_MODEL_DIR"),
     "models/page-family/page-axes",

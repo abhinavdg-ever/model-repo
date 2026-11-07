@@ -1,6 +1,6 @@
 """Editable ``*_canon.json`` config files that reload themselves.
 
-Every editable keyword / catalog JSON lives in ``modules/keyword-canon/`` and
+Every editable keyword / catalog JSON lives in ``resources/canon/`` and
 is read through a :class:`CanonFile`, so editing one takes effect on the next
 page processed — no pipeline restart, no re-OCR:
 
@@ -34,8 +34,8 @@ from typing import Any, Callable, Generic, TypeVar
 
 logger = logging.getLogger(__name__)
 
-# modules/keyword-canon/ — one folder for every editable keyword file.
-CANON_DIR = Path(__file__).resolve().parent / "keyword-canon"
+# resources/canon/ — one folder for every editable keyword file.
+CANON_DIR = Path(__file__).resolve().parents[1] / "resources" / "canon"
 CHECK_INTERVAL_SEC = 1.0
 
 T = TypeVar("T")

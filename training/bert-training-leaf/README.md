@@ -3,7 +3,7 @@
 One encoder (Bio_ClinicalBERT by default) with a **leaf** head, one class per whole
 path `L1 > L2 > L3`, plus a specialty head. It replaces the page-axes cascade in
 `../bert-training/` (L1, then L2, then L3). The pipeline combines its top leaves with the
-per-leaf keyword canon (`core-pipeline/modules/keyword-canon/leaf_keywords.json`).
+per-leaf keyword canon (`core-pipeline/resources/canon/leaf_keywords.json`).
 
 ## Files
 

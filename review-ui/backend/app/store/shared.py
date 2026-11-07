@@ -394,7 +394,7 @@ def _filter_headers_against_canon(
     core = _core_pipeline_dir()
     canon_path = None
     if core is not None:
-        canon_path = core / "modules" / "keyword-canon" / "section_header_canon.json"
+        canon_path = core / "resources" / "canon" / "section_header_canon.json"
     if canon_path is None or not canon_path.is_file():
         return headers
     try:

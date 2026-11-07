@@ -1,1 +1,1 @@
-"""Encounter type per visit from tiered evidence (keyword-canon/encounter_canon.json)."""
+"""Encounter type per visit from tiered evidence (resources/canon/encounter_canon.json)."""
