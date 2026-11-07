@@ -1,9 +1,9 @@
-"""Blank / junk method (module/blank_junk/method.py): canon scoring, voters, ladder, vote."""
+"""Blank / junk method (modules/blank_junk/method.py): canon scoring, voters, ladder, vote."""
 from __future__ import annotations
 
 import pytest
 
-import module.blank_junk.stage  # noqa: F401  — puts the blank_junk lib on sys.path
+import modules.blank_junk.stage  # noqa: F401  — puts the blank_junk lib on sys.path
 
 import classify  # noqa: E402
 import method  # noqa: E402
@@ -398,7 +398,7 @@ class TestInvoiceKept:
         assert v.code != method.CODE_MAIN and not method.is_invoice_page(v.reason)
 
     def test_page_classify_writes_invoice_page(self):
-        from module.page_classify import stage as pc
+        from modules.page_classify import stage as pc
         row = pc._invoice_row(0.97)
         assert (row["page_type"], row["page_subtype"], row["decided_by"]) == ("Invoice", "Invoice Page", "invoice_page")
         assert row["classification_category"] == "non_codeable"

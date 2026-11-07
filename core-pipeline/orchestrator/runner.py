@@ -27,21 +27,21 @@ from stages._support import stage_label
 # Each stage runner lives next to its engine in module/<module>/.
 # OpenCV's own thread pool off process-wide before any stage runs (heap corruption on
 # the VM with page threads in OpenCV at once; 2026-11-01).
-import module.image_preprocess._cv2  # noqa: E402,F401
-from module.blank_junk import stage as blank_junk_classify
-from module.dos import stage as dos_extract
-from module.encounter import stage as encounter_type
-from module.image_preprocess import stage as quality_rotation_hw
-from module.member import stage as member_extract_verify
-from module.ocr import stage_final1 as ocr_final1_docling
-from module.ocr import stage_final2 as ocr_final2_azure
-from module.ocr import stage_prelim as ocr_prelim_tesseract
-from module.extraction import stage as kv_extract
-from module.ocr import stage_section_headers as section_headers
-from module.page_classify import stage as page_subtype
-from module.continuity import stage as continuity
-from module.imaging_final import stage as imaging_final
-from module.sequencing import stage as page_sequencing
+import modules.image_preprocess._cv2  # noqa: E402,F401
+from modules.blank_junk import stage as blank_junk_classify
+from modules.dos import stage as dos_extract
+from modules.encounter import stage as encounter_type
+from modules.image_preprocess import stage as quality_rotation_hw
+from modules.member import stage as member_extract_verify
+from modules.ocr import stage_final1 as ocr_final1_docling
+from modules.ocr import stage_final2 as ocr_final2_azure
+from modules.ocr import stage_prelim as ocr_prelim_tesseract
+from modules.extraction import stage as kv_extract
+from modules.ocr import stage_section_headers as section_headers
+from modules.page_classify import stage as page_subtype
+from modules.continuity import stage as continuity
+from modules.imaging_final import stage as imaging_final
+from modules.sequencing import stage as page_sequencing
 from stages.utilities.download_blob import run_download
 
 logger = logging.getLogger(__name__)
@@ -279,7 +279,7 @@ def run_pipeline_for_chart(
         gate_delta_applied = False
 
         from config import SKIP_OCR
-        from module.ocr.reuse import apply_skip_ocr, should_skip_ocr_stages
+        from modules.ocr.reuse import apply_skip_ocr, should_skip_ocr_stages
 
         skip_requested = (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force
         will_reuse_ocr = should_skip_ocr_stages(
@@ -415,7 +415,7 @@ def run_pipeline_for_chart(
                         and skip_ocr_active
                         and not final1_refreshed
                     ):
-                        from module.ocr.reuse import reopen_final1_for_hq_pages
+                        from modules.ocr.reuse import reopen_final1_for_hq_pages
 
                         reopened = reopen_final1_for_hq_pages(
                             chart_id, chart["chart_name"]
@@ -429,7 +429,7 @@ def run_pipeline_for_chart(
                     # pass-1 junk) that the rules now send there get their Final OCR 2.
                     refresh_final2 = False
                     if name == "ocr_final2" and skip_ocr_active:
-                        from module.ocr.reuse import reopen_final2_missing
+                        from modules.ocr.reuse import reopen_final2_missing
 
                         results["final2_refresh"] = reopen_final2_missing(chart_id)
                         refresh_final2 = bool(results["final2_refresh"])

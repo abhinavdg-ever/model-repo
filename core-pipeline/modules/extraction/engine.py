@@ -1,0 +1,137 @@
+"""Run the extraction on one chart's pages.
+
+The module was built and trained as a standalone tool (``run.py`` read OCR JSON from a
+folder, wrote CSVs, an Excel workbook and overlays). The pipeline keeps the part that
+extracts and drops the rest: this is ``run.py::_write_document`` without the writing.
+
+  1. Every extractor runs once per page on the OCR word boxes (pipeline.py).
+  2. The candidate log is scored by the trained version (``training/model.py``): the rules
+     find every candidate, the version picks among them.
+  3. The picks are pushed back into the rows, which staging.py then writes.
+
+The trained version pinned in config.py (EXTRACTION_MODEL_VERSION, v004) runs when it is on
+disk; otherwise the fallback (EXTRACTION_FALLBACK_VERSION, v002). Neither is selectable per
+run. The fallback is never silent: the staged JSON carries the version that ran, /health
+reports ``fallback``, and a warning is logged. Neither on disk is an error — never a fall back
+to rules, which would change what every later stage reads.
+"""
+from __future__ import annotations
+
+import logging
+from importlib.util import find_spec
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from config import EXTRACTION_FALLBACK_VERSION, EXTRACTION_MODEL_VERSION
+
+from .training import registry
+from .util import config
+from .util.documents import Document
+from .util.model_setup import missing_models
+
+if TYPE_CHECKING:
+    from . import pipeline
+
+logger = logging.getLogger(__name__)
+
+# Import names the extraction needs. Checked with find_spec, so asking never imports torch.
+REQUIRED_PACKAGES = ("torch", "transformers", "gliner", "lightgbm", "pandas", "numpy", "PIL")
+
+
+class ExtractionNotReady(RuntimeError):
+    """The weights or packages the extraction needs are not there."""
+
+
+def pinned_version() -> str:
+    return EXTRACTION_MODEL_VERSION
+
+
+def model_version() -> str:
+    """The version that runs: the pinned one when it is on disk, else the fallback
+    when that is. With neither, the pinned one, so readiness names what is missing."""
+    pinned = pinned_version()
+    if registry.is_runnable(pinned):
+        return pinned
+    if EXTRACTION_FALLBACK_VERSION and registry.is_runnable(EXTRACTION_FALLBACK_VERSION):
+        return EXTRACTION_FALLBACK_VERSION
+    return pinned
+
+
+def readiness() -> dict[str, Any]:
+    """Whether the extraction can run, and the first thing to fix. Loads nothing.
+
+    Never raises — it feeds /health and the startup banner as well as the stage.
+    """
+    version = model_version()
+    status: dict[str, Any] = {
+        "model_version": version,
+        "pinned_version": pinned_version(),
+        "fallback": version != pinned_version(),
+        "models_root": str(config.Models_Root),
+        "ready": False,
+        "reason": None,
+    }
+    absent = [name for name in REQUIRED_PACKAGES if find_spec(name) is None]
+    if absent:
+        status["reason"] = f"packages not installed: {', '.join(absent)} (requirements-models.txt)"
+        return status
+    ner = Path(config.Ner_Model_Path)
+    if not config.ner_weights_present(ner):
+        status["reason"] = (
+            f"GLiNER weights missing at {ner}. "
+            "Key/value extraction uses MEMBER_NER_MODELS_PATH and MEMBER_NER_MODEL_ID. "
+            "python -m modules.member.extractors.ner_based.model_downloader"
+        )
+        return status
+    folders = [*(Path(path) for path in config.Heading_Models.values())]
+    gaps = missing_models(folders)
+    if gaps:
+        status["reason"] = "model files missing under " + ", ".join(sorted(str(folder) for folder in gaps))
+        return status
+    if not registry.is_runnable(version):
+        root = Path(config.Model_Registry)
+        status["reason"] = (
+            f"trained version {version} not found: copy KV_{version} and Heading_{version} "
+            f"into {root}" + (f" (fallback {EXTRACTION_FALLBACK_VERSION} not found either)"
+                              if EXTRACTION_FALLBACK_VERSION else "")
+        )
+        return status
+    status["model_folders"] = [
+        str(folder) for folder in config.trained_folders(version) if (folder / "thresholds.json").is_file()
+    ]
+    status["ready"] = True
+    return status
+
+
+def require_ready() -> str:
+    """The version that runs, or ExtractionNotReady naming what is missing."""
+    version = model_version()
+    status = readiness()
+    if not status["ready"]:
+        raise ExtractionNotReady(f"key/value extraction cannot run: {status['reason']}")
+    return version
+
+
+def extract_chart(record_id: str, pages: list[dict[str, Any]]) -> "pipeline.DocumentResult":
+    """Extract every page of one chart. ``pages`` come from ocr_input.extraction_page."""
+    # pipeline pulls in pandas and the feature code; the orchestrator imports this module
+    # at startup and must not need them until a chart is actually extracted.
+    from . import pipeline
+
+    version = require_ready()
+    if version != pinned_version():
+        logger.warning("extraction %s: %s is not on disk, running fallback %s",
+                       record_id, pinned_version(), version)
+    result = pipeline.extract_document(Document(record_id=record_id, pages=pages, source=""))
+    from .training.model import load_version
+
+    from .dos.extract import pair_admit_discharge
+
+    # The model takes one DOS per page; an admit + discharge pair on the page is the DOS (a range).
+    log = pair_admit_discharge(load_version(version).apply(result.candidates(record_id, version)))
+    pipeline.apply_model_selection(result, log)
+    logger.info(
+        "extraction %s: %d page(s) in %.1fs (model %s)",
+        record_id, len(result.pages), result.time_seconds, version,
+    )
+    return result

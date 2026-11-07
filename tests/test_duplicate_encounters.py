@@ -1,8 +1,8 @@
 """2026-10-29 (user): a far copy in a Progress Note / Discharge Summary is a duplicate only
-when its whole encounter is a copy (core-pipeline/module/continuity/duplicates.py)."""
+when its whole encounter is a copy (core-pipeline/modules/continuity/duplicates.py)."""
 from types import SimpleNamespace
 
-from module.continuity import duplicates
+from modules.continuity import duplicates
 
 
 def _page(pid, kind="main", family="Progress Note", duplicate_of=None):

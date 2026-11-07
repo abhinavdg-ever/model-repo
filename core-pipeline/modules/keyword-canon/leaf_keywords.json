@@ -1,0 +1,4446 @@
+{
+  "version": "v29.3",
+  "comment": "Per-node keyword lists for the page-leaf decision (modules/page_classify/leaf_canon.py, leaf.py). A leaf takes its own lists and every ancestor's. Drafted from page_canon.json and class_keywords.json; edit here or through the Excel export. A node a person edited carries edited: true and is never redrafted.",
+  "settings": {
+    "weights": {
+      "deciding": 6.0,
+      "must_have": 2.0,
+      "good_to_have": 2.0,
+      "shared": 0.5
+    },
+    "header_multiplier": 2.0,
+    "ancestor_share": 0.5,
+    "model_sure_other_l1": 0.9,
+    "top_k": 5,
+    "per_l1": 3,
+    "confidence": {
+      "support": {
+        "deciding_header": 1.0,
+        "deciding_page": 0.85,
+        "rank_1": 0.7,
+        "rank_2_3": 0.45,
+        "rank_4_5": 0.25
+      },
+      "keywords_only_base": 0.4,
+      "keywords_only_span": 0.5,
+      "close_call_margin": 0.1,
+      "close_call": 0.9,
+      "model_disagree": 0.8,
+      "others_cap": 0.6
+    }
+  },
+  "nodes": {
+    "Progress Note": {
+      "must_have": [],
+      "good_to_have": [
+        "hpi",
+        "subjective",
+        "objective",
+        "assessment",
+        "plan",
+        "ros",
+        "exam",
+        "complaint",
+        "presents",
+        "interval",
+        "followup",
+        "counseled",
+        "gestational age",
+        "fetal heart tones",
+        "prenatal labs reviewed",
+        "high-risk pregnancy",
+        "audiogram",
+        "hearing loss",
+        "sensorineural",
+        "dB HL",
+        "tympanometry",
+        "speech discrimination",
+        "hearing aid",
+        "Behavioral health",
+        "counselor",
+        "presenting problem",
+        "GAD-7",
+        "mood",
+        "ambulance",
+        "paramedic",
+        "dispatch",
+        "scene",
+        "transport",
+        "otolaryngology",
+        "ear",
+        "nose",
+        "throat",
+        "sinus",
+        "hearing",
+        "Emergency Department",
+        "ED course",
+        "arrival time",
+        "Face-to-face",
+        "home health certification",
+        "clinical findings support",
+        "Group therapy",
+        "group session",
+        "90853",
+        "participation",
+        "topic",
+        "facilitator",
+        "HouseCalls",
+        "nurse practitioner",
+        "diagnoses confirmed",
+        "psychiatric intake",
+        "diagnostic impression",
+        "DSM-5",
+        "reference range",
+        "abnormal flag",
+        "collected",
+        "resulted",
+        "prothrombin time",
+        "CKD stage",
+        "proteinuria",
+        "dialysis access",
+        "fistula",
+        "renal",
+        "cranial nerves",
+        "reflexes",
+        "seizure",
+        "stroke/CVA",
+        "neuropathy",
+        "Parkinson's",
+        "vital signs",
+        "dietitian",
+        "weight loss",
+        "malnutrition",
+        "albumin",
+        "tube feeding",
+        "caloric needs",
+        "pregnancy",
+        "gravida / para",
+        "cervix",
+        "cleared",
+        "restrictions",
+        "work status",
+        "fitness for duty",
+        "school physical",
+        "travel clinic",
+        "Occupational health",
+        "employee health",
+        "DOT physical",
+        "f/u",
+        "history of present illness",
+        "review of systems",
+        "physical exam",
+        "physical examination",
+        "assessment and plan",
+        "assessment & plan",
+        "impression and plan",
+        "interval history",
+        "chief complaint",
+        "reason for visit",
+        "hematology/oncology",
+        "malignant neoplasm",
+        "staging/TNM",
+        "metastatic",
+        "chemotherapy cycle",
+        "tumor markers",
+        "Ophthalmology",
+        "anterior segment",
+        "posterior segment",
+        "macula",
+        "glaucoma",
+        "cataract",
+        "visual field",
+        "Optometry",
+        "O.D. (Doctor of Optometry)",
+        "Humphrey",
+        "retinopathy",
+        "background/proliferative",
+        "refraction",
+        "spectacle Rx",
+        "pain management",
+        "chronic pain",
+        "epidural steroid injection",
+        "nerve block",
+        "palliative care",
+        "goals of care",
+        "code status",
+        "hospice",
+        "comfort care",
+        "spoke with patient",
+        "pt called",
+        "advised",
+        "call documented",
+        "electronically signed by",
+        "CMS-485",
+        "frequency/duration",
+        "certification period",
+        "Post-op",
+        "s/p",
+        "incision healing",
+        "sutures removed",
+        "global period",
+        "6-week check",
+        "delivery date",
+        "lochia",
+        "breastfeeding/lactation",
+        "incision/perineum",
+        "contraception counseling",
+        "s/p NSVD or C-section",
+        "pre-op clearance",
+        "surgical risk",
+        "cleared for surgery",
+        "planned procedure",
+        "EDD/EDC",
+        "gravida/para (G_P_)",
+        "weeks gestation",
+        "fundal height",
+        "FHR/FHT",
+        "fetal movement",
+        "reason for consult",
+        "established patient",
+        "psychiatric",
+        "affect",
+        "suicidal ideation",
+        "psychotherapy session",
+        "psychiatry follow-up",
+        "medication management",
+        "mental status",
+        "short-term/long-term",
+        "duration",
+        "Respiratory therapy",
+        "nebulizer",
+        "albuterol",
+        "oxygen L/min",
+        "BiPAP/CPAP",
+        "breath sounds",
+        "visual acuity",
+        "retina",
+        "intravitreal injection",
+        "Eylea",
+        "Avastin",
+        "laser photocoagulation",
+        "signed by",
+        "electronically signed",
+        "date/time signed",
+        "social work",
+        "psychosocial",
+        "living situation",
+        "tobacco",
+        "alcohol",
+        "caregiver",
+        "support system",
+        "Sports physical",
+        "pre-participation",
+        "cleared for sports",
+        "Substance use disorder",
+        "alcohol dependence",
+        "opioid use disorder",
+        "Suboxone",
+        "methadone",
+        "detox",
+        "relapse",
+        "call back number",
+        "triage call",
+        "nurse triage",
+        "Urgent Care",
+        "walk-in",
+        "rapid strep/flu",
+        "discharged home",
+        "nystagmus",
+        "caloric",
+        "vestibular",
+        "vertigo",
+        "Dix-Hallpike",
+        "vision",
+        "visual function",
+        "Work injury",
+        "workers' comp",
+        "date of injury (DOI)",
+        "mechanism",
+        "work restrictions"
+      ],
+      "shared": [
+        "EDD",
+        "PHQ-9",
+        "EMS",
+        "PCR",
+        "EMT",
+        "ENT",
+        "MDM",
+        "disposition",
+        "DME",
+        "new patient",
+        "result",
+        "units",
+        "INR",
+        "eGFR",
+        "creatinine",
+        "ESRD",
+        "dementia",
+        "EMG",
+        "RN",
+        "LPN",
+        "RD",
+        "BMI",
+        "OB",
+        "GYN",
+        "LMP",
+        "employer",
+        "OV",
+        "follow-up",
+        "RTC",
+        "carcinoma",
+        "ECOG",
+        "IOP",
+        "OCT",
+        "pain scale",
+        "MD",
+        "DO",
+        "attending",
+        "POC",
+        "goals",
+        "interventions",
+        "POD",
+        "EPDS",
+        "RCRI",
+        "SOAP",
+        "H&P",
+        "encounter",
+        "MSE",
+        "frequency",
+        "RT",
+        "COPD",
+        "OD",
+        "OS",
+        "OU",
+        "Signature",
+        "witness",
+        "PPE",
+        "SUD",
+        "MAT",
+        "summary of care",
+        "VNG",
+        "BPPV",
+        "primary diagnosis",
+        "acuity",
+        "MMI",
+        "flowsheet",
+        "Consultation",
+        "ICD-10"
+      ],
+      "negative": [],
+      "deciding": [
+        "Admission Record",
+        "Antepartum Record",
+        "antepartum visit",
+        "NST (non-stress test)",
+        "Audiology / hearing report",
+        "Audiology",
+        "hearing report",
+        "Audiology Report",
+        "Behavioral Health Note",
+        "client note",
+        "EMS / ambulance report",
+        "ambulance report",
+        "run report",
+        "Patient Care Report",
+        "ENT Note",
+        "Emergency Department Note",
+        "Emergency Note",
+        "ED Note",
+        "ER visit",
+        "ED provider note",
+        "Eye Examination Report",
+        "F2F Evaluation Note",
+        "F2F encounter",
+        "Group Therapy Note",
+        "HouseCalls visit summary",
+        "in-home assessment",
+        "health plan",
+        "Initial Psychiatric Evaluation",
+        "psychiatric history",
+        "Laboratory Data",
+        "lab results",
+        "lab flow sheet",
+        "lab requisition",
+        "Nephrology",
+        "Nephrology Note",
+        "Neurology",
+        "neurological exam",
+        "Nurses Notes",
+        "Nursing Note",
+        "Nurse's note",
+        "nursing chart",
+        "home health visit",
+        "skilled nursing visit",
+        "Nutrition assessment",
+        "diet order",
+        "Obstetrics & Women's Health",
+        "Occupational & Physical Exams",
+        "physical examination form",
+        "Occupational health record",
+        "Office Visit",
+        "return visit",
+        "initial visit",
+        "Follow Up Visit",
+        "Follow-Up Visit",
+        "Followup Visit",
+        "Office Visit Note",
+        "Oncology",
+        "Oncology Note",
+        "Ophthalmology Note",
+        "ocular history",
+        "Optometry note",
+        "dilated exam",
+        "Pain & Palliative Note",
+        "Phone Note",
+        "telephone note",
+        "Physician Note",
+        "Plan of Care",
+        "Post Operative Followup Note",
+        "postoperative visit",
+        "Postpartum visit / exam",
+        "Postpartum visit",
+        "PP exam",
+        "Pre Operative Evaluation",
+        "Preoperative evaluation",
+        "Prenatal Record",
+        "Prenatal record / ACOG form",
+        "ACOG form",
+        "ACOG Antepartum Record",
+        "Prenatal Flow Sheet",
+        "OB history",
+        "Progress Note",
+        "History & Physical",
+        "Psychiatric Evaluation",
+        "mental status exam",
+        "Psychiatric Note",
+        "Psychiatric progress note",
+        "Rehabilitation Plan",
+        "Respiratory",
+        "Retinal / Eye Report",
+        "Retinal",
+        "Eye Report",
+        "dilated fundus exam",
+        "Signature Page",
+        "Social History",
+        "Social Report",
+        "Sports physical exam",
+        "musculoskeletal exam",
+        "Substance use treatment record",
+        "Summary",
+        "encounter summary",
+        "summary of visit",
+        "Telephone Encounter",
+        "phone visit",
+        "telephone message",
+        "message taken by",
+        "Urgent care note",
+        "acute visit",
+        "Videonystagmography (VNG)",
+        "Videonystagmography",
+        "Visit Diagnosis",
+        "Visit Diagnoses",
+        "encounter diagnoses",
+        "diagnoses this visit",
+        "diagnosis associated with visit",
+        "Visual Evaluation",
+        "Work injury evaluation"
+      ]
+    },
+    "Lab Report": {
+      "must_have": [],
+      "good_to_have": [
+        "specimen",
+        "collected",
+        "received",
+        "reported",
+        "reference",
+        "range",
+        "flag",
+        "accession",
+        "laboratory",
+        "resulted",
+        "clia"
+      ],
+      "shared": [
+        "units"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Operative Note": {
+      "must_have": [],
+      "good_to_have": [
+        "preoperative",
+        "postoperative",
+        "surgeon",
+        "anesthesia",
+        "incision",
+        "estimated",
+        "specimens",
+        "complications",
+        "closure"
+      ],
+      "shared": [
+        "procedure"
+      ],
+      "negative": [],
+      "deciding": [
+        "operative"
+      ]
+    },
+    "Procedure Note": {
+      "must_have": [],
+      "good_to_have": [
+        "tolerated",
+        "session",
+        "treatment",
+        "administered"
+      ],
+      "shared": [
+        "procedure",
+        "performed"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Discharge Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "admission",
+        "admitted",
+        "discharge",
+        "discharged",
+        "hospital",
+        "course",
+        "disposition",
+        "inpatient"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Clinical Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "ccd",
+        "continuity",
+        "transition",
+        "care",
+        "document"
+      ],
+      "shared": [
+        "summary"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Consent and Authorization": {
+      "must_have": [],
+      "good_to_have": [
+        "authorize",
+        "disclose",
+        "disclosure",
+        "release",
+        "revoke",
+        "voluntary",
+        "acknowledge",
+        "witness",
+        "guardian",
+        "representative",
+        "hereby"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "consent",
+        "authorization"
+      ]
+    },
+    "Demographics": {
+      "must_have": [],
+      "good_to_have": [
+        "address",
+        "phone",
+        "dob",
+        "sex",
+        "marital",
+        "race",
+        "ethnicity",
+        "language",
+        "emergency",
+        "contact",
+        "employer",
+        "guarantor"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "demographics"
+      ]
+    },
+    "Immunization": {
+      "must_have": [],
+      "good_to_have": [
+        "vaccine",
+        "vaccines",
+        "manufacturer",
+        "administered",
+        "booster",
+        "series"
+      ],
+      "shared": [
+        "lot",
+        "dose"
+      ],
+      "negative": [],
+      "deciding": [
+        "immunization",
+        "immunizations",
+        "vaccination"
+      ]
+    },
+    "Medication Record": {
+      "must_have": [],
+      "good_to_have": [
+        "medication",
+        "tablet",
+        "capsule",
+        "sig",
+        "refills",
+        "pharmacy",
+        "prescribed"
+      ],
+      "shared": [
+        "medications",
+        "dose"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Order and Requisition": {
+      "must_have": [],
+      "good_to_have": [
+        "order",
+        "orders",
+        "ordered",
+        "priority",
+        "stat",
+        "routine"
+      ],
+      "shared": [
+        "indication"
+      ],
+      "negative": [],
+      "deciding": [
+        "requisition"
+      ]
+    },
+    "Problem List": {
+      "must_have": [],
+      "good_to_have": [
+        "problems",
+        "problem",
+        "active",
+        "resolved",
+        "onset"
+      ],
+      "shared": [
+        "icd"
+      ],
+      "negative": [],
+      "deciding": [
+        "Standalone Patient Summary"
+      ]
+    },
+    "Forms and Questionnaires": {
+      "must_have": [],
+      "good_to_have": [
+        "score",
+        "assessment",
+        "survey",
+        "responses"
+      ],
+      "shared": [
+        "screening"
+      ],
+      "negative": [],
+      "deciding": [
+        "questionnaire"
+      ]
+    },
+    "Provider Letter": {
+      "must_have": [],
+      "good_to_have": [
+        "dear",
+        "sincerely",
+        "regards",
+        "letter",
+        "colleague",
+        "thank"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Patient Communication": {
+      "must_have": [],
+      "good_to_have": [
+        "message",
+        "messages",
+        "call",
+        "called",
+        "phone",
+        "portal",
+        "voicemail",
+        "callback"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Administrative": {
+      "must_have": [],
+      "good_to_have": [
+        "account",
+        "billing",
+        "appointment",
+        "registration",
+        "charges",
+        "payment"
+      ],
+      "shared": [
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Pharmacy Note": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [
+        "pharmacy",
+        "mtm",
+        "reconciliation",
+        "recommendations",
+        "refill",
+        "dispensed"
+      ],
+      "negative": [],
+      "deciding": [
+        "pharmacist"
+      ]
+    },
+    "Others": {
+      "must_have": [],
+      "good_to_have": [
+        "procedure index",
+        "table of contents",
+        "page range"
+      ],
+      "shared": [
+        "Index"
+      ],
+      "negative": [],
+      "deciding": [
+        "Index Page",
+        "encounter index",
+        "encounter list",
+        "document list"
+      ]
+    },
+    "Progress Note > CC/HPI": {
+      "must_have": [],
+      "good_to_have": [
+        "complaint",
+        "hpi",
+        "presents",
+        "onset",
+        "duration",
+        "illness",
+        "reports",
+        "denies",
+        "history"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Visit Diagnosis": {
+      "must_have": [],
+      "good_to_have": [
+        "encounter",
+        "primary",
+        "secondary",
+        "assessed"
+      ],
+      "shared": [
+        "diagnosis",
+        "diagnoses",
+        "icd"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Assessment and Plan": {
+      "must_have": [],
+      "good_to_have": [
+        "assessment",
+        "plan",
+        "recommend",
+        "recommended",
+        "followup",
+        "monitor",
+        "discussed",
+        "counseled"
+      ],
+      "shared": [
+        "continue"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "course",
+        "hospitalization",
+        "recap",
+        "overview"
+      ],
+      "shared": [
+        "summary"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Problem List": {
+      "must_have": [],
+      "good_to_have": [
+        "problems",
+        "problem",
+        "resolved",
+        "onset",
+        "chronicity"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Medication List": {
+      "must_have": [],
+      "good_to_have": [
+        "allergies",
+        "tablet",
+        "capsule",
+        "sig",
+        "refills",
+        "reconciliation"
+      ],
+      "shared": [
+        "medications",
+        "dose"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Lab and Imaging Results": {
+      "must_have": [],
+      "good_to_have": [
+        "results",
+        "reviewed",
+        "labs",
+        "imaging",
+        "impression",
+        "values"
+      ],
+      "shared": [
+        "findings"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Procedure List": {
+      "must_have": [],
+      "good_to_have": [
+        "tolerated",
+        "anesthetic"
+      ],
+      "shared": [
+        "procedure",
+        "performed",
+        "indication",
+        "consent"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Vitals": {
+      "must_have": [],
+      "good_to_have": [
+        "vitals",
+        "bp",
+        "pulse",
+        "temperature",
+        "respiration",
+        "weight",
+        "height",
+        "bmi",
+        "spo2"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Physical Exam": {
+      "must_have": [],
+      "good_to_have": [
+        "exam",
+        "examination",
+        "general",
+        "heent",
+        "neck",
+        "lungs",
+        "heart",
+        "abdomen",
+        "extremities",
+        "neurological",
+        "skin",
+        "ros"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Questionnaire": {
+      "must_have": [],
+      "good_to_have": [
+        "questionnaire",
+        "score",
+        "phq",
+        "gad",
+        "audit",
+        "responses"
+      ],
+      "shared": [
+        "screening"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Patient Instructions": {
+      "must_have": [],
+      "good_to_have": [
+        "return",
+        "followup",
+        "call",
+        "precautions",
+        "education",
+        "advised"
+      ],
+      "shared": [
+        "instructions"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Signature": {
+      "must_have": [],
+      "good_to_have": [
+        "electronically",
+        "signed",
+        "attestation",
+        "attest",
+        "cosigned",
+        "authenticated",
+        "addendum"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Progress Note > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Lab Result": {
+      "must_have": [],
+      "good_to_have": [
+        "specimen",
+        "collected",
+        "reference",
+        "range",
+        "flag",
+        "accession",
+        "fasting",
+        "serum",
+        "plasma"
+      ],
+      "shared": [
+        "units"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Radiology Report": {
+      "must_have": [],
+      "good_to_have": [
+        "impression",
+        "technique",
+        "comparison",
+        "contrast",
+        "radiologist",
+        "views",
+        "dictated"
+      ],
+      "shared": [
+        "findings",
+        "indication"
+      ],
+      "negative": [],
+      "deciding": [
+        "radiology"
+      ]
+    },
+    "Lab Report > Pathology Report": {
+      "must_have": [],
+      "good_to_have": [
+        "specimen",
+        "gross",
+        "microscopic",
+        "pathologist",
+        "tissue",
+        "slides",
+        "block"
+      ],
+      "shared": [
+        "diagnosis"
+      ],
+      "negative": [],
+      "deciding": [
+        "pathology"
+      ]
+    },
+    "Lab Report > Diagnostic Study": {
+      "must_have": [],
+      "good_to_have": [
+        "Colposcopy",
+        "cervix",
+        "acetowhite",
+        "transformation zone",
+        "cervical biopsy",
+        "abnormal Pap",
+        "study",
+        "interpretation",
+        "interpreting",
+        "tracing",
+        "recording",
+        "monitoring",
+        "technician",
+        "Fundus photo",
+        "retinal imaging",
+        "optic disc",
+        "macula",
+        "retinopathy",
+        "drusen",
+        "Pap smear",
+        "cervical cytology",
+        "ThinPrep",
+        "ASC-US",
+        "high-risk HPV",
+        "co-testing"
+      ],
+      "shared": [
+        "ECC",
+        "CIN",
+        "NILM",
+        "LSIL",
+        "HSIL",
+        "HPV",
+        "performed"
+      ],
+      "negative": [],
+      "deciding": [
+        "Colposcopy exam",
+        "Fundus photography",
+        "Pap and HPV Report",
+        "Pap smear report"
+      ]
+    },
+    "Operative Note > Surgery Report": {
+      "must_have": [],
+      "good_to_have": [
+        "post-anesthesia",
+        "ASA class",
+        "Mallampati",
+        "airway",
+        "induction",
+        "intubation",
+        "anesthesiologist",
+        "Aldrete",
+        "surgeon",
+        "assistant",
+        "incision",
+        "closure",
+        "prepped",
+        "draped",
+        "sutures",
+        "estimated",
+        "specimens",
+        "complications",
+        "in / out times",
+        "wound class",
+        "preoperative diagnosis",
+        "postoperative diagnosis",
+        "procedure performed"
+      ],
+      "shared": [
+        "CRNA",
+        "PACU",
+        "procedure",
+        "findings",
+        "disposition",
+        "EBL"
+      ],
+      "negative": [],
+      "deciding": [
+        "Anaesthesia Report",
+        "Anesthesia Record",
+        "pre-anesthesia evaluation",
+        "Operation Note",
+        "Operative Note",
+        "Op Note",
+        "brief op note",
+        "Operation Summary",
+        "OR summary",
+        "case summary",
+        "Operative Report",
+        "intraoperative record"
+      ]
+    },
+    "Operative Note > Procedure List": {
+      "must_have": [],
+      "good_to_have": [
+        "Phase I",
+        "Phase II",
+        "Aldrete score",
+        "discharge criteria met",
+        "procedures",
+        "cpt",
+        "phase",
+        "case",
+        "scheduled"
+      ],
+      "shared": [
+        "PACU"
+      ],
+      "negative": [],
+      "deciding": [
+        "Phase Record",
+        "recovery record",
+        "Procedure"
+      ]
+    },
+    "Operative Note > Pre-operative": {
+      "must_have": [],
+      "good_to_have": [
+        "npo",
+        "checklist",
+        "clearance",
+        "verified"
+      ],
+      "shared": [
+        "consent"
+      ],
+      "negative": [],
+      "deciding": [
+        "Perioperative Evaluation",
+        "preoperative"
+      ]
+    },
+    "Operative Note > Post-operative": {
+      "must_have": [],
+      "good_to_have": [
+        "pacu",
+        "recovery",
+        "aldrete",
+        "discharge",
+        "dressing"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "postoperative"
+      ]
+    },
+    "Operative Note > Anesthesia Record": {
+      "must_have": [],
+      "good_to_have": [
+        "induction",
+        "airway",
+        "intubation",
+        "asa",
+        "anesthesiologist",
+        "crna",
+        "emergence"
+      ],
+      "shared": [
+        "sedation"
+      ],
+      "negative": [],
+      "deciding": [
+        "anesthesia"
+      ]
+    },
+    "Operative Note > Critical Care Record": {
+      "must_have": [],
+      "good_to_have": [
+        "icu",
+        "ventilator",
+        "fio2",
+        "peep",
+        "drips",
+        "titrated",
+        "Critical care",
+        "critical care time",
+        "intubated",
+        "vasopressors",
+        "hourly vitals",
+        "vent settings",
+        "tidal volume",
+        "AC/SIMV",
+        "weaning",
+        "extubation",
+        "tracheostomy"
+      ],
+      "shared": [
+        "I&O",
+        "sedation",
+        "flowsheet"
+      ],
+      "negative": [],
+      "deciding": [
+        "ICU Flow Sheet",
+        "ICU Note",
+        "Ventilator management record"
+      ]
+    },
+    "Operative Note > Triage Report": {
+      "must_have": [],
+      "good_to_have": [
+        "emergency triage",
+        "ESI level",
+        "arrival mode",
+        "triage time",
+        "triage nurse",
+        "acuity",
+        "esi",
+        "arrival",
+        "chief",
+        "mode"
+      ],
+      "shared": [
+        "chief complaint",
+        "vitals",
+        "pain scale"
+      ],
+      "negative": [],
+      "deciding": [
+        "ED Triage",
+        "Triage Note",
+        "Triage Report",
+        "triage"
+      ]
+    },
+    "Operative Note > Intra-operative Record": {
+      "must_have": [],
+      "good_to_have": [
+        "counts",
+        "sponge",
+        "circulator",
+        "scrub",
+        "positioning",
+        "tourniquet",
+        "cautery"
+      ],
+      "shared": [
+        "needle"
+      ],
+      "negative": [],
+      "deciding": [
+        "intraoperative"
+      ]
+    },
+    "Operative Note > Implant Record": {
+      "must_have": [],
+      "good_to_have": [
+        "serial",
+        "manufacturer",
+        "catalog",
+        "sticker",
+        "device"
+      ],
+      "shared": [
+        "lot"
+      ],
+      "negative": [],
+      "deciding": [
+        "implant",
+        "implants"
+      ]
+    },
+    "Operative Note > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "device",
+        "serial",
+        "expiry",
+        "implanted by",
+        "Implant",
+        "lot/serial number",
+        "model",
+        "prosthesis",
+        "pacemaker",
+        "joint"
+      ],
+      "shared": [
+        "UDI",
+        "manufacturer",
+        "IOL",
+        "lot"
+      ],
+      "negative": [],
+      "deciding": [
+        "Device Implant Log",
+        "Implant log",
+        "Implants"
+      ]
+    },
+    "Procedure Note > Dialysis Record": {
+      "must_have": [],
+      "good_to_have": [
+        "peritoneal dialysis",
+        "dry weight",
+        "UF goal",
+        "Kt/V",
+        "AV fistula",
+        "dialysate",
+        "dialyzer",
+        "ultrafiltration",
+        "access",
+        "fistula",
+        "treatment"
+      ],
+      "shared": [
+        "CAPD"
+      ],
+      "negative": [],
+      "deciding": [
+        "Dialysis Note",
+        "HD flow sheet",
+        "Dialysis Treatment Record",
+        "dialysis",
+        "hemodialysis"
+      ]
+    },
+    "Procedure Note > Infusion and Chemotherapy": {
+      "must_have": [],
+      "good_to_have": [
+        "cycle/day (C1D1)",
+        "regimen",
+        "infusion start/stop",
+        "premedication",
+        "port accessed",
+        "cycle",
+        "rate",
+        "iv",
+        "administered",
+        "Remicade",
+        "iron infusion",
+        "start/stop time",
+        "PICC/port"
+      ],
+      "shared": [
+        "dose",
+        "IVIG",
+        "tolerated well"
+      ],
+      "negative": [],
+      "deciding": [
+        "Chemotherapy administration record",
+        "Infusion therapy note",
+        "infusion",
+        "chemotherapy"
+      ]
+    },
+    "Procedure Note > Radiation Therapy": {
+      "must_have": [],
+      "good_to_have": [
+        "radiation",
+        "fraction",
+        "fractions",
+        "gy",
+        "cgy",
+        "simulation",
+        "linac",
+        "Radiation therapy",
+        "Gy/cGy",
+        "treatment site",
+        "radiation oncologist"
+      ],
+      "shared": [
+        "XRT",
+        "dose"
+      ],
+      "negative": [],
+      "deciding": [
+        "Radiation Therapy Record"
+      ]
+    },
+    "Procedure Note > Wound Care": {
+      "must_have": [],
+      "good_to_have": [
+        "Burn",
+        "% TBSA",
+        "degree/thickness",
+        "Silvadene",
+        "grafting",
+        "debridement",
+        "dressing change",
+        "wound",
+        "dressing",
+        "granulation",
+        "drainage",
+        "measurements",
+        "length",
+        "width",
+        "depth",
+        "Infection control",
+        "isolation",
+        "C. diff",
+        "contact precautions",
+        "culture positive",
+        "antibiotic",
+        "ulcer",
+        "infection",
+        "Wound care",
+        "pressure ulcer stage",
+        "diabetic foot ulcer",
+        "measurements (L x W x D)"
+      ],
+      "shared": [
+        "MRSA"
+      ],
+      "negative": [],
+      "deciding": [
+        "Burn treatment record",
+        "Infection Control Note",
+        "Wound & Infection Care",
+        "Wound Care Note"
+      ]
+    },
+    "Procedure Note > Therapy Session": {
+      "must_have": [],
+      "good_to_have": [
+        "Acupuncture",
+        "L.Ac",
+        "needles",
+        "points",
+        "meridian",
+        "therapist",
+        "session",
+        "goals",
+        "exercises",
+        "strengthening",
+        "gait",
+        "rehabilitation",
+        "Chiropractic",
+        "D.C.",
+        "subluxation",
+        "spinal manipulation",
+        "adjustment",
+        "cervical/lumbar",
+        "OTR/L",
+        "ADL training",
+        "fine motor",
+        "splint",
+        "strength 4/5",
+        "gait training",
+        "therapeutic exercise",
+        "Speech therapy",
+        "aphasia",
+        "cognitive-linguistic",
+        "dysarthria",
+        "treatment rendered",
+        "minutes",
+        "progress toward goals",
+        "cardiac rehab"
+      ],
+      "shared": [
+        "OT",
+        "upper extremity",
+        "PT",
+        "DPT",
+        "ROM",
+        "plan of care",
+        "SLP",
+        "dysphagia",
+        "units"
+      ],
+      "negative": [],
+      "deciding": [
+        "Acupuncture treatment record",
+        "Chiropractic treatment note",
+        "Occupational Therapy",
+        "OT daily note",
+        "Physical Therapy",
+        "Physical Therapy Note",
+        "Speech therapy note",
+        "swallow evaluation",
+        "Therapy",
+        "daily treatment note"
+      ]
+    },
+    "Procedure Note > Elastography": {
+      "must_have": [],
+      "good_to_have": [
+        "stiffness",
+        "kpa",
+        "cap"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Elastography",
+        "fibroscan"
+      ]
+    },
+    "Procedure Note > Injection Visit": {
+      "must_have": [],
+      "good_to_have": [
+        "injection",
+        "injected",
+        "site",
+        "administered",
+        "intramuscular",
+        "subcutaneous"
+      ],
+      "shared": [
+        "lot"
+      ],
+      "negative": [],
+      "deciding": [
+        "Injection Visit"
+      ]
+    },
+    "Procedure Note > Knee Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "knee",
+        "aspiration",
+        "arthrocentesis",
+        "intraarticular",
+        "injection"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Knee Procedure"
+      ]
+    },
+    "Procedure Note > Laser Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "Laser",
+        "YAG capsulotomy",
+        "photocoagulation",
+        "laser settings",
+        "spots",
+        "power",
+        "yag",
+        "slt",
+        "capsulotomy",
+        "trabeculoplasty",
+        "shots"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Laser procedure report"
+      ]
+    },
+    "Procedure Note > Lumbar Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "lumbar",
+        "epidural",
+        "facet",
+        "fluoroscopy",
+        "transforaminal"
+      ],
+      "shared": [
+        "needle"
+      ],
+      "negative": [],
+      "deciding": [
+        "Lumbar Procedure"
+      ]
+    },
+    "Procedure Note > Office Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "office",
+        "anesthetic",
+        "lidocaine",
+        "sterile",
+        "tolerated"
+      ],
+      "shared": [
+        "procedure"
+      ],
+      "negative": [],
+      "deciding": [
+        "Office Procedure"
+      ]
+    },
+    "Procedure Note > Pathology Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "gross",
+        "grossing",
+        "cassettes",
+        "sections",
+        "fixed"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Pathology Procedure"
+      ]
+    },
+    "Procedure Note > Endoscopy (EGD)": {
+      "must_have": [],
+      "good_to_have": [
+        "egd",
+        "endoscopy",
+        "scope",
+        "esophagus"
+      ],
+      "shared": [
+        "sedation"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Procedure Note > Cardiac Procedure": {
+      "must_have": [],
+      "good_to_have": [
+        "joules",
+        "cath",
+        "lab",
+        "sheath",
+        "fluoroscopy"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "cardioversion"
+      ]
+    },
+    "Procedure Note > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "time-out",
+        "local anesthesia",
+        "complications: none"
+      ],
+      "shared": [
+        "technique",
+        "tolerated well",
+        "indication"
+      ],
+      "negative": [],
+      "deciding": [
+        "Procedure Note"
+      ]
+    },
+    "Discharge Summary > Depart/Discharge Note": {
+      "must_have": [],
+      "good_to_have": [
+        "Depart",
+        "departure",
+        "condition at departure",
+        "discharge",
+        "discharged",
+        "hospital",
+        "course",
+        "disposition",
+        "admission",
+        "condition",
+        "admission date",
+        "discharge date",
+        "hospital course",
+        "discharge diagnosis",
+        "condition at discharge",
+        "Transition of Care",
+        "Transfer of Care",
+        "Resumen de alta",
+        "case closed",
+        "outcome"
+      ],
+      "shared": [
+        "summary of care",
+        "final diagnosis"
+      ],
+      "negative": [],
+      "deciding": [
+        "Depart Note",
+        "Depart Summary",
+        "Discharge Summary",
+        "Discharge Note",
+        "Final Case Summary"
+      ]
+    },
+    "Discharge Summary > Discharge Instruction": {
+      "must_have": [],
+      "good_to_have": [
+        "home care",
+        "follow-up appointment",
+        "return to ED if",
+        "discharge medications",
+        "medication reconciliation",
+        "activity",
+        "diet",
+        "followup",
+        "return",
+        "symptoms",
+        "home"
+      ],
+      "shared": [
+        "instructions"
+      ],
+      "negative": [],
+      "deciding": [
+        "Discharge Instructions"
+      ]
+    },
+    "Discharge Summary > Discharge Medication": {
+      "must_have": [],
+      "good_to_have": [
+        "discharge",
+        "stop",
+        "new",
+        "changed",
+        "reconciliation"
+      ],
+      "shared": [
+        "medications",
+        "continue"
+      ],
+      "negative": [],
+      "deciding": [
+        "Discharge Medication"
+      ]
+    },
+    "Discharge Summary > Transfer of Care": {
+      "must_have": [],
+      "good_to_have": [
+        "transferred to",
+        "reason for transfer",
+        "accepting physician",
+        "hospital course",
+        "condition at transfer",
+        "transfer",
+        "transferred",
+        "handoff",
+        "handover",
+        "receiving",
+        "accepting"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Transfer Summary"
+      ]
+    },
+    "Discharge Summary > Interim Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "hospital course to date",
+        "interim",
+        "hospital",
+        "course"
+      ],
+      "shared": [
+        "summary"
+      ],
+      "negative": [],
+      "deciding": [
+        "Interim Summary",
+        "Interim Note",
+        "interval summary"
+      ]
+    },
+    "Discharge Summary > Short Stay Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "Short stay",
+        "observation",
+        "admit/discharge same day",
+        "brief hospital course",
+        "short",
+        "stay"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Short Stay Summary",
+        "short stay record"
+      ]
+    },
+    "Discharge Summary > Discharge Diagnosis": {
+      "must_have": [],
+      "good_to_have": [
+        "secondary diagnoses",
+        "discharge",
+        "principal",
+        "secondary"
+      ],
+      "shared": [
+        "primary diagnosis",
+        "final diagnosis",
+        "diagnosis",
+        "diagnoses"
+      ],
+      "negative": [],
+      "deciding": [
+        "Principal Diagnosis"
+      ]
+    },
+    "Discharge Summary > History and Physical": {
+      "must_have": [],
+      "good_to_have": [
+        "admission",
+        "admitted",
+        "admitting",
+        "history",
+        "physical",
+        "inpatient",
+        "observation"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Discharge Summary > Consultation Note": {
+      "must_have": [],
+      "good_to_have": [
+        "consulted",
+        "consult",
+        "requesting",
+        "inpatient",
+        "recommendations"
+      ],
+      "shared": [
+        "consultation"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Discharge Summary > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Clinical Summary > Summary of Care (C-CDA)": {
+      "must_have": [],
+      "good_to_have": [
+        "transition",
+        "continuity",
+        "document",
+        "generated"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "ccd",
+        "c-cda"
+      ]
+    },
+    "Clinical Summary > After-Visit Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "visit",
+        "today",
+        "appointments",
+        "upcoming",
+        "portal"
+      ],
+      "shared": [
+        "instructions"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Clinical Summary > Summary": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [
+        "summary",
+        "history",
+        "problems",
+        "medications",
+        "allergies"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Clinical Summary > Index Page": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [
+        "contents",
+        "section"
+      ],
+      "negative": [],
+      "deciding": [
+        "index"
+      ]
+    },
+    "Clinical Summary > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "Clinical Diagnoses"
+      ],
+      "shared": [
+        "AVS",
+        "summary of care"
+      ],
+      "negative": [],
+      "deciding": [
+        "Clinical Summary",
+        "Visit Summary",
+        "After Visit Summary",
+        "Patient Summary",
+        "chart summary",
+        "diagnosis list"
+      ]
+    },
+    "Consent and Authorization > Consent for Treatment": {
+      "must_have": [],
+      "good_to_have": [
+        "treatment",
+        "conditions",
+        "voluntary",
+        "examination"
+      ],
+      "shared": [
+        "consent"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Consent and Authorization > Surgical Consent": {
+      "must_have": [],
+      "good_to_have": [
+        "surgical",
+        "operation",
+        "risks",
+        "benefits",
+        "alternatives",
+        "complications",
+        "anesthesia"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Surgical Consent Form"
+      ]
+    },
+    "Consent and Authorization > Transfusion Consent": {
+      "must_have": [],
+      "good_to_have": [
+        "blood",
+        "products",
+        "refuse",
+        "risks"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Transfusion Consent Form",
+        "transfusion"
+      ]
+    },
+    "Consent and Authorization > Immunization Consent": {
+      "must_have": [],
+      "good_to_have": [
+        "vaccine",
+        "vaccination",
+        "immunization",
+        "vis"
+      ],
+      "shared": [
+        "consent"
+      ],
+      "negative": [],
+      "deciding": [
+        "Immunization Consent Form"
+      ]
+    },
+    "Consent and Authorization > HIPAA Notice & Consent": {
+      "must_have": [],
+      "good_to_have": [
+        "acknowledgment of receipt",
+        "privacy",
+        "practices",
+        "protected",
+        "phi",
+        "rights",
+        "notice",
+        "uses",
+        "disclosures"
+      ],
+      "shared": [
+        "notice of privacy practices",
+        "signature"
+      ],
+      "negative": [],
+      "deciding": [
+        "HIPAA Form",
+        "authorization to release PHI",
+        "privacy policy",
+        "hipaa"
+      ]
+    },
+    "Consent and Authorization > Release of Information": {
+      "must_have": [],
+      "good_to_have": [
+        "release",
+        "disclose",
+        "recipient",
+        "purpose",
+        "expiration",
+        "revoke",
+        "redisclosure"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Release of Information Authorization"
+      ]
+    },
+    "Consent and Authorization > Assignment of Benefits": {
+      "must_have": [],
+      "good_to_have": [
+        "assignment",
+        "assign",
+        "benefits",
+        "financial",
+        "responsibility",
+        "payment"
+      ],
+      "shared": [
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": [
+        "Assignment of Benefits"
+      ]
+    },
+    "Consent and Authorization > General Consent": {
+      "must_have": [],
+      "good_to_have": [
+        "agree",
+        "acknowledge",
+        "policy",
+        "policies",
+        "I hereby authorize",
+        "risks and benefits",
+        "release of information",
+        "patient signature"
+      ],
+      "shared": [
+        "authorization",
+        "witness",
+        "consent"
+      ],
+      "negative": [],
+      "deciding": [
+        "Patient Agreement Form",
+        "Consent Form",
+        "informed consent",
+        "Policy Page"
+      ]
+    },
+    "Consent and Authorization > Prior Authorization": {
+      "must_have": [],
+      "good_to_have": [
+        "prior",
+        "approved",
+        "denied",
+        "medical",
+        "necessity"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Prior Authorization Request",
+        "preauthorization",
+        "precertification"
+      ]
+    },
+    "Consent and Authorization > Referral Authorization": {
+      "must_have": [],
+      "good_to_have": [
+        "auth number",
+        "payer",
+        "insurance verification",
+        "units approved",
+        "effective dates",
+        "authorized",
+        "visits",
+        "approved",
+        "valid",
+        "valid from / to",
+        "refer to",
+        "referred to",
+        "priority",
+        "referring provider",
+        "number of visits approved",
+        "valid from/to"
+      ],
+      "shared": [
+        "approved/denied",
+        "referral",
+        "authorization",
+        "request",
+        "units"
+      ],
+      "negative": [],
+      "deciding": [
+        "Insurance Authorization Form",
+        "Prior authorization",
+        "Referral & Authorization",
+        "Referral Authorization",
+        "Referral Authorization Form",
+        "Referral Request",
+        "referral order",
+        "reason for referral",
+        "authorization number",
+        "diagnosis for referral"
+      ]
+    },
+    "Consent and Authorization > General Authorization": {
+      "must_have": [],
+      "good_to_have": [
+        "authorize",
+        "authorization",
+        "permission",
+        "behalf"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Authorization Form"
+      ]
+    },
+    "Consent and Authorization > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Demographics > Patient Information": {
+      "must_have": [],
+      "good_to_have": [
+        "Demographics",
+        "guarantor",
+        "emergency contact",
+        "address",
+        "application",
+        "phone",
+        "dob",
+        "emergency",
+        "contact",
+        "language",
+        "preferred",
+        "pharmacy",
+        "patient details",
+        "contact information",
+        "preferred language",
+        "marital status"
+      ],
+      "shared": [
+        "MRN",
+        "employer",
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": [
+        "Patient Demographics",
+        "admission record",
+        "Patient Information"
+      ]
+    },
+    "Demographics > Face Sheet": {
+      "must_have": [],
+      "good_to_have": [
+        "facesheet",
+        "admit date",
+        "admitting diagnosis",
+        "room / bed",
+        "face",
+        "sheet",
+        "admission",
+        "account",
+        "guarantor",
+        "subscriber",
+        "admitting"
+      ],
+      "shared": [
+        "attending",
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": [
+        "Face Sheet"
+      ]
+    },
+    "Demographics > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Immunization > Immunization Record": {
+      "must_have": [],
+      "good_to_have": [
+        "vaccine",
+        "manufacturer",
+        "administered",
+        "site",
+        "series",
+        "due",
+        "Immunization",
+        "flu shot",
+        "influenza",
+        "Prevnar",
+        "Tdap",
+        "lot number",
+        "date given",
+        "expiration",
+        "administered by",
+        "VIS date"
+      ],
+      "shared": [
+        "VIS",
+        "VAR",
+        "route",
+        "lot",
+        "dose"
+      ],
+      "negative": [],
+      "deciding": [
+        "Immunization List",
+        "Immunization Record",
+        "Immunizations",
+        "Vaccine Record",
+        "Vaccine administration record"
+      ]
+    },
+    "Immunization > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Medication Record > Medication List": {
+      "must_have": [],
+      "good_to_have": [
+        "current medications",
+        "active meds",
+        "sig",
+        "start date",
+        "prescriber",
+        "active",
+        "tablet",
+        "capsule",
+        "frequency",
+        "taking",
+        "dispense",
+        "refills",
+        "DEA number",
+        "e-prescribed",
+        "pharmacy"
+      ],
+      "shared": [
+        "dose",
+        "Rx",
+        "DAW",
+        "medications"
+      ],
+      "negative": [],
+      "deciding": [
+        "Medication List",
+        "Prescription / Rx page",
+        "Prescription",
+        "Rx page",
+        "Medication Reconciliation"
+      ]
+    },
+    "Medication Record > Prescription Page": {
+      "must_have": [],
+      "good_to_have": [
+        "rx",
+        "dispense",
+        "quantity",
+        "refills",
+        "substitution",
+        "dea",
+        "pharmacy"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Prescription Page",
+        "prescription"
+      ]
+    },
+    "Medication Record > Refill Record": {
+      "must_have": [],
+      "good_to_have": [
+        "refill",
+        "refills",
+        "renewal",
+        "pharmacy",
+        "approved",
+        "refill request",
+        "last filled",
+        "quantity",
+        "refills remaining",
+        "e-prescribe"
+      ],
+      "shared": [
+        "approved/denied"
+      ],
+      "negative": [],
+      "deciding": [
+        "Refill Record"
+      ]
+    },
+    "Medication Record > Blood Transfusion Record": {
+      "must_have": [],
+      "good_to_have": [
+        "Transfusion",
+        "unit number",
+        "blood type",
+        "crossmatch",
+        "start/stop time",
+        "transfusion reaction",
+        "two-nurse check",
+        "unit",
+        "blood",
+        "products",
+        "reaction"
+      ],
+      "shared": [
+        "PRBC",
+        "units"
+      ],
+      "negative": [],
+      "deciding": [
+        "Blood transfusion record"
+      ]
+    },
+    "Medication Record > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Order and Requisition > Physician Order": {
+      "must_have": [],
+      "good_to_have": [
+        "start / stop date",
+        "pharmacy verify",
+        "order",
+        "ordered",
+        "verbal",
+        "telephone",
+        "stat",
+        "discontinue",
+        "ordered by",
+        "advance diet",
+        "activity",
+        "DVT prophylaxis"
+      ],
+      "shared": [
+        "dose",
+        "route",
+        "frequency",
+        "continue"
+      ],
+      "negative": [],
+      "deciding": [
+        "Orders",
+        "order date",
+        "order status",
+        "standing order",
+        "physician order",
+        "verbal order",
+        "order note",
+        "Post Operative Orders",
+        "Post-operative orders",
+        "post-op orders",
+        "PACU orders"
+      ]
+    },
+    "Order and Requisition > Medication Order": {
+      "must_have": [],
+      "good_to_have": [
+        "prescribed",
+        "ordered",
+        "order status",
+        "start / stop date",
+        "pharmacy verify",
+        "ordered by",
+        "discontinue"
+      ],
+      "shared": [
+        "dose",
+        "route",
+        "frequency",
+        "sig",
+        "quantity",
+        "refills"
+      ],
+      "negative": [],
+      "deciding": [
+        "Medication Orders",
+        "Medication Order",
+        "Orders - Medications",
+        "med order"
+      ]
+    },
+    "Order and Requisition > Laboratory Requisition": {
+      "must_have": [],
+      "good_to_have": [
+        "requisition",
+        "tests",
+        "collection",
+        "fasting",
+        "draw",
+        "specimen",
+        "bill"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Laboratory Requisition"
+      ]
+    },
+    "Order and Requisition > Referral Order": {
+      "must_have": [],
+      "good_to_have": [
+        "referred",
+        "referring",
+        "specialist",
+        "reason",
+        "priority"
+      ],
+      "shared": [
+        "referral"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Order and Requisition > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "Protocol",
+        "algorithm",
+        "sliding scale",
+        "guideline",
+        "pathway"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Protocols",
+        "per protocol",
+        "standing protocol"
+      ]
+    },
+    "Problem List > Problem List": {
+      "must_have": [],
+      "good_to_have": [
+        "active problems",
+        "resolved problems",
+        "onset date",
+        "noted date",
+        "problems",
+        "active",
+        "resolved",
+        "onset",
+        "noted"
+      ],
+      "shared": [
+        "ICD-10"
+      ],
+      "negative": [],
+      "deciding": [
+        "Problem List"
+      ]
+    },
+    "Problem List > Diagnosis List/Coding Summary": {
+      "must_have": [],
+      "good_to_have": [
+        "codes"
+      ],
+      "shared": [
+        "diagnoses",
+        "icd",
+        "index"
+      ],
+      "negative": [],
+      "deciding": [
+        "Clinical Diagnosis List"
+      ]
+    },
+    "Problem List > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Forms and Questionnaires > Assessment": {
+      "must_have": [],
+      "good_to_have": [
+        "assessment",
+        "functional",
+        "adl",
+        "iadl",
+        "independent",
+        "assistance",
+        "fall",
+        "risk",
+        "bathing",
+        "toileting",
+        "feeding",
+        "transfers",
+        "independent/assist/dependent",
+        "review of systems",
+        "chronic conditions reviewed",
+        "functional status",
+        "ADLs",
+        "mobility",
+        "ambulation",
+        "fall risk",
+        "Barthel",
+        "Katz",
+        "Medicare Annual Wellness",
+        "G0438",
+        "G0439",
+        "Welcome to Medicare",
+        "re-evaluation",
+        "evaluated by",
+        "IHEBA",
+        "Medi-Cal",
+        "PCP signature"
+      ],
+      "shared": [
+        "dressing",
+        "AWV",
+        "IPPE",
+        "Evaluation",
+        "findings",
+        "goals",
+        "SHA"
+      ],
+      "negative": [],
+      "deciding": [
+        "Nutrition Assessment",
+        "ADL/IADL flow sheet",
+        "flow sheet",
+        "Annual Assessments",
+        "Annual Health Assessment",
+        "comprehensive assessment",
+        "health risk assessment (HRA)",
+        "in-home assessment",
+        "Functional Assessment",
+        "activity evaluation",
+        "assessment form",
+        "Medicare Annual Wellness Visit",
+        "Annual Wellness Visit",
+        "personalized prevention plan",
+        "Other Evaluation",
+        "initial evaluation",
+        "inpatient evaluation",
+        "Staying Healthy Assessment",
+        "health education behavior",
+        "Growth Chart"
+      ]
+    },
+    "Forms and Questionnaires > Questionnaire": {
+      "must_have": [],
+      "good_to_have": [
+        "yes / no",
+        "initials",
+        "survey",
+        "phq",
+        "gad",
+        "score",
+        "responses",
+        "agreement",
+        "acknowledgment",
+        "pre-admission testing",
+        "health maintenance",
+        "percentile",
+        "stature-for-age",
+        "length-for-age",
+        "weight-for-age",
+        "head circumference-for-age",
+        "BMI-for-age",
+        "Mini-Mental",
+        "Folstein",
+        "orientation",
+        "recall",
+        "clock drawing",
+        "3-word recall",
+        "patient-completed",
+        "please circle",
+        "yes/no",
+        "attention and calculation",
+        "total possible score",
+        "serial 7",
+        "close your eyes",
+        "intersecting pentagons",
+        "3-stage command",
+        "registration"
+      ],
+      "shared": [
+        "completed",
+        "Form",
+        "screening",
+        "signature",
+        "CDC",
+        "WHO",
+        "MMSE",
+        "score /30",
+        "Mini-Cog",
+        "PHQ-9"
+      ],
+      "negative": [],
+      "deciding": [
+        "Checklist",
+        "check list",
+        "preventive health checklist",
+        "Forms",
+        "intake form",
+        "patient history form",
+        "pre-op checklist",
+        "Growth chart",
+        "Mini-Mental State Exam",
+        "Questionnaire",
+        "health history form"
+      ]
+    },
+    "Forms and Questionnaires > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "NPO after midnight",
+        "pre-op antibiotics",
+        "type and screen"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Pre Operative Orders",
+        "Pre-operative orders",
+        "pre-op orders"
+      ]
+    },
+    "Provider Letter > Referral Letter": {
+      "must_have": [],
+      "good_to_have": [
+        "referring",
+        "evaluation",
+        "kindly",
+        "thank"
+      ],
+      "shared": [
+        "referral"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Provider Letter > Consultation Letter": {
+      "must_have": [],
+      "good_to_have": [
+        "consulted",
+        "recommendations",
+        "thank",
+        "opinion"
+      ],
+      "shared": [
+        "consultation"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Provider Letter > Records Request": {
+      "must_have": [],
+      "good_to_have": [
+        "please send",
+        "copies of records",
+        "date range of records",
+        "records",
+        "request",
+        "copies",
+        "send",
+        "subpoena",
+        "attention"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Provider Letter > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "correspondence",
+        "fax cover",
+        "received from",
+        "scanned document",
+        "Dear Dr.",
+        "Thank you for referring",
+        "I had the pleasure of seeing",
+        "Re:",
+        "Sincerely",
+        "cc:",
+        "letterhead"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Ambulatory Correspondence",
+        "AMB Correspondence",
+        "outside correspondence",
+        "Letter",
+        "Provider Letter"
+      ]
+    },
+    "Patient Communication > Patient Message": {
+      "must_have": [],
+      "good_to_have": [
+        "routed to",
+        "patient communication",
+        "memo",
+        "patient portal",
+        "message",
+        "portal",
+        "reply",
+        "replied",
+        "sent",
+        "inbox",
+        "alert",
+        "reminder",
+        "notified",
+        "auto-generated"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Messages",
+        "note to provider",
+        "staff message",
+        "web encounter",
+        "Notification",
+        "result notification",
+        "Telephone Message"
+      ]
+    },
+    "Patient Communication > Notice": {
+      "must_have": [],
+      "good_to_have": [
+        "notification",
+        "notified",
+        "informed"
+      ],
+      "shared": [
+        "notice of privacy practices",
+        "ABN"
+      ],
+      "negative": [],
+      "deciding": [
+        "General Notice",
+        "Notice",
+        "advance beneficiary notice",
+        "notice of non-coverage",
+        "discharge notice",
+        "notification of discharge"
+      ]
+    },
+    "Patient Communication > Patient Education Material": {
+      "must_have": [],
+      "good_to_have": [
+        "what is",
+        "when to call your doctor",
+        "follow up with",
+        "take as directed",
+        "education",
+        "learn",
+        "information",
+        "tips",
+        "handout"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Patient Education",
+        "patient instructions",
+        "Patient Education Material"
+      ]
+    },
+    "Patient Communication > Telephone Encounter": {
+      "must_have": [],
+      "good_to_have": [
+        "telephone",
+        "phone",
+        "called",
+        "caller",
+        "spoke",
+        "voicemail",
+        "callback",
+        "advised"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Patient Communication > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Administrative > Appointment Record": {
+      "must_have": [],
+      "good_to_have": [
+        "appointment",
+        "scheduled",
+        "rescheduled",
+        "cancelled",
+        "noshow",
+        "arrived",
+        "appt",
+        "no show",
+        "check-in"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Appointment Note",
+        "Appointments",
+        "appointment summary"
+      ]
+    },
+    "Administrative > Billing & Invoices": {
+      "must_have": [],
+      "good_to_have": [
+        "Superbill",
+        "charge ticket",
+        "charges",
+        "balance due",
+        "claim",
+        "estimate",
+        "balance",
+        "payment",
+        "due",
+        "adjustment",
+        "remittance",
+        "amount due",
+        "copy fee",
+        "per page",
+        "remit to",
+        "tax ID"
+      ],
+      "shared": [
+        "CPT",
+        "DRG",
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": [
+        "Billing / Invoice",
+        "Billing",
+        "Invoice",
+        "coding summary",
+        "invoice number",
+        "records fee",
+        "Invoice Page",
+        "statement"
+      ]
+    },
+    "Administrative > Patient Registration": {
+      "must_have": [],
+      "good_to_have": [
+        "registered on",
+        "responsible party",
+        "insurance card",
+        "guarantor",
+        "subscriber",
+        "employer",
+        "emergency"
+      ],
+      "shared": [
+        "insurance"
+      ],
+      "negative": [],
+      "deciding": [
+        "Patient Registration",
+        "registration form",
+        "new patient registration"
+      ]
+    },
+    "Administrative > Superbill": {
+      "must_have": [],
+      "good_to_have": [
+        "CPT",
+        "fee",
+        "charges",
+        "modifier",
+        "encounter"
+      ],
+      "shared": [
+        "procedure code",
+        "diagnosis code",
+        "icd",
+        "units",
+        "ICD-10"
+      ],
+      "negative": [],
+      "deciding": [
+        "superbill"
+      ]
+    },
+    "Administrative > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "cover page",
+        "blank",
+        "office use only",
+        "scanned by",
+        "page count",
+        "patient rights and responsibilities"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Administration",
+        "fax cover sheet",
+        "Administrative Form",
+        "Policy",
+        "office policy",
+        "office policies",
+        "financial policy",
+        "payment policy",
+        "no-show policy",
+        "cancellation policy",
+        "appointment policy",
+        "policy pages"
+      ]
+    },
+    "Pharmacy Note > Summary": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [
+        "pharmacist",
+        "summary",
+        "recommendations",
+        "reconciliation"
+      ],
+      "negative": [],
+      "deciding": []
+    },
+    "Pharmacy Note > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Lab Result > Allergy Testing Report": {
+      "must_have": [],
+      "good_to_have": [
+        "reaction",
+        "intolerance",
+        "ige",
+        "sensitization",
+        "class",
+        "kua",
+        "panel",
+        "Allergy testing",
+        "skin prick",
+        "intradermal",
+        "wheal/flare",
+        "allergen panel",
+        "histamine control"
+      ],
+      "shared": [
+        "Allergies",
+        "NKDA",
+        "severity",
+        "RAST"
+      ],
+      "negative": [],
+      "deciding": [
+        "Allergies Report",
+        "allergy list",
+        "Allergy Testing Report",
+        "allergen",
+        "allergens"
+      ]
+    },
+    "Lab Report > Lab Result > Chemistry Report": {
+      "must_have": [],
+      "good_to_have": [
+        "sodium",
+        "potassium",
+        "chloride",
+        "creatinine",
+        "bun",
+        "albumin",
+        "bilirubin",
+        "alt",
+        "ast",
+        "calcium",
+        "egfr",
+        "lipid",
+        "cholesterol",
+        "triglycerides"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Chemistry Report",
+        "cmp",
+        "bmp"
+      ]
+    },
+    "Lab Report > Lab Result > FISH Report": {
+      "must_have": [],
+      "good_to_have": [
+        "fluorescence in situ hybridization",
+        "probe",
+        "HER2",
+        "BCR-ABL",
+        "translocation",
+        "amplification",
+        "nuclei scored",
+        "hybridization",
+        "probes",
+        "nuclei",
+        "signals",
+        "fluorescence"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "FISH Report",
+        "fish"
+      ]
+    },
+    "Lab Report > Lab Result > Genetic Test Report": {
+      "must_have": [],
+      "good_to_have": [
+        "variant",
+        "pathogenic",
+        "heterozygous",
+        "pharmacogenomic",
+        "Myriad",
+        "Invitae",
+        "variants",
+        "gene",
+        "genes",
+        "mutation",
+        "genotype",
+        "sequencing",
+        "carrier"
+      ],
+      "shared": [
+        "BRCA"
+      ],
+      "negative": [],
+      "deciding": [
+        "Genetic Test Report",
+        "Genetic test",
+        "genetic",
+        "genomic"
+      ]
+    },
+    "Lab Report > Lab Result > Glucose Report": {
+      "must_have": [],
+      "good_to_have": [
+        "a1c",
+        "hba1c",
+        "fasting",
+        "postprandial",
+        "tolerance",
+        "Blood glucose",
+        "fingerstick",
+        "glucometer",
+        "Dexcom",
+        "Libre",
+        "time in range"
+      ],
+      "shared": [
+        "FSBS",
+        "CGM"
+      ],
+      "negative": [],
+      "deciding": [
+        "Glucose Report",
+        "glucose log",
+        "glucose"
+      ]
+    },
+    "Lab Report > Lab Result > Hematology Report": {
+      "must_have": [],
+      "good_to_have": [
+        "hemoglobin",
+        "hematocrit",
+        "platelets",
+        "differential",
+        "reference range",
+        "wbc",
+        "rbc",
+        "mcv",
+        "mch",
+        "mchc",
+        "rdw",
+        "neutrophils",
+        "lymphocytes"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Hematology",
+        "Hematology Report",
+        "cbc"
+      ]
+    },
+    "Lab Report > Lab Result > Coagulation Report": {
+      "must_have": [],
+      "good_to_have": [
+        "prothrombin",
+        "ptt",
+        "aptt",
+        "fibrinogen",
+        "warfarin",
+        "anticoagulation"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "INR and Prothrombin Time",
+        "coagulation",
+        "inr"
+      ]
+    },
+    "Lab Report > Lab Result > Laboratory Flow Sheet": {
+      "must_have": [],
+      "good_to_have": [
+        "trend",
+        "trends",
+        "cumulative"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Laboratory Flow Sheet",
+        "flowsheet"
+      ]
+    },
+    "Lab Report > Lab Result > Microbiology Report": {
+      "must_have": [],
+      "good_to_have": [
+        "sensitivity",
+        "susceptibility",
+        "organism",
+        "gram stain",
+        "colony count",
+        "urine/blood/wound culture",
+        "organisms",
+        "growth",
+        "gram",
+        "colonies",
+        "isolated",
+        "mic"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Microbiology",
+        "Microbiology Report",
+        "culture"
+      ]
+    },
+    "Lab Report > Lab Result > Urinalysis Report": {
+      "must_have": [],
+      "good_to_have": [
+        "urine dipstick",
+        "specific gravity",
+        "leukocyte esterase",
+        "nitrite",
+        "protein",
+        "urine",
+        "specific",
+        "gravity",
+        "ketones",
+        "leukocyte",
+        "casts",
+        "microscopic"
+      ],
+      "shared": [
+        "UA"
+      ],
+      "negative": [],
+      "deciding": [
+        "Urinalysis",
+        "Urinalysis Report"
+      ]
+    },
+    "Lab Report > Lab Result > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "sodium",
+        "potassium",
+        "AST/ALT",
+        "reference range",
+        "H/L flags",
+        "collected",
+        "resulted"
+      ],
+      "shared": [
+        "BMP",
+        "CMP",
+        "creatinine",
+        "BUN"
+      ],
+      "negative": [],
+      "deciding": [
+        "Chemistry",
+        "Laboratory Result"
+      ]
+    },
+    "Lab Report > Radiology Report > Bone Mineral Density Report": {
+      "must_have": [],
+      "good_to_have": [
+        "bone mineral density",
+        "T-score",
+        "Z-score",
+        "osteopenia",
+        "osteoporosis",
+        "femoral neck",
+        "lumbar spine",
+        "tscore",
+        "zscore",
+        "bmd",
+        "femoral",
+        "lumbar",
+        "frax"
+      ],
+      "shared": [
+        "DXA"
+      ],
+      "negative": [],
+      "deciding": [
+        "Bone Density (DEXA) Report",
+        "Bone Density  Report",
+        "dexa",
+        "densitometry"
+      ]
+    },
+    "Lab Report > Radiology Report > Brain MRI Report": {
+      "must_have": [],
+      "good_to_have": [
+        "brain",
+        "flair",
+        "diffusion",
+        "ventricles",
+        "intracranial",
+        "parenchyma"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Brain MRI Report"
+      ]
+    },
+    "Lab Report > Radiology Report > CT Angiography Report": {
+      "must_have": [],
+      "good_to_have": [
+        "CT angiogram",
+        "coronary CTA",
+        "calcium score",
+        "angiography",
+        "arterial",
+        "runoff",
+        "aorta",
+        "stenosis"
+      ],
+      "shared": [
+        "plaque",
+        "contrast",
+        "impression"
+      ],
+      "negative": [],
+      "deciding": [
+        "CT Angiography",
+        "cta"
+      ]
+    },
+    "Lab Report > Radiology Report > CT Scan Report": {
+      "must_have": [],
+      "good_to_have": [
+        "CAT scan",
+        "computed tomography",
+        "axial images",
+        "Hounsfield",
+        "ct",
+        "computed",
+        "axial",
+        "reformats",
+        "slices"
+      ],
+      "shared": [
+        "contrast",
+        "impression"
+      ],
+      "negative": [],
+      "deciding": [
+        "CT Scan Report",
+        "Tomography",
+        "Tomography Report"
+      ]
+    },
+    "Lab Report > Radiology Report > MR Angiography Report": {
+      "must_have": [],
+      "good_to_have": [
+        "angiography",
+        "magnetic",
+        "resonance",
+        "vessels"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "MR Angiography Report",
+        "mra"
+      ]
+    },
+    "Lab Report > Radiology Report > MRI Report": {
+      "must_have": [],
+      "good_to_have": [
+        "MRI brain",
+        "MR head",
+        "with/without contrast",
+        "white matter",
+        "FLAIR",
+        "magnetic",
+        "resonance",
+        "weighted",
+        "gadolinium",
+        "sagittal",
+        "coronal",
+        "magnetic resonance",
+        "T1/T2",
+        "radiologist"
+      ],
+      "shared": [
+        "infarct",
+        "impression"
+      ],
+      "negative": [],
+      "deciding": [
+        "MR brain report",
+        "MRI Report",
+        "mri"
+      ]
+    },
+    "Lab Report > Radiology Report > Mammogram Report": {
+      "must_have": [],
+      "good_to_have": [
+        "Radiology",
+        "exam",
+        "comparison",
+        "radiologist",
+        "BI-RADS",
+        "birads",
+        "breast",
+        "tomosynthesis",
+        "density"
+      ],
+      "shared": [
+        "technique",
+        "findings",
+        "impression",
+        "screening"
+      ],
+      "negative": [],
+      "deciding": [
+        "Radiology Report",
+        "imaging report",
+        "mammogram",
+        "mammography"
+      ]
+    },
+    "Lab Report > Radiology Report > Nuclear Medicine Report": {
+      "must_have": [],
+      "good_to_have": [
+        "Nuclear medicine",
+        "radiotracer",
+        "Tc-99m",
+        "uptake",
+        "bone scan",
+        "thyroid scan",
+        "nuclear",
+        "technetium",
+        "spect",
+        "pet",
+        "perfusion",
+        "gated",
+        "tracer",
+        "defect"
+      ],
+      "shared": [
+        "HIDA",
+        "ischemia",
+        "infarct"
+      ],
+      "negative": [],
+      "deciding": [
+        "Nuclear Medicine Report",
+        "SPECT report",
+        "scintigraphy"
+      ]
+    },
+    "Lab Report > Radiology Report > Ultrasound Report": {
+      "must_have": [],
+      "good_to_have": [
+        "sonographic",
+        "echogenic",
+        "doppler",
+        "transducer",
+        "sonography",
+        "sonographer",
+        "echogenicity",
+        "abdomen/pelvis/thyroid/renal"
+      ],
+      "shared": [
+        "impression",
+        "US"
+      ],
+      "negative": [],
+      "deciding": [
+        "Sonogram Report",
+        "Ultrasound Report",
+        "ultrasound",
+        "sonogram"
+      ]
+    },
+    "Lab Report > Radiology Report > X-Ray Report": {
+      "must_have": [],
+      "good_to_have": [
+        "chest X-ray",
+        "views",
+        "AP / lateral",
+        "PA and lateral",
+        "fracture",
+        "infiltrate",
+        "radiographs",
+        "pa",
+        "lateral",
+        "film"
+      ],
+      "shared": [
+        "CXR"
+      ],
+      "negative": [],
+      "deciding": [
+        "X Ray Report",
+        "X-Ray Report",
+        "radiograph",
+        "x-ray"
+      ]
+    },
+    "Lab Report > Radiology Report > Others": {
+      "must_have": [],
+      "good_to_have": [],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Pathology Report > Biopsy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "histology",
+        "benign/malignant",
+        "margins",
+        "gross",
+        "microscopic",
+        "tissue",
+        "fragments",
+        "stain"
+      ],
+      "shared": [
+        "specimen",
+        "carcinoma",
+        "final diagnosis"
+      ],
+      "negative": [],
+      "deciding": [
+        "Biopsy Report",
+        "biopsy"
+      ]
+    },
+    "Lab Report > Pathology Report > Cytology Report": {
+      "must_have": [],
+      "good_to_have": [
+        "cytologic",
+        "pap",
+        "smear",
+        "cervical",
+        "adequacy",
+        "cells"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Cytology Report",
+        "cytology"
+      ]
+    },
+    "Lab Report > Pathology Report > Cytometry Report": {
+      "must_have": [],
+      "good_to_have": [
+        "flow",
+        "immunophenotyping",
+        "cd",
+        "markers",
+        "gating"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Cytometry Report",
+        "cytometry"
+      ]
+    },
+    "Lab Report > Pathology Report > Molecular Diagnostics Report": {
+      "must_have": [],
+      "good_to_have": [
+        "cytopathology",
+        "adequacy",
+        "Bethesda",
+        "molecular diagnostics",
+        "pcr",
+        "amplification",
+        "assay",
+        "detected",
+        "mutation"
+      ],
+      "shared": [
+        "FNA",
+        "NGS",
+        "EGFR",
+        "KRAS"
+      ],
+      "negative": [],
+      "deciding": [
+        "Cytology / molecular report",
+        "Cytology",
+        "molecular report",
+        "molecular"
+      ]
+    },
+    "Lab Report > Pathology Report > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "Mohs",
+        "stages",
+        "margins clear",
+        "basal cell",
+        "squamous cell",
+        "defect size",
+        "repair",
+        "Pathology",
+        "surgical pathology",
+        "gross description",
+        "margins",
+        "pathologist",
+        "flow cytometry",
+        "gross"
+      ],
+      "shared": [
+        "specimen",
+        "microscopic",
+        "final diagnosis",
+        "diagnosis"
+      ],
+      "negative": [],
+      "deciding": [
+        "Mohs surgery report",
+        "Pathology Report",
+        "Tissue Report",
+        "Tissue examination"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Ankle-Brachial Index Report": {
+      "must_have": [],
+      "good_to_have": [
+        "ankle",
+        "brachial",
+        "pressures",
+        "toe"
+      ],
+      "shared": [
+        "index"
+      ],
+      "negative": [],
+      "deciding": [
+        "Ankle-Brachial Index Report",
+        "abi"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report": {
+      "must_have": [],
+      "good_to_have": [
+        "audiometry",
+        "tympanometry",
+        "thresholds",
+        "hz",
+        "db",
+        "speech"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "audiogram",
+        "audiology"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Behavioral Assessment": {
+      "must_have": [],
+      "good_to_have": [
+        "behavioral",
+        "cognitive",
+        "testing",
+        "inventory",
+        "scores",
+        "psychological"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Diagnostic Study > Bronchoscopy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "bronchoscope",
+        "bronchial",
+        "lavage",
+        "carina",
+        "airways"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Bronchoscopy Report",
+        "bronchoscopy"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Cardiac Catheterization Report": {
+      "must_have": [],
+      "good_to_have": [
+        "coronary",
+        "angiography",
+        "ventriculography",
+        "lad",
+        "lcx",
+        "rca",
+        "stent",
+        "fluoroscopy",
+        "Cardiac cath",
+        "left heart catheterization (LHC)",
+        "coronary angiography",
+        "LAD/RCA/LCx",
+        "stenosis %",
+        "LVEDP",
+        "cath lab"
+      ],
+      "shared": [
+        "PCI",
+        "ejection fraction"
+      ],
+      "negative": [],
+      "deciding": [
+        "Cardiac Catheterization Report",
+        "catheterization"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Carotid Duplex Report": {
+      "must_have": [],
+      "good_to_have": [
+        "carotid",
+        "ica",
+        "cca",
+        "velocity",
+        "velocities",
+        "plaque",
+        "duplex",
+        "carotid Doppler",
+        "% stenosis",
+        "peak systolic velocity"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Carotid Duplex Report",
+        "Carotid duplex"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Colonoscopy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "flexible sigmoidoscopy",
+        "cecum reached",
+        "polyp",
+        "polypectomy",
+        "diverticulosis",
+        "bowel prep",
+        "withdrawal time",
+        "cecum",
+        "colon",
+        "polyps",
+        "prep",
+        "withdrawal",
+        "terminal",
+        "ileum"
+      ],
+      "shared": [
+        "biopsy"
+      ],
+      "negative": [],
+      "deciding": [
+        "Colonoscopy / sigmoidoscopy report",
+        "Colonoscopy",
+        "sigmoidoscopy report",
+        "Colonoscopy Report"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Corneal Topography": {
+      "must_have": [],
+      "good_to_have": [
+        "corneal",
+        "keratometry",
+        "astigmatism",
+        "axial"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "topography"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Cystoscopy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "cystoscope",
+        "bladder",
+        "urethra",
+        "ureteral"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Cystoscopy Report",
+        "cystoscopy"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Doppler Duplex Report": {
+      "must_have": [],
+      "good_to_have": [
+        "duplex",
+        "doppler",
+        "waveforms",
+        "venous",
+        "arterial",
+        "velocity"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": []
+    },
+    "Lab Report > Diagnostic Study > Echocardiogram Report": {
+      "must_have": [],
+      "good_to_have": [
+        "transthoracic",
+        "LV hypertrophy",
+        "valve regurgitation/stenosis",
+        "diastolic dysfunction",
+        "wall motion",
+        "ejection",
+        "fraction",
+        "ventricle",
+        "atrium",
+        "valve",
+        "lvef",
+        "transesophageal"
+      ],
+      "shared": [
+        "TTE",
+        "ejection fraction"
+      ],
+      "negative": [],
+      "deciding": [
+        "Echocardiogram Report",
+        "echocardiogram",
+        "echocardiography"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report": {
+      "must_have": [],
+      "good_to_have": [
+        "tracing",
+        "rhythm strip",
+        "25 mm/s",
+        "10 mm/mV",
+        "unconfirmed",
+        "machine read",
+        "rhythm",
+        "rate",
+        "pr",
+        "qrs",
+        "qt",
+        "qtc",
+        "axis",
+        "sinus",
+        "telemetry",
+        "ECG 12 lead",
+        "EKG 12 lead",
+        "ECG routine",
+        "confirmed by",
+        "reviewed by"
+      ],
+      "shared": [
+        "interpretation",
+        "impression"
+      ],
+      "negative": [],
+      "deciding": [
+        "ECG Graph",
+        "EKG graph",
+        "EKG / ECG Tracing",
+        "ECG Tracing",
+        "EKG Report (12-lead / routine)",
+        "EKG Report",
+        "Electrocardiogram Report",
+        "Electrocardiogram",
+        "ekg",
+        "ecg"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Electroencephalogram Report": {
+      "must_have": [],
+      "good_to_have": [
+        "neurophysiology",
+        "epileptiform",
+        "spike and wave",
+        "background rhythm",
+        "seizure",
+        "photic stimulation",
+        "background",
+        "alpha",
+        "photic"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "EEG / neurophysiology report",
+        "neurophysiology report",
+        "electroencephalogram",
+        "eeg"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Electromyography and Nerve Conduction": {
+      "must_have": [],
+      "good_to_have": [
+        "NCV / NCS",
+        "nerve conduction",
+        "sural nerve",
+        "amplitude",
+        "latency",
+        "radiculopathy",
+        "carpal tunnel",
+        "ncs",
+        "conduction",
+        "motor",
+        "sensory"
+      ],
+      "shared": [
+        "needle"
+      ],
+      "negative": [],
+      "deciding": [
+        "EMG report",
+        "Electromyography Report",
+        "electromyography",
+        "emg"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Endoscopy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "endoscope",
+        "scope",
+        "mucosa",
+        "biopsies"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Endoscopy Report",
+        "endoscopy"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Esophageal Manometry Report": {
+      "must_have": [],
+      "good_to_have": [
+        "high-resolution manometry",
+        "LES pressure",
+        "peristalsis",
+        "achalasia",
+        "motility",
+        "sphincter",
+        "swallows",
+        "pressure"
+      ],
+      "shared": [
+        "IRP"
+      ],
+      "negative": [],
+      "deciding": [
+        "Esophageal manometry",
+        "manometry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report": {
+      "must_have": [],
+      "good_to_have": [
+        "esophagus",
+        "stomach",
+        "duodenum",
+        "antrum",
+        "gastric"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Esophagogastroduodenoscopy Report",
+        "esophagogastroduodenoscopy",
+        "egd"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Extremity Doppler Report": {
+      "must_have": [],
+      "good_to_have": [
+        "duplex",
+        "velocity",
+        "waveform",
+        "flow",
+        "color Doppler",
+        "spectral",
+        "vascular ultrasound",
+        "extremity",
+        "venous",
+        "femoral",
+        "popliteal",
+        "doppler",
+        "compressibility",
+        "Lower extremity",
+        "venous duplex",
+        "arterial Doppler",
+        "reflux",
+        "vascular lab"
+      ],
+      "shared": [
+        "upper extremity",
+        "DVT",
+        "PAD",
+        "stenosis"
+      ],
+      "negative": [],
+      "deciding": [
+        "Doppler-duplex",
+        "Extremity Doppler Report",
+        "Lower / upper extremity Doppler-duplex",
+        "upper extremity Doppler-duplex"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Holter Monitor Report": {
+      "must_have": [],
+      "good_to_have": [
+        "beats",
+        "pvc",
+        "pac",
+        "pauses",
+        "hookup",
+        "diary",
+        "24-hour monitor",
+        "ambulatory ECG",
+        "PVCs",
+        "PACs",
+        "min/max heart rate",
+        "total beats"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Holter Monitor Report",
+        "holter"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Laryngoscopy Procedure Report": {
+      "must_have": [],
+      "good_to_have": [
+        "flexible fiberoptic",
+        "vocal cords",
+        "larynx",
+        "hoarseness",
+        "vocal",
+        "cords",
+        "glottis",
+        "epiglottis"
+      ],
+      "shared": [
+        "ENT",
+        "dysphagia"
+      ],
+      "negative": [],
+      "deciding": [
+        "Laryngoscopy report",
+        "laryngoscopy"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Stress Test": {
+      "must_have": [],
+      "good_to_have": [
+        "Myocardial perfusion",
+        "nuclear stress",
+        "Lexiscan",
+        "sestamibi",
+        "Cardiolite",
+        "reversible defect",
+        "SPECT",
+        "gated EF",
+        "stress",
+        "treadmill",
+        "bruce",
+        "mets",
+        "exercise",
+        "protocol",
+        "regadenoson",
+        "perfusion",
+        "target heart rate",
+        "ST depression",
+        "exercise time",
+        "peak HR",
+        "ST changes"
+      ],
+      "shared": [
+        "MPI",
+        "ischemia"
+      ],
+      "negative": [],
+      "deciding": [
+        "Myocardial perfusion imaging",
+        "Stress Test",
+        "exercise tolerance test (ETT)",
+        "Bruce protocol",
+        "Stress Test Report",
+        "Treadmill Report"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Neurocognitive Screening Examination": {
+      "must_have": [],
+      "good_to_have": [
+        "Neurocognitive",
+        "cognitive screening",
+        "MoCA",
+        "SLUMS",
+        "memory",
+        "cognitive",
+        "mmse",
+        "recall",
+        "orientation",
+        "clock"
+      ],
+      "shared": [
+        "Mini-Cog",
+        "dementia",
+        "score /30"
+      ],
+      "negative": [],
+      "deciding": [
+        "Neurocognitive screening exam"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)": {
+      "must_have": [],
+      "good_to_have": [
+        "Lens",
+        "sphere",
+        "cylinder",
+        "axis",
+        "add",
+        "base curve",
+        "diameter",
+        "IOL power",
+        "iol",
+        "axial",
+        "length",
+        "keratometry",
+        "power"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Lens Parameters",
+        "biometry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Optical Coherence Tomography Report": {
+      "must_have": [],
+      "good_to_have": [
+        "retinal",
+        "thickness",
+        "macula",
+        "rnfl",
+        "optic"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "oct"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Oximetry Report": {
+      "must_have": [],
+      "good_to_have": [
+        "saturation",
+        "desaturation",
+        "spo2",
+        "overnight",
+        "nadir",
+        "pulse ox",
+        "overnight oximetry",
+        "room air",
+        "O2 saturation",
+        "88%"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Oximetry Report",
+        "oximetry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Pacemaker Device Report": {
+      "must_have": [],
+      "good_to_have": [
+        "lead",
+        "leads",
+        "battery",
+        "pacing",
+        "sensing",
+        "impedance",
+        "device",
+        "device interrogation",
+        "device clinic",
+        "lead impedance",
+        "% paced",
+        "remote monitoring",
+        "programmer"
+      ],
+      "shared": [
+        "ICD"
+      ],
+      "negative": [],
+      "deciding": [
+        "Pacemaker Device Report",
+        "Pacemaker Report",
+        "pacemaker",
+        "interrogation"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Plethysmography Report": {
+      "must_have": [],
+      "good_to_have": [
+        "volumes",
+        "tlc",
+        "rv",
+        "frc",
+        "pulse volume recording",
+        "segmental pressures",
+        "waveforms",
+        "body box",
+        "lung volumes"
+      ],
+      "shared": [
+        "PVR"
+      ],
+      "negative": [],
+      "deciding": [
+        "Plethysmography Report",
+        "plethysmography"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Pulmonary Function Test": {
+      "must_have": [],
+      "good_to_have": [
+        "fev1",
+        "fvc",
+        "dlco",
+        "bronchodilator",
+        "predicted",
+        "FEV1/FVC",
+        "bronchodilator response",
+        "obstructive/restrictive"
+      ],
+      "shared": [
+        "PFT"
+      ],
+      "negative": [],
+      "deciding": [
+        "Pulmonary Function Test",
+        "Pulmonary function test / spirometry",
+        "spirometry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Sigmoidoscopy Report": {
+      "must_have": [],
+      "good_to_have": [
+        "sigmoid",
+        "rectum",
+        "flexible"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Sigmoidoscopy Report",
+        "sigmoidoscopy"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Sleep Study Report": {
+      "must_have": [],
+      "good_to_have": [
+        "obstructive sleep apnea",
+        "sleep efficiency",
+        "desaturation nadir",
+        "ahi",
+        "apnea",
+        "hypopnea",
+        "arousal",
+        "rem",
+        "sleep",
+        "sleep clinic",
+        "sleep medicine",
+        "CPAP compliance",
+        "Epworth",
+        "Split night",
+        "diagnostic portion",
+        "titration portion",
+        "CPAP pressure"
+      ],
+      "shared": [
+        "PSG",
+        "RDI"
+      ],
+      "negative": [],
+      "deciding": [
+        "Polysomnography",
+        "sleep study",
+        "Sleep Study Report",
+        "Split-night sleep study",
+        "polysomnogram"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Split Night Study Report": {
+      "must_have": [],
+      "good_to_have": [
+        "split",
+        "cpap",
+        "titration",
+        "diagnostic",
+        "ahi"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Split Night Study Report"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Sudoscan Report": {
+      "must_have": [],
+      "good_to_have": [
+        "electrochemical skin conductance",
+        "sudomotor",
+        "hands/feet",
+        "neuropathy risk",
+        "esc",
+        "conductance"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Sudoscan"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Telemetry Report": {
+      "must_have": [],
+      "good_to_have": [
+        "strips",
+        "rhythm",
+        "events",
+        "monitoring"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "telemetry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Titration Report": {
+      "must_have": [],
+      "good_to_have": [
+        "Titration",
+        "BiPAP",
+        "optimal pressure",
+        "cm H2O",
+        "residual AHI",
+        "mask",
+        "cpap",
+        "pressure",
+        "leak"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "CPAP / BiPAP titration report",
+        "BiPAP titration report"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Videonystagmography Report": {
+      "must_have": [],
+      "good_to_have": [
+        "nystagmus",
+        "caloric",
+        "saccades",
+        "oculomotor",
+        "positional"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Videonystagmography Report",
+        "videonystagmography",
+        "vng"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Visual Field Report": {
+      "must_have": [],
+      "good_to_have": [
+        "visual",
+        "field",
+        "humphrey",
+        "fixation",
+        "deviation"
+      ],
+      "shared": [],
+      "negative": [],
+      "deciding": [
+        "Visual Field Interpretation",
+        "perimetry"
+      ]
+    },
+    "Lab Report > Diagnostic Study > Others": {
+      "must_have": [],
+      "good_to_have": [
+        "Cardiovascular",
+        "cardiology",
+        "cardiology consultation",
+        "event monitor",
+        "diabetic peripheral neuropathy",
+        "DPNCheck",
+        "sural",
+        "monofilament",
+        "Endoscopy",
+        "esophagogastroduodenoscopy",
+        "upper GI endoscopy",
+        "scope",
+        "biopsy taken",
+        "endoscopist",
+        "cirrhosis",
+        "H. pylori",
+        "hepatology",
+        "vascular lab",
+        "arterial",
+        "venous",
+        "waveform",
+        "velocity",
+        "ankle-brachial index"
+      ],
+      "shared": [
+        "CAD",
+        "CHF",
+        "ejection fraction",
+        "DPN",
+        "severity",
+        "EGD",
+        "findings",
+        "GI",
+        "GERD",
+        "stenosis",
+        "ABI",
+        "sedation"
+      ],
+      "negative": [],
+      "deciding": [
+        "Cardiac Report",
+        "heart report",
+        "diagnostic report",
+        "Cardiovascular Report",
+        "DPN results",
+        "Endoscopy report",
+        "Gastroenterology / GI",
+        "Gastroenterology",
+        "GI report",
+        "Vascular Studies"
+      ]
+    }
+  }
+}

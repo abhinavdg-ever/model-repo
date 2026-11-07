@@ -11,11 +11,11 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-import module.blank_junk.stage as bj_stage  # noqa: E402,F401  (puts blank_junk on sys.path)
+import modules.blank_junk.stage as bj_stage  # noqa: E402,F401  (puts blank_junk on sys.path)
 from classify import copy_runs  # noqa: E402
-from module.blank_junk.stage import _duplicate_rules, _settle_copy_runs  # noqa: E402
-from module.continuity import duplicates  # noqa: E402
-from module.continuity.engine import Line, PageInput, assign  # noqa: E402
+from modules.blank_junk.stage import _duplicate_rules, _settle_copy_runs  # noqa: E402
+from modules.continuity import duplicates  # noqa: E402
+from modules.continuity.engine import Line, PageInput, assign  # noqa: E402
 
 
 def _words(tag, n=80):

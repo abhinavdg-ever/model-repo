@@ -11,7 +11,7 @@ if str(CORE) not in sys.path:
 
 
 def test_strips_image_placeholders_and_empty_tables():
-    from module.ocr.docling_ocr import clean_docling_markdown
+    from modules.ocr.docling_ocr import clean_docling_markdown
 
     raw = (
         "<!-- image -->\n\n<!-- image -->\n\n"
@@ -33,7 +33,7 @@ def test_strips_image_placeholders_and_empty_tables():
 
 
 def test_patient_data_matches_canon():
-    from module.ocr.section_header_match import best_header_match
+    from modules.ocr.section_header_match import best_header_match
 
     score, label = best_header_match("PATIENT DATA", use_minilm=False)
     assert score >= 0.90
@@ -49,7 +49,7 @@ def test_export_keeps_the_page_header_and_text_inside_pictures():
     from docling_core.types.doc import DocItemLabel, DoclingDocument
     from docling_core.types.doc.document import ContentLayer
 
-    from module.ocr.docling_ocr import export_markdown
+    from modules.ocr.docling_ocr import export_markdown
 
     doc = DoclingDocument(name="page")
     doc.add_text(label=DocItemLabel.PAGE_HEADER, text="Encounter Date: December 03, 2025",
@@ -64,7 +64,7 @@ def test_export_keeps_the_page_header_and_text_inside_pictures():
 
 
 def test_export_falls_back_on_an_old_docling_core():
-    from module.ocr.docling_ocr import export_markdown
+    from modules.ocr.docling_ocr import export_markdown
 
     class OldDoc:
         def export_to_markdown(self, **kwargs):

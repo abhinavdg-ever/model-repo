@@ -130,7 +130,7 @@ def test_dotenv_override_wins_for_ner_model_id(tmp_path, monkeypatch):
 
 
 def test_ner_config_finds_core_pipeline_root():
-    from module.member.extractors.ner_based.config import (
+    from modules.member.extractors.ner_based.config import (
         CORE_ROOT,
         _core_pipeline_root,
     )

@@ -32,10 +32,10 @@ history. Full detail is in each folder's README.
 
 
 **The canon** (`taxonomy/page_canon.json`, about 295 canon page types) is a copy of
-the pipeline's `core-pipeline/module/keyword-canon/page_canon.json`: each canon
+the pipeline's `core-pipeline/modules/keyword-canon/page_canon.json`: each canon
 page type with its path in the taxonomy's names, its codeability tag and its
 lexicon. The pipeline's copy is the one to edit (paths are re-derived with
-`python -m module.page_classify.canon_convert` from `core-pipeline/`); a repo
+`python -m modules.page_classify.canon_convert` from `core-pipeline/`); a repo
 test fails when the two copies differ. `python taxonomy/canon.py score
 <training_data.jsonl>` scores every page against it and reports agreement with the
 labels. The lexicons are starting lists: tune them on labelled pages.

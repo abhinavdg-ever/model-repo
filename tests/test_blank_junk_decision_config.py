@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "core-pipeline" / "models" / "blank-junk" / "default.json"
-VENDOR = ROOT / "core-pipeline" / "module" / "blank_junk" / "model"
+VENDOR = ROOT / "core-pipeline" / "modules" / "blank_junk" / "model"
 
 FACESHEET = (
     "FRANCISCAN SYSTEM SERVICES MRN: 00837157 DOB: 01/29/1958\n"

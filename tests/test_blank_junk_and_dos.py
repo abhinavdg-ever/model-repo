@@ -9,11 +9,11 @@ comparison; on a match the higher character-count page stays the original
 """
 from __future__ import annotations
 
-from module.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
+from modules.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
 
 import classify  # noqa: E402  — on sys.path once the blank_junk stage is imported
 import method  # noqa: E402
-from module.dos.stage import _date_rows, _split_dates
+from modules.dos.stage import _date_rows, _split_dates
 
 
 def page(page_id: int, number: int):
@@ -87,7 +87,7 @@ class TestDuplicateScope:
         assert flags[27] == "not_blank_junk"
 
     def test_the_window_grows_with_the_chart(self):
-        from module.blank_junk.classify import duplicate_window
+        from modules.blank_junk.classify import duplicate_window
 
         assert [duplicate_window(n) for n in (1, 10, 26, 100, 250, 251, 400, 1000)] == [0, 9, 25, 25, 25, 26, 40, 100]
 
@@ -281,7 +281,7 @@ class TestDosStageWritesEachPageOnce:
         from contextlib import contextmanager, nullcontext
         from types import SimpleNamespace
 
-        import module.dos.stage as dos_stage
+        import modules.dos.stage as dos_stage
 
         pages = [page(1, 1), page(2, 2), page(3, 3)]
         ctx = SimpleNamespace(chart_name="c", pages=pages, todo={1, 2, 3}, done=0, skipped=0)
@@ -338,7 +338,7 @@ FILLER = " ".join(f"word{i}" for i in range(40))
 
 class TestDosTesseractOnlyWithoutFinal2:
     def test_tesseract_is_offered_only_for_pages_without_final2(self, monkeypatch):
-        import module.dos.stage as dos_stage
+        import modules.dos.stage as dos_stage
 
         texts = {
             "azuredocintel": {1: "Final2 text"},
@@ -534,7 +534,7 @@ class TestDuplicatePageType:
             upsert_ocr_result,
             upsert_pages,
         )
-        from module.page_classify import stage as classify_stage
+        from modules.page_classify import stage as classify_stage
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         monkeypatch.setattr(classify_stage, "connect", db.connect)
@@ -616,7 +616,7 @@ class TestOnlyMainPagesAreCompared:
 
     def _run(self, monkeypatch, texts, junk_ids):
         import method
-        from module.blank_junk import stage as bj_stage
+        from modules.blank_junk import stage as bj_stage
 
         by_text = {texts[i]: (self.JUNK if i in junk_ids else self.KEEP) for i in texts}
         monkeypatch.setattr(bj_stage, "model_scores", lambda text, docling=None: by_text.get(text, self.KEEP))
@@ -1085,7 +1085,7 @@ def test_section_header_classes_cover_the_canon():
 
     import card_rules
 
-    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "module" / "keyword-canon"
+    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "modules" / "keyword-canon"
     canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
     classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
     assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)

@@ -1,12 +1,12 @@
 """2026-11-01 (user): the page's type as one leaf (L1 > L2 > L3) from a model and the
-per-leaf keyword canon (core-pipeline/module/page_classify/leaf.py, leaf_canon.py)."""
+per-leaf keyword canon (core-pipeline/modules/page_classify/leaf.py, leaf_canon.py)."""
 import inspect
 import sys
 from pathlib import Path
 
 import pytest
 
-from module.page_classify import leaf, leaf_canon, leaf_model
+from modules.page_classify import leaf, leaf_canon, leaf_model
 
 REPO = Path(__file__).resolve().parents[1]
 LEAVES = {

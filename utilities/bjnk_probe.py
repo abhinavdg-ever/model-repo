@@ -3,10 +3,10 @@
     python utilities/bjnk_probe.py <package_root> <bert_dir> <page.txt>
 
 Examples:
-    core-pipeline/.venv/bin/python utilities/bjnk_probe.py core-pipeline/module/blank_junk/model core-pipeline/models/blank-junk/bert page.txt
+    core-pipeline/.venv/bin/python utilities/bjnk_probe.py core-pipeline/modules/blank_junk/model core-pipeline/models/blank-junk/bert page.txt
     python bjnk_probe.py . models\\bert_page page.txt        (inside b_jnk_v3, Windows)
 
-package_root: the folder holding src/ (b_jnk_v3, or core-pipeline/module/blank_junk/model)
+package_root: the folder holding src/ (b_jnk_v3, or core-pipeline/modules/blank_junk/model)
 bert_dir:     the folder holding model.safetensors, tokenizer.json, bjnk_meta.json
 page.txt:     one page's Tesseract text (UTF-8)
 

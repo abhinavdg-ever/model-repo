@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from module.extraction.results import (
+from modules.extraction.results import (
     ADDITIONAL_CSV_COLS,
     SIGNATURE_CSV_COLS,
     additional_csv_row,
@@ -145,7 +145,7 @@ def test_several_signatures_stop_at_their_own_fields_and_drop_incomplete_ones():
 
 
 def test_split_name_and_credentials():
-    from module.extraction.results import credentials_in_sentence, split_name_credentials
+    from modules.extraction.results import credentials_in_sentence, split_name_credentials
 
     assert split_name_credentials("LAUBERT CNP, MATTHEW") == ("LAUBERT, MATTHEW", "CNP")
     assert split_name_credentials("Agati, Alicia, APRN.CNP") == ("Agati, Alicia", "APRN.CNP")
@@ -194,7 +194,7 @@ def test_additional_row_keeps_page_number_and_header_json():
 
 
 def test_every_accepted_person_is_selected():
-    from module.extraction.provider_name.extract import ProviderHit, mark_selected
+    from modules.extraction.provider_name.extract import ProviderHit, mark_selected
 
     short = ProviderHit(key="Provider", region="header", sentence="", value="Liane Kirchberger", accepted=True)
     long = ProviderHit(key="Progress Notes", region="header", sentence="", value="Liane Kirchberger, PA", accepted=True)
@@ -206,7 +206,7 @@ def test_every_accepted_person_is_selected():
 
 
 def test_role_without_id_keeps_the_highest_score_above_the_floor():
-    from module.extraction.provider_name.extract import nearest_provider
+    from modules.extraction.provider_name.extract import nearest_provider
 
     sentence = "physician was Dr. Hamilton"
     raws = [
@@ -265,7 +265,7 @@ def test_role_without_id_keeps_the_highest_score_above_the_floor():
 
 
 def test_a_name_without_dr_or_a_credential_is_left_out():
-    from module.extraction.provider_name.extract import credentialed_providers, has_title_or_credential
+    from modules.extraction.provider_name.extract import credentialed_providers, has_title_or_credential
 
     assert has_title_or_credential("Dr Hamilton")
     assert has_title_or_credential("Liane Kirchberger, PA")
@@ -295,7 +295,7 @@ def test_a_name_without_dr_or_a_credential_is_left_out():
 
 
 def test_credentials_must_be_in_capitals():
-    from module.extraction.results import caps_credentials_only
+    from modules.extraction.results import caps_credentials_only
 
     assert caps_credentials_only("Jane Doe, RD") == "Jane Doe, RD"
     assert caps_credentials_only("Jane Doe R.D., LD") == "Jane Doe R.D., LD"
@@ -383,9 +383,9 @@ def test_rn_and_do_credential_rows_never_fill_a_signer():
 
 
 def test_heading_candidates_keep_every_heading_row_with_the_page_size():
-    from module.extraction import staging
-    from module.extraction.heading.extract import heading_fields
-    from module.extraction.stage import heading_candidates_of
+    from modules.extraction import staging
+    from modules.extraction.heading.extract import heading_fields
+    from modules.extraction.stage import heading_candidates_of
 
     field_id = heading_fields()[0]
     rows = [

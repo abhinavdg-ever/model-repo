@@ -213,7 +213,7 @@ both jobs.
 
 ## 2. The taxonomy and the two answers per page
 
-**One taxonomy everywhere.** `core-pipeline/module/keyword-canon/page_taxonomy.json`
+**One taxonomy everywhere.** `core-pipeline/modules/keyword-canon/page_taxonomy.json`
 (pipeline), `training/bert-training/taxonomy.json` (trainer) and
 `training/taxonomy/taxonomy.json` (labelling) carry the same v29.2 label space. The
 model folder's `label_space.json` must say `taxonomy_version: v29.2`
@@ -255,7 +255,7 @@ three levels, `"L1 (L2)"` / L3. `model_type` is the path `L1 > L2 > L3`.
 Every page gets one blank / junk verdict: **Main** (kept), **Blank**, or **Junk** with a
 subtype (Invoice, Cover Page, Record Request/Transmittal, Instructions, Letter/Fax,
 Cards, Others). Duplicates are found by the same stage but are not junk (section 4A).
-Code: `core-pipeline/module/blank_junk/method.py: decide` (the rule ladder) and
+Code: `core-pipeline/modules/blank_junk/method.py: decide` (the rule ladder) and
 `post_process`, `blank_junk/stage.py: _classify` (passes, duplicates, writing),
 `blank_junk/card_rules.py: detect` (cards), `continuity/short_pages.py: find` (the short
 page contained in a nearby page). Settings: `keyword-canon/blank_junk_context_canon.json`
@@ -353,9 +353,9 @@ subtype in the page type) or "No". Stages after blank / junk skip blank, junk an
 Every Main page is searched for **the manifest's member**: its name, date of birth and
 member ID. The search is driven by the manifest (the page is asked "is this member
 here?"), not a blind extraction. Code: the key/value extraction
-(`core-pipeline/module/extraction/`, writes `staging/extraction.json` →
+(`core-pipeline/modules/extraction/`, writes `staging/extraction.json` →
 `fields.name`, `fields.dob`, `fields.member_id`), the member stage
-`module/member/engine.py: overlay_staged_fields`, `verify_record`, and the rules in
+`modules/member/engine.py: overlay_staged_fields`, `verify_record`, and the rules in
 `member/extractors/rule_based/name_common.py`, `member/rules/`.
 
 ```
@@ -486,7 +486,7 @@ own rules. Both sides blank / junk: every field matches and reads "Skipped".
 
 The Extracted page type is now **one leaf**: a whole path L1 > L2 > L3 of taxonomy v29.3,
 decided by a model and a per-leaf keyword canon together
-(`core-pipeline/module/page_classify/leaf.py`, `leaf_canon.py`, `leaf_model.py`).
+(`core-pipeline/modules/page_classify/leaf.py`, `leaf_canon.py`, `leaf_model.py`).
 It replaces the cascade of section 3 (L1, then L2 under it, then L3). The cascade stays
 in the code for `PAGE_CLASSIFIER=axes`, and its model stands in until a leaf model is
 trained. The answer is written exactly as before (`page_classification`, `axes` JSON), so
@@ -547,7 +547,7 @@ score counts half, `ancestor_share`).
 
 A word found in one of the page's **section headers** (the section-header stage's matched
 headings) counts ×2 (`header_multiplier`). Matching is on whole words and phrases, any
-case. The draft (`python -m module.page_classify.leaf_canon draft`) came from the
+case. The draft (`python -m modules.page_classify.leaf_canon draft`) came from the
 old canon: page_canon title terms → Deciding, body terms → Good To Have, ambiguous terms
 → Shared; class_keywords strong → Deciding, body → Shared; a Good To Have word on nodes of
 three or more L1s → Shared. Must Have and Negative start empty. Edit it in Excel:
@@ -622,7 +622,7 @@ the keyword hits on the winner's nodes. `axes.paths` lists the leaves with point
 > and its model's paths stand in for the leaf model until that is trained.
 
 
-Stage `page_subtype` (`core-pipeline/module/page_classify/stage.py: run`), one page
+Stage `page_subtype` (`core-pipeline/modules/page_classify/stage.py: run`), one page
 at a time, for every page that is not blank, junk or duplicate. The decision is
 `axes.predict` → `axes.gate`.
 
@@ -719,7 +719,7 @@ Bio_ClinicalBERT run's split (train 2,005 / validation 382 / test 397 pages) and
 
 > **Important.** Both the weights and the strong table are produced by `fit`. A term
 > added to `page_canon.json` or `class_keywords.json` has **no weight and pins
-> nothing until `python -m module.page_classify.keyword_vote fit --data
+> nothing until `python -m modules.page_classify.keyword_vote fit --data
 > training_data.jsonl --split split.csv` is re-run** (9.3).
 
 The second, older weighting in `page_canon.json → weights` (title in zone 3, title
@@ -861,7 +861,7 @@ provider name are **not** used for specialty today (10, suggestion S12).
 
 ### 3.10 Confidence of each level
 
-`axes._Vote.confidence`, `module/confidence.py` (section 8):
+`axes._Vote.confidence`, `modules/confidence.py` (section 8):
 
 ```
 backed(p, s) = p + (1 − p) · 0.5 · s                       (agree_lift 0.5)
@@ -1149,9 +1149,9 @@ model agreeing at 0.8 the L1 would read backed(0.8, 0.438) ≈ 0.84.
 Two answers, as for the page type. The **Extracted DOS** is the page's own date, read
 from the page alone (stage `dos_extract`, seq 80). The **Final DOS** is the document's,
 set once continuity has grouped the pages (stage `imaging_final`, seq 100). Code:
-`core-pipeline/module/dos/stage.py: run` and `dos/dos_logic.py:
+`core-pipeline/modules/dos/stage.py: run` and `dos/dos_logic.py:
 detect_dos_per_page`, settings `keyword-canon/dos_canon.json` (reloads on change); the
-key/value candidates come from `kv_extract` (`module/extraction/dos/extract.py`,
+key/value candidates come from `kv_extract` (`modules/extraction/dos/extract.py`,
 labels `extraction/dos/keys.json`). `docs/DOS_LOGIC.md` has every label and example;
 this section is the logic, with the settings read from the code on 2026-10-29. There is
 no LLM.
@@ -1251,7 +1251,7 @@ Priority groups (`kv_priority`; groups are the tiers `kv_extract` wrote):
 * A date after `D:` / `T:` / Dictated / Transcribed is never taken by the edge keyword:
   it is when the note was dictated or typed (step 3 is the only place it counts).
 
-**Confidence** (`module/confidence.py`, section 8):
+**Confidence** (`modules/confidence.py`, section 8):
 
 | Source | Confidence |
 |---|---|
@@ -1358,7 +1358,7 @@ for DOS.
 ---
 ## 4. Continuity: where one document ends and the next begins
 
-Stage `continuity` (`core-pipeline/module/continuity/stage.py: run`), engine
+Stage `continuity` (`core-pipeline/modules/continuity/stage.py: run`), engine
 `continuity/engine.py: assign`, settings `keyword-canon/continuity_canon.json`
 (version 4). It writes only the grouping; Final values are written by `imaging_final`.
 
@@ -1686,10 +1686,10 @@ A duplicate is a page whose content is already in the chart (the same fax page s
 twice, a note printed again). It is found in three places: the blank / junk stage marks
 it on its words (pass 2 only), continuity checks a far copy
 encounter against encounter, and `imaging_final` gives it its original's values. Code:
-`core-pipeline/module/blank_junk/stage.py: _classify` (rules in its module
+`core-pipeline/modules/blank_junk/stage.py: _classify` (rules in its module
 docstring), `blank_junk/classify.py: word_overlap`, settings
 `keyword-canon/blank_junk_context_canon.json → duplicates`;
-`module/continuity/duplicates.py: review`, called from
+`modules/continuity/duplicates.py: review`, called from
 `continuity/stage.py: _review_duplicates`.
 
 ```
@@ -1847,7 +1847,7 @@ written date differs, neither has a kv_extract DOS.
 ---
 ## 5. Final page type, subtype and specialty
 
-Stage `imaging_final` (`core-pipeline/module/imaging_final/stage.py: run`), the
+Stage `imaging_final` (`core-pipeline/modules/imaging_final/stage.py: run`), the
 last stage. The page type is decided by `page_classify/arbitration.py: decide_final`
 with its tables in `page_arbitration.json`. Extracted is never overwritten: a reviewer
 and the accuracy report see both.
@@ -1973,7 +1973,7 @@ Report / Pathology Report" when `under_l1["Lab Report"]` carries no L3.
 `imaging_final.codability` is the label (Codable / Non-Codable / Discharge) and
 `classification_category` its code (codeable / non_codeable / discharge_summary).
 
-**Non-codable credentials** (2026-11-01, user; `module/non_codable_credentials.py`,
+**Non-codable credentials** (2026-11-01, user; `modules/non_codable_credentials.py`,
 list in `keyword-canon/non_codable_credentials.json`): a page Final calls **Codable** whose
 every provider credential (the signature row's and each signer's) is on the list (RN, LPN,
 MA, PharmD, PhD non-psychologist, LCSW-type counsellors, assistants, technicians ...) is
@@ -1981,7 +1981,7 @@ MA, PharmD, PhD non-psychologist, LCSW-type counsellors, assistants, technicians
 of several words matches as a whole or word by word. A page with no credential, or with
 one codable credential (MD, DO, NP, PA ...) beside them, keeps its codability.
 
-**Provider names** (2026-11-01, user; `module/names.trim_provider_name`): the role
+**Provider names** (2026-11-01, user; `modules/names.trim_provider_name`): the role
 words of a signature block (Legal Authenticator, Signing Authority, Authority, Signed by
 ...) are taken out of a provider's name and every signer's, in kv_extract, imaging_final
 and review-ui.
@@ -2238,7 +2238,7 @@ document whose pages state two settings and carry two label dates.
 
 ## 7. Page sequencing
 
-Stage `page_sequencing` (`core-pipeline/module/sequencing/`), after encounter type,
+Stage `page_sequencing` (`core-pipeline/modules/sequencing/`), after encounter type,
 before `imaging_final`. It suggests a reading order and never moves or renames a file:
 **current sequence** is scan order (`page_number`), **actual sequence** the suggestion
 (`page_sequencing_results.seq`, copied to `imaging_final.seq`).
@@ -2275,7 +2275,7 @@ before `imaging_final`. It suggests a reading order and never moves or renames a
 ## 8. Confidence scores
 
 Every decided value carries a confidence in [0, 1] on one scale
-(`keyword-canon/confidence_canon.json`, applied by `module/confidence.py`):
+(`keyword-canon/confidence_canon.json`, applied by `modules/confidence.py`):
 **≥ 0.80 good · 0.50–0.80 passable · < 0.50 review** (flagged; review-ui colours the
 cell red and says Review).
 
@@ -2321,7 +2321,7 @@ and penalties, not measured hit rates (S10).
 
 Three kinds of JSON shape these decisions:
 
-* the **editable canon** (`core-pipeline/module/keyword-canon/*.json`): every word
+* the **editable canon** (`core-pipeline/modules/keyword-canon/*.json`): every word
   list, weight, threshold and table the stages use. Change behaviour without a code
   change;
 * the **per-chart staging** (`<chart>/staging/*.json`): what each stage decided and
@@ -2341,13 +2341,13 @@ Three kinds of JSON shape these decisions:
 | `specialty_canon.json` | `specialty_keywords` | `matching` (top band 0.18, header 6, body 1, min 6, margin 3), header / body terms per specialty | Extracted specialty from words |
 | `continuity_canon.json` | `continuity.engine` | pagination patterns, bands, `points` of every signal, `dos_trust`, page-fill and text-start curves, semantic settings, `section_order`, `visit_headings`, `demographics_break`, `default_final_dos`, `decision`, `conflict_rules`, `final_pass` | where documents begin and end; the non-visit DOS types |
 | `encounter_canon.json` | `encounter_classify` | settings and priorities, `tier1_page_types`, tier 2 / tier 3 phrases, negatives, `applies_to` (+ `always`), `vote` (first page weight 2, family defaults), `model_vote` (classes, 0.50, confirm words, 0.30, override 0.95), `default` | the encounter type |
-| `confidence_canon.json` | `module/confidence.py` | bands (0.80 / 0.50), `agree_lift` 0.5, the penalties, `calibration` | every confidence and review flag |
+| `confidence_canon.json` | `modules/confidence.py` | bands (0.80 / 0.50), `agree_lift` 0.5, the penalties, `calibration` | every confidence and review flag |
 | `section_header_canon.json` | `ocr/section_header_match` (stage 6) | section header catalogue | the OCR JSON's `section_headers` → continuity's `sections_forward`, `visit_heading`, and the page classifier's heading lines (after `only: ["section_headers"]`) |
 | `dos_canon.json` | DOS stage; `continuity` (non-visit date) | DOS labels and weights; `DOS_NON_VISIT_DATE` 2222-02-22, `DOS_DEFAULT_DATE` | each page's DOS and its tier → continuity's date signals |
 
 ### 9.2 Reload on change
 
-Every canon file is read through `module/canon_store.py: CanonFile`:
+Every canon file is read through `modules/canon_store.py: CanonFile`:
 
 ```
 CanonFile(path, build).get():
@@ -2402,7 +2402,7 @@ Administrative > Superbill, add it to the Superbill entry of `page_canon.json`:
 ```
 
 Effect **before refit**: none on the vote (no weight, no pin); `canon_entry` and
-`title_l1` see it at once. After `python -m module.page_classify.keyword_vote fit
+`title_l1` see it at once. After `python -m modules.page_classify.keyword_vote fit
 --data training_data.jsonl --split <run>/split.csv` the weights file gains
 `"encounter form|title": ["Administrative"]` under `strong.L1` (and Superbill under
 `strong.L2.Administrative`), and the next page titled "Encounter Form" is pinned. A
@@ -4181,7 +4181,7 @@ How a keyword-canon page type became its path in page_canon.json (`canon_convert
 
 ### E. The keyword canon (page_canon.json)
 
-Version 2026-10-25 (taxonomy v29.2). The keyword canon: page types with their lexicons (title / body / ambiguous terms), codeability and path. Paths are in the page taxonomy's names (page_taxonomy.json), put there by `python -m module.page_classify.canon_convert` (see paths_from). Lexicons are starting lists or the page type's own name: tune them on labelled pages.
+Version 2026-10-25 (taxonomy v29.2). The keyword canon: page types with their lexicons (title / body / ambiguous terms), codeability and path. Paths are in the page taxonomy's names (page_taxonomy.json), put there by `python -m modules.page_classify.canon_convert` (see paths_from). Lexicons are starting lists or the page type's own name: tune them on labelled pages.
 
 Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191, hand_placed 53, taxonomy_only 32, paths_reached 120.
 
@@ -4703,7 +4703,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 | outpatient_f2f | label: Outpatient (F2F); priority: 30 |
 | inpatient | label: Inpatient; priority: 40 |
 
-**Confidence by tier**: tier1: 1.0; tier1_conflict: 0.8; tier2: 0.8; tier2_conflict: 0.6; note: 2026-10-25 (user: no fixed confidences): how strongly keyword evidence BACKS a setting, not a confidence. A page's confidence is the encounter model's probability for its setting (normalised over the settings, 'No evidence on page' left out), lifted by this support (module/confidence.py: p + (1 - p) x 0.5 x support) and penalised for doubt; without a model answer, the support x no_model. See vote.confidence_note.
+**Confidence by tier**: tier1: 1.0; tier1_conflict: 0.8; tier2: 0.8; tier2_conflict: 0.6; note: 2026-10-25 (user: no fixed confidences): how strongly keyword evidence BACKS a setting, not a confidence. A page's confidence is the encounter model's probability for its setting (normalised over the settings, 'No evidence on page' left out), lifted by this support (modules/confidence.py: p + (1 - p) x 0.5 x support) and penalised for doubt; without a model answer, the support x no_model. See vote.confidence_note.
 
 **Default**: setting: outpatient_f2f; note: 2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F); decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Its confidence is a fallback's: the model's probability for F2F on the first page x fallback (0.6), so it is never good. Empty setting = leave it unresolved.
 
@@ -4866,7 +4866,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 #### decision
 
-* **comment**: score > 0 break, < 0 joined, 0 joined and flagged. The engine's internal strength from \|score\|: >= high_at high, >= medium_at medium, else low (it steers the final pass). Confidence (2026-10-25, one scale for every module: module/confidence.py): P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = \|2P - 1\| when the score points the way the gap was decided (else 0); x conflict (confidence_canon.json, 0.8) when the three sub-scores point opposite ways, two decisive signals disagree, or a pattern A / B fires; a decisive signal or rule (demographics, visit heading, Visual page) holds it at >= 0.9, or 0.9 x keywords_disagree when the score points the other way; a final-pass split / merge that reverses a gap: (1 - its confidence) / 2 backed by the rule, x overturned. The stored confidence_level is the confidence's band (high >= 0.80, medium >= 0.50, low below: flagged). a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.
+* **comment**: score > 0 break, < 0 joined, 0 joined and flagged. The engine's internal strength from \|score\|: >= high_at high, >= medium_at medium, else low (it steers the final pass). Confidence (2026-10-25, one scale for every module: modules/confidence.py): P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = \|2P - 1\| when the score points the way the gap was decided (else 0); x conflict (confidence_canon.json, 0.8) when the three sub-scores point opposite ways, two decisive signals disagree, or a pattern A / B fires; a decisive signal or rule (demographics, visit heading, Visual page) holds it at >= 0.9, or 0.9 x keywords_disagree when the score points the other way; a final-pass split / merge that reverses a gap: (1 - its confidence) / 2 backed by the rule, x overturned. The stored confidence_level is the confidence's band (high >= 0.80, medium >= 0.50, low below: flagged). a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.
 * **high_at**: 5
 * **medium_at**: 2
 * **a**: 2.0
@@ -5536,7 +5536,7 @@ Fitted weight tables: L1 4278 features; L2 under 16 L1s (8595 features); L3 unde
 
 ### N. Confidence settings (keyword-canon/confidence_canon.json)
 
-2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. module/confidence.py applies this file; docs/APPROACH.md section 10 explains it per module.
+2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file; docs/APPROACH.md section 10 explains it per module.
 
 | Band | From |
 |---|---|

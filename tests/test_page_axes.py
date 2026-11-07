@@ -17,10 +17,10 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from module.page_classify import axes  # noqa: E402
+from modules.page_classify import axes  # noqa: E402
 
 TRAINER = REPO / "training" / "bert-training" / "train_axes.py"
-COPY = CORE / "module" / "page_classify" / "axes_model.py"
+COPY = CORE / "modules" / "page_classify" / "axes_model.py"
 
 LAB = "Lab Report"
 RAD = "Radiology Report"
@@ -88,7 +88,7 @@ TABLE = {
 @pytest.fixture(autouse=True)
 def fixed_weights(monkeypatch, request):
     """Every test votes with TABLE, except a class that sets REAL_WEIGHTS."""
-    from module.page_classify import keyword_vote
+    from modules.page_classify import keyword_vote
 
     if not getattr(request.cls, "REAL_WEIGHTS", False):
         monkeypatch.setattr(keyword_vote, "weights", lambda: TABLE)
@@ -107,30 +107,30 @@ class TestVote:
     """keyword_vote.vote: the model and the keywords vote; the winner takes it."""
 
     def test_with_no_keywords_the_model_decides(self):
-        from module.page_classify.keyword_vote import vote
+        from modules.page_classify.keyword_vote import vote
 
         assert vote({"A": 0.7, "B": 0.3}, {}, 0.5)[0][:1] == ("A",)
 
     def test_a_strong_unique_keyword_outvotes_a_confident_model(self):
-        from module.page_classify.keyword_vote import vote
+        from modules.page_classify.keyword_vote import vote
 
         ranked = vote({"A": 0.9, "B": 0.05}, {"B": 4.0}, 0.5, 3.0)
         assert ranked[0][0] == "B" and ranked[0][2] == "canon"
         assert ranked[0][1] == pytest.approx(0.5 * 0.05 + 0.5)
 
     def test_thin_evidence_cannot_swing_a_page(self):
-        from module.page_classify.keyword_vote import vote
+        from modules.page_classify.keyword_vote import vote
 
         assert vote({"A": 0.9, "B": 0.05}, {"B": 0.3}, 0.5, 3.0)[0][0] == "A"
 
     def test_without_a_model_the_keywords_vote_alone(self):
-        from module.page_classify.keyword_vote import vote
+        from modules.page_classify.keyword_vote import vote
 
         ranked = vote(None, {"A": 1.0, "B": 3.0}, 0.5)
         assert [c for c, _, _ in ranked] == ["B", "A"] and ranked[0][1] == pytest.approx(0.75)
 
     def test_nothing_to_say_is_empty(self):
-        from module.page_classify.keyword_vote import vote
+        from modules.page_classify.keyword_vote import vote
 
         assert vote(None, {}, 0.5) == []
 
@@ -234,7 +234,7 @@ class TestSpecialty:
         assert 0.5 <= result.specialty_confidence <= 1.0
 
     def test_keywords_need_a_lead(self):
-        from module.page_classify import specialty_keywords
+        from modules.page_classify import specialty_keywords
 
         assert specialty_keywords.specialty("CARDIOLOGY AND NEPHROLOGY\nvisit\n") == (None, None)
 
@@ -324,7 +324,7 @@ class TestPageNames:
 
 class TestStageRow:
     def test_three_levels_and_codeability_become_the_row(self):
-        from module.page_classify.stage import _page_row
+        from modules.page_classify.stage import _page_row
 
         row = _page_row(axes.gate(None, {}, CT_PAGE))
         assert (row["page_type"], row["page_subtype"]) == ("Lab Report (Radiology Report)", "CT Scan Report")
@@ -335,7 +335,7 @@ class TestStageRow:
         assert not any(key.startswith(("bert_", "keyword_")) for key in row)  # those columns stay empty
 
     def test_nothing_decided_is_others_for_review(self):
-        from module.page_classify.stage import _page_row
+        from modules.page_classify.stage import _page_row
 
         row = _page_row(axes.gate(None, {}, NO_TERMS))
         assert (row["page_type"], row["page_subtype"]) == ("Others", "Others")
@@ -343,7 +343,7 @@ class TestStageRow:
         assert row["decided_by"] == "others"
 
     def test_discharge_codeability_is_the_discharge_category(self):
-        from module.page_classify.stage import _page_row
+        from modules.page_classify.stage import _page_row
 
         result = axes.AxesResult(l1="Discharge Summary", l1_confidence=0.9, codeability="discharge")
         row = _page_row(result)
@@ -351,7 +351,7 @@ class TestStageRow:
         assert row["classification_category"] == "discharge_summary"
 
     def test_csv_axes_columns_are_codeable_csv_columns(self):
-        from module.page_classify.stage import CODEABLE_COLS
+        from modules.page_classify.stage import CODEABLE_COLS
 
         assert set(axes.AxesResult().csv_columns()) <= set(CODEABLE_COLS)
 
@@ -387,19 +387,19 @@ class TestDownstreamNames:
         assert axes.names_of({"page_type": "A", "page_subtype": "B"}) == ("B", "A")
 
     def test_encounter_tier_one_finds_the_visit_kind_under_progress_note(self):
-        from module.encounter.encounter_classify import load_canon
+        from modules.encounter.encounter_classify import load_canon
 
         tier1 = load_canon().tier1
         assert next(n for n in axes.names_of(self.ROW) if n in tier1) == "Telephone Encounter"
         assert tier1["Telephone Encounter"] == "outpatient_tele"
 
     def test_every_encounter_tier_one_name_is_a_page_name(self):
-        from module.encounter.encounter_classify import load_canon
+        from modules.encounter.encounter_classify import load_canon
 
         assert set(load_canon().tier1) <= axes.names()
 
     def test_default_dos_types_match_page_names(self):
-        from module.continuity.engine import uses_default_final_dos
+        from modules.continuity.engine import uses_default_final_dos
 
         demographics = {"axes": {"l1": "Demographics", "l2": "Patient Information"}}
         assert uses_default_final_dos(*axes.names_of(demographics))
@@ -408,7 +408,7 @@ class TestDownstreamNames:
 
 class TestUnusableModelFolder:
     def test_git_lfs_pointer_is_not_a_model(self, tmp_path):
-        from module.page_classify import axes
+        from modules.page_classify import axes
 
         (tmp_path / "encoder").mkdir()
         (tmp_path / "encoder" / "config.json").write_text("{}", encoding="utf-8")
@@ -418,7 +418,7 @@ class TestUnusableModelFolder:
         assert reason and "git LFS pointer" in reason and "heads.pt" in reason
 
     def test_missing_files_are_named(self, tmp_path):
-        from module.page_classify import axes
+        from modules.page_classify import axes
 
         assert "heads.pt" in (axes._unusable(tmp_path) or "")
 
@@ -510,7 +510,7 @@ class TestRules:
 
 class TestStaging:
     def test_written_atomically_and_read_back_by_page_name(self, tmp_path, monkeypatch):
-        from module.page_classify import stage
+        from modules.page_classify import stage
 
         monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path / chart / "staging")
         result = axes.gate(raw(), SPACE, CT_PAGE)
@@ -526,7 +526,7 @@ class TestStaging:
         assert pages["chart1_Pg1"]["axes"]["l3"] == "CT Scan Report"
 
     def test_a_missing_or_foreign_file_reads_empty(self, tmp_path, monkeypatch):
-        from module.page_classify import stage
+        from modules.page_classify import stage
 
         monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path / chart / "staging")
         assert stage.read_staged("nothing") == {}
@@ -552,7 +552,7 @@ class TestRealCanon:
         assert (result.l1, result.l2) == path
 
     def test_every_weight_is_a_canon_term(self):
-        from module.page_classify import keyword_vote
+        from modules.page_classify import keyword_vote
 
         terms = set(keyword_vote._canon_terms())
         table = keyword_vote.weights()
@@ -564,10 +564,10 @@ class TestCodeabilityTable:
     def test_the_pipeline_tags_are_the_training_taxonomys(self):
         import json
 
-        from module.page_classify.canon_convert import codeability_table
+        from modules.page_classify.canon_convert import codeability_table
 
         space = json.loads((REPO / "training" / "taxonomy" / "taxonomy.json").read_text(encoding="utf-8"))
-        pipeline = json.loads((CORE / "module" / "keyword-canon" / "page_taxonomy.json").read_text(encoding="utf-8"))
+        pipeline = json.loads((CORE / "modules" / "keyword-canon" / "page_taxonomy.json").read_text(encoding="utf-8"))
         assert pipeline["codeability"] == codeability_table(space)
 
 
@@ -575,16 +575,16 @@ class TestSpecialtyLexicon:
     def test_the_pipeline_copy_is_the_training_lexicon(self):
         import json
 
-        pipeline = CORE / "module" / "keyword-canon" / "specialty_canon.json"
+        pipeline = CORE / "modules" / "keyword-canon" / "specialty_canon.json"
         training = REPO / "training" / "taxonomy" / "rules" / "specialty.json"
         assert json.loads(pipeline.read_text(encoding="utf-8")) == json.loads(training.read_text(encoding="utf-8"))
 
     def test_every_lexicon_specialty_is_in_the_label_space(self):
         import json
 
-        from module.page_classify import taxonomy
+        from modules.page_classify import taxonomy
 
-        lexicon = json.loads((CORE / "module" / "keyword-canon" / "specialty_canon.json").read_text(encoding="utf-8"))
+        lexicon = json.loads((CORE / "modules" / "keyword-canon" / "specialty_canon.json").read_text(encoding="utf-8"))
         assert set(lexicon["specialties"]) <= set(taxonomy.label_space()["specialty"])
 
 
@@ -593,7 +593,7 @@ class TestConvertedCanon:
     def _files():
         import json
 
-        folder = CORE / "module" / "keyword-canon"
+        folder = CORE / "modules" / "keyword-canon"
         return (json.loads((folder / "page_canon.json").read_text(encoding="utf-8")),
                 json.loads((folder / "page_taxonomy.json").read_text(encoding="utf-8")))
 
@@ -609,7 +609,7 @@ class TestConvertedCanon:
                 assert path["L3"] in space["L3"][f"{path['L1']} > {path['L2']}"], entry["page_type"]
 
     def test_converting_again_changes_nothing(self):
-        from module.page_classify.canon_convert import convert
+        from modules.page_classify.canon_convert import convert
 
         canon, taxonomy = self._files()
         again, unresolved = convert(canon, taxonomy)
@@ -628,7 +628,7 @@ class TestConvertedCanon:
          {"L1": "Provider Letter", "L2": "Others", "L3": ""}),
     ])
     def test_old_paths_convert_by_the_tables(self, old, new):
-        from module.page_classify.canon_convert import convert_entry
+        from modules.page_classify.canon_convert import convert_entry
 
         _, taxonomy = self._files()
         entry = {"page_type": "Made Up Page Type", "family": "", "path": old, "specialty": ""}
@@ -636,7 +636,7 @@ class TestConvertedCanon:
         assert converted["path"] == new and unresolved == []
 
     def test_an_unplaceable_l2_is_reported_not_guessed_silently(self):
-        from module.page_classify.canon_convert import convert_entry
+        from modules.page_classify.canon_convert import convert_entry
 
         _, taxonomy = self._files()
         entry = {"page_type": "Made Up Page Type", "family": "",
@@ -653,19 +653,19 @@ class TestEncounterSpecialty:
         return {i: {"axes": {"specialty": sp}} for i, sp in enumerate(specialties, start=1)}
 
     def test_the_first_page_decides_for_every_page(self):
-        from module.imaging_final.stage import encounter_specialties
+        from modules.imaging_final.stage import encounter_specialties
 
         out = encounter_specialties({1: [1, 2, 3]}, self._rows("Cardiology", "Nephrology", "Nephrology"))
         assert out == {1: "Cardiology", 2: "Cardiology", 3: "Cardiology"}
 
     def test_a_first_page_with_none_gives_general_even_when_later_pages_have_one(self):
-        from module.imaging_final.stage import encounter_specialties
+        from modules.imaging_final.stage import encounter_specialties
 
         out = encounter_specialties({1: [1, 2], 2: [3]}, self._rows(None, "Cardiology", "Unknown"))
         assert out == {1: "General", 2: "General", 3: "General"}
 
     def test_only_five_l1s_carry_a_specialty(self):
-        from module.imaging_final.stage import has_specialty
+        from modules.imaging_final.stage import has_specialty
 
         for l1 in ("Progress Note", "Lab Report", "Discharge Summary", "Operative Note", "Procedure Note"):
             assert has_specialty(l1)
@@ -678,7 +678,7 @@ class TestKeywordCandidates:
     """keyword_candidates: phrases mined from labelled pages, added to the canon only when approved."""
 
     def test_phrases_stay_on_their_line_and_skip_stop_words_and_numbers(self):
-        from module.page_classify.keyword_candidates import phrases
+        from modules.page_classify.keyword_candidates import phrases
 
         every, title = phrases("SUPERBILL ENCOUNTER FORM\nvisit date 03/14/2024 of the\n")
         assert {"superbill", "encounter", "form", "visit", "date"} <= every  # single words by default
@@ -688,7 +688,7 @@ class TestKeywordCandidates:
         assert "encounter form" in longer and "form visit" not in longer  # never across a line
 
     def test_only_approved_rows_go_to_the_entry_with_that_path(self):
-        from module.page_classify.keyword_candidates import add_terms
+        from modules.page_classify.keyword_candidates import add_terms
 
         canon = {"page_types": [{"page_type": "CT Scan Report", "path": {"L1": LAB, "L2": RAD, "L3": "CT Scan Report"},
                                  "lexicon": {"body_terms": ["axial images"]}}]}
@@ -708,7 +708,7 @@ class TestGenericCandidates:
 
     @pytest.fixture(scope="class")
     def vocab(self):
-        from module.page_classify.keyword_candidates import document_vocabulary
+        from modules.page_classify.keyword_candidates import document_vocabulary
 
         return document_vocabulary()
 
@@ -722,7 +722,7 @@ class TestGenericCandidates:
         ("consent form", False),  # single words only
     ])
     def test_the_filter(self, vocab, word, ok):
-        from module.page_classify.keyword_candidates import generic
+        from modules.page_classify.keyword_candidates import generic
 
         assert generic(word, vocab) is ok
 
@@ -734,10 +734,10 @@ class TestClassKeywords:
     def _classes():
         import json
 
-        return json.loads((CORE / "module" / "keyword-canon" / "class_keywords.json").read_text(encoding="utf-8"))["classes"]
+        return json.loads((CORE / "modules" / "keyword-canon" / "class_keywords.json").read_text(encoding="utf-8"))["classes"]
 
     def test_every_key_is_a_taxonomy_path_and_every_class_has_words(self):
-        from module.page_classify import taxonomy
+        from modules.page_classify import taxonomy
 
         space = taxonomy.label_space()
         paths = set(space["L1"]) | {f"{a} > {b}" for a, v in space["L2"].items() for b in v} | {
@@ -756,7 +756,7 @@ class TestClassKeywords:
     def test_no_filler_or_disease_word(self):
         import json
 
-        vocab = json.loads((CORE / "module" / "keyword-canon" / "document_vocabulary.json").read_text(encoding="utf-8"))
+        vocab = json.loads((CORE / "modules" / "keyword-canon" / "document_vocabulary.json").read_text(encoding="utf-8"))
         banned = set(vocab["filler_words"]) | set(vocab["disease_words"])
         used = {w for words in self._classes().values() for tier in words.values() for w in tier}
         assert not used & banned, sorted(used & banned)
@@ -766,12 +766,12 @@ class TestClassKeywords:
         import json
         from collections import Counter
 
-        canon = json.loads((CORE / "module" / "keyword-canon" / "page_canon.json").read_text(encoding="utf-8"))
+        canon = json.loads((CORE / "modules" / "keyword-canon" / "page_canon.json").read_text(encoding="utf-8"))
         repeated = [n for n, k in Counter(e["page_type"] for e in canon["page_types"]).items() if k > 1]
         assert not repeated, repeated
 
     def test_applying_twice_adds_nothing(self):
-        from module.page_classify.class_keywords import apply_keywords
+        from modules.page_classify.class_keywords import apply_keywords
 
         canon = {"page_types": []}
         first = apply_keywords(canon, self._classes())

@@ -14,6 +14,6 @@ page-leaf/
 └── per_leaf.csv          # per leaf: training pages, test support, F1
 ```
 
-`module/page_classify/leaf.py` loads it (`/health` -> `page_leaf.ready`); without it the
+`modules/page_classify/leaf.py` loads it (`/health` -> `page_leaf.ready`); without it the
 page-axes model stands in. A leaf with no class of its own (folded, or never in the training
 data) takes the model rank of the class it trained as when the keywords rank it.

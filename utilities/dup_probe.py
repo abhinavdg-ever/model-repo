@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core-pipeline"))
 
-import module.blank_junk.stage as bj_stage  # noqa: E402  (puts the blank_junk lib on sys.path)
+import modules.blank_junk.stage as bj_stage  # noqa: E402  (puts the blank_junk lib on sys.path)
 from classify import duplicate_char_count, duplicate_window, word_overlap  # noqa: E402
 
 page_dates = bj_stage.page_dates

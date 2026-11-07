@@ -181,7 +181,7 @@ def connect() -> Iterator[Any]:
 # ---------------------------------------------------------------------------
 # There is no longer a quality placeholder. The ocr_quality stage writes a
 # measured grade from quality_analyzer (0–10 → quality_score in [0,1]) plus
-# quality_detail JSONB. See module/image_preprocess/quality_analyzer.py.
+# quality_detail JSONB. See modules/image_preprocess/quality_analyzer.py.
 
 
 def sha256_text(text: Optional[str]) -> str:
@@ -1148,9 +1148,9 @@ def revise_blank_junk_final(
     confidence: Optional[float] = None,
 ) -> None:
     """Change a page's final blank / junk verdict in place: continuity's duplicate check
-    (module/continuity/duplicates.py) makes a partial duplicate a duplicate, or a
+    (modules/continuity/duplicates.py) makes a partial duplicate a duplicate, or a
     duplicate a Main page with duplicate content; its short-page check
-    (module/continuity/short_pages.py) makes a Main page Junk / Others.
+    (modules/continuity/short_pages.py) makes a Main page Junk / Others.
     ``junk_subtype`` / ``confidence`` change only when given; a page that is no longer
     junk loses its subtype."""
     conn.execute(
@@ -1249,9 +1249,9 @@ def upsert_dos(
 
 
 def _confidence_level(confidence: Optional[float]) -> Optional[str]:
-    """The confidence's band (module/confidence.py): high >= 0.80, medium >= 0.50,
+    """The confidence's band (modules/confidence.py): high >= 0.80, medium >= 0.50,
     low below (flagged for review)."""
-    from module import confidence as conf
+    from modules import confidence as conf
 
     return conf.level(None if confidence is None else float(confidence))
 
@@ -1595,7 +1595,7 @@ IMAGING_FINAL_COLUMNS = (
     "signers",
     "provider_version",
     "provider_confidence",
-    # 2026-10-25: each Final value's confidence on the one scale (module/confidence.py)
+    # 2026-10-25: each Final value's confidence on the one scale (modules/confidence.py)
     # and the values below the review line.
     "confidences",
     "review_fields",
@@ -1628,7 +1628,7 @@ def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
 
 @_dispatch
 def upsert_imaging_final(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
-    """One page's Final values (``module.imaging_final``), in the columns the table has."""
+    """One page's Final values (``modules.imaging_final``), in the columns the table has."""
     columns = _imaging_final_columns(conn)
     values = [
         json.dumps(row[column], default=str) if column in _IMAGING_FINAL_JSON and row.get(column) is not None

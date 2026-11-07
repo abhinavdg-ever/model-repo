@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 def instant_checks(monkeypatch):
-    from module import canon_store
+    from modules import canon_store
 
     monkeypatch.setattr(canon_store, "CHECK_INTERVAL_SEC", 0.0)
     return canon_store
@@ -60,7 +60,7 @@ def test_build_runs_once_per_file_version(tmp_path, instant_checks):
 
 
 def test_every_config_lives_in_the_canon_folder():
-    from module.canon_store import CANON_DIR
+    from modules.canon_store import CANON_DIR
 
     expected = {
         "blank_junk_context_canon.json",

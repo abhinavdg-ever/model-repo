@@ -228,7 +228,7 @@ pages. `predictions_*.csv` carry `specialty_top3` for the specialty lead.
 1. Copy `encoder/`, `heads.pt` and `label_space.json` from `output/page-axes/`
    (Colab: `BASE_PATH/page-axes/`) into `core-pipeline/models/page-family/page-axes/`.
 2. Pick the gates from the validation predictions and copy the suggestions
-   into `core-pipeline/module/keyword-canon/page_arbitration.json` → `axes`:
+   into `core-pipeline/modules/keyword-canon/page_arbitration.json` → `axes`:
 
    ```bash
    python tune_thresholds.py                      # output/page-axes/predictions_val.csv
@@ -248,7 +248,7 @@ paths (`paths`: every allowed L1 > L2 > L3 scored p(L1)·p(L2|L1)·p(L3|L2), at 
 under one L1) are stored
 (`docs/APPROACH.md` §3).
 Its inference code is a copy of
-this file's (`core-pipeline/module/page_classify/axes_model.py`): after
+this file's (`core-pipeline/modules/page_classify/axes_model.py`): after
 changing `encode_texts`, `build_model`, `decode`, `route`, `load_model` or
 their helpers here, copy them there — `tests/test_page_axes.py` fails until
 you do.

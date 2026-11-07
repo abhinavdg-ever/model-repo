@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CORE = REPO_ROOT / "core-pipeline"
-LIB = CORE / "module"
+LIB = CORE / "modules"
 REVIEW_BACKEND = REPO_ROOT / "review-ui" / "backend"
 
 for path in (CORE, LIB, REVIEW_BACKEND):

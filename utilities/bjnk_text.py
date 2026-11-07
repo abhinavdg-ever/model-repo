@@ -4,7 +4,7 @@
     python utilities/bjnk_text.py a.txt b.txt ...       # several pages
     python utilities/bjnk_text.py chart_prelim.txt      # a combined file: one result per '===== page =====' block
 
-Runs the pipeline's own path (module/blank_junk/model_bridge.py): clean_ocr_text, the b_jnk
+Runs the pipeline's own path (modules/blank_junk/model_bridge.py): clean_ocr_text, the b_jnk
 v3 PageClassifierService on the weights in core-pipeline/models/blank-junk/bert/, then the
 ladder (method.decide) as pass 2 would on this text (pass 1 is rules only since 2026-11-04). Page-image rules (no ink, visual,
 short page, signature) need the pipeline and are not applied here.
@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "core-pipeline"
 sys.path.insert(0, str(ROOT))
 
-import module.blank_junk.stage  # noqa: E402,F401  (puts the blank_junk lib on sys.path)
+import modules.blank_junk.stage  # noqa: E402,F401  (puts the blank_junk lib on sys.path)
 import method  # noqa: E402
 from classify import CLASSIFICATION_LABELS  # noqa: E402
 import model_bridge  # noqa: E402

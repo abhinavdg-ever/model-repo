@@ -1,8 +1,8 @@
 """Provider credentials are read from the hardcoded canon beside a name."""
 from __future__ import annotations
 
-from module.extraction.provider_credentials.extract import extract_page
-from module.extraction.util.geometry import Box, Word
+from modules.extraction.provider_credentials.extract import extract_page
+from modules.extraction.util.geometry import Box, Word
 
 
 def _word(index: int, content: str, top: float) -> Word:

@@ -60,14 +60,14 @@ Weights are not installed by pip. They live under `core-pipeline/models/`. Run t
 cd core-pipeline && source .venv/bin/activate
 
 # Section headers — sentence-transformers/all-MiniLM-L6-v2 → models/semantic-model
-python -m module.ocr.section_header_match --download
+python -m modules.ocr.section_header_match --download
 
 # Heading detector → models/layout_heron. GLiNER is the member NER checkpoint.
-python -m module.extraction.util.model_setup
+python -m modules.extraction.util.model_setup
 
 # Member NER, also used by key/value extraction. Folder is
 # models/ner/<catalog folder for MEMBER_NER_MODEL_ID>.
-python -m module.member.extractors.ner_based.model_downloader
+python -m modules.member.extractors.ner_based.model_downloader
 
 # Final OCR 1 — four RapidOCR files → models/rapidocr
 mkdir -p models/rapidocr

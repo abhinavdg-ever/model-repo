@@ -286,7 +286,7 @@ def _fmt_date(value: Any) -> str | None:
 
 
 # The reason a copied page carries when its encounter is not a copy (core-pipeline's
-# module/continuity/duplicates.py writes it).
+# modules/continuity/duplicates.py writes it).
 DUPLICATE_CONTENT_MARK = "duplicate_content_of_page_id:"
 
 

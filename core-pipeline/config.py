@@ -103,7 +103,7 @@ AZURE_DI_MAX_CONCURRENT = int(os.environ.get("AZURE_DI_MAX_CONCURRENT") or "4")
 # to corrected-pages/ which every later stage reads in place of the original.
 #
 # ON by default, on measurement. Coarse rotation comes from Tesseract OSD
-# (module/image_preprocess/osd.py), not the geometric detector, which recovered 0 of
+# (modules/image_preprocess/osd.py), not the geometric detector, which recovered 0 of
 # 6 sideways pages while reporting confidence 1.000 on the wrong answers.
 #
 # Round trip — rotate a page, detect, correct, compare with the original:
@@ -174,7 +174,7 @@ KV_DEBUG = _flag("KV_DEBUG", False)
 
 # Page sequencing cross-encoder (optional ONNX). Off by default — markers /
 # header groups / original order still run. Drop cross_encoder_mini_lm.onnx
-# under module/sequencing/artifacts/ and set true to enable.
+# under modules/sequencing/artifacts/ and set true to enable.
 SEQUENCING_CROSS_ENCODER = _flag("SEQUENCING_CROSS_ENCODER", False)
 
 # --- Member verification ----------------------------------------------------
@@ -183,7 +183,7 @@ SEQUENCING_CROSS_ENCODER = _flag("SEQUENCING_CROSS_ENCODER", False)
 # extraction loads the same one). Without them the member stage logs it and
 # runs the rule pass only — no page can be wrong_member, so no document can be
 # Rejected — and /health says member_ner.ready=false. See
-# module/member/engine.py.
+# modules/member/engine.py.
 MEMBER_NER_ENABLED = _flag("MEMBER_NER_ENABLED", True)
 MEMBER_NER_MODEL_ID = (
     os.environ.get("MEMBER_NER_MODEL_ID") or "gliner_medium"
@@ -257,7 +257,7 @@ DOCLING_ARTIFACTS_DIR = _path_under_core(
 )
 # Local MiniLM checkout for section-header filtering. Preferred over Hub id
 # when the directory exists. Download:
-#   python -m module.ocr.section_header_match --download
+#   python -m modules.ocr.section_header_match --download
 SECTION_HEADER_MINILM_PATH = _path_under_core(
     os.environ.get("SECTION_HEADER_MINILM_PATH"),
     "models/semantic-model",
@@ -285,7 +285,7 @@ PAGE_LEAF_MODEL_DIR = _path_under_core(
     "models/page-family/page-leaf",
 )
 # How page_subtype decides a page's type: "leaf" (2026-11-01: the leaf model / its stand-in
-# + the per-leaf keyword canon, module/page_classify/leaf.py) or "axes" (the cascade).
+# + the per-leaf keyword canon, modules/page_classify/leaf.py) or "axes" (the cascade).
 PAGE_CLASSIFIER = (os.environ.get("PAGE_CLASSIFIER") or "leaf").strip().lower()
 # Encounter model (folder written by training/bert-training-encounter/train_encounter.py:
 # encoder/, head.pt, label_space.json). One more vote per page in the encounter stage,
@@ -295,7 +295,7 @@ ENCOUNTER_MODEL_DIR = _path_under_core(
     os.environ.get("ENCOUNTER_MODEL_DIR"),
     "models/encounter",
 )
-# Key/value extraction weights (module/extraction). The ranker version is
+# Key/value extraction weights (modules/extraction). The ranker version is
 # pinned: a different version changes the member, DOS and page-number values
 # the later stages read. GLiNER and Heron are downloaded beside it.
 # v004 is the standalone tool's split layout: models/kv-extraction/KV_v004/ and

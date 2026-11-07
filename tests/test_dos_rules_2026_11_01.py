@@ -1,6 +1,6 @@
 """2026-11-01 (user): DOS rules -- amended dates dropped, exam dates last on a Progress
 Note, Report Date as the discharge date, a keyword pass, the electronic-signature
-fallback and consistency with neighbouring pages (core-pipeline/module/dos/dos_logic.py)."""
+fallback and consistency with neighbouring pages (core-pipeline/modules/dos/dos_logic.py)."""
 import sys
 
 from conftest import LIB
@@ -114,7 +114,7 @@ class TestProviderRoleWords:
     }
 
     def test_the_pipeline_strips_them(self):
-        from module.names import trim_provider_name
+        from modules.names import trim_provider_name
 
         for raw, want in self.CASES.items():
             assert trim_provider_name(raw) == want, raw
@@ -132,8 +132,8 @@ class TestNonCodableCredentials:
     def test_credentials_are_judged_per_document(self):
         """2026-11-01 (user): a nurse's line on one page of a physician's note does not make
         that page Non-Codable."""
-        from module.imaging_final.stage import _document_signature
-        from module.non_codable_credentials import only_non_codable
+        from modules.imaging_final.stage import _document_signature
+        from modules.non_codable_credentials import only_non_codable
 
         signatures = {1: {"provider_credentials": "MD"}, 2: {"provider_credentials": "RN"},
                       3: {"provider_credentials": "RN"}}
@@ -141,7 +141,7 @@ class TestNonCodableCredentials:
         assert only_non_codable(_document_signature([3], signatures)) == ["RN"]
 
     def test_only_non_codable_credentials(self):
-        from module.non_codable_credentials import only_non_codable
+        from modules.non_codable_credentials import only_non_codable
 
         assert only_non_codable({"provider_credentials": "RN"}) == ["RN"]
         assert only_non_codable({"provider_credentials": "R.N., LPN"})
@@ -191,7 +191,7 @@ class TestStrongLabelsAndEdges:
 
 def test_a_leading_by_street_or_road_is_not_part_of_a_name():
     """2026-11-02 (user): member and provider names lose a leading By / Street / Road."""
-    from module.names import trim_name, trim_provider_name
+    from modules.names import trim_name, trim_provider_name
 
     assert trim_name("By John Smith") == "John Smith"
     assert trim_name("Street: Mary Jones") == "Mary Jones"

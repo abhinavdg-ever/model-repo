@@ -91,7 +91,7 @@ class TestJunkSubtypeVocabulary:
             assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
     def test_stage_maps_every_classifier_label_into_the_vocabulary(self):
-        from module.blank_junk.stage import SUBTYPE_DB
+        from modules.blank_junk.stage import SUBTYPE_DB
         from classify import CLASSIFICATION_LABELS, JUNK_CODES
 
         for code in JUNK_CODES:
@@ -103,7 +103,7 @@ class TestJunkSubtypeVocabulary:
             )
 
     def test_unknown_labels_fall_back_to_others_not_null(self):
-        from module.blank_junk.stage import SUBTYPE_DB
+        from modules.blank_junk.stage import SUBTYPE_DB
 
         assert SUBTYPE_DB.get("something the classifier invents", "Others") == "Others"
 
@@ -113,7 +113,7 @@ class TestJunkSubtypeVocabulary:
 
 class TestCsvColumns:
     def test_dos_csv_carries_what_the_overlay_reads(self):
-        from module.dos.stage import DOS_COLS
+        from modules.dos.stage import DOS_COLS
 
         # imaging_overlays.dos_row_fields reads these first, then falls back.
         for column in ("dos_from", "dos_to", "dos_from_iso", "dos_to_iso",
@@ -123,14 +123,14 @@ class TestCsvColumns:
         assert "chart_name" in DOS_COLS and "page_number" in DOS_COLS
 
     def test_hw_csv_column_is_one_the_overlay_recognises(self):
-        from module.image_preprocess.stage import HW_COLS
+        from modules.image_preprocess.stage import HW_COLS
 
         # index_hw_rows accepts handwritten / handwritten_or_printed / type.
         assert "handwritten_or_printed" in HW_COLS
         assert "confidence" in HW_COLS
 
     def test_junk_csv_carries_classification_and_group(self):
-        from module.blank_junk.stage import JUNK_CSV_COLS
+        from modules.blank_junk.stage import JUNK_CSV_COLS
 
         # index_junk_rows reads page_classification (or classification/page_type).
         assert "page_classification" in JUNK_CSV_COLS
@@ -141,7 +141,7 @@ class TestCsvColumns:
         assert "duplicate_of_page" in JUNK_CSV_COLS
 
     def test_member_csv_carries_the_reference_provenance_columns(self):
-        from module.member.stage import MEMBER_EXTRACT_COLS
+        from modules.member.stage import MEMBER_EXTRACT_COLS
 
         for column in ("detection_source_name", "detection_source_dob",
                        "detection_source_member_id", "ner_key_source_name",
@@ -149,7 +149,7 @@ class TestCsvColumns:
             assert column in MEMBER_EXTRACT_COLS
 
     def test_member_summary_carries_the_reject_decision(self):
-        from module.member.stage import MEMBER_SUMMARY_COLS
+        from modules.member.stage import MEMBER_SUMMARY_COLS
 
         for column in ("document_decision", "wrong_member_pages",
                        "reject_threshold", "ner_enabled"):
@@ -158,10 +158,10 @@ class TestCsvColumns:
     def test_every_csv_writer_has_a_chart_name_column(self):
         """collect_rows filters combined packs on chart_name; a CSV without it
         would be attributed to every chart."""
-        from module.blank_junk.stage import JUNK_CSV_COLS
-        from module.dos.stage import DOS_COLS
-        from module.member.stage import MEMBER_EXTRACT_COLS, MEMBER_SUMMARY_COLS
-        from module.image_preprocess.stage import HW_COLS, ROTATION_COLS
+        from modules.blank_junk.stage import JUNK_CSV_COLS
+        from modules.dos.stage import DOS_COLS
+        from modules.member.stage import MEMBER_EXTRACT_COLS, MEMBER_SUMMARY_COLS
+        from modules.image_preprocess.stage import HW_COLS, ROTATION_COLS
 
         for cols in (JUNK_CSV_COLS, DOS_COLS, MEMBER_EXTRACT_COLS,
                      MEMBER_SUMMARY_COLS, HW_COLS, ROTATION_COLS):
@@ -987,7 +987,7 @@ class TestNerFallsBackInsteadOfCrashing:
 
     def test_model_id_is_gated_on_ready_not_on_the_flag(self):
         src = (
-            REPO_ROOT / "core-pipeline" / "module" / "member" / "stage.py"
+            REPO_ROOT / "core-pipeline" / "modules" / "member" / "stage.py"
         ).read_text(encoding="utf-8")
         assert "ner_model_id = MEMBER_NER_MODEL_ID if ner[\"ready\"] else None" in src
         assert "model_id=ner_model_id," in src
@@ -1826,7 +1826,7 @@ class TestCorrectedPages:
         assert "image_path" in body
 
         import inspect
-        from module.image_preprocess import stage as quality_rotation_hw
+        from modules.image_preprocess import stage as quality_rotation_hw
 
         src = inspect.getsource(quality_rotation_hw)
         assert "set_page_image_source" in src
@@ -1837,9 +1837,9 @@ class TestCorrectedPages:
         it silently OCRs the uncorrected page, which is invisible in the data."""
         import inspect
 
-        from module.ocr import stage_final1 as ocr_final1_docling
-        from module.ocr import stage_final2 as ocr_final2_azure
-        from module.ocr import stage_prelim as ocr_prelim_tesseract
+        from modules.ocr import stage_final1 as ocr_final1_docling
+        from modules.ocr import stage_final2 as ocr_final2_azure
+        from modules.ocr import stage_prelim as ocr_prelim_tesseract
 
         for module in (ocr_prelim_tesseract, ocr_final1_docling, ocr_final2_azure):
             source = inspect.getsource(module)
@@ -1908,7 +1908,7 @@ class TestCorrectedPages:
         the wrong way again — it scored 0 of 6 with confidence 1.000."""
         import inspect
 
-        from module.image_preprocess import stage as quality_rotation_hw
+        from modules.image_preprocess import stage as quality_rotation_hw
 
         source = inspect.getsource(quality_rotation_hw._detect_rotation)
         assert "osd_rotation" in source
@@ -1930,7 +1930,7 @@ class TestCorrectedPages:
     def test_a_flip_is_kept_only_when_the_flipped_page_reads(self):
         """Mirrored text keeps its vowels, so only a dictionary check tells it
         from English. A flip is tried only when no unflipped turn reads."""
-        from module.image_preprocess.rotation import PageRead, choose_orientation, dictionary_share
+        from modules.image_preprocess.rotation import PageRead, choose_orientation, dictionary_share
 
         english = (
             "The patient was seen in the office for a follow up visit today and "
@@ -1961,7 +1961,7 @@ class TestCorrectedPages:
         import cv2
         import numpy as np
 
-        from module.image_preprocess.rotation import tilt_on_upright
+        from modules.image_preprocess.rotation import tilt_on_upright
 
         page = np.full((1100, 850), 255, dtype=np.uint8)
         for row in range(12):
@@ -1983,7 +1983,7 @@ class TestCorrectedPages:
         """OSD's turn stands when the page reads at it. A turn that reads as
         gibberish goes back to 0° when the page as it arrived reads better; a
         page that is gibberish at 0° is turned to the quarter-turn that reads."""
-        from module.image_preprocess.rotation import PageRead, choose_orientation
+        from modules.image_preprocess.rotation import PageRead, choose_orientation
 
         reads, gibberish = PageRead(0.85, 200), PageRead(0.10, 180)
         sideways = PageRead(0.20, 20)
@@ -2014,7 +2014,7 @@ class TestCorrectedPages:
         assert choose_orientation(45, page(0)) == (0, False)
 
     def test_a_tilt_is_kept_only_when_the_straightened_page_reads_as_well(self):
-        from module.image_preprocess.rotation import PageRead, choose_tilt
+        from modules.image_preprocess.rotation import PageRead, choose_tilt
 
         assert choose_tilt(2.5, PageRead(0.8, 100), PageRead(0.85, 100)) == 2.5
         assert choose_tilt(2.5, PageRead(0.8, 100), PageRead(0.8, 100)) == 2.5
@@ -2025,7 +2025,7 @@ class TestCorrectedPages:
     def test_reads_are_layout_analysed_as_one_column(self):
         """Tesseract's default layout turns top-to-bottom text back, so a page
         turned 90° read as well as the upright page. PSM 4 does not."""
-        from module.image_preprocess import rotation
+        from modules.image_preprocess import rotation
 
         assert "--psm 4" in rotation._READ_CONFIG
 
@@ -2036,7 +2036,7 @@ class TestCorrectedPages:
         import numpy as np
 
         import config
-        from module.image_preprocess import stage as quality_rotation_hw
+        from modules.image_preprocess import stage as quality_rotation_hw
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         monkeypatch.setattr(quality_rotation_hw, "ROTATION_CORRECTION_ENABLED", True)
@@ -2063,7 +2063,7 @@ class TestCorrectedPages:
     def test_stored_orientation_is_the_texts_not_the_correction(self):
         """Client ground truth records how far the text sits counter-clockwise.
         An ECG printed bottom-to-top is turned 90° clockwise and stored as 90."""
-        from module.image_preprocess.stage import text_orientation
+        from modules.image_preprocess.stage import text_orientation
 
         assert [text_orientation(c) for c in (0, 90, 180, 270)] == [0, 90, 180, 270]
         assert text_orientation(None) == 0
@@ -2075,8 +2075,8 @@ class TestCorrectedPages:
 
         import numpy as np
 
-        from module.image_preprocess import stage as quality_rotation_hw
-        from module.image_preprocess.rotation import correct_image
+        from modules.image_preprocess import stage as quality_rotation_hw
+        from modules.image_preprocess.rotation import correct_image
 
         page = np.full((200, 300, 3), 255, dtype=np.uint8)
         page[90:110, 40:260] = 0
@@ -2208,7 +2208,7 @@ class TestOsdOrientation:
         dependency must degrade to 'leave the page alone'."""
         import builtins
 
-        from module.image_preprocess import osd
+        from modules.image_preprocess import osd
 
         real_import = builtins.__import__
 
@@ -2223,7 +2223,7 @@ class TestOsdOrientation:
     def test_a_non_quadrant_rotation_is_rejected(self, monkeypatch):
         """Only 0/90/180/270 are meaningful here; anything else is a parse
         problem, and acting on it would skew the page."""
-        from module.image_preprocess import osd
+        from modules.image_preprocess import osd
 
         monkeypatch.setattr(
             osd, "detect_rotation",
@@ -2242,7 +2242,7 @@ class TestOsdOrientation:
         """A wrongly rotated page is worse than an uncorrected one."""
         import pytesseract
 
-        from module.image_preprocess import osd
+        from modules.image_preprocess import osd
 
         monkeypatch.setattr(
             pytesseract, "image_to_osd",
@@ -2253,7 +2253,7 @@ class TestOsdOrientation:
     def test_a_confident_quadrant_answer_is_accepted(self, monkeypatch):
         import pytesseract
 
-        from module.image_preprocess import osd
+        from modules.image_preprocess import osd
 
         monkeypatch.setattr(
             pytesseract, "image_to_osd",
@@ -2270,8 +2270,8 @@ class TestOsdOrientation:
         import cv2
         import numpy as np
 
-        from module.image_preprocess.osd import detect_rotation
-        from module.image_preprocess.rotation import correct_image
+        from modules.image_preprocess.osd import detect_rotation
+        from modules.image_preprocess.rotation import correct_image
 
         page = (
             Path(__file__).resolve().parents[1]
@@ -2736,7 +2736,7 @@ class TestCredentialListCopy:
     def test_review_ui_ships_the_same_credential_list_as_the_pipeline(self):
         """review-ui's container has no core-pipeline; its copy must match."""
         repo = Path(__file__).resolve().parents[1]
-        pipeline = repo / "core-pipeline/module/extraction/provider_name/suffixes.txt"
+        pipeline = repo / "core-pipeline/modules/extraction/provider_name/suffixes.txt"
         bundled = repo / "review-ui/backend/app/data/credential_suffixes.txt"
         assert bundled.read_text(encoding="utf-8") == pipeline.read_text(encoding="utf-8"), (
             "copy core-pipeline/.../provider_name/suffixes.txt to "
@@ -2800,7 +2800,7 @@ def test_encounter_grouping_is_written_for_production_mode():
     encounter's decision, so review-ui's Production Mode groups pages without the workspace."""
     from db import upsert_encounter
     from db.memory_store import MemoryStore
-    from module.encounter.encounter_classify import classify_pages
+    from modules.encounter.encounter_classify import classify_pages
 
     rows = classify_pages([
         {"page_id": 1, "page_name": "1.jpg", "page_number": 1, "text": "", "document": 1, "page_family": "Lab Report"},
@@ -2816,8 +2816,8 @@ def test_encounter_grouping_is_written_for_production_mode():
 
 
 def test_extraction_fields_carry_the_whole_staged_page():
-    from module.extraction import staging
-    from module.extraction.stage import extraction_fields_of
+    from modules.extraction import staging
+    from modules.extraction.stage import extraction_fields_of
 
     page = staging.StagedPage("1.jpg", {"width": 10, "height": 20, "fields": {"name": [{"value": "x"}]}})
     assert extraction_fields_of(page, "v002") == {

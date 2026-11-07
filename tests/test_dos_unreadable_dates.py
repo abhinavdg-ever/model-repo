@@ -10,8 +10,8 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from module.dos import dos_logic  # noqa: E402
-from module.extraction.util.dates import canonical_date, is_iso_date  # noqa: E402
+from modules.dos import dos_logic  # noqa: E402
+from modules.extraction.util.dates import canonical_date, is_iso_date  # noqa: E402
 
 
 def test_an_unreadable_ten_character_date_is_not_iso():

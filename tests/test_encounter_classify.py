@@ -13,7 +13,7 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from module.encounter.encounter_classify import (  # noqa: E402
+from modules.encounter.encounter_classify import (  # noqa: E402
     CANON_PATH,
     CanonError,
     _parse_canon,
@@ -433,7 +433,7 @@ def test_loader_refuses_an_unknown_model_vote_setting():
 
 def test_without_the_model_folder_no_page_gets_an_answer(tmp_path, monkeypatch):
     import config
-    from module.encounter import model_vote
+    from modules.encounter import model_vote
 
     monkeypatch.setattr(config, "ENCOUNTER_MODEL_DIR", str(tmp_path / "missing"))
     monkeypatch.setattr(model_vote, "_loaded", None)
@@ -456,7 +456,7 @@ def test_the_inference_copy_matches_the_trainer():
         return out
 
     trainer = definitions(REPO / "training" / "bert-training-encounter" / "train_encounter.py")
-    copied = definitions(CORE / "module" / "encounter" / "encounter_model.py")
+    copied = definitions(CORE / "modules" / "encounter" / "encounter_model.py")
     drifted = [name for name, body in copied.items() if trainer.get(name) != body]
     assert not drifted, f"copy these from train_encounter.py into encounter_model.py again: {drifted}"
 
@@ -521,7 +521,7 @@ def test_confidence_comes_from_the_evidence(canon):
 
 
 def test_model_and_keywords_agreeing_read_good_and_disagreeing_read_review(canon):
-    from module.encounter.encounter_classify import vote_confidence
+    from modules.encounter.encounter_classify import vote_confidence
 
     probs = {"outpatient_f2f": 0.1, "outpatient_tele": 0.8, "home": 0.05, "inpatient": 0.05}
     # A tier 2 phrase the model agrees with: 0.8 + 0.2 x 0.5 x 0.8 = 0.88 -- good.

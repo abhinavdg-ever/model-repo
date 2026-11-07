@@ -17,7 +17,7 @@ cv2 = pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")
 from PIL import Image  # noqa: E402
 
-from module.image_preprocess.hw_printed import (  # noqa: E402
+from modules.image_preprocess.hw_printed import (  # noqa: E402
     content_before_model,
     upgrade_printed_with_ink,
 )
@@ -34,7 +34,7 @@ def _white(width: int = 800, height: int = 1100) -> Image.Image:
 
 
 def test_blank_page_is_uncertain_and_skips_the_model():
-    from module.image_preprocess.hw_printed import classify_image_type
+    from modules.image_preprocess.hw_printed import classify_image_type
 
     label, confidence, method = classify_image_type(_png(_white()))
     assert (label, confidence, method) == ("Uncertain", 0.85, "blank_page")  # measured, no model

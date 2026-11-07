@@ -1,9 +1,9 @@
 """2026-11-01 (user): the member-name rule returns the name only -- never a word after it
 ('Female'), never a span across a date or a field label -- and an accepted extraction
-name that is the member comes first (core-pipeline/module/member)."""
+name that is the member comes first (core-pipeline/modules/member)."""
 from types import SimpleNamespace
 
-from module.member import engine
+from modules.member import engine
 
 
 def _rule(text, first, last):

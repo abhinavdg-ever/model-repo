@@ -266,7 +266,7 @@ function fmtConfidence(
   return `${pct.toFixed(1)}%`;
 }
 
-/** One scale for every confidence (core-pipeline/module/confidence.py). */
+/** One scale for every confidence (core-pipeline/modules/confidence.py). */
 const GOOD_AT = 80;
 const REVIEW_BELOW = 50;
 

@@ -96,7 +96,7 @@ def main() -> int:
     from db.memory_store import is_skip_db_write
     from db.paths import write_final2_json
     from orchestrator.runner import STAGE_CHAIN
-    from module.extraction import engine, staging
+    from modules.extraction import engine, staging
     from stages.utilities.download_blob import import_local_folder
 
     store = enable_skip_db_write(reset=True)

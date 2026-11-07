@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CORE = REPO / "core-pipeline"
-for path in (CORE, CORE / "module" / "blank_junk"):
+for path in (CORE, CORE / "modules" / "blank_junk"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

@@ -1,7 +1,7 @@
 """2026-11-02 / 11-03 (user): a page kept as content with Fax in a section header (stage 6) and
 no signature is Junk / Letter/Fax in pass 2 (blank_junk/method.fax_unsigned)."""
-import module.blank_junk.stage  # noqa: F401  (puts the blank/junk helpers on sys.path)
-from module.blank_junk import method as m
+import modules.blank_junk.stage  # noqa: F401  (puts the blank/junk helpers on sys.path)
+from modules.blank_junk import method as m
 
 TEXT = "FAX: 555-1234 To: Dr Smith\nProgress Note\nHPI: cough\nPlan: rest\n"
 HEADERS = ("FAX COVER SHEET", "Progress Note")
