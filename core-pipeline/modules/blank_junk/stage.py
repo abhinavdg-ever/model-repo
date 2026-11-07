@@ -37,8 +37,8 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
 * On a match the **later page** is the duplicate (or partial duplicate) (2026-11-03, user;
   was the page with less on it).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
-* A signature or ending page (kv_extract's Electronic Signature in pass 2, or
-  ``duplicates.signature_terms`` on the page) is not a duplicate of a look-alike with a
+* A signature page (kv_extract's Electronic Signature in pass 2, raw p(junk) at most 0.95;
+  2026-11-07: no signature words) is not a duplicate of a look-alike with a
   Main page between them -- other notes, other DOSs (2026-10-26, user).
 * Two pages whose kv_extract DOS differ in any date are not duplicates or partials,
   however alike their words (2026-10-26, user).
@@ -392,8 +392,8 @@ def _classify(
     ``best_matches`` (page name -> its highest match, see _write_votes) is filled
     for every page compared, including earlier-pass pages that get no row here.
 
-    A signature or ending page (``signed_ids``: kv_extract's Electronic Signature, or the
-    canon's ``duplicates.signature_terms`` on the page) standing apart from its look-alike
+    A signature page (``method.signature_keeps``: kv_extract's Electronic Signature and raw p(junk)
+    below 0.95; 2026-11-07, user: no signature words) standing apart from its look-alike
     is not a duplicate: a pair with one is skipped when a Main page lies between them
     (another note, another DOS; 2026-10-26, user). Next to each other they still compare.
 
@@ -424,13 +424,12 @@ def _classify(
         )
 
     signed = set(signed_ids or ())
-    terms = method.canon().raw.get("duplicates", {}).get("signature_terms") or []
-    signature_terms = (
-        re.compile("|".join(rf"\b{re.escape(term)}\b" for term in terms), re.IGNORECASE) if terms else None
-    )
 
     def _signature_page(page_id: int) -> bool:
-        return page_id in signed or bool(signature_terms and signature_terms.search(texts.get(page_id) or ""))
+        """method.signature_keeps on this page's Electronic Signature and raw p(junk)."""
+        bert = ((by_id.get(page_id) or {}).get("votes") or {}).get("bert")
+        p_junk = bert.get("p_junk") if isinstance(bert, dict) else None
+        return method.signature_keeps(page_id in signed, p_junk)
 
     def _main(page_id: int) -> bool:
         if page_id in by_id:

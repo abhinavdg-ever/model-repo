@@ -857,11 +857,20 @@ class TestSignaturePageApartIsNotADuplicate:
         # 2026-11-04 (user): the same content under different dates is Repeated Content.
         assert all(r["duplicate_of"] is None or "duplicate_content_of_page_id:" in (r["reason"] or "") for r in rows)
 
-    def test_signature_wording_apart(self):
+    def test_signature_wording_alone_is_not_a_signature_page(self):
+        """2026-11-07 (user): signature words do not make a signature page; only kv_extract's
+        Electronic Signature does (method.signature_keeps), so the far copy is a duplicate."""
         body = _body() + " Electronically signed by the attending."
         pages = [page(1, 1), page(2, 2), page(3, 3)]
         rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3})
-        assert all(r["flag"] == "not_blank_junk" for r in rows)
+        assert {r["page_id"]: r["flag"] for r in rows}[3] == "duplicate"
+
+    def test_one_signature_condition(self):
+        from modules.blank_junk import method
+
+        assert method.signature_keeps(True, 0.10) and method.signature_keeps(True, None)
+        assert not method.signature_keeps(True, 0.95) and not method.signature_keeps(True, 0.97)
+        assert not method.signature_keeps(False, 0.10)
 
     def test_side_by_side_still_a_duplicate(self):
         body = _body() + " Electronically signed by the attending."

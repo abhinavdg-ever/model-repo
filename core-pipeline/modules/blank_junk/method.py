@@ -518,6 +518,21 @@ def _junk_code(subtype: str) -> int:
     return SUBTYPE_CODE.get(subtype, CODE_OTHERS)
 
 
+def signature_keeps(signed: bool, p_junk: Optional[float]) -> bool:
+    """THE signature condition (2026-11-07, user), used everywhere a signature saves a page:
+    kv_extract found an Electronic Signature on it AND the model's raw p(junk) is below
+    ``distilbert.signature_overruled_above`` (0.95). Signature words in the text never count.
+    No model score (None) leaves the signature standing."""
+    if not signed:
+        return False
+    return p_junk is None or float(p_junk) < _thresholds()["signature_overruled_above"]
+
+
+def page_p_junk(inputs: "PageInputs") -> Optional[float]:
+    """The raw p(junk) of a page's model scores, None when the model did not run."""
+    return float(inputs.bert["p_junk"]) if inputs.bert else None
+
+
 def _thresholds() -> dict[str, float]:
     cfg = canon().raw.get("distilbert", {})
     return {
@@ -689,15 +704,12 @@ def decide(inputs: PageInputs) -> Verdict:
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
         return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
-    # 4. signed: kv_extract's Electronic Signature only (2026-11-07, user: a signature word on the
-    # page -- "Orders for Signature", "please sign" -- never keeps a page).
+    # 4. signed (signature_keeps: Electronic Signature and raw p(junk) < 0.95).
+    if signature_keeps(inputs.signed, p_junk):
+        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, raw p(junk) "
+                                      f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
     if inputs.signed:
-        why = "Electronic Signature"
-        over = t["signature_overruled_above"]
-        if p_junk is not None and p_junk > over:
-            votes["r4_overruled"] = f"{why}, but raw p(junk) {p_junk:.3f} > {over}"
-        else:
-            return ruled(CODE_MAIN, "R4", f"R4 signed ({why}) -> Main")
+        votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
     if found_card is not None:
         found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
@@ -760,9 +772,7 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     """2026-11-02 (user): the fax word the page's header band prints when the page has no
     signature at all (canon ``fax_unsigned``); None otherwise or outside pass 2."""
     cfg = canon().raw.get("fax_unsigned") or {}
-    # Signed = kv_extract's Electronic Signature only; a signature word in the text does not
-    # count (2026-11-07, user).
-    if inputs.pass_no != 2 or not cfg.get("enabled", True) or inputs.signed:
+    if inputs.pass_no != 2 or not cfg.get("enabled", True) or signature_keeps(inputs.signed, page_p_junk(inputs)):
         return None
     fax = _terms(cfg.get("fax_terms") or [])
     if fax is None:
