@@ -1045,7 +1045,7 @@ CREATE TABLE imaging_final (
     provider_version         SMALLINT,
     -- The provider signature's confidence (provider_signature_results.confidence).
     provider_confidence      NUMERIC(5,4),
-    -- 2026-10-25: each Final value's confidence on one scale (core-pipeline/stages/lib/
+    -- 2026-10-25: each Final value's confidence on one scale (core-pipeline/module/
     -- confidence.py: >= 0.80 good, 0.50-0.80 passable, < 0.50 review), e.g.
     --   {"page_type": 0.86, "codability": 0.86, "specialty": 0.57, "dos": 0.91,
     --    "encounter_type": 0.68, "member": 0.84, "provider": 0.76}

@@ -10,7 +10,7 @@ threshold and prints, per value, how many pages the model would decide
 (coverage) and how many of those it gets right (precision). The suggested
 value is the lowest threshold whose precision reaches ``--target`` on at least
 ``--min-pages`` decided pages. Copy the suggestions into
-``core-pipeline/stages/lib/keyword-canon/page_arbitration.json`` → ``axes``.
+``core-pipeline/module/keyword-canon/page_arbitration.json`` → ``axes``.
 Below a gate the keyword canon decides, so a stricter gate costs coverage of
 the model, not of the page. L3 and codeability are not tuned here: the canon decides them.
 

@@ -446,7 +446,7 @@ def undotted(credentials: str) -> str:
 
 
 # 2026-11-01 (user): a signature block's role words are never part of a provider's name
-# (core-pipeline stages/lib/names.py PROVIDER_ROLE_WORDS; rows written before it still have them).
+# (core-pipeline module/names.py PROVIDER_ROLE_WORDS; rows written before it still have them).
 _PROVIDER_ROLE_WORDS = (
     "legal authenticator", "legal authority", "signing authority", "signing authenticator",
     "authenticator", "authenticated by", "authenticated", "authority", "authorized by",
@@ -462,7 +462,7 @@ _PROVIDER_ROLE = re.compile(
 
 
 # 2026-11-02 (user): a leading By / Street / Road is never part of a name (core-pipeline
-# stages/lib/names.py NAME_PREFIX_WORDS; rows written before it still have them).
+# module/names.py NAME_PREFIX_WORDS; rows written before it still have them).
 _NAME_PREFIX = re.compile(r"^(?:(?:by|street|road)(?![A-Za-z])[\s:.,;\-]*)+", re.IGNORECASE)
 
 

@@ -71,7 +71,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_FOLDERS = REPO / "review-ui" / "data" / "folders"
-EXTRACTION = REPO / "core-pipeline" / "stages" / "lib" / "extraction"
+EXTRACTION = REPO / "core-pipeline" / "module" / "extraction"
 DOS_KEYS = EXTRACTION / "dos" / "keys.json"
 PROVIDER_KEYS = {
     "provider_name": EXTRACTION / "provider_name" / "keys.json",

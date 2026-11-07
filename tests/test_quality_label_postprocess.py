@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core-pipeline"))
 
-from stages.lib.image_preprocess.quality_label_postprocess import (  # noqa: E402
+from module.image_preprocess.quality_label_postprocess import (  # noqa: E402
     apply_quality_label_postprocess,
     base_quality_label,
     downgrade_by_ocr_overlap,
@@ -76,7 +76,7 @@ def test_regrade_runs_before_the_azure_skip_and_never_twice():
     import json
 
     from db.memory_store import MemoryStore
-    from stages.lib.ocr.stage_final2 import regrade_by_ocr_overlap
+    from module.ocr.stage_final2 import regrade_by_ocr_overlap
 
     store = MemoryStore()
     docling = {1: "one two three four", 2: "one two three four", 3: "one two"}
@@ -113,7 +113,7 @@ def test_regrade_leaves_pages_pass_1_settled_alone():
     import json
 
     from db.memory_store import MemoryStore
-    from stages.lib.ocr.stage_final2 import regrade_by_ocr_overlap
+    from module.ocr.stage_final2 import regrade_by_ocr_overlap
 
     store = MemoryStore()
     for page_id in (1, 2):

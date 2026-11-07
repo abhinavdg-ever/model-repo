@@ -16,9 +16,9 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.canon_store import CANON_DIR  # noqa: E402
-from stages.lib.page_classify import axes, keywords, taxonomy  # noqa: E402
-from stages.lib.page_classify.arbitration import FinalPage, agree_document_type, decide_final, note_sections  # noqa: E402
+from module.canon_store import CANON_DIR  # noqa: E402
+from module.page_classify import axes, keywords, taxonomy  # noqa: E402
+from module.page_classify.arbitration import FinalPage, agree_document_type, decide_final, note_sections  # noqa: E402
 
 PN = "Progress Note"
 
@@ -60,7 +60,7 @@ class TestTaxonomy:
             assert names(training[key]) == names(pipeline[key]), key
         canon = [REPO / "training" / "taxonomy" / "page_canon.json", CANON_DIR / "page_canon.json"]
         assert len({path.read_text(encoding="utf-8") for path in canon}) == 1, \
-            "copy core-pipeline/stages/lib/keyword-canon/page_canon.json into training/taxonomy/"
+            "copy core-pipeline/module/keyword-canon/page_canon.json into training/taxonomy/"
 
 
 
@@ -378,7 +378,7 @@ class TestLastPagePackets:
         assert decide_final(doc[0], doc).page_type == PN
 
     def test_short_documents_before_a_consent_page_join_its_packet(self):
-        from stages.lib.page_classify.arbitration import packets
+        from module.page_classify.arbitration import packets
 
         notice = [fp(1, "Administrative", "Others", family="Administrative")]
         intake = [fp(2, "Forms and Questionnaires", "Questionnaire", family="Forms and Questionnaires")]

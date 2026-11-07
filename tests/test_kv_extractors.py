@@ -1,11 +1,11 @@
 """KV extractor rules that need no model: page numbers, member ids, signer credentials."""
 from __future__ import annotations
 
-from stages.lib.extraction.electronic_signature.extract import split_name_designation
-from stages.lib.extraction.member_id.extract import _id_pieces, accept
-from stages.lib.extraction.member_name.extract import _ADDRESS
-from stages.lib.extraction.page_no.extract import _INLINE_SLASH, extract_page
-from stages.lib.extraction.util.geometry import words_from_page
+from module.extraction.electronic_signature.extract import split_name_designation
+from module.extraction.member_id.extract import _id_pieces, accept
+from module.extraction.member_name.extract import _ADDRESS
+from module.extraction.page_no.extract import _INLINE_SLASH, extract_page
+from module.extraction.util.geometry import words_from_page
 
 PAGE_W, PAGE_H = 1000, 1000
 
@@ -67,15 +67,15 @@ class TestMemberNameEdgeLine:
 
 
 def _dos_row(key: str, tier: str, value: str):
-    from stages.lib.extraction.dos.extract import DosHit
+    from module.extraction.dos.extract import DosHit
 
     return DosHit(key=key, region="body", sentence="", tier=tier, value=value,
                   dos_from=value, dos_to=value, score=0.9, accepted=True)
 
 
 def test_lab_dos_collected_then_received_then_printed():
-    from stages.lib.extraction.dos.extract import mark_selected
-    from stages.lib.extraction.util.keys import load_key_tiers
+    from module.extraction.dos.extract import mark_selected
+    from module.extraction.util.keys import load_key_tiers
 
     tiers = load_key_tiers("dos")
     assert tiers["collection date"] == "collected"
@@ -101,7 +101,7 @@ class TestSpacedSlashDates:
     """'DATE: 05 / 20 / 2025' on a printed form (chart 67992303_56072120 p7)."""
 
     def test_the_date_is_found_and_normalised(self):
-        from stages.lib.extraction.util.dates import canonical_date, find_date_ranges, find_dates, normalize_date
+        from module.extraction.util.dates import canonical_date, find_date_ranges, find_dates, normalize_date
 
         found = [m.group(1) for m in find_dates("DATE: 05 / 20 / 2025 FACILITY: GREENVALLEY")]
         assert found == ["05 / 20 / 2025"]
@@ -117,8 +117,8 @@ class TestSpacedSlashDates:
         assert [word.content for word in words] == ["DATE:", "05/20/2025", "FACILITY", "BP", "120", "/", "80"]
 
     def test_the_kv_rules_read_it_like_any_other_date(self):
-        from stages.lib.extraction.dos.extract import extract_page
-        from stages.lib.extraction.util.keys import KeyHit
+        from module.extraction.dos.extract import extract_page
+        from module.extraction.util.keys import KeyHit
 
         def rows(text):
             words = _page((100, text))
@@ -132,7 +132,7 @@ class TestSpacedSlashDates:
         assert (spaced.value, spaced.score) == ("05/20/2025", plain.score)
 
     def test_the_edge_label_rule_reads_it_like_any_other_date(self):
-        import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path
+        import module.dos.stage  # noqa: F401  — puts dos/ on sys.path
         from dos_logic import detect_dos_per_page
 
         hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n")[0]
@@ -141,13 +141,13 @@ class TestSpacedSlashDates:
 
 
 def test_a_spaces_only_date_is_never_read():
-    from stages.lib.extraction.util.dates import find_dates
+    from module.extraction.util.dates import find_dates
 
     assert find_dates("Date: 06 12 24") == [] and find_dates("WBC 10 12 20") == []
 
 
 def test_dos_has_two_states_kv_then_edge():
-    import stages.lib.dos.stage as stage
+    import module.dos.stage as stage
     from dos_logic import detect_dos_per_page
 
     assert stage.DOS_COLS[-1] == "source"
@@ -164,7 +164,7 @@ def test_dos_has_two_states_kv_then_edge():
 
 
 def test_dictation_and_transcription_dates_are_never_an_edge_dos_or_a_range():
-    import stages.lib.dos.stage  # noqa: F401
+    import module.dos.stage  # noqa: F401
     from dos_logic import detect_dos_per_page
 
     def dos(text):
@@ -182,14 +182,14 @@ def test_dictation_and_transcription_dates_are_never_an_edge_dos_or_a_range():
 
 
 def test_the_model_takes_its_best_dos_at_any_score():
-    from stages.lib.extraction.util import config
+    from module.extraction.util import config
 
     assert config.SELECT_THRESHOLDS["dos"] == 0.0
 
 
 def test_a_print_date_is_never_a_dos():
-    from stages.lib.extraction.dos.extract import extract_page
-    from stages.lib.extraction.util.keys import find_key_hits
+    from module.extraction.dos.extract import extract_page
+    from module.extraction.util.keys import find_key_hits
 
     words = _page((500, "Print Date: 03/01/2024 Visit Date: 02/27/2024"))
     rows = extract_page(find_key_hits(words, PAGE_W, PAGE_H), words, PAGE_H)
@@ -202,7 +202,7 @@ DISCHARGE, LAB = "Discharge Summary", "Lab Report"
 
 
 def _dos_page(text, candidates=None, l1=""):
-    import stages.lib.dos.stage  # noqa: F401
+    import module.dos.stage  # noqa: F401
     from dos_logic import detect_dos_per_page
 
     hit = detect_dos_per_page(f"===== 1.png =====\n{text}\n",
@@ -346,7 +346,7 @@ class TestKvPriority:
 
 
 def test_staged_best_by_tier():
-    from stages.lib.extraction.staging import StagedPage
+    from module.extraction.staging import StagedPage
 
     rows = [
         {"value": "2/1/24", "tier": "admit", "rule_accepted": True, "model_score": 0.2},
@@ -364,8 +364,8 @@ class TestDosOtherTime:
 
     @staticmethod
     def _rows(text: str, key_words: int):
-        from stages.lib.extraction.dos.extract import extract_page
-        from stages.lib.extraction.util.keys import KeyHit
+        from module.extraction.dos.extract import extract_page
+        from module.extraction.util.keys import KeyHit
 
         words = _page((100, text))
         start = next(i for i, w in enumerate(words) if w.content.rstrip(":").casefold() in {"visit", "date"})
@@ -382,7 +382,7 @@ class TestDosOtherTime:
         assert self._rows("Next Visit Date: 07/01/2025", 2) == []
 
     def test_an_admit_discharge_pair_beats_a_service_date(self):
-        from stages.lib.extraction.dos.extract import mark_selected
+        from module.extraction.dos.extract import mark_selected
 
         rows = [_dos_row("Date of Service", "service", "09/20/2024"), _dos_row("Admit Date", "admit", "09/21/2024"),
                 _dos_row("Discharge Date", "discharge", "09/25/2024")]
@@ -391,7 +391,7 @@ class TestDosOtherTime:
     def test_the_pair_is_kept_after_the_model_pick(self):
         import pandas as pd
 
-        from stages.lib.extraction.dos.extract import pair_admit_discharge
+        from module.extraction.dos.extract import pair_admit_discharge
 
         log = pd.DataFrame([
             {"field": "dos", "record_id": "r", "file_name": "1.png", "page_number": 1, "is_placeholder": 0,
@@ -404,7 +404,7 @@ class TestDosOtherTime:
 
 def test_two_keys_reading_the_same_member_id_keep_one():
     """2026-11-03 (user): 'Acct #' and 'Account No' reading the same ID are one ID."""
-    from stages.lib.extraction.member_id.extract import IdHit, one_per_value
+    from module.extraction.member_id.extract import IdHit, one_per_value
 
     a = IdHit(key="Acct #", region="header", sentence="", value="23-4567", score=0.8, accepted=True, selected=True)
     b = IdHit(key="Account No", region="body", sentence="", value="234567", score=0.9, accepted=True, selected=True)
@@ -441,7 +441,7 @@ def test_member_id_keys_read_in_capitals_and_manual_review_sees_every_id():
 
 
 def test_the_word_provider_is_not_part_of_a_provider_name():
-    from stages.lib.names import trim_provider_name
+    from module.names import trim_provider_name
 
     assert trim_provider_name("Provider Dianne Kreptowski") == "Dianne Kreptowski"
     assert trim_provider_name("Providence Smith") == "Providence Smith"
@@ -478,7 +478,7 @@ def test_a_registration_heading_alone_is_not_patient_registration():
     """2026-11-03 (user): the MMSE's REGISTRATION section made a page Patient Registration."""
     import json
 
-    from stages.lib.page_classify import leaf_canon
+    from module.page_classify import leaf_canon
 
     data = json.loads(leaf_canon.PATH.read_text(encoding="utf-8"))
     deciding = [t.casefold() for t in data["nodes"]["Administrative > Patient Registration"]["deciding"]]
@@ -489,36 +489,36 @@ class TestExtractionDrop20261103:
     """Rules from the 2026-11-03 Extraction drop."""
 
     def test_a_system_code_on_an_id_is_dropped(self):
-        from stages.lib.extraction.member_id.extract import _id_token
+        from module.extraction.member_id.extract import _id_token
 
         assert _id_token("3502776450(EV)") == "3502776450"
 
     def test_a_bare_ten_digit_number_is_an_id_but_a_printed_phone_is_not(self):
-        from stages.lib.extraction.member_id.extract import _PHONE
+        from module.extraction.member_id.extract import _PHONE
 
         assert not _PHONE.match("3502262043")
         assert _PHONE.match("(330) 376-7416") and _PHONE.match("330-376-7416")
 
     def test_a_number_after_a_phone_label_is_not_an_id(self):
-        from stages.lib.extraction.member_id.extract import nearest
+        from module.extraction.member_id.extract import nearest
 
         assert nearest("MRN Phone: 5055493103", (0, 3))[0] == ""
 
     def test_role_words_are_never_part_of_a_name(self):
-        from stages.lib.extraction.util.names import is_not_name
+        from module.extraction.util.names import is_not_name
 
         assert is_not_name("Provider") and is_not_name("ATTENDING") and is_not_name("Physician:")
         assert not is_not_name("Smith")
 
     def test_provider_initial_contact_time_is_a_service_key(self):
-        from stages.lib.extraction.util.keys import load_key_tiers
+        from module.extraction.util.keys import load_key_tiers
 
         assert load_key_tiers("dos")["provider initial contact time"] == "service"
 
 
 def test_encounter_id_is_not_a_member_id_key():
     """2026-11-04 (user): 'Encounter ID' is not read as the member ID."""
-    from stages.lib.extraction.util.keys import load_key_blocklist
+    from module.extraction.util.keys import load_key_blocklist
 
     before, _after = load_key_blocklist("member_id")["id"]
     assert "encounter" in before
@@ -526,7 +526,7 @@ def test_encounter_id_is_not_a_member_id_key():
 
 def test_a_long_letters_prefix_is_not_part_of_the_member_id():
     """2026-11-05 (user): a letters-only prefix of 5 or more is removed."""
-    from stages.lib.extraction.member_id.extract import accept
+    from module.extraction.member_id.extract import accept
 
     assert accept("MEMBERID123456") == "123456"
     assert accept("PATIENT-00123") == "00123"
@@ -539,13 +539,13 @@ class TestExtractionDrop20261105:
     """DOS rules from the 2026-11-05 Extraction drop."""
 
     def test_date_time_of_service_is_a_service_key(self):
-        from stages.lib.extraction.util.keys import load_key_tiers
+        from module.extraction.util.keys import load_key_tiers
 
         assert load_key_tiers("dos")["date/time of service"] == "service"
 
     def test_encounter_info_is_weak_and_reads_along_its_line(self):
-        from stages.lib.extraction.dos import extract as dos
-        from stages.lib.extraction.util.keys import load_key_tiers
+        from module.extraction.dos import extract as dos
+        from module.extraction.util.keys import load_key_tiers
 
         tiers = load_key_tiers("dos")
         assert tiers["encounter info"] == tiers["encounter information"] == "weak"

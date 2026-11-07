@@ -1,7 +1,7 @@
 """Shared test setup.
 
 The pipeline modules are imported the way the services import them —
-``core-pipeline`` on sys.path, with ``stages/lib`` for the ported libraries.
+``core-pipeline`` on sys.path, with ``module`` for the ported libraries.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CORE = REPO_ROOT / "core-pipeline"
-LIB = CORE / "stages" / "lib"
+LIB = CORE / "module"
 REVIEW_BACKEND = REPO_ROOT / "review-ui" / "backend"
 
 for path in (CORE, LIB, REVIEW_BACKEND):

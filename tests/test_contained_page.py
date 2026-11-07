@@ -1,8 +1,8 @@
 """2026-11-03 (user): blank / junk pass 2 junks a page whose distinct words are all on a longer
 Main page within 3 pages, at most half its length (a report's page 2 that only repeats the
 header block and footer)."""
-import stages.lib.blank_junk.stage as stage
-from stages.lib.blank_junk import method
+import module.blank_junk.stage as stage
+from module.blank_junk import method
 
 HEADER = "Radiology Ltd Green Valley Patient Watson DOB MRN ACC Requesting Provider CC Provider "
 FOOTER = "The information contained in this report is CONFIDENTIAL and LEGALLY PRIVILEGED Page of "

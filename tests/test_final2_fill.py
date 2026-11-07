@@ -2,7 +2,7 @@
 (high quality / pass-1 junk) that the rules no longer skip."""
 from pathlib import Path
 
-from stages.lib.ocr.reuse import final2_pages_to_fill
+from module.ocr.reuse import final2_pages_to_fill
 
 ROOT = Path(__file__).resolve().parents[1]
 

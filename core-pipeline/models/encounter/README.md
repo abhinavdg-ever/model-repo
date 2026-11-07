@@ -14,6 +14,6 @@ encounter/
 
 **In use** (2026-10-25): the encounter stage asks it for a page with no tier 1 / tier 2
 evidence, and counts its answer for Evisit, Home Visit and Inpatient at >= 0.50, or >= 0.30 with one
-of the setting's keywords on the page (`stages/lib/keyword-canon/encounter_canon.json` -> `model_vote`). Without the
+of the setting's keywords on the page (`module/keyword-canon/encounter_canon.json` -> `model_vote`). Without the
 weights the rules decide alone; `/health` -> `encounter_model.ready` says which.
 `docs/APPROACH.md` §5.1.

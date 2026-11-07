@@ -6080,7 +6080,7 @@ input {
   border-radius: 2px;
 }
 
-/* One confidence scale (core-pipeline/stages/lib/confidence.py): good >= 80%, passable
+/* One confidence scale (core-pipeline/module/confidence.py): good >= 80%, passable
    50-80%, review below 50%. */
 .conf-band {
   display: inline-block;

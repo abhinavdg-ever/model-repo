@@ -301,8 +301,7 @@ def _suffixes_file() -> Path | None:
         candidate = (
             parent
             / "core-pipeline"
-            / "stages"
-            / "lib"
+            / "module"
             / "extraction"
             / "provider_name"
             / "suffixes.txt"
@@ -408,8 +407,7 @@ def _headings_file() -> Path | None:
         candidate = (
             parent
             / "core-pipeline"
-            / "stages"
-            / "lib"
+            / "module"
             / "extraction"
             / "heading"
             / "common_headings.txt"

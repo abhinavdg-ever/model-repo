@@ -1,0 +1,203 @@
+"""Blank / junk codes and labels, and the duplicate-page helpers (word overlap, window,
+fingerprint). The verdict itself is method.decide; the old keyword classifier
+(classify_text and its detector modules) was removed 2026-11-01 (unused)."""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from dataclasses import dataclass
+from functools import lru_cache
+
+
+CODE_MAIN = 0
+CODE_BLANK = 1
+CODE_INVOICE = 2
+CODE_COVER_PAGE = 3
+CODE_DUPLICATE = 4
+CODE_RECORD_REQUEST = 5
+CODE_INSTRUCTIONS = 6
+CODE_OTHERS = 7
+CODE_LETTER_FAX = 8
+# Junk with no sub-type: a page the model called Blank that still has text.
+CODE_JUNK = 9
+# An ID or insurance card (card_rules.detect, rule R3, 2026-10-31, user).
+CODE_CARDS = 10
+
+# Back-compat alias
+CODE_COVER = CODE_COVER_PAGE
+
+CLASSIFICATION_LABELS = {
+    CODE_MAIN: "Main",
+    CODE_BLANK: "Blank",
+    CODE_INVOICE: "Invoice",
+    CODE_COVER_PAGE: "Cover Page",
+    CODE_DUPLICATE: "Duplicate",
+    CODE_RECORD_REQUEST: "Record Request/Transmittal",
+    CODE_INSTRUCTIONS: "Instructions",
+    CODE_OTHERS: "Others",
+    CODE_LETTER_FAX: "Letter/Fax",
+    CODE_JUNK: "Junk",
+    CODE_CARDS: "Cards",
+}
+
+JUNK_CODES = frozenset(
+    {
+        CODE_BLANK,
+        CODE_INVOICE,
+        CODE_COVER_PAGE,
+        CODE_RECORD_REQUEST,
+        CODE_INSTRUCTIONS,
+        CODE_OTHERS,
+        CODE_LETTER_FAX,
+        CODE_JUNK,
+        CODE_CARDS,
+    }
+)
+
+_MIN_FINGERPRINT_CHARS = 50
+# 2026-10-22 (user): pages are compared on their distinct words, as read (word_overlap).
+# Overlap at or above this, or the smaller page's words all on the other page (canon
+# ``duplicates.contained_at``), is a duplicate: flag ``duplicate``, UI Duplicate "Yes",
+# Blank / Junk "No" (not junk, 2026-10-29), UI Duplicate "Duplicate (To Page N)".
+DUPLICATE_SIMILARITY_THRESHOLD = 0.98
+# [PARTIAL, THRESHOLD) is a partial duplicate: the page stays Main (not Yes
+# (Duplicate)) and records the page it nearly copies; UI Duplicate "Partial".
+DUPLICATE_PARTIAL_THRESHOLD = 0.95
+# Pages shorter than this (whitespace-stripped characters, ~50 words) are never
+# compared: a short page shares or sits inside too much unrelated text.
+DUPLICATE_MIN_CHARS = 300
+# How far ahead each page is compared (2026-10-25, user): 25 pages or 10% of the
+# chart, whichever is more, never past the chart's end. Each pair is compared once,
+# looking forward (was a fixed 25; 10 and 5 before).
+DUPLICATE_NEIGHBOR_MIN = 25
+DUPLICATE_NEIGHBOR_SHARE = 0.10
+
+
+def duplicate_window(page_count: int) -> int:
+    """Pages ahead of each page that it is compared with."""
+    wanted = max(DUPLICATE_NEIGHBOR_MIN, math.ceil(DUPLICATE_NEIGHBOR_SHARE * page_count))
+    return max(0, min(wanted, page_count - 1))
+
+
+def fingerprint(text: str) -> str | None:
+    """SHA-256 of whitespace-stripped lowercase OCR; None if too short.
+
+    Kept for callers that still want an exact-content key. Live duplicate
+    detection uses :func:`text_similarity` instead.
+    """
+    norm = normalize_duplicate_text(text)
+    if len(norm) < _MIN_FINGERPRINT_CHARS:
+        return None
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+
+
+def normalize_duplicate_text(text: str) -> str:
+    """Whitespace-stripped lowercase form used for duplicate comparisons."""
+    return re.sub(r"\s+", "", text or "").lower()
+
+
+def duplicate_char_count(text: str) -> int:
+    """Comparable character count (same normalization as similarity)."""
+    return len(normalize_duplicate_text(text))
+
+
+def text_is_comparable(text: str) -> bool:
+    """True when text is long enough to enter duplicate comparison."""
+    return duplicate_char_count(text) >= DUPLICATE_MIN_CHARS
+
+
+@lru_cache(maxsize=4096)
+def unique_words(text: str) -> frozenset[str]:
+    """A page's distinct words, lower-cased, everything on the page included (headers,
+    footers and all). Each page meets up to 2 x window neighbors, so it is cached."""
+    return frozenset(re.findall(r"\w+", (text or "").lower()))
+
+
+@dataclass(frozen=True)
+class WordOverlap:
+    """Two pages compared on their distinct words (2026-10-22, user)."""
+
+    words_a: int
+    words_b: int
+    shared: int
+
+    @property
+    def overlap(self) -> float:
+        """Shared distinct words / all distinct words of the two pages, in [0, 1]."""
+        union = self.words_a + self.words_b - self.shared
+        return self.shared / union if union else 0.0
+
+    @property
+    def contained(self) -> float:
+        """Share of the smaller page's distinct words found on the other page."""
+        smaller = min(self.words_a, self.words_b)
+        return self.shared / smaller if smaller else 0.0
+
+    @property
+    def different(self) -> int:
+        """Distinct words on only one of the two pages (for a contained pair, what the
+        larger page adds)."""
+        return self.words_a + self.words_b - 2 * self.shared
+
+
+@lru_cache(maxsize=4096)
+def word_count(text: str) -> int:
+    """All the words on the page, repeats included."""
+    return len(re.findall(r"\w+", text or ""))
+
+
+@lru_cache(maxsize=4096)
+def page_dates(text: str) -> frozenset[str]:
+    """Every date written on the page, in ISO form ('5/3/2024' == '05/03/2024'). Two pages
+    whose dates differ are never duplicates (2026-10-27, user)."""
+    from module.extraction.util.dates import canonical_date, find_dates
+
+    return frozenset(canonical_date(match.group(1)) for match in find_dates(text or ""))
+
+
+def word_overlap(a: str, b: str) -> WordOverlap:
+    wa, wb = unique_words(a or ""), unique_words(b or "")
+    return WordOverlap(len(wa), len(wb), len(wa & wb))
+
+
+def text_similarity(a: str, b: str) -> float:
+    """How alike two pages' OCR text is, in [0, 1]: their distinct-word overlap."""
+    return word_overlap(a, b).overlap
+
+
+def classification_confidence(code: int, *, blank_via_image: bool = False) -> float | None:
+    if code <= 0:
+        return None
+    if code == CODE_BLANK:
+        return 0.95 if blank_via_image else 0.9
+    if code == CODE_DUPLICATE:
+        return 0.99
+    return 0.85
+
+
+# 2026-11-06 (user): a copy run is at least this many consecutive copied pages.
+COPY_RUN_MIN_PAGES = 2
+
+
+def copy_runs(order: list[int], target: dict[int, int]) -> list[list[tuple[int, int]]]:
+    """Runs of (page, its original) in page order: consecutive pages whose originals are the
+    same number of pages before them, at least COPY_RUN_MIN_PAGES long."""
+    index = {pid: i for i, pid in enumerate(order)}
+    runs: list[list[tuple[int, int]]] = []
+    current: list[tuple[int, int]] = []
+    last: Optional[tuple[int, int]] = None  # (index, offset)
+    for i, pid in enumerate(order):
+        t = target.get(pid)
+        offset = i - index[t] if t in index else None
+        if offset is not None and offset > 0 and last is not None and last == (i - 1, offset):
+            current.append((pid, t))
+        else:
+            if len(current) >= COPY_RUN_MIN_PAGES:
+                runs.append(current)
+            current = [(pid, t)] if offset is not None and offset > 0 else []
+        last = (i, offset) if offset is not None and offset > 0 else None
+    if len(current) >= COPY_RUN_MIN_PAGES:
+        runs.append(current)
+    return runs

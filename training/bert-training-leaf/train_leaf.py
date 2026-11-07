@@ -32,7 +32,7 @@ the square root of inverse frequency.
 At inference (``decode``) the model gives every leaf a probability; ``top_leaves`` keeps
 the best ``TOP_K`` (5) above ``MIN_PROB``, at most ``PER_L1`` (3) under one L1, and keeps
 any leaf tied with the last one kept. The pipeline's copy is
-``core-pipeline/stages/lib/page_classify/leaf_model.py`` (tests/test_leaf.py fails when
+``core-pipeline/module/page_classify/leaf_model.py`` (tests/test_leaf.py fails when
 the two drift).
 
 Page text is never printed: only counts, class names, shapes and metrics.
@@ -325,7 +325,7 @@ def repeat_factors(targets: list[dict[str, int]], space: dict[str, Any], thresho
     return [min(max_repeat, max([1.0] + [math.sqrt(threshold / count[lab]) for lab in ls])) for ls in labs]
 
 
-# --- The model (copied to core-pipeline/stages/lib/page_classify/leaf_model.py) ------------------
+# --- The model (copied to core-pipeline/module/page_classify/leaf_model.py) ------------------
 
 
 def head_tail(ids: list[int], max_length: int, head_fraction: float, cls_id: int | None,

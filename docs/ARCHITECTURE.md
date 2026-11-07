@@ -37,7 +37,7 @@ flowchart TB
     CLI["cli.py"]
     ORCH["orchestrator/runner.py"]
     ST["stages/ × 8"]
-    LIB["stages/lib/<br/>imaging · junk · member · dos"]
+    LIB["module/<br/>imaging · junk · member · dos"]
     DB["db/<br/>persistence + status"]
     API --> ORCH
     CLI --> ORCH
@@ -223,8 +223,8 @@ still renders.
 | File | Role |
 |---|---|
 | `capabilities.py` | What each optional feature can actually do right now — blob, Azure DI, GLiNER, the key/value extraction — and the one precondition each is missing. Read by both the startup banner and `GET /health`, so they cannot disagree. Configuration only; opens no sockets, except `probe_blob()` which startup calls once, bounded. |
-| `stages/lib/image_preprocess/osd.py` | Coarse page orientation from Tesseract OSD — the clockwise rotation to apply, with a confidence floor, declining rather than guessing on a sparse page. Replaces the geometric detector's coarse step, which recovered 0 of 6 sideways pages at confidence 1.000. |
-| `stages/lib/image_preprocess/stage.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
+| `module/image_preprocess/osd.py` | Coarse page orientation from Tesseract OSD — the clockwise rotation to apply, with a confidence floor, declining rather than guessing on a sparse page. Replaces the geometric detector's coarse step, which recovered 0 of 6 sideways pages at confidence 1.000. |
+| `module/image_preprocess/stage.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
 | `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `SKIP_OCR`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
 | `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
 | `requirements-basic.txt` | API, database, and OCR fallback. |
@@ -266,7 +266,7 @@ still renders.
 
 ### Stage runners
 
-Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/utilities/`; each stage runner lives next to its engine under `stages/lib/<module>/`.
+Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/utilities/`; each stage runner lives next to its engine under `module/<module>/`.
 
 | File | Role |
 |---|---|
@@ -288,7 +288,7 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | `lib/sequencing/stage.py` | Page sequencing (`page_sequencing`). |
 | `__init__.py` | Package marker. |
 
-### `core-pipeline/stages/lib/` — layout
+### `core-pipeline/module/` — layout
 
 One folder per pipeline concern; only `canon_store.py` sits at the top level.
 
@@ -304,7 +304,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `sequencing/` | Page sequencing |
 | `keyword-canon/` | Every editable keyword JSON, reloaded on change (see `canon_store.py`) |
 
-### `core-pipeline/stages/lib/image_preprocess/` — rotation + handwriting + quality
+### `core-pipeline/module/image_preprocess/` — rotation + handwriting + quality
 
 Live code for stage 1, not reference material.
 
@@ -317,7 +317,7 @@ Live code for stage 1, not reference material.
 | `quality_analyzer.py` | Measured quality score / tag / warnings. Reads embedded DPI and scores it; does **not** resample or correct DPI. |
 | `quality_label_postprocess.py` | Handwritten + High → Medium. |
 
-### `core-pipeline/stages/lib/ocr/` — final1 engine + section headers
+### `core-pipeline/module/ocr/` — final1 engine + section headers
 
 | File | Role |
 |---|---|
@@ -335,7 +335,7 @@ Weight files live under **`core-pipeline/models/`** (gitignored), not under
 | `models/hw/image_type_classification.pkl` | RF HW fallback |
 | `models/rapidocr/*.pth` + `ppocrv6_dict.txt` | Docling final1 |
 
-### `core-pipeline/stages/lib/blank_junk/` — blank/junk classifier
+### `core-pipeline/module/blank_junk/` — blank/junk classifier
 
 Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 
@@ -349,7 +349,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | `requirements.txt` | Dependency list inherited from the V1 prototype (the modules are pure stdlib). |
 | `__init__.py` | Package marker. |
 
-### `core-pipeline/stages/lib/member/` — member verification
+### `core-pipeline/module/member/` — member verification
 
 Ported from the V1 `Member_Verification/` tree. **Logic is verbatim; only
 imports changed** (relative imports instead of the prototype's `sys.path`
@@ -374,7 +374,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` (the v29.2 label space + canon conversion tables) / `page_canon.json` (page keyword canon) / `page_arbitration.json` (page axes gates and rules, Final placement), `continuity_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
+| `module/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` (the v29.2 label space + canon conversion tables) / `page_canon.json` (page keyword canon) / `page_arbitration.json` (page axes gates and rules, Final placement), `continuity_canon.json`, `encounter_canon.json`. Loaded via `module/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |
@@ -388,7 +388,7 @@ inserts).
 | `__main__.py` | `python -m …model_downloader [--force] [--check]` — downloads or verifies all three and reports which failed. |
 | `__init__.py` | Exposes `DOWNLOADERS`. |
 
-### `core-pipeline/stages/lib/dos/` — date of service
+### `core-pipeline/module/dos/` — date of service
 
 Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 
@@ -445,7 +445,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 
 | File | Role |
 |---|---|
-| `conftest.py` | Puts `core-pipeline`, `stages/lib` and the review-ui backend on `sys.path`, the way the services import them. |
+| `conftest.py` | Puts `core-pipeline`, `module` and the review-ui backend on `sys.path`, the way the services import them. |
 | `requirements.txt` | What the suite needs — more than pytest, because the tests import the real modules, but not the OCR/ML stack, which is imported lazily. |
 | `test_member_verification.py` | 52 tests pinning the ported engine against the reference: evidence combination, two/three-word classification, DOB and MemberID extraction, the three page buckets, the reject threshold formula, and end-to-end record verification. |
 | `test_chart_status.py` | Status derivation: earliest-incomplete-stage, the two blank/junk passes as distinct stages, skipped-counts-as-done, failure escalation, terminal states. |

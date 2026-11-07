@@ -116,11 +116,11 @@ Files in `output/encounter/`: `label_space.json`, `encoder/`, `head.pt` (the mod
 ## In the pipeline
 
 Copied to `core-pipeline/models/encounter/` (2026-10-25). The encounter stage still
-decides with its rules first (`core-pipeline/stages/lib/encounter/`); the model is one
+decides with its rules first (`core-pipeline/module/encounter/`); the model is one
 more vote per page, asked only where the page has no tier 1 / tier 2 evidence, and
 counted only for Evisit and Home Visit at >= 0.60 and Inpatient at >= 0.70
 (`encounter_canon.json` -> `model_vote`). The pipeline's inference code
-(`stages/lib/encounter/encounter_model.py`) is a copy of this trainer's; a test fails
+(`module/encounter/encounter_model.py`) is a copy of this trainer's; a test fails
 when they drift. Details: `../../docs/APPROACH.md` §5.1.
 
 ## Tests

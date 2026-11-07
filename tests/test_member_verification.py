@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from stages.lib.member import (
+from module.member import (
     classify_page,
     detect_name_mode,
     expected_from_manifest,
@@ -18,9 +18,9 @@ from stages.lib.member import (
     verify_page,
     verify_record,
 )
-from stages.lib.member.extractors.rule_based.dob import extract_dob
-from stages.lib.member.extractors.rule_based.member_id import extract_member_id
-from stages.lib.member.extractors.rule_based.name_common import (
+from module.member.extractors.rule_based.dob import extract_dob
+from module.member.extractors.rule_based.member_id import extract_member_id
+from module.member.extractors.rule_based.name_common import (
     ALL_FULL,
     BOTH_FULL,
     INITIAL,
@@ -33,8 +33,8 @@ from stages.lib.member.extractors.rule_based.name_common import (
     name_matches,
     tokenize,
 )
-from stages.lib.member.rules.base_rules import combine_evidences
-from stages.lib.member.rules.what_if_rules import (
+from module.member.rules.base_rules import combine_evidences
+from module.member.rules.what_if_rules import (
     ACCEPT,
     PAGE_NOT_VERIFIED,
     PAGE_VERIFIED,
@@ -131,7 +131,7 @@ class TestThreeWordName:
 
 class TestAgeIsNotAName:
     def test_year_old_and_old_are_dropped(self):
-        from stages.lib.member.extractors.ner_based.name import _merge_person_hits
+        from module.member.extractors.ner_based.name import _merge_person_hits
 
         sentence = "The patient is a 64 year old female who presents"
         start = sentence.index("64 year old")
@@ -376,7 +376,7 @@ class TestNerPreflight:
     apart."""
 
     def test_status_reports_every_field_callers_rely_on(self):
-        from stages.lib.member import ner_status
+        from module.member import ner_status
 
         status = ner_status()
         for key in ("enabled", "deps_installed", "deps_detail", "weights_present",
@@ -384,7 +384,7 @@ class TestNerPreflight:
             assert key in status, f"ner_status() must report {key}"
 
     def test_ready_requires_enabled_deps_and_weights(self):
-        from stages.lib.member import ner_status
+        from module.member import ner_status
 
         status = ner_status()
         if status["ready"]:
@@ -395,7 +395,7 @@ class TestNerPreflight:
             assert status["reason"], "a not-ready layer must say why"
 
     def test_missing_package_is_distinguishable_from_missing_weights(self):
-        from stages.lib.member.extractors.ner_based.config import deps_installed
+        from module.member.extractors.ner_based.config import deps_installed
 
         installed, detail = deps_installed()
         assert isinstance(installed, bool)
@@ -409,7 +409,7 @@ class TestNerPreflight:
         import importlib
 
         mod = importlib.import_module(
-            "stages.lib.member.extractors.ner_based.model_downloader"
+            "module.member.extractors.ner_based.model_downloader"
         )
         ids = [d.SPEC["id"] for d in mod.DOWNLOADERS]
         assert ids == ["gliner_large", "gliner_medium", "gliner_low"]
@@ -429,18 +429,18 @@ class TestNerPreflight:
     def test_predict_entities_is_inert_while_the_layer_is_off(self):
         """With the layer off nothing may reach a model — and the absence of
         hits must not look like a model that answered 'nobody'."""
-        from stages.lib.member.extractors.ner_based import config
+        from module.member.extractors.ner_based import config
 
         if config.ner_enabled:
             pytest.skip("NER layer is enabled in this environment")
-        from stages.lib.member.extractors.ner_based.model import predict_entities
+        from module.member.extractors.ner_based.model import predict_entities
 
         assert predict_entities("Patient Name: Robert Smith", ["person"]) == []
 
 
 class TestTrimExtractedName:
     def test_extra_words_around_the_manifest_name_are_dropped(self):
-        from stages.lib.member.engine import trim_extracted_name
+        from module.member.engine import trim_extracted_name
 
         expected = {
             "DummyFirstName": "Abhinav",
@@ -466,7 +466,7 @@ class TestTrimExtractedName:
         )
 
     def test_a_manifest_middle_name_is_kept_when_it_was_extracted(self):
-        from stages.lib.member.engine import trim_extracted_name
+        from module.member.engine import trim_extracted_name
 
         expected = {
             "DummyFirstName": "Abhinav",
@@ -483,7 +483,7 @@ class TestTrimExtractedName:
 def test_a_one_word_surname_matches_it_hyphenated_or_spaced():
     # 2026-10-29 (user): "Miller-Cook Michael" on the page, "Michael MillerCook" in the
     # manifest, came back as someone else.
-    from stages.lib.member.extractors.rule_based.name_common import name_matches
+    from module.member.extractors.rule_based.name_common import name_matches
 
     for found in ("Miller-Cook Michael", "Michael Miller Cook", "MillerCook Michael"):
         assert name_matches(found, "Michael", "MillerCook", "", "2"), found

@@ -1,5 +1,5 @@
 """2026-11-06: a dense page Docling reads as one table (cell matching off) keeps its text from
-the OCR lines Docling read (core-pipeline/stages/lib/ocr/docling_ocr.py)."""
+the OCR lines Docling read (core-pipeline/module/ocr/docling_ocr.py)."""
 import sys
 from pathlib import Path
 
@@ -7,7 +7,7 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.ocr.docling_ocr import markdown_lost_text, ocr_lines_text  # noqa: E402
+from module.ocr.docling_ocr import markdown_lost_text, ocr_lines_text  # noqa: E402
 
 
 def test_lines_are_grouped_into_rows_left_to_right():
@@ -37,7 +37,7 @@ def test_empty_table_cells_are_filled_and_the_table_kept():
     from docling_core.types.doc.base import BoundingBox, CoordOrigin
     from docling_core.types.doc.document import DoclingDocument, TableCell, TableData
 
-    from stages.lib.ocr.docling_ocr import clean_docling_markdown, export_markdown, fill_empty_table_cells
+    from module.ocr.docling_ocr import clean_docling_markdown, export_markdown, fill_empty_table_cells
 
     doc = DoclingDocument(name="page")
     cells = [

@@ -37,11 +37,11 @@ COPY . /app/core-pipeline
 WORKDIR /app/core-pipeline
 
 # Fail the build if the blank/junk keyword canon did not land in the image: a clinical page
-# with a fax confidentiality footer must score clinical over junk (stages/lib/blank_junk/method.py,
+# with a fax confidentiality footer must score clinical over junk (module/blank_junk/method.py,
 # keyword-canon). The regex classify_text this used to call was removed on 2026-11-01.
 RUN python -c "\
-import stages.lib.blank_junk.stage; \
-from stages.lib.blank_junk.method import canon, score_text; \
+import module.blank_junk.stage; \
+from module.blank_junk.method import canon, score_text; \
 assert canon().groups, 'blank/junk canon empty'; \
 text = ( \
     'Progress Note\\n' \
@@ -59,7 +59,7 @@ print('blank/junk canon ok')"
 # Fail the build if b_jnk v3's PageClassifierService (blank/junk R5 since 2026-11-03) or
 # its decision settings did not land. No weights needed: the modules import and the
 # config builds a DecisionConfig.
-RUN cd stages/lib/blank_junk/model && python -c "\
+RUN cd module/blank_junk/model && python -c "\
 import json; \
 from src.inference.predict import PageClassifierService; \
 from src.models.decision import DecisionConfig; \
@@ -73,26 +73,26 @@ print('blank/junk PageClassifierService ok')"
 # text-orientation convention, the page taxonomy's label space (any version) and the
 # DOS range labels.
 RUN tesseract --list-langs 2>&1 | grep -qx osd \
- && test -s stages/lib/image_preprocess/english_words.txt.gz \
+ && test -s module/image_preprocess/english_words.txt.gz \
  && python -c "\
 import json; \
-from stages.lib.image_preprocess.stage import text_orientation; \
+from module.image_preprocess.stage import text_orientation; \
 orient = [text_orientation(c) for c in (0, 90, 180, 270)]; \
 assert orient == [0, 90, 180, 270], ('text_orientation', orient); \
-tax = json.load(open('stages/lib/keyword-canon/page_taxonomy.json')); \
+tax = json.load(open('module/keyword-canon/page_taxonomy.json')); \
 assert tax['label_space']['L1'] and tax['label_space']['L2'], tax.get('version'); \
-dos = json.load(open('stages/lib/keyword-canon/dos_canon.json')); \
+dos = json.load(open('module/keyword-canon/dos_canon.json')); \
 assert 'certification period' in dos['labels']['encounter'], 'dos_canon labels'; \
 print('orientation + canons ok')"
 
 # Fail the build, not the server, when a code package did not land in the checkout
-# (a working copy missing stages/lib/extraction/training crashed uvicorn on import).
+# (a working copy missing module/extraction/training crashed uvicorn on import).
 # The continuity engine also loads its canon: weights naming an unknown signal, or an
 # inverted abstain band, fail here.
-RUN python -c "import stages.lib.extraction, stages.lib.dos.dos_logic; \
-from stages.lib.continuity.engine import load_rules; load_rules(); print('packages ok')"
+RUN python -c "import module.extraction, module.dos.dos_logic; \
+from module.continuity.engine import load_rules; load_rules(); print('packages ok')"
 
-# Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
+# Engines live under module/image_preprocess/ and module/ocr/; weights are bind-mounted at runtime.
 # Weight paths match .env: relative to core-pipeline/ (this image's WORKDIR).
 ENV PYTHONPATH=/app/core-pipeline \
     HW_MODEL_PATH=models/hw/handwritten_printed_convnext_tiny.pth \

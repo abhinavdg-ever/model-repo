@@ -1,0 +1,146 @@
+"""Shared local paths and model locations for every KV extractor.
+
+The pipeline's own settings (config.py in core-pipeline/) decide where the weights and the
+training data live; this module only names them the way the extractors and the training
+tools read them. No Azure read/write.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+# REPO_ROOT (the code checkout) is re-exported: training/train.py records its git commit with each version.
+from config import EXTRACTION_DATA_ROOT, EXTRACTION_MODELS_ROOT, REPO_ROOT  # noqa: F401
+
+# The training tools read reviewed runs, their OCR and their page images from here and write
+# datasets back. The pipeline never writes to any of it: training data is not collected
+# through the pipeline, it is brought here from wherever the extraction was reviewed.
+#   {Raw_Input}/{RecordId}/{fileName}     page images
+#   {OCR_Input}/{RecordId}/*.json         OCR JSON
+#   {Run_Output}/KV_Run_{run_id}/...      reviewed extraction runs
+#   {Training_Data}/...                   datasets, splits, NER exports
+Output_Root = EXTRACTION_DATA_ROOT
+Raw_Input = Output_Root / "Raw"
+OCR_Input = Output_Root / "OCR_Output"
+Run_Output = Output_Root / "Runs"
+Training_Data = Output_Root / "Training"
+
+# Model folders, side by side under one root. A public model missing here is an error the
+# pipeline names (util/model_setup.py downloads it when run by hand).
+Models_Root = EXTRACTION_MODELS_ROOT
+
+# Trained extraction weights, in one of two layouts. v0 (rules) needs nothing here.
+#   split (v003+): {Model_Registry}/KV_vNNN/ (key-value ranker, OCR JSON only) and
+#                  {Model_Registry}/Heading_vNNN/ (heading ranker, needs the page image),
+#                  as the standalone tool writes them; either may be missing.
+#   single (v002): the version's files directly in {Model_Registry}, or {Model_Registry}/vNNN/.
+# Trained locally from reviews, so they are copied with the models folder, never downloaded.
+Model_Registry = Models_Root / "kv-extraction"
+
+# Selection cut-offs that override a trained version's thresholds.json, whichever version
+# runs: the model takes a field's best candidate only at this probability or above. DOS takes
+# its best pair at any score; the DOS stage writes that score as the page's confidence.
+SELECT_THRESHOLDS = {"dos": 0.0}
+# Folder prefixes of the split layout: the key-value model and the heading model.
+SPLIT_PREFIXES = ("KV", "Heading")
+
+def ner_model_path() -> Path:
+    """The GLiNER checkpoint member verification already uses.
+
+    ``MEMBER_NER_MODELS_PATH`` / the folder for ``MEMBER_NER_MODEL_ID``
+    (``models/ner/gliner_medium-v2.1`` when the id is ``gliner_medium``).
+    """
+    from module.member.extractors.ner_based.catalog import model_dir
+    from module.member.extractors.ner_based.config import MEMBER_NER_MODEL_ID
+
+    try:
+        return model_dir(MEMBER_NER_MODEL_ID)
+    except KeyError:
+        from module.member.extractors.ner_based.config import NER_MODELS_PATH
+
+        return NER_MODELS_PATH / MEMBER_NER_MODEL_ID
+
+
+def ner_weights_present(folder: Path) -> bool:
+    """A GLiNER folder the extractor can load offline."""
+    config_ok = (folder / "gliner_config.json").is_file()
+    weights_ok = (folder / "pytorch_model.bin").is_file() or (folder / "model.safetensors").is_file()
+    return config_ok and weights_ok
+
+
+# Resolved once at import, after core config.py has applied .env.
+Ner_Model_Path = ner_model_path()
+
+# Layout detector for headings (CPU), reviewed as its own field. Empty dict = no headings.
+#   layout_heron = docling-project/docling-layout-heron (Apache-2.0)
+Heading_Models = {
+    "heading_heron": Models_Root / "layout_heron",
+}
+
+
+def trained_folder(version: str) -> Path:
+    """Where ``version``'s ranker files live.
+
+    The pinned copy is the folder itself. A version trained later is a
+    ``vNNN`` directory inside it.
+    """
+    root = Path(Model_Registry)
+    nested = root / version
+    if (nested / "manifest.json").is_file():
+        return nested
+    direct = root / "manifest.json"
+    if direct.is_file():
+        try:
+            found = json.loads(direct.read_text(encoding="utf-8")).get("version")
+        except (OSError, json.JSONDecodeError):
+            found = None
+        if found == version:
+            return root
+    return nested
+
+
+def trained_folders(version: str) -> list[Path]:
+    """Every folder holding ``version``'s rankers: KV_vNNN and / or Heading_vNNN when the
+    split layout has them, else the single folder ``trained_folder`` names."""
+    root = Path(Model_Registry)
+    split = [
+        root / f"{prefix}_{version}"
+        for prefix in SPLIT_PREFIXES
+        if (root / f"{prefix}_{version}" / "manifest.json").is_file()
+    ]
+    return split or [trained_folder(version)]
+
+
+def make_output_folders() -> None:
+    for folder in (Run_Output, Training_Data):
+        folder.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class ModelSource:
+    """A public Hugging Face model util/model_setup.py downloads when its folder is missing. Only
+    the model files come down; nothing is uploaded."""
+    repo_id: str
+    revision: str
+    # files that must be present for the folder to count as downloaded
+    required: tuple[str, ...]
+    # download only these (glob patterns); empty = the whole repo
+    allow: tuple[str, ...] = ()
+    # a model folder nested inside another (the GLiNER encoder's tokenizer)
+    subfolder: str = ""
+
+
+# Pinned revisions: the exact weights the heading detector was built against.
+# GLiNER is not downloaded here. Key/value extraction loads the member NER
+# checkpoint (Ner_Model_Path); the member downloader fetches that folder.
+Model_Sources: dict = {
+    Heading_Models["heading_heron"]: [
+        ModelSource(
+            "docling-project/docling-layout-heron",
+            "8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+            ("config.json", "model.safetensors", "preprocessor_config.json"),
+        ),
+    ],
+}

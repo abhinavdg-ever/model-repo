@@ -1,5 +1,5 @@
 """Document continuity: the gap scorer that splits a chart into documents
-(stages/lib/continuity, docs/APPROACH.md §4)."""
+(module/continuity, docs/APPROACH.md §4)."""
 from __future__ import annotations
 
 import dataclasses
@@ -13,7 +13,7 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.continuity.engine import (  # noqa: E402
+from module.continuity.engine import (  # noqa: E402
     DECIDED_BY,
     Line,
     PageInput,
@@ -23,8 +23,8 @@ from stages.lib.continuity.engine import (  # noqa: E402
     text_lines,
     trust_points,
 )
-from stages.lib.continuity.layout import lines_from_final1, lines_from_final2  # noqa: E402
-from stages.lib.continuity.signals import fill_value, normalized_line  # noqa: E402
+from module.continuity.layout import lines_from_final1, lines_from_final2  # noqa: E402
+from module.continuity.signals import fill_value, normalized_line  # noqa: E402
 
 BANNER = "patient: jane doe dob 01/02/1950 mrn 123456"
 FOOTER = "community clinic 100 main street springfield"
@@ -265,7 +265,7 @@ class TestStaging:
     """The stage reads the extraction's staging first (extraction.json)."""
 
     def _page(self):
-        from stages.lib.extraction import staging
+        from module.extraction import staging
 
         data = {"version": staging.SCHEMA_VERSION, "pages": {"1.jpg": {"page_number": 1, "fields": {
             "dos": [{"accepted": True, "tier": "weak", "dos_from": "03/14/2024", "value": "03/14/2024"},
@@ -280,7 +280,7 @@ class TestStaging:
         return staging.Staged(data).page("1.jpg")
 
     def test_every_fact_comes_from_the_staging(self):
-        from stages.lib.continuity import stage
+        from module.continuity import stage
 
         staged = self._page()
         assert stage._staged_trust(staged, "2024-03-14") == 5  # the best tier that read the date
@@ -310,14 +310,14 @@ class TestFinalValues:
         assert [r["final_dos_from"] for r in rows] == ["2024-03-14"] * 2
 
     def test_the_sub_type_decides_too(self):
-        from stages.lib.continuity.engine import document_finals
+        from module.continuity.engine import document_finals
 
         finals = document_finals([{"page_type": "Clinical Summary", "page_subtype": "Problem List",
                                    "dos_from": "2024-01-01"}])
         assert finals["dos_from"] == "2222-02-22" and finals["dos_default"]
 
     def test_dos_is_the_first_dated_pages(self):
-        from stages.lib.continuity.engine import document_finals
+        from module.continuity.engine import document_finals
 
         finals = document_finals([
             {"page_type": "Progress Note", "dos_from": ""},
@@ -327,7 +327,7 @@ class TestFinalValues:
         assert (finals["dos_from"], finals["dos_to"]) == ("2024-03-05", "2024-03-06")
 
     def test_dos_is_the_first_pages_when_it_is_dated(self):
-        from stages.lib.continuity.engine import document_finals
+        from module.continuity.engine import document_finals
 
         finals = document_finals([
             {"page_type": "Progress Note", "dos_from": "2024-01-01"},
@@ -336,7 +336,7 @@ class TestFinalValues:
         assert (finals["dos_from"], finals["dos_to"]) == ("2024-01-01", "2024-01-01")
 
     def test_encounter_type_is_the_first_pages(self):
-        from stages.lib.continuity.engine import document_finals
+        from module.continuity.engine import document_finals
 
         finals = document_finals([
             {"page_type": "Progress Note", "dos_from": "2024-01-01", "encounter_type": "Inpatient"},
@@ -387,11 +387,11 @@ class TestStage:
             upsert_page_classification,
             upsert_pages,
         )
-        from stages.lib.continuity import stage as continuity_stage
-        from stages.lib.encounter import stage as encounter_stage
-        from stages.lib.extraction import stage as extraction_stage
-        from stages.lib.extraction import staging
-        from stages.lib.imaging_final import stage as final_stage
+        from module.continuity import stage as continuity_stage
+        from module.encounter import stage as encounter_stage
+        from module.extraction import stage as extraction_stage
+        from module.extraction import staging
+        from module.imaging_final import stage as final_stage
 
         import db
 
@@ -562,7 +562,7 @@ class TestSchema:
 
 def test_imaging_final_gives_junk_pages_no_document_values():
     """Junk pages share the document numbering but keep their own Final values."""
-    from stages.lib.imaging_final.stage import _documents
+    from module.imaging_final.stage import _documents
 
     pages = [{"id": 1}, {"id": 2}, {"id": 3}]
     continuity = {1: {"document_seq": 1, "seq": 1}, 2: {"document_seq": 1, "seq": 2}, 3: {"document_seq": 2, "seq": 1}}

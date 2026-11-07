@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 
 cv2 = pytest.importorskip("cv2")
-from stages.lib.image_preprocess import rotation, stage  # noqa: E402
-from stages.lib.image_preprocess import osd as osd_module  # noqa: E402
-from stages.lib.image_preprocess.rotation_cv import detect_rotation  # noqa: E402
+from module.image_preprocess import rotation, stage  # noqa: E402
+from module.image_preprocess import osd as osd_module  # noqa: E402
+from module.image_preprocess.rotation_cv import detect_rotation  # noqa: E402
 
 
 def _text_page() -> np.ndarray:
@@ -109,7 +109,7 @@ def test_both_zero_tries_the_mirror_only_when_the_page_reads_badly(monkeypatch, 
 
 def test_rotation_log_lists_only_turned_pages(tmp_path, monkeypatch):
     """2026-11-04 (user): logs/rotation.log, one line per page OSD or OpenCV turns."""
-    from stages.lib.image_preprocess import stage
+    from module.image_preprocess import stage
 
     monkeypatch.setenv("LOG_DIR", str(tmp_path))
 

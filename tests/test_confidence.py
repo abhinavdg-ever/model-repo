@@ -1,11 +1,11 @@
-"""One confidence scale for every module (core-pipeline/stages/lib/confidence.py)."""
+"""One confidence scale for every module (core-pipeline/module/confidence.py)."""
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
 
-from stages.lib import confidence as conf
+from module import confidence as conf
 
 
 def test_bands_good_passable_review():
@@ -50,7 +50,7 @@ def _member_page(status, **found):
 
 
 def test_member_confidence_is_the_evidence_found():
-    from stages.lib.member.stage import _page_confidence
+    from module.member.stage import _page_confidence
 
     name_dob = _member_page("verified", detected_name="A B", detection_source_name="rule based",
                             detected_dob="01/01/1950", detection_source_dob="rule based")
@@ -64,7 +64,7 @@ def test_member_confidence_is_the_evidence_found():
 
 
 def test_final_values_take_the_deciding_pages_confidence_and_flag_the_low_ones():
-    from stages.lib.imaging_final.stage import final_confidences, review_fields
+    from module.imaging_final.stage import final_confidences, review_fields
 
     classification = {
         1: {"page_type": "Progress Note", "confidence": 0.9, "axes": {"l1": "Progress Note", "specialty_confidence": 0.4}},
@@ -101,7 +101,7 @@ def test_not_found_has_a_confidence():
 
 
 def test_staging_gives_each_field_without_an_accepted_row_its_absence():
-    from stages.lib.extraction.staging import StagedPage, absent_confidences
+    from module.extraction.staging import StagedPage, absent_confidences
 
     fields = {"name": [{"accepted": True, "model_score": 0.9}],
               "dob": [{"accepted": False, "model_score": 0.4}], "member_id": []}
@@ -111,7 +111,7 @@ def test_staging_gives_each_field_without_an_accepted_row_its_absence():
 
 
 def test_a_page_with_no_member_read_takes_the_absence():
-    from stages.lib.member.stage import _page_confidence
+    from module.member.stage import _page_confidence
 
     assert _page_confidence(_member_page("not_verified"), 0.6) == 0.6
 
@@ -119,7 +119,7 @@ def test_a_page_with_no_member_read_takes_the_absence():
 def test_orientation_and_tilt_confidence_from_osd_and_the_read():
     from types import SimpleNamespace
 
-    from stages.lib.image_preprocess.stage import _rotation_confidences
+    from module.image_preprocess.stage import _rotation_confidences
 
     read = SimpleNamespace(share=0.9, tokens=120)
     turn, tilt = _rotation_confidences("osd", 6.0, read, 1.0)

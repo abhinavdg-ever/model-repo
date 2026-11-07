@@ -9,7 +9,7 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.sequencing import compute_sequence_assignments  # noqa: E402
+from module.sequencing import compute_sequence_assignments  # noqa: E402
 
 
 def test_explicit_page_markers_order_pages():
@@ -89,7 +89,7 @@ def test_original_order_fallback_when_no_markers():
 
 
 def test_blank_and_junk_pages_have_their_own_series():
-    from stages.lib.sequencing.stage import junk_sequences
+    from module.sequencing.stage import junk_sequences
 
     pages = [{"id": i, "page_number": n} for i, n in ((10, 4), (11, 1), (12, 2), (13, 3), (14, 5))]
     verdicts = {11: "junk", 12: "not_blank_junk", 13: "duplicate", 14: "blank", 10: "not_blank_junk"}
@@ -102,19 +102,19 @@ def test_blank_and_junk_pages_have_their_own_series():
 
 
 def _feature(n):
-    from stages.lib.sequencing.feature_extractor import features_from_text
+    from module.sequencing.feature_extractor import features_from_text
 
     return features_from_text(page_id=str(n), page_number=n, text=f"page text number {n} " * 5)
 
 
 def _marker(num, total, pattern="page_x_of_y"):
-    from stages.lib.sequencing.engine.types import ExplicitMarker
+    from module.sequencing.engine.types import ExplicitMarker
 
     return ExplicitMarker(page_num=num, total_pages=total, pattern=pattern, confidence=1.0)
 
 
 def _order(markers, documents=None, pages=10):
-    from stages.lib.sequencing.detect import fenced_order
+    from module.sequencing.detect import fenced_order
 
     features = [_feature(n) for n in range(1, pages + 1)]
     return fenced_order(features, {str(k): v for k, v in markers.items()},

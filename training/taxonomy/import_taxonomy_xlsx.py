@@ -7,7 +7,7 @@ Codeability) and writes, keeping every other key of each file as it is:
 * ``training/taxonomy/taxonomy.json``, and its copies in ``training/bert-training/``,
   ``training/bert-training-leaf/`` and ``training/annotation-tool/``: L1 / L2 / L3 with their
   descriptions, the paths, the version;
-* ``core-pipeline/stages/lib/keyword-canon/page_taxonomy.json``: ``label_space`` (L1, L2 per
+* ``core-pipeline/module/keyword-canon/page_taxonomy.json``: ``label_space`` (L1, L2 per
   L1, L3 per "L1 > L2"), ``codeability`` per path (a path already tagged keeps its tag; the
   workbook's is taken for new paths only), the version, and ``name_map`` entries for renamed
   nodes (an old label still reads as the new one).
@@ -34,7 +34,7 @@ COPIES = (
     REPO / "training" / "bert-training-leaf" / "taxonomy.json",
     REPO / "training" / "annotation-tool" / "taxonomy.json",
 )
-PAGE_TAXONOMY = REPO / "core-pipeline" / "stages" / "lib" / "keyword-canon" / "page_taxonomy.json"
+PAGE_TAXONOMY = REPO / "core-pipeline" / "module" / "keyword-canon" / "page_taxonomy.json"
 CODEABILITY_TAG = {"codeable": "Codeable", "non_codeable": "Non-Codeable", "discharge": "Discharge",
                    "needs_review": "Needs Review"}
 

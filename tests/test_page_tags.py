@@ -14,7 +14,7 @@ for path in (str(CORE), str(ROOT)):
 
 np = pytest.importorskip("numpy")
 
-from stages.lib.image_preprocess.hw_printed import (  # noqa: E402
+from module.image_preprocess.hw_printed import (  # noqa: E402
     PAGE_TAGS,
     TAG_METHOD,
     ClassifierBundle,
@@ -78,7 +78,7 @@ def test_weak_call_is_uncertain_but_weak_blank_is_kept():
 
 
 def test_review_follows_quality_type_and_visibility():
-    from stages.lib.image_preprocess.stage import _review_required
+    from module.image_preprocess.stage import _review_required
 
     assert not _review_required("high", {"document_type": "printed", "is_visible": True})
     assert not _review_required("high", {"document_type": "printed", "is_visible": None})
@@ -92,7 +92,7 @@ def test_csvs_and_upsert_use_the_schema_column_names():
     import inspect
 
     from db import upsert_quality
-    from stages.lib.image_preprocess.stage import HW_COLS, QUALITY_COLS
+    from module.image_preprocess.stage import HW_COLS, QUALITY_COLS
 
     columns = ["document_type", "handwritten_probability", "is_visible", "handwritten_area_pct"]
     # Then the measured values' confidences (from quality_detail, not columns).
@@ -107,7 +107,7 @@ def test_csvs_and_upsert_use_the_schema_column_names():
 
 def test_decisions_read_the_page_type():
     from db import page_blocks_prelim, page_type
-    from stages.lib.image_preprocess.quality_label_postprocess import (
+    from module.image_preprocess.quality_label_postprocess import (
         apply_quality_label_postprocess,
     )
     from stages.utilities.gate_delta import hw_class_from_row

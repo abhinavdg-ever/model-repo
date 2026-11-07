@@ -512,7 +512,7 @@ def _core_pipeline_dir() -> Path | None:
     here = Path(__file__).resolve()
     for parent in here.parents:
         core = parent / "core-pipeline"
-        if core.is_dir() and (core / "stages" / "lib" / "ocr").is_dir():
+        if core.is_dir() and (core / "module" / "ocr").is_dir():
             return core
     return None
 
@@ -524,7 +524,7 @@ _HEADER_MATCH_THRESHOLD = 0.90
 # bulk of /ocr latency. The mtime in the key keeps list edits live.
 _header_match_cache: dict[tuple[float | None, str], str] = {}
 _header_match_lock = threading.Lock()
-_header_matcher: Any = None  # stages.lib.ocr.section_header_match, once imported
+_header_matcher: Any = None  # module.ocr.section_header_match, once imported
 
 
 def _load_header_matcher() -> Any:
@@ -537,7 +537,7 @@ def _load_header_matcher() -> Any:
     core_s = str(core)
     if core_s not in sys.path:
         sys.path.insert(0, core_s)
-    from stages.lib.ocr import section_header_match  # type: ignore
+    from module.ocr import section_header_match  # type: ignore
 
     _header_matcher = section_header_match
     return _header_matcher
@@ -594,7 +594,7 @@ def _filter_headers_against_canon(
     core = _core_pipeline_dir()
     canon_path = None
     if core is not None:
-        canon_path = core / "stages" / "lib" / "keyword-canon" / "section_header_canon.json"
+        canon_path = core / "module" / "keyword-canon" / "section_header_canon.json"
     if canon_path is None or not canon_path.is_file():
         return headers
     try:

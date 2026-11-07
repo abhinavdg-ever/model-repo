@@ -57,7 +57,7 @@ def test_azure_sdk_retry_kwargs_can_set_a_connection_pool():
 
 
 def test_di_features_parser():
-    from stages.lib.ocr import stage_final2 as mod
+    from module.ocr import stage_final2 as mod
 
     mod.AZURE_DI_FEATURES = "languages,barcodes"
     assert mod._di_features() == ["languages", "barcodes"]

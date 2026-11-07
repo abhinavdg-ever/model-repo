@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import stages.lib.blank_junk.stage  # noqa: F401  (puts the blank/junk helpers on sys.path)
-from stages.lib.continuity import stage
+import module.blank_junk.stage  # noqa: F401  (puts the blank/junk helpers on sys.path)
+from module.continuity import stage
 
 
 def _inputs():

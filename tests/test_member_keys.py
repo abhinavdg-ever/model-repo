@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from stages.lib.extraction.member_dob.extract import nearest_date
-from stages.lib.extraction.member_id.id_types import guess_id_type
+from module.extraction.member_dob.extract import nearest_date
+from module.extraction.member_id.id_types import guess_id_type
 
-EXTRACTION = Path(__file__).resolve().parents[1] / "core-pipeline" / "stages" / "lib" / "extraction"
+EXTRACTION = Path(__file__).resolve().parents[1] / "core-pipeline" / "module" / "extraction"
 
 
 def keys(field: str) -> set[str]:

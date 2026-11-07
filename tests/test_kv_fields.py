@@ -1,10 +1,10 @@
 """Key/value values join the existing member and DOS logic."""
 from __future__ import annotations
 
-import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path for dos_logic
+import module.dos.stage  # noqa: F401  — puts dos/ on sys.path for dos_logic
 from dos_logic import detect_dos_per_page
-from stages.lib.extraction.staging import StagedPage
-from stages.lib.member.engine import overlay_staged_fields
+from module.extraction.staging import StagedPage
+from module.member.engine import overlay_staged_fields
 
 
 def test_an_extracted_date_is_the_page_date_when_the_edges_have_none():
@@ -169,7 +169,7 @@ def test_the_edge_label_is_used_only_without_a_key_value_date():
 
 
 def test_the_dos_stage_writes_kv_or_rules():
-    from stages.lib.dos.stage import _page_method
+    from module.dos.stage import _page_method
 
     assert [_page_method({"page_source": s}) for s in ("kv", "edge", "edge_tesseract", "")] == [
         "kv", "rules", "rules", "rules"]
@@ -250,7 +250,7 @@ def test_without_the_member_in_a_sentence_the_accepted_value_is_used():
 
 
 def test_a_page_lists_the_names_that_are_not_the_member():
-    from stages.lib.member.engine import verify_record
+    from module.member.engine import verify_record
 
     expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
                 "DummyDOB": "03/15/1980", "MemberID": ""}
@@ -269,7 +269,7 @@ def test_a_page_lists_the_names_that_are_not_the_member():
 
 
 def test_a_page_without_the_member_lists_its_names():
-    from stages.lib.member.engine import verify_record
+    from module.member.engine import verify_record
 
     expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
                 "DummyDOB": "03/15/1980", "MemberID": ""}
@@ -287,7 +287,7 @@ def test_a_page_without_the_member_lists_its_names():
 def test_a_surname_of_two_words_matches():
     """2026-10-27 (user): a manifest last name "Le Blanc" against "Le Blanc Jonathan" (and
     "LeBlanc, Jonathan"); another patient on the page stays someone else."""
-    from stages.lib.member.extractors.rule_based.name_common import name_matches
+    from module.member.extractors.rule_based.name_common import name_matches
 
     staged = StagedPage(
         "1.png",
@@ -312,7 +312,7 @@ def test_a_surname_of_two_words_matches():
 
 def test_a_nickname_matches_the_manifest_first_name():
     """2026-10-27 (user): Bill for William, Bob for Robert (member_name_variants_canon.json)."""
-    from stages.lib.member.extractors.rule_based.name_common import name_matches
+    from module.member.extractors.rule_based.name_common import name_matches
 
     assert name_matches("Bill Smith", "William", "Smith", "", "2")
     assert name_matches("Smith, Bobby", "Robert", "Smith", "", "2")
@@ -323,7 +323,7 @@ def test_a_nickname_matches_the_manifest_first_name():
 def test_phrases_that_are_not_people_are_dropped():
     """2026-10-28 (user): no model -- digits, a word run into a credential, or every word a
     common / clinical word."""
-    from stages.lib.member.name_filter import looks_like_person
+    from module.member.name_filter import looks_like_person
 
     for junk in ["Sars Cov 2", "Amy N MDOccurred", "Elderly Woman", "Dear Ms", "Vitamin D Deficiency",
                  "Visual Inspection"]:
@@ -348,7 +348,7 @@ def test_a_junk_phrase_is_not_the_page_name():
 
 def test_names_lose_stray_marks_at_either_end():
     """2026-10-28 (user): "→ Sameera T Raza" and the like."""
-    from stages.lib.names import trim_name, trim_signers
+    from module.names import trim_name, trim_signers
 
     assert trim_name("→ Sameera T Raza") == "Sameera T Raza"
     assert trim_name("- John Smith:") == "John Smith"

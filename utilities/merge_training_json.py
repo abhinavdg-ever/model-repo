@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 REPO = Path(__file__).resolve().parents[1]
-DEFAULT_TAXONOMY = REPO / "core-pipeline" / "stages" / "lib" / "keyword-canon" / "page_taxonomy.json"
+DEFAULT_TAXONOMY = REPO / "core-pipeline" / "module" / "keyword-canon" / "page_taxonomy.json"
 # The v29.2 taxonomy the page-axes model trains on (its L1 list).
 DEFAULT_AXES_TAXONOMY = REPO / "training" / "bert-training" / "taxonomy.json"
 LABELS = ("L1", "L2", "L3", "specialty", "codeability", "model_type", "page_type", "page_subtype")

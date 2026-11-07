@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from stages.lib.extraction import ocr_input, staging
-from stages.lib.extraction.stage import section_headers_of
-from stages.lib.extraction.staging import Staged, StagedPage
+from module.extraction import ocr_input, staging
+from module.extraction.stage import section_headers_of
+from module.extraction.staging import Staged, StagedPage
 
 
 def word(text, x, y=10):
@@ -108,9 +108,9 @@ class TestStagingFile:
 
 class TestHitRecord:
     def test_boxes_are_lists_and_the_key_hit_is_left_out(self):
-        from stages.lib.extraction.dos.extract import DosHit
-        from stages.lib.extraction.util.geometry import Box
-        from stages.lib.extraction.page_no.extract import PageHit
+        from module.extraction.dos.extract import DosHit
+        from module.extraction.util.geometry import Box
+        from module.extraction.page_no.extract import PageHit
 
         hit = DosHit(key="DOS", region="mid", sentence="s", tier="encounter", value="v", score=0.123456, key_hit=object())
         record = staging.hit_record(hit)
@@ -141,7 +141,7 @@ BODY = "Office visit note for the patient. Assessment and plan follow. " * 8
 class TestSequencingMarker:
     def marker(self, page_no, page_total):
         # The printed page number as the key/value stage stored it (additional_page_details).
-        from stages.lib.sequencing.stage import _printed_marker
+        from module.sequencing.stage import _printed_marker
 
         return _printed_marker({"printed_page_no": page_no, "printed_page_total": page_total})
 
@@ -158,13 +158,13 @@ class TestSequencingMarker:
         assert self.marker(page_no="0", page_total="3") is None
 
     def test_unread_page_has_none(self):
-        from stages.lib.sequencing.stage import _printed_marker
+        from module.sequencing.stage import _printed_marker
 
         assert _printed_marker(None) is None
 
     def test_an_extracted_marker_is_used_and_text_still_runs_when_there_is_none(self):
-        from stages.lib.sequencing import compute_sequence_assignments
-        from stages.lib.sequencing.engine.types import ExplicitMarker
+        from module.sequencing import compute_sequence_assignments
+        from module.sequencing.engine.types import ExplicitMarker
 
         def page(pid, text, marker):
             return {"page_id": pid, "page_number": pid, "text": text, "page_marker": marker}
@@ -195,8 +195,8 @@ class TestChain:
 
 class TestReadiness:
     def test_a_missing_weights_folder_is_named(self, monkeypatch, tmp_path):
-        from stages.lib.extraction import engine
-        from stages.lib.extraction.util import config
+        from module.extraction import engine
+        from module.extraction.util import config
 
         gliner = tmp_path / "gliner_low"
         source = config.ModelSource("org/model", "rev", ("pytorch_model.bin",))
@@ -226,7 +226,7 @@ class TestPinnedVersion:
     def test_engine_pins_v004_with_v002_as_fallback(self):
         import config
 
-        from stages.lib.extraction import engine
+        from module.extraction import engine
 
         assert engine.pinned_version() == "v004"
         assert config.EXTRACTION_FALLBACK_VERSION == "v002"
@@ -234,7 +234,7 @@ class TestPinnedVersion:
     def test_v002_still_resolves_to_the_single_folder_for_a_roll_back(self):
         import json
 
-        from stages.lib.extraction.util import config as kv_config
+        from module.extraction.util import config as kv_config
 
         folder = kv_config.trained_folder("v002")
         if not (folder / "manifest.json").is_file():
@@ -259,7 +259,7 @@ class TestSplitLayout:
         return folder
 
     def test_both_folders_are_found_kv_first(self, tmp_path, monkeypatch):
-        from stages.lib.extraction.util import config as kv_config
+        from module.extraction.util import config as kv_config
 
         monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
         kv = self._folder(tmp_path, "KV_v004", ["dob", "dos"])
@@ -267,8 +267,8 @@ class TestSplitLayout:
         assert kv_config.trained_folders("v004") == [kv, heading]
 
     def test_one_folder_is_enough_to_run(self, tmp_path, monkeypatch):
-        from stages.lib.extraction.training import registry
-        from stages.lib.extraction.util import config as kv_config
+        from module.extraction.training import registry
+        from module.extraction.util import config as kv_config
 
         monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
         self._folder(tmp_path, "KV_v004", ["dob"])
@@ -279,8 +279,8 @@ class TestSplitLayout:
 
     @staticmethod
     def _ready_except_weights(monkeypatch, tmp_path):
-        from stages.lib.extraction import engine
-        from stages.lib.extraction.util import config as kv_config
+        from module.extraction import engine
+        from module.extraction.util import config as kv_config
 
         monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
         monkeypatch.setattr(engine, "REQUIRED_PACKAGES", ())
@@ -312,9 +312,9 @@ class TestSplitLayout:
         assert (status["pinned_version"], status["model_version"]) == ("v004", "v002")
 
     def test_readiness_names_both_folders_when_missing(self, tmp_path, monkeypatch):
-        from stages.lib.extraction import engine
-        from stages.lib.extraction.training import registry
-        from stages.lib.extraction.util import config as kv_config
+        from module.extraction import engine
+        from module.extraction.training import registry
+        from module.extraction.util import config as kv_config
 
         monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
         monkeypatch.setattr(engine, "REQUIRED_PACKAGES", ())
@@ -330,7 +330,7 @@ class TestSplitLayout:
 def test_kv_debug_writes_the_raw_payload_only_when_asked(tmp_path, monkeypatch):
     import json
 
-    from stages.lib.extraction import stage
+    from module.extraction import stage
 
     payload = {"pages": {"1.jpg": {"fields": {"dos": [{"value": "03/15/2024", "accepted": True}]}}}}
     monkeypatch.setattr(stage, "chart_dir", lambda name: tmp_path / name)
@@ -347,7 +347,7 @@ def test_kv_debug_writes_the_raw_payload_only_when_asked(tmp_path, monkeypatch):
 
 class TestModelDecisionIsStaged:
     def test_rule_decision_and_model_score_are_written_when_set(self):
-        from stages.lib.extraction.dos.extract import DosHit
+        from module.extraction.dos.extract import DosHit
 
         hit = DosHit(key="Date", region="footer", sentence="Date: 5/20/25", tier="weak",
                      value="5/20/25", score=0.8, accepted=False)
@@ -360,20 +360,20 @@ class TestModelDecisionIsStaged:
 class TestStrongHeading:
     @staticmethod
     def row(text, score, note="", kind="section"):
-        from stages.lib.extraction.heading.extract import HeadingRow
-        from stages.lib.extraction.util.geometry import Box
+        from module.extraction.heading.extract import HeadingRow
+        from module.extraction.util.geometry import Box
 
         return HeadingRow(text=text, words=[], box=Box(0, 0, 1, 1), det_class="section_header",
                           kind=kind, score=score, level="Heading", accepted=False, note=note)
 
     def test_a_strong_box_that_reads_like_a_heading(self):
-        from stages.lib.extraction.heading.extract import strong_heading
+        from module.extraction.heading.extract import strong_heading
 
         assert strong_heading(self.row("CT & MRI SCHEDULING", 0.76))
         assert strong_heading(self.row("SPECIALTY EXAM", 0.715))
 
     def test_not_a_sentence_a_phone_number_a_weak_box_or_a_rejected_box(self):
-        from stages.lib.extraction.heading.extract import strong_heading
+        from module.extraction.heading.extract import strong_heading
 
         assert not strong_heading(self.row(
             "To schedule an appointment, please call (520) 733-7226 or fax to (520) 290-8377.", 0.84))

@@ -221,7 +221,7 @@ def azure_di_status() -> dict[str, Any]:
 def ner_status() -> dict[str, Any]:
     """The GLiNER layer. Never raises — an optional feature's probe must not 500."""
     try:
-        from stages.lib.member import ner_status as _ner_status
+        from module.member import ner_status as _ner_status
 
         return _ner_status()
     except Exception as exc:
@@ -276,7 +276,7 @@ def hw_model_status() -> dict[str, Any]:
 def page_axes_model_status() -> dict[str, Any]:
     """Page-axes model in models/page-family/page-axes. Never raises; never loads the weights."""
     try:
-        from stages.lib.page_classify.axes import describe
+        from module.page_classify.axes import describe
 
         return describe()
     except Exception as exc:
@@ -286,7 +286,7 @@ def page_axes_model_status() -> dict[str, Any]:
 def page_leaf_model_status() -> dict[str, Any]:
     """Page-leaf model in models/page-family/page-leaf. Never raises; never loads the weights."""
     try:
-        from stages.lib.page_classify.leaf import describe
+        from module.page_classify.leaf import describe
 
         return describe()
     except Exception as exc:
@@ -296,7 +296,7 @@ def page_leaf_model_status() -> dict[str, Any]:
 def encounter_model_status() -> dict[str, Any]:
     """Encounter model in models/encounter. Never raises; never loads the weights."""
     try:
-        from stages.lib.encounter.model_vote import describe
+        from module.encounter.model_vote import describe
 
         return describe()
     except Exception as exc:
@@ -308,7 +308,7 @@ def blank_junk_model_status() -> dict[str, Any]:
     try:
         import sys
 
-        junk = str(Path(__file__).resolve().parent / "stages" / "lib" / "blank_junk")
+        junk = str(Path(__file__).resolve().parent / "module" / "blank_junk")
         if junk not in sys.path:
             sys.path.insert(0, junk)
         from model_bridge import model_status
@@ -320,7 +320,7 @@ def blank_junk_model_status() -> dict[str, Any]:
 
 def rapidocr_models_status() -> dict[str, Any]:
     """Local RapidOCR .pth files used by Docling final1."""
-    from stages.lib.ocr.docling_ocr import (
+    from module.ocr.docling_ocr import (
         missing_model_files,
         model_paths,
         rapid_models_dir,
@@ -345,7 +345,7 @@ def rapidocr_models_status() -> dict[str, Any]:
 def extraction_status() -> dict[str, Any]:
     """Key/value ranker, GLiNER and Heron. Never raises and never loads them."""
     try:
-        from stages.lib.extraction.engine import readiness
+        from module.extraction.engine import readiness
 
         return readiness()
     except Exception as exc:
@@ -354,7 +354,7 @@ def extraction_status() -> dict[str, Any]:
 
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
-    from stages.lib.ocr.docling_ocr import docling_status
+    from module.ocr.docling_ocr import docling_status
 
     return {
         "blob": probe_blob() if probe else blob_status(),

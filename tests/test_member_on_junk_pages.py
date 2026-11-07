@@ -3,7 +3,7 @@ never verified (page_status not_verified, no other names, no matched member)."""
 import contextlib
 from types import SimpleNamespace
 
-from stages.lib.member import stage
+from module.member import stage
 
 
 def test_blank_and_junk_pages_are_read_but_not_verified(monkeypatch):

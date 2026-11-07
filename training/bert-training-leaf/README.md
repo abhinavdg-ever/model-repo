@@ -3,13 +3,13 @@
 One encoder (Bio_ClinicalBERT by default) with a **leaf** head, one class per whole
 path `L1 > L2 > L3`, plus a specialty head. It replaces the page-axes cascade in
 `../bert-training/` (L1, then L2, then L3). The pipeline combines its top leaves with the
-per-leaf keyword canon (`core-pipeline/stages/lib/keyword-canon/leaf_keywords.json`).
+per-leaf keyword canon (`core-pipeline/module/keyword-canon/leaf_keywords.json`).
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `train_leaf.py` | the trainer (leaf + specialty heads); its model code is copied into `core-pipeline/stages/lib/page_classify/leaf_model.py` |
+| `train_leaf.py` | the trainer (leaf + specialty heads); its model code is copied into `core-pipeline/module/page_classify/leaf_model.py` |
 | `predict_leaf.py` | runs a trained folder on text files |
 | `taxonomy.json` | v29.3, written by `training/taxonomy/import_taxonomy_xlsx.py`; never edit by hand |
 | `requirements.txt` | the trainer's packages |

@@ -1,0 +1,320 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from module.canon_store import CANON_DIR, CanonFile
+
+WORD = re.compile(r"[A-Za-z0-9]+")
+WINDOW = 5
+
+@dataclass(frozen=True)
+class MemberKeywords:
+    ignore: frozenset[str]
+    labels: frozenset[str]
+    # Words a member's name never contains: articles, pronouns, connectors,
+    # roles, relationships and chart furniture. Used to throw out an NER hit
+    # like "my medical assistant" and to stop the key-value reader taking prose
+    # after a bare "Patient:" key as a name.
+    non_name: frozenset[str]
+    key_groups: dict[str, tuple[str, ...]]
+
+
+def _build_keywords(data: dict[str, Any]) -> MemberKeywords:
+    groups = data.get("key_groups") or {}
+    return MemberKeywords(
+        ignore=frozenset(data["ignore"]),
+        labels=frozenset(data["labels"]),
+        non_name=frozenset(data["non_name"]),
+        key_groups={
+            name: tuple(group.get("keys") or []) for name, group in groups.items()
+        },
+    )
+
+
+# keyword-canon/member_keywords_canon.json — reloaded when the file changes.
+_KEYWORDS: CanonFile[MemberKeywords] = CanonFile(
+    CANON_DIR / "member_keywords_canon.json", _build_keywords
+)
+
+
+def member_keywords() -> MemberKeywords:
+    return _KEYWORDS.get()
+
+
+def _build_variants(data: dict[str, Any]) -> dict[str, frozenset[str]]:
+    """Each name -> every name that is the same person (its groups joined)."""
+    out: dict[str, set[str]] = {}
+    for group in data.get("groups") or []:
+        names = {str(name).strip().casefold() for name in group if str(name).strip()}
+        for name in names:
+            out.setdefault(name, set()).update(names)
+    return {name: frozenset(same) for name, same in out.items()}
+
+
+# keyword-canon/member_name_variants_canon.json (2026-10-27, user): Bill = William, Bob = Robert.
+_VARIANTS: CanonFile[dict[str, frozenset[str]]] = CanonFile(
+    CANON_DIR / "member_name_variants_canon.json", _build_variants
+)
+
+
+def same_first_name(a: str, b: str) -> bool:
+    """Two first names that are one person by the variants canon (Bill and William)."""
+    try:
+        variants = _VARIANTS.get()
+    except Exception:  # a missing or broken canon file: exact names only
+        return False
+    return b.casefold() in variants.get(a.casefold(), frozenset())
+
+
+def is_non_name(token: str) -> bool:
+    return token.casefold() in member_keywords().non_name
+
+
+BOTH_FULL = "both_full"
+INITIAL = "initial"
+MISMATCH = "mismatch"
+NONE = "none"
+ONE_FULL_WRONG = "one_full_wrong"
+ALL_FULL = "all_full"
+TWO_FULL = "two_full"
+TWO_FULL_WRONG = "two_full_wrong"
+
+TWO_WORD_MATCH = {BOTH_FULL, INITIAL}
+THREE_WORD_MATCH = {ALL_FULL, TWO_FULL}
+
+
+def tokenize(text: str) -> list[str]:
+    return WORD.findall(text or "")
+
+
+def is_ignore(token: str) -> bool:
+    return token.casefold() in member_keywords().ignore
+
+
+def is_label(token: str) -> bool:
+    return token.casefold() in member_keywords().labels
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", text.casefold())
+
+
+def is_full(token: str, name: str) -> bool:
+    """The token is the whole name part. A part of several words ("Le Blanc", "De La Cruz")
+    also matches written as one ("LeBlanc"), and as its words side by side (merge_compound)
+    (2026-10-27, user)."""
+    if not name:
+        return False
+    if token.casefold() == name.casefold():
+        return True
+    if len(tokenize(name)) > 1:
+        return _compact(token) == _compact(name)
+    # A nickname of the name (Bill for William), by the variants canon.
+    return len(token) > 1 and same_first_name(token, name)
+
+
+def merge_compound(span: list[str], *names: str) -> list[str]:
+    """The words of a multi-word name part, side by side in the span, as one token: "Le",
+    "Blanc" -> "Le Blanc", so the rules see the part whole. Also a one-word name part
+    written as two or three words (2026-10-29, user): "Miller-Cook" (Miller, Cook) beside a
+    manifest "MillerCook" is "MillerCook"."""
+    out = list(span)
+    for name in names:
+        words = [word.casefold() for word in tokenize(name or "")]
+        if len(words) < 2:
+            continue
+        i = 0
+        while i + len(words) <= len(out):
+            if [token.casefold() for token in out[i : i + len(words)]] == words:
+                out[i : i + len(words)] = [name]
+            i += 1
+    for name in names:
+        if len(tokenize(name or "")) != 1 or len(_compact(name)) < 4:
+            continue
+        i = 0
+        while i < len(out):
+            for width in (3, 2):
+                parts = out[i : i + width]
+                if len(parts) == width and _compact("".join(parts)) == _compact(name):
+                    out[i : i + width] = [name]
+                    break
+            i += 1
+    return out
+
+
+def is_initial(token: str, name: str) -> bool:
+    return bool(name) and len(token) == 1 and token.isalpha() and token.casefold() == name[0].casefold()
+
+
+def is_any_initial(token: str) -> bool:
+    return len(token) == 1 and token.isalpha()
+
+
+def _name_like(token: str) -> bool:
+    if not token or is_label(token) or token.isdigit():
+        return False
+    return token.isalpha() or is_ignore(token)
+
+
+def _touches(token: str, *names: str) -> bool:
+    if any(is_full(token, name) or is_initial(token, name) for name in names if name):
+        return True
+    # A word of a multi-word part ("Blanc" of "Le Blanc") starts a span too.
+    return any(
+        len(tokenize(name)) > 1 and any(token.casefold() == word.casefold() for word in tokenize(name) if len(word) > 1)
+        for name in names if name
+    )
+
+
+def _extra_full(span: list[str], *names: str) -> list[str]:
+    extras: list[str] = []
+    for token in span:
+        if is_ignore(token) or is_label(token) or is_any_initial(token):
+            continue
+        if any(is_full(token, name) for name in names if name):
+            continue
+        if token.isalpha():
+            extras.append(token)
+    return extras
+
+
+def classify_two_word_name(span: list[str], first: str, last: str) -> str:
+    if not span or not first or not last:
+        return NONE
+    span = merge_compound(span, first, last)
+    first_full = any(is_full(token, first) for token in span)
+    last_full = any(is_full(token, last) for token in span)
+    first_init = (not first_full) and any(is_initial(token, first) for token in span)
+    last_init = (not last_full) and any(is_initial(token, last) for token in span)
+    extras = _extra_full(span, first, last)
+    if first_full and last_full:
+        return BOTH_FULL
+    if (first_full and last_init) or (first_init and last_full):
+        if extras:
+            return ONE_FULL_WRONG
+        return INITIAL
+    if (first_full or last_full) and extras:
+        # One of the two names matches and another full name sits beside it:
+        # a different member, not merely a missing detection.
+        return ONE_FULL_WRONG
+    return MISMATCH
+
+
+def classify_three_word_name(span: list[str], first: str, middle: str, last: str) -> str:
+    names = [part for part in (first, middle, last) if part]
+    if not span or len(names) < 3:
+        return NONE
+    span = merge_compound(span, first, middle, last)
+    full_count = sum(any(is_full(token, name) for token in span) for name in names)
+    extras = _extra_full(span, first, middle, last)
+    if full_count >= 3:
+        return ALL_FULL
+    if full_count >= 2:
+        if extras:
+            return TWO_FULL_WRONG
+        return TWO_FULL
+    return MISMATCH
+
+
+def name_matches(found: str, first: str, last: str, middle: str, name_mode: str) -> bool:
+    span = tokenize(found)
+    if name_mode == "3":
+        return classify_three_word_name(span, first, middle, last) in THREE_WORD_MATCH
+    return classify_two_word_name(span, first, last) in TWO_WORD_MATCH
+
+
+def _expand(tokens: list[str], start: int, end: int) -> tuple[int, int]:
+    while start > 0 and _name_like(tokens[start - 1]):
+        start -= 1
+    while end + 1 < len(tokens) and _name_like(tokens[end + 1]):
+        end += 1
+    return start, end
+
+
+def _best_span(
+    tokens: list[str],
+    names: tuple[str, ...],
+    classify,
+    scores: dict[str, int],
+) -> str:
+    best_key: tuple[int, int, int] | None = None
+    best_text = "N/A"
+    for index, token in enumerate(tokens):
+        if not _touches(token, *names):
+            continue
+        lo = max(0, index - WINDOW)
+        hi = min(len(tokens), index + WINDOW + 1)
+        for left in range(lo, index + 1):
+            for right in range(index, hi):
+                span_left, span_right = _expand(tokens, left, right)
+                span_left = max(span_left, lo)
+                span_right = min(span_right, hi - 1)
+                span = tokens[span_left : span_right + 1]
+                if _broken_name(span, names):
+                    continue  # a date, number or label between the names: not one name
+                kind = classify(span)
+                score = scores.get(kind, 0)
+                if score <= 0:
+                    continue
+                key = (score, -(span_right - span_left), -span_left)
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best_text = _name_only(span, names)
+    return best_text
+
+
+def _broken_name(span: list[str], names: tuple[str, ...]) -> bool:
+    """A token with a digit between the span's first and last word of the name."""
+    hits = [i for i, token in enumerate(span) if _touches(token, *names)]
+    if not hits:
+        return False
+    inside = span[hits[0] : hits[-1] + 1]
+    # A date or number, or a field label ("Name", "Phone"), between the name's words:
+    # two fields of a form, not one name (2026-11-01).
+    return any(any(c.isdigit() for c in token) or (is_label(token) and not _touches(token, *names))
+               for token in inside)
+
+
+def _name_only(span: list[str], names: tuple[str, ...]) -> str:
+    """The span from its first to its last word of the member's name (2026-11-01): the
+    widening to name-like neighbours must not keep 'Female' or a heading word after the
+    name. A name part written with a hyphen ("Parker-Hill") is shown as written."""
+    hits = [i for i, token in enumerate(span) if _touches(token, *names)]
+    if hits:
+        span = span[hits[0] : hits[-1] + 1]
+    text = " ".join(span)
+    for name in names:
+        words = tokenize(name or "")
+        if len(words) > 1 and name.strip() != " ".join(words):
+            text = re.sub(r"\b" + r"\s+".join(re.escape(w) for w in words) + r"\b", name.strip(), text,
+                          flags=re.IGNORECASE)
+    return text
+
+
+def find_two_word_name(ocr_text: str, first: str, last: str) -> str:
+    first = (first or "").strip()
+    last = (last or "").strip()
+    if not first or not last:
+        return "N/A"
+    return _best_span(
+        tokenize(ocr_text),
+        (first, last),
+        lambda span: classify_two_word_name(span, first, last),
+        {BOTH_FULL: 3, INITIAL: 2},
+    )
+
+
+def find_three_word_name(ocr_text: str, first: str, middle: str, last: str) -> str:
+    first = (first or "").strip()
+    middle = (middle or "").strip()
+    last = (last or "").strip()
+    if not first or not middle or not last:
+        return "N/A"
+    return _best_span(
+        tokenize(ocr_text),
+        (first, middle, last),
+        lambda span: classify_three_word_name(span, first, middle, last),
+        {ALL_FULL: 4, TWO_FULL: 3, TWO_FULL_WRONG: 1},
+    )

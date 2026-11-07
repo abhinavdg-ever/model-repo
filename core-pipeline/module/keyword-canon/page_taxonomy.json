@@ -1,0 +1,2199 @@
+{
+  "version": "v29.3",
+  "comment": "The page taxonomy the pipeline names pages in: label_space is the page-axes model's label space (the trainer's taxonomy file); page_type_overrides, family_map, L2_merge, L3_merge and context_rules come from the rules taxonomy, name_map from the training name map. Copied by `python -m module.page_classify.canon_convert --refresh-taxonomy`; legacy_L1, legacy_L3 and placements are that script's hand tables. canon_convert reads the tables to put page_canon.json in these names; the pipeline reads label_space (page_classify/taxonomy.py) and codeability (the tag of each L1 > L2 and L1 > L2 > L3, which the Final codability reads).",
+  "label_space": {
+    "L1": [
+      "Progress Note",
+      "Lab Report",
+      "Operative Note",
+      "Procedure Note",
+      "Discharge Summary",
+      "Clinical Summary",
+      "Consent and Authorization",
+      "Demographics",
+      "Immunization",
+      "Medication Record",
+      "Order and Requisition",
+      "Problem List",
+      "Forms and Questionnaires",
+      "Provider Letter",
+      "Patient Communication",
+      "Administrative",
+      "Pharmacy Note",
+      "Others"
+    ],
+    "L2": {
+      "Progress Note": [
+        "CC/HPI",
+        "Visit Diagnosis",
+        "Assessment and Plan",
+        "Summary",
+        "Problem List",
+        "Medication List",
+        "Lab and Imaging Results",
+        "Procedure List",
+        "Vitals",
+        "Physical Exam",
+        "Questionnaire",
+        "Patient Instructions",
+        "Signature",
+        "Others"
+      ],
+      "Lab Report": [
+        "Lab Result",
+        "Radiology Report",
+        "Pathology Report",
+        "Diagnostic Study"
+      ],
+      "Operative Note": [
+        "Surgery Report",
+        "Procedure List",
+        "Pre-operative",
+        "Post-operative",
+        "Anesthesia Record",
+        "Critical Care Record",
+        "Triage Report",
+        "Intra-operative Record",
+        "Implant Record",
+        "Others"
+      ],
+      "Procedure Note": [
+        "Dialysis Record",
+        "Infusion and Chemotherapy",
+        "Radiation Therapy",
+        "Wound Care",
+        "Therapy Session",
+        "Elastography",
+        "Injection Visit",
+        "Knee Procedure",
+        "Laser Procedure",
+        "Lumbar Procedure",
+        "Office Procedure",
+        "Pathology Procedure",
+        "Endoscopy (EGD)",
+        "Cardiac Procedure",
+        "Others"
+      ],
+      "Discharge Summary": [
+        "Depart/Discharge Note",
+        "Discharge Instruction",
+        "Discharge Medication",
+        "Transfer of Care",
+        "Interim Summary",
+        "Short Stay Summary",
+        "Discharge Diagnosis",
+        "History and Physical",
+        "Consultation Note",
+        "Others"
+      ],
+      "Clinical Summary": [
+        "Summary of Care (C-CDA)",
+        "After-Visit Summary",
+        "Summary",
+        "Index Page",
+        "Others"
+      ],
+      "Consent and Authorization": [
+        "Consent for Treatment",
+        "Surgical Consent",
+        "Transfusion Consent",
+        "Immunization Consent",
+        "HIPAA Notice & Consent",
+        "Release of Information",
+        "Assignment of Benefits",
+        "General Consent",
+        "Prior Authorization",
+        "Referral Authorization",
+        "General Authorization",
+        "Others"
+      ],
+      "Demographics": [
+        "Patient Information",
+        "Face Sheet",
+        "Others"
+      ],
+      "Immunization": [
+        "Immunization Record",
+        "Others"
+      ],
+      "Medication Record": [
+        "Medication List",
+        "Prescription Page",
+        "Refill Record",
+        "Blood Transfusion Record",
+        "Others"
+      ],
+      "Order and Requisition": [
+        "Physician Order",
+        "Medication Order",
+        "Laboratory Requisition",
+        "Referral Order",
+        "Others"
+      ],
+      "Problem List": [
+        "Problem List",
+        "Diagnosis List/Coding Summary",
+        "Others"
+      ],
+      "Forms and Questionnaires": [
+        "Assessment",
+        "Questionnaire",
+        "Others"
+      ],
+      "Provider Letter": [
+        "Referral Letter",
+        "Consultation Letter",
+        "Records Request",
+        "Others"
+      ],
+      "Patient Communication": [
+        "Patient Message",
+        "Notice",
+        "Patient Education Material",
+        "Telephone Encounter",
+        "Others"
+      ],
+      "Administrative": [
+        "Appointment Record",
+        "Billing & Invoices",
+        "Patient Registration",
+        "Superbill",
+        "Others"
+      ],
+      "Pharmacy Note": [
+        "Summary",
+        "Others"
+      ]
+    },
+    "L3": {
+      "Lab Report > Lab Result": [
+        "Allergy Testing Report",
+        "Chemistry Report",
+        "FISH Report",
+        "Genetic Test Report",
+        "Glucose Report",
+        "Hematology Report",
+        "Coagulation Report",
+        "Laboratory Flow Sheet",
+        "Microbiology Report",
+        "Urinalysis Report",
+        "Others"
+      ],
+      "Lab Report > Radiology Report": [
+        "Bone Mineral Density Report",
+        "Brain MRI Report",
+        "CT Angiography Report",
+        "CT Scan Report",
+        "MR Angiography Report",
+        "MRI Report",
+        "Mammogram Report",
+        "Nuclear Medicine Report",
+        "Ultrasound Report",
+        "X-Ray Report",
+        "Others"
+      ],
+      "Lab Report > Pathology Report": [
+        "Biopsy Report",
+        "Cytology Report",
+        "Cytometry Report",
+        "Molecular Diagnostics Report",
+        "Others"
+      ],
+      "Lab Report > Diagnostic Study": [
+        "Ankle-Brachial Index Report",
+        "Audiogram and Hearing Loss Report",
+        "Behavioral Assessment",
+        "Bronchoscopy Report",
+        "Cardiac Catheterization Report",
+        "Carotid Duplex Report",
+        "Colonoscopy Report",
+        "Corneal Topography",
+        "Cystoscopy Report",
+        "Doppler Duplex Report",
+        "Echocardiogram Report",
+        "Electrocardiogram (EKG/ECG) Report",
+        "Electroencephalogram Report",
+        "Electromyography and Nerve Conduction",
+        "Endoscopy Report",
+        "Esophageal Manometry Report",
+        "Esophagogastroduodenoscopy (EGD) Report",
+        "Extremity Doppler Report",
+        "Holter Monitor Report",
+        "Laryngoscopy Procedure Report",
+        "Stress Test",
+        "Neurocognitive Screening Examination",
+        "Optical Biometry (IOL Calculation)",
+        "Optical Coherence Tomography Report",
+        "Oximetry Report",
+        "Pacemaker Device Report",
+        "Plethysmography Report",
+        "Pulmonary Function Test",
+        "Sigmoidoscopy Report",
+        "Sleep Study Report",
+        "Split Night Study Report",
+        "Sudoscan Report",
+        "Telemetry Report",
+        "Titration Report",
+        "Videonystagmography Report",
+        "Visual Field Report",
+        "Others"
+      ]
+    },
+    "specialty": [
+      "Anesthesia",
+      "Audiology",
+      "Behavioral Health",
+      "Cardiology",
+      "Critical Care",
+      "Dermatology",
+      "Dialysis",
+      "Emergency",
+      "Gastroenterology",
+      "Home Health",
+      "Infusion",
+      "Nephrology",
+      "Neurology",
+      "Nursing",
+      "Nutrition",
+      "Obstetrics and Gynecology",
+      "Occupational Health",
+      "Oncology",
+      "Ophthalmology",
+      "Orthopedics",
+      "Palliative Care",
+      "Pathology",
+      "Podiatry",
+      "Primary Care",
+      "Pulmonology",
+      "Radiology",
+      "Rehabilitation",
+      "Sleep Study",
+      "Surgery",
+      "Urology",
+      "Wound Care",
+      "Pain Management",
+      "Others",
+      "Unknown"
+    ]
+  },
+  "codeability": {
+    "Progress Note > CC/HPI": "codeable",
+    "Progress Note > Visit Diagnosis": "codeable",
+    "Progress Note > Assessment and Plan": "codeable",
+    "Progress Note > Summary": "codeable",
+    "Progress Note > Problem List": "codeable",
+    "Progress Note > Medication List": "codeable",
+    "Progress Note > Lab and Imaging Results": "codeable",
+    "Progress Note > Procedure List": "codeable",
+    "Progress Note > Vitals": "codeable",
+    "Progress Note > Physical Exam": "codeable",
+    "Progress Note > Questionnaire": "codeable",
+    "Progress Note > Patient Instructions": "codeable",
+    "Progress Note > Signature": "codeable",
+    "Progress Note > Others": "codeable",
+    "Lab Report > Lab Result": "non_codeable",
+    "Lab Report > Lab Result > Allergy Testing Report": "non_codeable",
+    "Lab Report > Lab Result > Chemistry Report": "non_codeable",
+    "Lab Report > Lab Result > FISH Report": "non_codeable",
+    "Lab Report > Lab Result > Genetic Test Report": "non_codeable",
+    "Lab Report > Lab Result > Glucose Report": "non_codeable",
+    "Lab Report > Lab Result > Hematology Report": "non_codeable",
+    "Lab Report > Lab Result > Coagulation Report": "non_codeable",
+    "Lab Report > Lab Result > Laboratory Flow Sheet": "non_codeable",
+    "Lab Report > Lab Result > Microbiology Report": "non_codeable",
+    "Lab Report > Lab Result > Urinalysis Report": "non_codeable",
+    "Lab Report > Lab Result > Others": "non_codeable",
+    "Lab Report > Radiology Report": "non_codeable",
+    "Lab Report > Radiology Report > Bone Mineral Density Report": "non_codeable",
+    "Lab Report > Radiology Report > Brain MRI Report": "non_codeable",
+    "Lab Report > Radiology Report > CT Angiography Report": "codeable",
+    "Lab Report > Radiology Report > CT Scan Report": "non_codeable",
+    "Lab Report > Radiology Report > MR Angiography Report": "codeable",
+    "Lab Report > Radiology Report > MRI Report": "non_codeable",
+    "Lab Report > Radiology Report > Mammogram Report": "non_codeable",
+    "Lab Report > Radiology Report > Nuclear Medicine Report": "non_codeable",
+    "Lab Report > Radiology Report > Ultrasound Report": "non_codeable",
+    "Lab Report > Radiology Report > X-Ray Report": "non_codeable",
+    "Lab Report > Radiology Report > Others": "non_codeable",
+    "Lab Report > Pathology Report": "codeable",
+    "Lab Report > Pathology Report > Biopsy Report": "non_codeable",
+    "Lab Report > Pathology Report > Cytology Report": "non_codeable",
+    "Lab Report > Pathology Report > Cytometry Report": "non_codeable",
+    "Lab Report > Pathology Report > Molecular Diagnostics Report": "non_codeable",
+    "Lab Report > Pathology Report > Others": "non_codeable",
+    "Lab Report > Diagnostic Study": "non_codeable",
+    "Lab Report > Diagnostic Study > Ankle-Brachial Index Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Behavioral Assessment": "non_codeable",
+    "Lab Report > Diagnostic Study > Bronchoscopy Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Cardiac Catheterization Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Carotid Duplex Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Colonoscopy Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Corneal Topography": "non_codeable",
+    "Lab Report > Diagnostic Study > Cystoscopy Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Doppler Duplex Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Echocardiogram Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Electroencephalogram Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Electromyography and Nerve Conduction": "non_codeable",
+    "Lab Report > Diagnostic Study > Endoscopy Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Esophageal Manometry Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Extremity Doppler Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Holter Monitor Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Laryngoscopy Procedure Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Stress Test": "non_codeable",
+    "Lab Report > Diagnostic Study > Neurocognitive Screening Examination": "non_codeable",
+    "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)": "non_codeable",
+    "Lab Report > Diagnostic Study > Optical Coherence Tomography Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Oximetry Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Pacemaker Device Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Plethysmography Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Pulmonary Function Test": "non_codeable",
+    "Lab Report > Diagnostic Study > Sigmoidoscopy Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Sleep Study Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Split Night Study Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Sudoscan Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Telemetry Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Titration Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Videonystagmography Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Visual Field Report": "non_codeable",
+    "Lab Report > Diagnostic Study > Others": "non_codeable",
+    "Operative Note > Surgery Report": "codeable",
+    "Operative Note > Procedure List": "codeable",
+    "Operative Note > Pre-operative": "codeable",
+    "Operative Note > Post-operative": "codeable",
+    "Operative Note > Anesthesia Record": "codeable",
+    "Operative Note > Critical Care Record": "codeable",
+    "Operative Note > Triage Report": "codeable",
+    "Operative Note > Intra-operative Record": "codeable",
+    "Operative Note > Implant Record": "codeable",
+    "Operative Note > Others": "codeable",
+    "Procedure Note > Dialysis Record": "codeable",
+    "Procedure Note > Infusion and Chemotherapy": "codeable",
+    "Procedure Note > Radiation Therapy": "codeable",
+    "Procedure Note > Wound Care": "codeable",
+    "Procedure Note > Therapy Session": "codeable",
+    "Procedure Note > Elastography": "codeable",
+    "Procedure Note > Injection Visit": "codeable",
+    "Procedure Note > Knee Procedure": "codeable",
+    "Procedure Note > Laser Procedure": "codeable",
+    "Procedure Note > Lumbar Procedure": "codeable",
+    "Procedure Note > Office Procedure": "codeable",
+    "Procedure Note > Pathology Procedure": "codeable",
+    "Procedure Note > Endoscopy (EGD)": "codeable",
+    "Procedure Note > Cardiac Procedure": "codeable",
+    "Procedure Note > Others": "codeable",
+    "Discharge Summary > Depart/Discharge Note": "discharge",
+    "Discharge Summary > Discharge Instruction": "discharge",
+    "Discharge Summary > Discharge Medication": "discharge",
+    "Discharge Summary > Transfer of Care": "discharge",
+    "Discharge Summary > Interim Summary": "discharge",
+    "Discharge Summary > Short Stay Summary": "discharge",
+    "Discharge Summary > Discharge Diagnosis": "discharge",
+    "Discharge Summary > History and Physical": "discharge",
+    "Discharge Summary > Consultation Note": "discharge",
+    "Discharge Summary > Others": "discharge",
+    "Clinical Summary > Summary of Care (C-CDA)": "non_codeable",
+    "Clinical Summary > After-Visit Summary": "non_codeable",
+    "Clinical Summary > Summary": "non_codeable",
+    "Clinical Summary > Index Page": "non_codeable",
+    "Clinical Summary > Others": "non_codeable",
+    "Consent and Authorization > Consent for Treatment": "non_codeable",
+    "Consent and Authorization > Surgical Consent": "non_codeable",
+    "Consent and Authorization > Transfusion Consent": "non_codeable",
+    "Consent and Authorization > Immunization Consent": "non_codeable",
+    "Consent and Authorization > HIPAA Notice & Consent": "non_codeable",
+    "Consent and Authorization > Release of Information": "non_codeable",
+    "Consent and Authorization > Assignment of Benefits": "non_codeable",
+    "Consent and Authorization > General Consent": "non_codeable",
+    "Consent and Authorization > Prior Authorization": "non_codeable",
+    "Consent and Authorization > Referral Authorization": "non_codeable",
+    "Consent and Authorization > General Authorization": "non_codeable",
+    "Consent and Authorization > Others": "non_codeable",
+    "Demographics > Patient Information": "non_codeable",
+    "Demographics > Face Sheet": "non_codeable",
+    "Demographics > Others": "non_codeable",
+    "Immunization > Immunization Record": "non_codeable",
+    "Immunization > Others": "non_codeable",
+    "Medication Record > Medication List": "non_codeable",
+    "Medication Record > Prescription Page": "non_codeable",
+    "Medication Record > Refill Record": "non_codeable",
+    "Medication Record > Blood Transfusion Record": "non_codeable",
+    "Medication Record > Others": "non_codeable",
+    "Order and Requisition > Physician Order": "non_codeable",
+    "Order and Requisition > Medication Order": "non_codeable",
+    "Order and Requisition > Laboratory Requisition": "non_codeable",
+    "Order and Requisition > Referral Order": "non_codeable",
+    "Order and Requisition > Others": "non_codeable",
+    "Problem List > Problem List": "non_codeable",
+    "Problem List > Diagnosis List/Coding Summary": "non_codeable",
+    "Problem List > Others": "non_codeable",
+    "Forms and Questionnaires > Assessment": "non_codeable",
+    "Forms and Questionnaires > Questionnaire": "non_codeable",
+    "Forms and Questionnaires > Others": "non_codeable",
+    "Provider Letter > Referral Letter": "non_codeable",
+    "Provider Letter > Consultation Letter": "non_codeable",
+    "Provider Letter > Records Request": "non_codeable",
+    "Provider Letter > Others": "non_codeable",
+    "Patient Communication > Patient Message": "non_codeable",
+    "Patient Communication > Notice": "non_codeable",
+    "Patient Communication > Patient Education Material": "non_codeable",
+    "Patient Communication > Telephone Encounter": "non_codeable",
+    "Patient Communication > Others": "non_codeable",
+    "Administrative > Appointment Record": "non_codeable",
+    "Administrative > Billing & Invoices": "non_codeable",
+    "Administrative > Patient Registration": "non_codeable",
+    "Administrative > Superbill": "non_codeable",
+    "Administrative > Others": "non_codeable",
+    "Pharmacy Note > Summary": "non_codeable",
+    "Pharmacy Note > Others": "non_codeable"
+  },
+  "legacy_L1": {
+    "Lab Report/Result": "Lab Report",
+    "Consent Form": "Consent and Authorization",
+    "Authorization": "Consent and Authorization"
+  },
+  "legacy_L3": {
+    "Myocardial Perfusion Study": "Stress Test",
+    "Lens Parameters": "Optical Biometry (IOL Calculation)",
+    "Visual Field Interpretation": "Visual Field Report",
+    "Colposcopy Examination": "",
+    "Fundus Photography Report": ""
+  },
+  "placements": {
+    "Clinical Summary": {
+      "L1": "Clinical Summary",
+      "L2": "Others",
+      "rule": "context_rules.clinical_summary (was under Problem List)"
+    },
+    "Medical Record Request": {
+      "L1": "Provider Letter",
+      "L2": "Records Request",
+      "rule": "context_rules.records_request"
+    },
+    "Records Request Letter": {
+      "L1": "Provider Letter",
+      "L2": "Records Request",
+      "rule": "context_rules.records_request"
+    }
+  },
+  "name_map": {
+    "L1": {
+      "Lab Report/Result": "Lab Report"
+    },
+    "L2": {
+      "Lab Report/Result > Laboratory": "Lab Report > Lab Result",
+      "Lab Report/Result > Radiology": "Lab Report > Radiology Report",
+      "Lab Report/Result > Pathology": "Lab Report > Pathology Report",
+      "Lab Report/Result > Diagnostic Study": "Lab Report > Diagnostic Study",
+      "Progress Note > Procedure": "Progress Note > Procedure List",
+      "Operative Note > Procedure": "Operative Note > Procedure List",
+      "Demographics > Patient Demographics": "Demographics > Patient Information",
+      "Administrative > Billing Statement": "Administrative > Billing & Invoices",
+      "Demographics > Registration Form": "Administrative > Patient Registration",
+      "Progress Note > Lab Results": "Progress Note > Lab and Imaging Results",
+      "Consent and Authorization > HIPAA and Privacy": "Consent and Authorization > HIPAA Notice & Consent",
+      "Problem List > Diagnosis List/Index": "Problem List > Diagnosis List/Coding Summary"
+    },
+    "L3": {
+      "INR and Prothrombin Time": "Coagulation Report",
+      "Stress Test Report": "Stress Test",
+      "Esophagogastroduodenoscopy Report": "Esophagogastroduodenoscopy (EGD) Report",
+      "Electrocardiogram": "Electrocardiogram (EKG/ECG) Report"
+    }
+  },
+  "page_type_overrides": {
+    "Immunization List": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Vaccination Administration Record": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Immunization Consent Form": {
+      "L1": "Consent and Authorization",
+      "L2": "Immunization Consent"
+    },
+    "Face Sheet": {
+      "L1": "Demographics",
+      "L2": "Face Sheet"
+    },
+    "Patient Demographics": {
+      "L1": "Demographics",
+      "L2": "Patient Information"
+    },
+    "Cardiology Note": {
+      "L1": "Progress Note",
+      "specialty": "Cardiology"
+    },
+    "Dermatology Note": {
+      "L1": "Progress Note",
+      "specialty": "Dermatology"
+    },
+    "Nephrology Note": {
+      "L1": "Progress Note",
+      "specialty": "Nephrology"
+    },
+    "Neurology Note": {
+      "L1": "Progress Note",
+      "specialty": "Neurology"
+    },
+    "Oncology Note": {
+      "L1": "Progress Note",
+      "specialty": "Oncology"
+    },
+    "Urology Note": {
+      "L1": "Progress Note",
+      "specialty": "Urology"
+    },
+    "Audiology Report": {
+      "L1": "Progress Note",
+      "specialty": "Audiology"
+    },
+    "Consultation Note": {
+      "L1": "Progress Note"
+    },
+    "Device Specialist Note": {
+      "L1": "Progress Note",
+      "specialty": "Cardiology"
+    },
+    "Genetic Counseling Note": {
+      "L1": "Progress Note"
+    },
+    "Travel Medicine Consultation": {
+      "L1": "Progress Note"
+    },
+    "Sleep Clinic Note": {
+      "L1": "Progress Note",
+      "specialty": "Sleep Study"
+    },
+    "Dialysis Treatment Record": {
+      "L1": "Procedure Note",
+      "L2": "Dialysis Record",
+      "specialty": "Dialysis"
+    },
+    "Hemodialysis Flow Sheet": {
+      "L1": "Procedure Note",
+      "L2": "Dialysis Record",
+      "specialty": "Dialysis"
+    },
+    "Peritoneal Dialysis Record": {
+      "L1": "Procedure Note",
+      "L2": "Dialysis Record",
+      "specialty": "Dialysis"
+    },
+    "Prenatal Record": {
+      "L1": "Progress Note",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Antepartum Record": {
+      "L1": "Progress Note",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Postpartum Visit": {
+      "L1": "Progress Note",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Eye Examination Report": {
+      "L1": "Progress Note",
+      "specialty": "Ophthalmology"
+    },
+    "Visual Evaluation": {
+      "L1": "Progress Note",
+      "specialty": "Ophthalmology"
+    },
+    "Physical Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Occupational Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Speech Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Rehabilitation Treatment Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Critical Care Note": {
+      "L1": "Progress Note",
+      "specialty": "Critical Care"
+    },
+    "Palliative Care Note": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Hospice Care Record": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Wound Care Note": {
+      "L1": "Procedure Note",
+      "L2": "Wound Care",
+      "specialty": "Wound Care"
+    },
+    "Infusion Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Infusion and Chemotherapy",
+      "specialty": "Infusion"
+    },
+    "Chemotherapy Administration Record": {
+      "L1": "Procedure Note",
+      "L2": "Infusion and Chemotherapy",
+      "specialty": "Oncology"
+    },
+    "Sleep Study Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Sleep Study"
+    },
+    "Oximetry Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Sleep Study"
+    },
+    "Split Night Study Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Sleep Study"
+    },
+    "Titration Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Sleep Study"
+    },
+    "Pap and HPV Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Colposcopy Examination": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Fundus Photography Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Ophthalmology"
+    },
+    "Visual Field Interpretation": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Ophthalmology"
+    },
+    "Lens Parameters": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Ophthalmology"
+    },
+    "Radiation Therapy Record": {
+      "L1": "Procedure Note",
+      "L2": "Radiation Therapy",
+      "specialty": "Oncology"
+    },
+    "CT Angiography Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "CT Angiography Report"
+    },
+    "MR Angiography Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "MR Angiography Report",
+      "specialty": "Neurology"
+    },
+    "Short Stay Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Short Stay Summary"
+    },
+    "Short Stay Record": {
+      "L1": "Discharge Summary",
+      "L2": "Short Stay Summary"
+    },
+    "Anesthesia Record": {
+      "L1": "Operative Note",
+      "L2": "Anesthesia Record",
+      "specialty": "Anesthesia"
+    },
+    "Anesthesia Evaluation": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Pre-Anesthesia Evaluation": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Post-Anesthesia Care Record": {
+      "L1": "Operative Note",
+      "L2": "Anesthesia Record",
+      "specialty": "Anesthesia"
+    },
+    "Perioperative Evaluation": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Preoperative Evaluation": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Implant Record": {
+      "L1": "Operative Note",
+      "L2": "Others"
+    },
+    "Surgery Report": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report"
+    },
+    "Operative Report": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report"
+    },
+    "Operative Note": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report"
+    },
+    "Triage Report": {
+      "L1": "Operative Note",
+      "L2": "Triage Report",
+      "specialty": "Emergency"
+    },
+    "Triage Note": {
+      "L1": "Operative Note",
+      "L2": "Triage Report",
+      "specialty": "Emergency"
+    },
+    "Triage Assessment": {
+      "L1": "Operative Note",
+      "L2": "Triage Report",
+      "specialty": "Emergency"
+    },
+    "Triage Call Note": {
+      "L1": "Operative Note",
+      "L2": "Triage Report",
+      "specialty": "Emergency"
+    },
+    "Colonoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Colonoscopy Report",
+      "specialty": "Gastroenterology"
+    },
+    "Endoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Endoscopy Report",
+      "specialty": "Gastroenterology"
+    },
+    "Cardiac Catheterization Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Cardiac Catheterization Report",
+      "specialty": "Cardiology"
+    },
+    "Laryngoscopy Procedure Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Laryngoscopy Procedure Report",
+      "specialty": "Audiology"
+    },
+    "Esophagogastroduodenoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Esophagogastroduodenoscopy (EGD) Report"
+    },
+    "Sigmoidoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Sigmoidoscopy Report",
+      "specialty": "Gastroenterology"
+    },
+    "Bronchoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Bronchoscopy Report",
+      "specialty": "Pulmonology"
+    },
+    "Cystoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Cystoscopy Report",
+      "specialty": "Urology"
+    },
+    "Mohs Surgery Report": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report",
+      "specialty": "Dermatology"
+    },
+    "Surgical Pathology Procedure": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report",
+      "specialty": "Pathology"
+    },
+    "Gastroenterology Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Office Procedure",
+      "specialty": "Gastroenterology"
+    },
+    "Retinal Office Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Office Procedure",
+      "specialty": "Ophthalmology"
+    },
+    "Blood Transfusion Record": {
+      "L1": "Medication Record",
+      "L2": "Blood Transfusion Record"
+    },
+    "Transfusion Record": {
+      "L1": "Medication Record",
+      "L2": "Blood Transfusion Record"
+    },
+    "Blood Product Administration Record": {
+      "L1": "Medication Record",
+      "L2": "Blood Transfusion Record"
+    },
+    "Transfusion Flow Sheet": {
+      "L1": "Medication Record",
+      "L2": "Blood Transfusion Record"
+    },
+    "Immunization Record": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Vaccination Record": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Immunization History": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Pain Management Note": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Pain Clinic Note": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Pain Management Consultation": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Home Health Visit Note": {
+      "L1": "Progress Note",
+      "specialty": "Home Health"
+    },
+    "Skilled Nursing Visit Note": {
+      "L1": "Progress Note",
+      "specialty": "Nursing"
+    },
+    "Housecalls Visit Summary": {
+      "L1": "Progress Note",
+      "specialty": "Home Health"
+    },
+    "Face to Face Evaluation Note": {
+      "L1": "Progress Note",
+      "specialty": "Home Health"
+    },
+    "Occupational Health Record": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Occupational Health"
+    },
+    "Work Injury Evaluation": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Occupational Health"
+    },
+    "Fitness for Duty Evaluation": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Occupational Health"
+    },
+    "Nurses Notes": {
+      "L1": "Progress Note",
+      "specialty": "Nursing"
+    },
+    "Nursing Note": {
+      "L1": "Progress Note",
+      "specialty": "Nursing"
+    },
+    "ICU Flow Sheet": {
+      "L1": "Operative Note",
+      "L2": "Critical Care Record",
+      "specialty": "Critical Care"
+    },
+    "Ventilator Management Record": {
+      "L1": "Operative Note",
+      "L2": "Critical Care Record",
+      "specialty": "Critical Care"
+    },
+    "Case Management Note": {
+      "L1": "Progress Note",
+      "L2": "Others"
+    },
+    "Care Coordination Note": {
+      "L1": "Progress Note",
+      "L2": "Others"
+    },
+    "Utilization Review Note": {
+      "L1": "Consent and Authorization",
+      "L2": "Prior Authorization"
+    },
+    "Emergency Medical Services Report": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "Medicare Annual Wellness Visit": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Resumen de Alta": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note"
+    },
+    "Resumen de Instruccion": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Instruction"
+    },
+    "Consulta": {
+      "L1": "Progress Note"
+    },
+    "Vital Signs Record": {
+      "L1": "Progress Note",
+      "L2": "Physical Exam"
+    },
+    "Telemetry Record": {
+      "L1": "Progress Note",
+      "L2": "Physical Exam"
+    },
+    "Functional Status Report": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Clock Drawing Test": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Growth Chart": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Medication Reconciliation": {
+      "L1": "Medication Record",
+      "L2": "Medication List"
+    },
+    "Patient Agreement Form": {
+      "L1": "Consent and Authorization",
+      "L2": "General Consent"
+    },
+    "Web Encounter": {
+      "L1": "Patient Communication",
+      "L2": "Patient Message"
+    },
+    "Psychiatric Evaluation": {
+      "L1": "Progress Note",
+      "specialty": "Behavioral Health"
+    },
+    "Superbill": {
+      "L1": "Administrative",
+      "L2": "Superbill"
+    },
+    "Charge Sheet": {
+      "L1": "Administrative",
+      "L2": "Superbill"
+    },
+    "Coding Summary": {
+      "L1": "Administrative",
+      "L2": "Others"
+    },
+    "Admission Record": {
+      "L1": "Progress Note",
+      "L2": "Summary"
+    },
+    "Pre-Admission Testing Record": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Anesthesia Transfer of Care Note": {
+      "L1": "Operative Note",
+      "L2": "Anesthesia Record",
+      "specialty": "Anesthesia"
+    },
+    "Plan of Care": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Care Plan": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Treatment Plan": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Nursing Care Plan": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Interdisciplinary Plan of Care": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Rehabilitation Plan": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan"
+    },
+    "Dialysis Flow Sheet": {
+      "L1": "Procedure Note",
+      "L2": "Dialysis Record",
+      "specialty": "Dialysis"
+    },
+    "Infusion Record": {
+      "L1": "Procedure Note",
+      "L2": "Infusion and Chemotherapy",
+      "specialty": "Infusion"
+    },
+    "Burn Treatment Record": {
+      "L1": "Procedure Note",
+      "L2": "Wound Care",
+      "specialty": "Wound Care"
+    },
+    "Occupational Therapy Daily Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Respiratory Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Pulmonology"
+    },
+    "Chiropractic Treatment Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Acupuncture Treatment Record": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Cardiac Rehabilitation Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Cardiology"
+    },
+    "Therapy Report": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Others"
+    },
+    "Office Procedure Report": {
+      "L1": "Procedure Note",
+      "L2": "Office Procedure"
+    },
+    "Laser Report": {
+      "L1": "Procedure Note",
+      "L2": "Laser Procedure"
+    },
+    "Injection Visit": {
+      "L1": "Procedure Note",
+      "L2": "Injection Visit"
+    },
+    "Therapy Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note",
+      "specialty": "Rehabilitation"
+    },
+    "Physical Therapy Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note",
+      "specialty": "Rehabilitation"
+    },
+    "Occupational Therapy Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note",
+      "specialty": "Rehabilitation"
+    },
+    "Knee Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Knee Procedure",
+      "specialty": "Orthopedics"
+    },
+    "Lumbar Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Lumbar Procedure",
+      "specialty": "Orthopedics"
+    },
+    "Elastography Procedure Report": {
+      "L1": "Procedure Note",
+      "L2": "Elastography"
+    },
+    "Laser Procedure Report": {
+      "L1": "Procedure Note",
+      "L2": "Laser Procedure"
+    },
+    "Pathology Procedure Note": {
+      "L1": "Procedure Note",
+      "L2": "Pathology Procedure",
+      "specialty": "Pathology"
+    },
+    "Intraoperative Record": {
+      "L1": "Operative Note",
+      "L2": "Procedure List"
+    },
+    "Intraoperative Report": {
+      "L1": "Operative Note",
+      "L2": "Procedure List"
+    },
+    "Phase Record": {
+      "L1": "Operative Note",
+      "L2": "Procedure List"
+    },
+    "OR Summary": {
+      "L1": "Operative Note",
+      "L2": "Procedure List"
+    },
+    "Operating Room Summary": {
+      "L1": "Operative Note",
+      "L2": "Procedure List"
+    },
+    "Postoperative Procedure Note": {
+      "L1": "Operative Note",
+      "L2": "Post-operative"
+    },
+    "Mammogram Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Mammogram Report",
+      "specialty": "Oncology"
+    },
+    "Bone Mineral Density Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Bone Mineral Density Report",
+      "specialty": "Orthopedics"
+    },
+    "Carotid Duplex Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Carotid Duplex Report",
+      "specialty": "Cardiology"
+    },
+    "Ankle-Brachial Index Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Ankle-Brachial Index Report",
+      "specialty": "Cardiology"
+    },
+    "Plethysmography Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Plethysmography Report",
+      "specialty": "Cardiology"
+    },
+    "Extremity Doppler Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Extremity Doppler Report",
+      "specialty": "Cardiology"
+    },
+    "Doppler Duplex Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Doppler Duplex Report",
+      "specialty": "Cardiology"
+    },
+    "Pulmonary Function Test": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Pulmonary Function Test",
+      "specialty": "Pulmonology"
+    },
+    "Esophageal Manometry Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Esophageal Manometry Report",
+      "specialty": "Gastroenterology"
+    },
+    "Allergy Testing Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Allergy Testing Report",
+      "specialty": "Pulmonology"
+    },
+    "FISH Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "FISH Report",
+      "specialty": "Pathology"
+    },
+    "Genetic Test Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result",
+      "L3": "Genetic Test Report",
+      "specialty": "Pathology"
+    },
+    "Brain MRI Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Brain MRI Report",
+      "specialty": "Neurology"
+    },
+    "Preoperative Order": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Postoperative Follow-up Note": {
+      "L1": "Operative Note",
+      "L2": "Post-operative"
+    },
+    "Postoperative Order": {
+      "L1": "Operative Note",
+      "L2": "Post-operative"
+    },
+    "Surgical Consent Form": {
+      "L1": "Consent and Authorization",
+      "L2": "Surgical Consent"
+    },
+    "Transfusion Consent Form": {
+      "L1": "Consent and Authorization",
+      "L2": "Transfusion Consent"
+    },
+    "HIPAA Form": {
+      "L1": "Consent and Authorization",
+      "L2": "HIPAA Notice & Consent"
+    },
+    "Consent Form": {
+      "L1": "Consent and Authorization",
+      "L2": "General Consent"
+    },
+    "Release of Information Authorization": {
+      "L1": "Consent and Authorization",
+      "L2": "Release of Information"
+    },
+    "Prior Authorization Request": {
+      "L1": "Consent and Authorization",
+      "L2": "Prior Authorization"
+    },
+    "Insurance Authorization Note": {
+      "L1": "Consent and Authorization",
+      "L2": "Prior Authorization"
+    },
+    "Referral Authorization": {
+      "L1": "Consent and Authorization",
+      "L2": "Referral Authorization"
+    },
+    "Referral Authorization Form": {
+      "L1": "Consent and Authorization",
+      "L2": "Referral Authorization"
+    },
+    "Assignment of Benefits": {
+      "L1": "Consent and Authorization",
+      "L2": "Assignment of Benefits"
+    },
+    "Authorization Form": {
+      "L1": "Consent and Authorization",
+      "L2": "General Authorization"
+    },
+    "Patient Registration": {
+      "L1": "Administrative",
+      "L2": "Patient Registration"
+    },
+    "Registration Form": {
+      "L1": "Administrative",
+      "L2": "Patient Registration"
+    },
+    "Registration Page": {
+      "L1": "Administrative",
+      "L2": "Patient Registration"
+    },
+    "Admission Face Sheet": {
+      "L1": "Demographics",
+      "L2": "Face Sheet"
+    },
+    "Myocardial Perfusion Study": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "L3": "Nuclear Medicine Report",
+      "specialty": "Cardiology"
+    },
+    "Nutrition Note": {
+      "L1": "Progress Note",
+      "specialty": "Nutrition"
+    },
+    "Dietary Note": {
+      "L1": "Progress Note",
+      "specialty": "Nutrition"
+    },
+    "Dietitian Note": {
+      "L1": "Progress Note",
+      "specialty": "Nutrition"
+    },
+    "Medical Nutrition Therapy Note": {
+      "L1": "Progress Note",
+      "specialty": "Nutrition"
+    },
+    "Nutrition Assessment": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Nutrition"
+    },
+    "Health History Form": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Signature Page": {
+      "L1": "Progress Note",
+      "L2": "Signature"
+    },
+    "Medical Record Request": {
+      "L1": "Others",
+      "L2": ""
+    },
+    "Policy Page": {
+      "L1": "Consent and Authorization",
+      "L2": "General Consent"
+    },
+    "Nursing Assessment for Home Care": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Home Health"
+    },
+    "Home Health Care Evaluation": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment",
+      "specialty": "Home Health"
+    },
+    "Home Health Task List and Time Record": {
+      "L1": "Progress Note",
+      "L2": "Others",
+      "specialty": "Home Health"
+    },
+    "Nursing Visit Note": {
+      "L1": "Progress Note",
+      "L2": "Others",
+      "specialty": "Home Health"
+    },
+    "Coding Record": {
+      "L1": "Administrative",
+      "L2": "Others"
+    },
+    "Records Request Letter": {
+      "L1": "Others",
+      "L2": ""
+    },
+    "ED Note": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "Emergency Department Note": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "Consent for Treatment": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Consent to Treat": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Treatment Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Diagnosis List": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Diagnosis Index": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Clinical Diagnosis List": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Referral Letter": {
+      "L1": "Provider Letter",
+      "L2": "Referral Letter"
+    },
+    "Consultation Letter": {
+      "L1": "Provider Letter",
+      "L2": "Referral Letter"
+    },
+    "Provider Letter": {
+      "L1": "Provider Letter",
+      "L2": "Others"
+    },
+    "Ambulatory Correspondence": {
+      "L1": "Provider Letter",
+      "L2": "Others"
+    },
+    "Audiogram": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Audiogram and Hearing Loss Report"
+    },
+    "Hearing Test Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Audiogram and Hearing Loss Report"
+    },
+    "Visual Field Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Visual Field Report"
+    },
+    "Optical Coherence Tomography": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Optical Coherence Tomography Report"
+    },
+    "Telemetry Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Telemetry Report"
+    },
+    "Telemetry Strip": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Telemetry Report"
+    },
+    "Behavioral Assessment": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Behavioral Assessment"
+    },
+    "EGD Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Esophagogastroduodenoscopy (EGD) Report"
+    },
+    "Emergency Note": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "ED Provider Note": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "After Visit Summary": {
+      "L1": "Clinical Summary",
+      "L2": "After-Visit Summary"
+    },
+    "Transition of Care Summary": {
+      "L1": "Clinical Summary",
+      "L2": "Summary of Care (C-CDA)"
+    }
+  },
+  "family_map": {
+    "Progress Note": {
+      "L1": "Progress Note"
+    },
+    "Specialty Note": {
+      "L1": "Progress Note"
+    },
+    "Emergency Department Note": {
+      "L1": "Progress Note",
+      "L2": "",
+      "specialty": "Emergency"
+    },
+    "Home Visit Note": {
+      "L1": "Progress Note"
+    },
+    "Operative Report": {
+      "L1": "Operative Note",
+      "L2": "Surgery Report"
+    },
+    "Endoscopy Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Gastroenterology"
+    },
+    "Anesthesia Record": {
+      "L1": "Operative Note",
+      "L2": "Anesthesia Record",
+      "specialty": "Anesthesia"
+    },
+    "Perioperative Evaluation": {
+      "L1": "Operative Note",
+      "L2": "Pre-operative"
+    },
+    "Implant Record": {
+      "L1": "Operative Note",
+      "L2": "Others"
+    },
+    "Critical Care Record": {
+      "L1": "Progress Note",
+      "specialty": "Critical Care"
+    },
+    "Behavioral Health Note": {
+      "L1": "Progress Note",
+      "specialty": "Behavioral Health"
+    },
+    "Palliative Care Note": {
+      "L1": "Progress Note",
+      "specialty": "Palliative Care"
+    },
+    "Wound Care Note": {
+      "L1": "Procedure Note",
+      "L2": "Wound Care",
+      "specialty": "Wound Care"
+    },
+    "Therapy Note": {
+      "L1": "Procedure Note",
+      "L2": "Therapy Session",
+      "specialty": "Rehabilitation"
+    },
+    "Dialysis Record": {
+      "L1": "Procedure Note",
+      "L2": "Dialysis Record",
+      "specialty": "Dialysis"
+    },
+    "Infusion Therapy Record": {
+      "L1": "Procedure Note",
+      "L2": "Infusion and Chemotherapy",
+      "specialty": "Infusion"
+    },
+    "Obstetric and Gynecologic Record": {
+      "L1": "Progress Note",
+      "specialty": "Obstetrics and Gynecology"
+    },
+    "Eye Examination": {
+      "L1": "Progress Note",
+      "specialty": "Ophthalmology"
+    },
+    "Telephone Encounter": {
+      "L1": "Progress Note"
+    },
+    "Provider Letter": {
+      "L1": "Provider Letter",
+      "L2": "Others"
+    },
+    "Laboratory Report": {
+      "L1": "Lab Report",
+      "L2": "Lab Result"
+    },
+    "Radiology Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report"
+    },
+    "Pathology Report": {
+      "L1": "Lab Report",
+      "L2": "Pathology Report",
+      "specialty": "Pathology"
+    },
+    "Cardiac Diagnostic Test": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Cardiology"
+    },
+    "Neurodiagnostic Test": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Neurology"
+    },
+    "Nuclear Medicine Report": {
+      "L1": "Lab Report",
+      "L2": "Radiology Report",
+      "specialty": "Radiology"
+    },
+    "Diagnostic Study": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study"
+    },
+    "Sleep Study": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "specialty": "Sleep Study"
+    },
+    "Patient Demographics": {
+      "L1": "Demographics",
+      "L2": "Patient Information"
+    },
+    "Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note"
+    },
+    "Discharge Instructions": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Instruction"
+    },
+    "Discharge Medication": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Medication"
+    },
+    "Therapy Discharge Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Depart/Discharge Note",
+      "specialty": "Rehabilitation"
+    },
+    "Transfer of Care Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Transfer of Care"
+    },
+    "Interim Summary": {
+      "L1": "Discharge Summary",
+      "L2": "Interim Summary"
+    },
+    "Medication Record": {
+      "L1": "Medication Record"
+    },
+    "Order and Requisition": {
+      "L1": "Order and Requisition"
+    },
+    "Consent Form": {
+      "L1": "Consent and Authorization"
+    },
+    "Problem List": {
+      "L1": "Problem List"
+    },
+    "Plan of Care": {
+      "L1": "Progress Note"
+    },
+    "Screening and Checklist": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Assessment and Evaluation": {
+      "L1": "Forms and Questionnaires",
+      "L2": "Assessment"
+    },
+    "Patient Communication": {
+      "L1": "Patient Communication"
+    },
+    "Appointment Record": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "Billing Statement": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices"
+    },
+    "Unknown": {
+      "L1": "Others"
+    },
+    "Authorization Form": {
+      "L1": "Consent and Authorization"
+    },
+    "Immunization Record": {
+      "L1": "Immunization",
+      "L2": "Immunization Record"
+    },
+    "Admission Record": {
+      "L1": "Progress Note"
+    },
+    "Vitals and Telemetry": {
+      "L1": "Progress Note"
+    },
+    "Nursing Note": {
+      "L1": "Progress Note",
+      "specialty": "Nursing"
+    },
+    "Prehospital Record": {
+      "L1": "Progress Note",
+      "specialty": "Emergency"
+    },
+    "Flow Sheet": {
+      "L1": "Operative Note",
+      "L2": "Critical Care Record",
+      "specialty": "Critical Care"
+    },
+    "Procedure Note": {
+      "L1": "Procedure Note"
+    },
+    "Discharge Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Discharge Diagnoses": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Final Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Final Diagnoses": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Principal Discharge Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Hospital Discharge Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Discharge Diagnosis List": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Principal Diagnosis": {
+      "L1": "Discharge Summary",
+      "L2": "Discharge Diagnosis"
+    },
+    "Invoice Page": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices"
+    },
+    "Appointment Note": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "Statement of Account": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices"
+    },
+    "Superbill": {
+      "L1": "Administrative",
+      "L2": "Superbill"
+    },
+    "Payment Plan": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices"
+    },
+    "Explanation of Benefits": {
+      "L1": "Administrative",
+      "L2": "Billing & Invoices"
+    },
+    "Appointment List": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "Scheduling Note": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "No Show Letter": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "Cancellation Notice": {
+      "L1": "Administrative",
+      "L2": "Appointment Record"
+    },
+    "Home Health Visit Note": {
+      "L1": "Progress Note",
+      "L2": "",
+      "specialty": "Home Health"
+    },
+    "Home Care Progress Note": {
+      "L1": "Progress Note",
+      "L2": "",
+      "specialty": "Home Health"
+    },
+    "Home Health Certification": {
+      "L1": "Order and Requisition",
+      "L2": "Physician Order",
+      "specialty": "Home Health"
+    },
+    "Plan of Treatment (Home Health)": {
+      "L1": "Progress Note",
+      "L2": "Assessment and Plan",
+      "specialty": "Home Health"
+    },
+    "Case Management Note": {
+      "L1": "Progress Note",
+      "L2": "Others"
+    },
+    "Care Coordination Note": {
+      "L1": "Progress Note",
+      "L2": "Others"
+    },
+    "Utilization Review Note": {
+      "L1": "Consent and Authorization",
+      "L2": "Prior Authorization"
+    },
+    "Coding Summary": {
+      "L1": "Administrative",
+      "L2": "Others"
+    },
+    "Coding Record": {
+      "L1": "Administrative",
+      "L2": "Others"
+    },
+    "Medical Record Request": {
+      "L1": "Others",
+      "L2": ""
+    },
+    "Records Request Letter": {
+      "L1": "Others",
+      "L2": ""
+    },
+    "ED Note": {
+      "L1": "Progress Note",
+      "L2": "",
+      "specialty": "Emergency"
+    },
+    "Consent for Treatment": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Consent to Treat": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Treatment Consent": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "Patient Registration": {
+      "L1": "Administrative",
+      "L2": "Patient Registration"
+    },
+    "Registration Form": {
+      "L1": "Administrative",
+      "L2": "Patient Registration"
+    },
+    "Diagnosis List": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Diagnosis Index": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Clinical Diagnosis List": {
+      "L1": "Problem List",
+      "L2": "Diagnosis List/Coding Summary"
+    },
+    "Referral Letter": {
+      "L1": "Provider Letter",
+      "L2": "Referral Letter"
+    },
+    "Consultation Letter": {
+      "L1": "Provider Letter",
+      "L2": "Consultation Letter"
+    },
+    "Ambulatory Correspondence": {
+      "L1": "Provider Letter",
+      "L2": "Others"
+    },
+    "Audiogram": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Audiogram and Hearing Loss Report"
+    },
+    "Hearing Test Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Audiogram and Hearing Loss Report"
+    },
+    "Visual Field Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Visual Field Report"
+    },
+    "Optical Coherence Tomography": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Optical Coherence Tomography Report"
+    },
+    "Telemetry Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Telemetry Report"
+    },
+    "Telemetry Strip": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Telemetry Report"
+    },
+    "Behavioral Assessment": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Behavioral Assessment"
+    },
+    "EGD Report": {
+      "L1": "Lab Report",
+      "L2": "Diagnostic Study",
+      "L3": "Esophagogastroduodenoscopy (EGD) Report"
+    },
+    "Esophagogastroduodenoscopy Report": {
+      "L1": "Procedure Note",
+      "L2": "Endoscopy (EGD)"
+    },
+    "Treatment Consent Form": {
+      "L1": "Consent and Authorization",
+      "L2": "Consent for Treatment"
+    },
+    "EGD": {
+      "L1": "Procedure Note",
+      "L2": "Endoscopy (EGD)"
+    }
+  },
+  "L2_merge": {
+    "Order and Requisition": {
+      "Order Note": "Physician Order",
+      "Service Request": "Physician Order",
+      "Physician Order": "Physician Order",
+      "Laboratory Form": "Laboratory Requisition",
+      "Laboratory Requisition": "Laboratory Requisition",
+      "Insurance Authorization Note": "__move:Consent and Authorization",
+      "Referral Authorization Form": "__move:Consent and Authorization",
+      "Referral Order": "Referral Order",
+      "Referral Form": "Referral Order",
+      "Referral Request": "Referral Order",
+      "Specialist Referral": "Referral Order",
+      "Consultation Request": "Referral Order",
+      "Imaging Order": "Physician Order",
+      "Radiology Order": "Physician Order",
+      "Medication Order": "Physician Order",
+      "Nursing Order": "Physician Order",
+      "Therapy Order": "Physician Order"
+    },
+    "Problem List": {
+      "Diagnosis List": "Diagnosis List/Coding Summary",
+      "Diagnosis Index": "Diagnosis List/Coding Summary",
+      "Clinical Diagnosis List": "Diagnosis List/Coding Summary",
+      "Problem List": "Problem List"
+    },
+    "Forms and Questionnaires": {
+      "Screening and Checklist": "Assessment",
+      "Checklist": "Questionnaire",
+      "Preventive Health Checklist": "Assessment",
+      "Screening Test Record": "Assessment",
+      "Health Maintenance Report": "Assessment",
+      "Clock Drawing Test": "Assessment",
+      "Growth Chart": "Assessment",
+      "Mini Mental Status Examination": "Assessment",
+      "Activities of Daily Living Flow Sheet": "Assessment",
+      "Staying Healthy Assessment": "Assessment",
+      "Assessment and Evaluation": "Assessment",
+      "Functional Status Report": "Assessment",
+      "Evaluation Form": "Assessment",
+      "Plan of Care": "__move:Progress Note"
+    },
+    "Patient Communication": {
+      "General Message": "Patient Message",
+      "Telephone Message": "Patient Message",
+      "Patient Portal Communication": "Patient Message",
+      "Ambulatory Correspondence": "__move:Provider Letter",
+      "Provider Letter": "__move:Provider Letter",
+      "General Notice": "Notice",
+      "Discharge Notice": "Notice",
+      "Patient Instruction": "Patient Education Material",
+      "Patient Education Material": "Patient Education Material",
+      "Web Encounter": "Patient Message",
+      "Notice of Privacy Practices": "__move:Consent and Authorization",
+      "Notice of Health Information Practices": "__move:Consent and Authorization",
+      "Privacy Notice": "__move:Consent and Authorization",
+      "Patient Rights Notice": "__move:Consent and Authorization",
+      "Patient Rights and Responsibilities": "__move:Consent and Authorization",
+      "Office Policy": "__move:Consent and Authorization",
+      "Financial Policy": "__move:Consent and Authorization"
+    },
+    "Consent and Authorization": {
+      "Surgical Consent Form": "Surgical Consent",
+      "Transfusion Consent Form": "Transfusion Consent",
+      "Immunization Consent Form": "Immunization Consent",
+      "HIPAA Form": "HIPAA Notice & Consent",
+      "Patient Agreement Form": "General Consent",
+      "Consent Form": "General Consent",
+      "Release of Information Authorization": "Release of Information",
+      "Prior Authorization Request": "Prior Authorization",
+      "Insurance Authorization Note": "Prior Authorization",
+      "Referral Authorization": "Referral Authorization",
+      "Referral Authorization Form": "Referral Authorization",
+      "Assignment of Benefits": "Assignment of Benefits",
+      "Authorization Form": "General Authorization",
+      "General Consent Form": "General Consent",
+      "Consent to Treat": "Consent for Treatment",
+      "Financial Consent": "General Consent",
+      "Treatment Authorization": "General Authorization",
+      "Service Authorization": "General Authorization",
+      "Notice of Privacy Practices": "General Consent",
+      "Notice of Health Information Practices": "General Consent",
+      "Privacy Notice": "General Consent",
+      "Patient Rights Notice": "General Consent",
+      "Patient Rights and Responsibilities": "General Consent",
+      "Office Policy": "General Consent",
+      "Financial Policy": "General Consent",
+      "Policy Page": "General Consent",
+      "Consent for Treatment": "Consent for Treatment",
+      "Treatment Consent Form": "Consent for Treatment"
+    },
+    "Provider Letter": {
+      "Provider Letter": "Others",
+      "Ambulatory Correspondence": "Others",
+      "Referral Letter": "Referral Letter",
+      "Consultation Letter": "Consultation Letter",
+      "Specialist Letter": "Consultation Letter",
+      "Consult Letter": "Consultation Letter"
+    },
+    "Administrative": {
+      "Patient Registration": "Patient Registration",
+      "Registration Form": "Patient Registration"
+    },
+    "Procedure Note": {
+      "EGD": "Endoscopy (EGD)"
+    },
+    "Demographics": {
+      "Patient Demographics": "Patient Information",
+      "Patient Information": "Patient Information",
+      "Demographics": "Patient Information",
+      "Face Sheet": "Face Sheet",
+      "Facesheet": "Face Sheet",
+      "Registration Face Sheet": "Face Sheet"
+    }
+  },
+  "L3_merge": {
+    "Procedure Note": {},
+    "Lab Report": {
+      "Diagnostic Study": {
+        "Sleep Clinic Note": "Sleep Study Report",
+        "Electrocardiogram": "Electrocardiogram (EKG/ECG) Report",
+        "Myocardial Perfusion Study": "Stress Test",
+        "Diagnostic Report": "Others",
+        "Gastroenterology Procedure Note": "__move:Procedure Note",
+        "Stress Test Report": "Stress Test",
+        "Treadmill Report": "Stress Test",
+        "Electromyography Report": "Electromyography and Nerve Conduction",
+        "Nerve Conduction Study": "Electromyography and Nerve Conduction"
+      },
+      "Lab Result": {
+        "Laboratory Report": "__delete",
+        "Laboratory Result": "__delete",
+        "INR Result": "Coagulation Report",
+        "Prothrombin Time Result": "Coagulation Report",
+        "Blood Glucose Result": "Glucose Report"
+      },
+      "Radiology Report": {
+        "Tomography Report": "CT Scan Report",
+        "Sonogram Report": "Ultrasound Report",
+        "Chest View": "X-Ray Report",
+        "SPECT Report": "Nuclear Medicine Report",
+        "Radiology Report": "__delete"
+      },
+      "Pathology Report": {
+        "Pap and HPV Report": "Cytology Report",
+        "Pathology Report": "__delete"
+      }
+    }
+  },
+  "context_rules": {
+    "page_essence": {
+      "rule": "Each page is labelled by what the page itself holds, because the model sees one page at a time. A page that is wholly lab results, imaging results, a medication list or an order list takes that standalone path (Lab Report, Medication Record, Order and Requisition) even when it sits inside a progress note, discharge packet or other document. Headers, footers, signature or routing blocks, an allergy list or a short problem list on the same page do not change this.",
+      "split_pages": "A page that also carries note content (HPI, interval history, ROS, exam, assessment, impression or plan) is a split page and keeps the parent document's path, with the L2 that fits the page (for example Progress Note > Lab and Imaging Results or Medication List).",
+      "grouping": "Grouping pages back into documents is done later, outside the page classifier.",
+      "comment": "Client direction 2026-10-24. Replaces the earlier parent-document rule for lab, medication and imaging pages."
+    },
+    "clinical_summary": {
+      "decided_by": "the TITLE of the document, never by a phrase inside a note",
+      "summary_of_care_titles": [
+        "Continuity of Care Document",
+        "Summary of Care",
+        "Transition of Care Document",
+        "Transition of Care Summary",
+        "Patient Summary of Care",
+        "Encounter Summary (C-CDA export with OID header such as 2.16.840.1.113883 / 2.840.114350)"
+      ],
+      "after_visit_summary_titles": [
+        "After Visit Summary",
+        "Patient Clinical Summary",
+        "Visit Summary (patient copy)"
+      ],
+      "becomes": {
+        "L1": "Clinical Summary",
+        "L2": "Summary of Care (C-CDA) | After-Visit Summary",
+        "L3": ""
+      },
+      "pages_inside": "Every page of the summary takes this path, including the problem, medication, lab and note sections printed inside it (same parent-document rule as labs inside a progress note).",
+      "stays_progress_note": "An authored provider note that MENTIONS a summary (\"After Visit Summary (Snapshot) printed\", \"Summary of care document sent to\") is still a Progress Note. An Epic encounter print whose pages are the provider note stays Progress Note.",
+      "stays_discharge_summary": "A hospital discharge packet page titled Clinical Summary (Result Type Clinical Summary inside Discharge Documentation) stays Discharge Summary. Anesthesia Transfer of Care notes and true facility-to-facility transfer forms stay Discharge Summary > Transfer of Care.",
+      "codeability": "non_codeable: a summary export restates encounters; code from the authenticated source note",
+      "encounter_type": "no page-type prior: the setting comes from wording on the page (admit date, visit type), so an outpatient summary is no longer pushed to Inpatient",
+      "comment": "Client approved 2026-10-24 after Charts 8-11. Cross-validated by chart: Progress Note F1 0.817 -> 0.819 with the new class, so it does not take pages from Progress Note; the text model alone confuses Clinical Summary with Progress Note, so the title rule is what decides it."
+    },
+    "admission_history_and_physical": {
+      "when_page_type_in": [
+        "History and Physical",
+        "History & Physical",
+        "Admission H&P",
+        "Admission History and Physical"
+      ],
+      "when_encounter": "hospital stay: inpatient, observation or short stay. Evidence on the page or in the chart: Adm Date / Date of admission, Admitting or Attending physician, Room/Bed, an observation or inpatient service, or a discharge document in the same chart.",
+      "becomes": {
+        "L1": "Discharge Summary",
+        "L2": "History and Physical",
+        "L3": ""
+      },
+      "codeability": "discharge",
+      "pages_inside": "Every page of the admission H&P takes this path, including medication, lab or imaging pages bound inside it (same rule as lab/medication pages inside a progress note).",
+      "otherwise": "An office or clinic H&P (pre-operative clearance in a clinic, initial OB visit, new-patient H&P) stays Progress Note with its section-based L2. An \"H&P reviewed, no changes\" update before a procedure stays where it is (Operative Note > Pre-operative when it sits in the operative record).",
+      "comment": "Client direction 2026-10-24: the admission H&P belongs with the hospital-stay documents under Discharge Summary, next to Interim Summary, Transfer of Care and Short Stay Summary."
+    },
+    "inpatient_consultation": {
+      "when_page_type_in": [
+        "Consultation Note",
+        "Consultation Notes",
+        "Consult Note",
+        "Consultation Report"
+      ],
+      "when_encounter": "hospital stay: inpatient, observation or short stay (same evidence as admission_history_and_physical)",
+      "becomes": {
+        "L1": "Discharge Summary",
+        "L2": "Consultation Note",
+        "L3": ""
+      },
+      "codeability": "discharge",
+      "otherwise": "An outpatient consult visit stays Progress Note; a consult letter to the referring doctor is Provider Letter > Consultation Letter.",
+      "comment": "Client approved 2026-10-24: an inpatient consult belongs to the stay, like the admission H&P."
+    },
+    "telephone_encounter": {
+      "when_page_type_in": [
+        "Telephone Encounter",
+        "Telephone Note",
+        "Phone Note",
+        "Postoperative Telephone Call",
+        "Post-Procedure Follow up Call",
+        "Nurse Triage Call"
+      ],
+      "becomes": {
+        "L1": "Patient Communication",
+        "L2": "Telephone Encounter",
+        "L3": ""
+      },
+      "otherwise": "A scheduled telephone or video VISIT with history, assessment and plan is a Progress Note (encounter type Outpatient (Evisit)), not a Telephone Encounter.",
+      "comment": "Client approved 2026-10-24."
+    },
+    "superbill": {
+      "when": "an encounter form or superbill: visit date, provider, diagnosis codes (ICD-10) and service codes (CPT/HCPCS), often with fee columns",
+      "becomes": {
+        "L1": "Administrative",
+        "L2": "Superbill",
+        "L3": ""
+      },
+      "not": "an invoice, patient statement, cost estimate or payment receipt (Billing & Invoices)",
+      "comment": "Client direction 2026-10-24: Superbill is its own type; more examples to come."
+    },
+    "records_request": {
+      "when": "any page whose purpose is requesting medical records: a provider or payer request letter, a records-request fax, or an EHR addendum or note documenting a records request",
+      "becomes": {
+        "L1": "Provider Letter",
+        "L2": "Records Request",
+        "L3": ""
+      },
+      "comment": "Client direction 2026-10-24: defined by purpose, not by form."
+    }
+  }
+}
