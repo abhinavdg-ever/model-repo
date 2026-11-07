@@ -274,6 +274,8 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
 SIGNED_COPY_MIN_WORDS = 100
 # The reason a contained page carries (2026-11-03: in pass 2; the same mark continuity used).
 CONTAINED_MARK = "short_page_contained_in_page_id:"
+# The words that keep a short page when they are all it adds to its neighbour (2026-11-08, user).
+KEEP_IF_ONLY_ADDED = frozenset({"visit", "diagnosis"})
 # Pass 1 marks exact copies this close (2026-11-03, user).
 EXACT_NEAR_PAGES = 3
 # 2026-11-04 (user): pages of different encounters with the same content are "Repeated
@@ -741,7 +743,9 @@ def _classify(
                 # The neighbour sharing the most words; what the page adds must be headers only.
                 k = max(longer, key=lambda k: (len(mine & page_words[k]), -abs(k - i)))
                 added = mine - page_words[k]
-                if added and heading_words and added <= heading_words:
+                # 2026-11-08 (user): a page whose only new words are "Diagnosis" / "Visit
+                # Diagnosis" is a diagnosis page, not a repeat: never junked.
+                if added and heading_words and added <= heading_words and not (added <= KEEP_IF_ONLY_ADDED and "diagnosis" in added):
                     container, why = k, "headers"
             if container is None:
                 continue

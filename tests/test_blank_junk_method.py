@@ -394,11 +394,12 @@ class TestInvoiceKept:
         assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
         assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
 
-    def test_an_invoice_without_an_amount_and_a_date_stays_junk(self):
+    def test_an_invoice_without_an_amount_and_a_date_is_junk_others(self):
+        """2026-11-07 (user): there is no Junk / Invoice -- Main / Invoice, Junk / Cards or Junk / Others."""
         for text in (INVOICE_TEXT, INVOICE_TEXT + " total $120.00", INVOICE_TEXT + " dated 03/10/2026"):
             inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
             v = method.post_process(decide(inputs), inputs)
-            assert v.code == method.CODE_INVOICE and v.votes.get("invoice_not_kept")
+            assert v.code == classify.CODE_OTHERS and v.votes.get("invoice_not_kept")
 
     def test_a_card_the_model_calls_invoice_is_junk_cards(self):
         """2026-11-07 (user): an insurance card (card rule near miss, or the model's insurance-ID

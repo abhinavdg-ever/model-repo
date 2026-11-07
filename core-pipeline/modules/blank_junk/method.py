@@ -864,13 +864,15 @@ def invoice_evidence(inputs: PageInputs) -> Optional[str]:
 
 
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """A Junk / Invoice page with a money amount and a date on it is Main; page_classify gives
-    it Invoice / Invoice Page. Without both it stays Junk / Invoice (2026-11-07, user)."""
+    """There is no Junk / Invoice (2026-11-07, user). An invoice page with a money amount and a
+    date on it is Main (page_classify: Invoice / Invoice Page); without both it is Junk / Others.
+    A card the model called an invoice is already Junk / Cards (decide)."""
     if verdict.code != CODE_INVOICE:
         return verdict
     if invoice_evidence(inputs) is None:
         verdict.votes["invoice_not_kept"] = "no money amount and date on the page"
-        return verdict
+        return Verdict(CODE_OTHERS, verdict.confidence, verdict.rule,
+                       f"{verdict.reason}; no money amount and date on the page -> Junk / Others", verdict.votes)
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE
     bert = inputs.bert or {}

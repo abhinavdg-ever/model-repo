@@ -136,3 +136,17 @@ def test_a_shorter_page_mostly_in_another_is_repeated_content(monkeypatch):
     assert stage.SAME_CONTENT_MARK not in (run(" ".join(words[:85] + [f"extra{i}" for i in range(4)]))[2]["reason"] or "")
     # 70% of the length: too short.
     assert stage.SAME_CONTENT_MARK not in (run(" ".join(words[:70] + ["extra1"]))[2]["reason"] or "")
+
+
+def test_a_short_page_adding_only_diagnosis_stays(monkeypatch):
+    """2026-11-08 (user): when the only words a short page adds to its neighbour are "Diagnosis"
+    or "Visit Diagnosis", it is not junked; any other header-only addition still is."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    for added, kept in (("Visit Diagnosis", True), ("Diagnosis", True), ("Addendum Summary", False)):
+        texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " " + added}
+        pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+        inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+        inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
+        inputs[2].headings = (added,)
+        rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+        assert (rows[2]["flag"] == "not_blank_junk") is kept, added
