@@ -3,7 +3,7 @@
 Implements the same operations as ``db`` helpers so stages and CSV rebuilds
 keep working. State lives only for the process lifetime.
 
-Workspace charts are stored under ``data/folders/<chart_name>-test`` so a
+Workspace charts are stored under ``outputs/charts/<chart_name>-test`` so a
 test run never overwrites a production chart folder.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ TEST_CHART_SUFFIX = "-test"
 
 
 def test_chart_name(name: str) -> str:
-    """Append ``-test`` so workspace lands under ``data/folders/<name>-test``."""
+    """Append ``-test`` so workspace lands under ``outputs/charts/<name>-test``."""
     n = (name or "").strip()
     if not n:
         return n

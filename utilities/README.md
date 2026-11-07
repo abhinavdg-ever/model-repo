@@ -123,8 +123,8 @@ python utilities/merge_training_json.py a.jsonl b.jsonl --out merged.jsonl --dry
 One chart folder per PDF on disk, with a JPEG for each page:
 
 ```
-review-ui/data/folders/<pdf name>/pages/1.jpg
-review-ui/data/folders/<pdf name>/pages/2.jpg
+core-pipeline/outputs/charts/<pdf name>/pages/1.jpg
+core-pipeline/outputs/charts/<pdf name>/pages/2.jpg
 ```
 
 Needs PyMuPDF in the core-pipeline venv: `pip install pymupdf`.
@@ -137,12 +137,12 @@ python ../utilities/pdfs_to_folders.py --out /path/to/folders chart.pdf
 ```
 
 `paths.txt` is one local PDF path per line. A directory argument is every
-PDF in that folder. `--out` defaults to `review-ui/data/folders`.
+PDF in that folder. `--out` defaults to `core-pipeline/outputs/charts`.
 
 Same job via the API / sweeper:
 
 ```bash
-python -m jobs.manifest_sweeper --local ../review-ui/data/metadata/
+python -m jobs.manifest_sweeper --local outputs/metadata/
 
 curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/json' \
   -d '{"local_path":"/path/to/metadata"}'
@@ -150,7 +150,7 @@ curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/jso
 
 ## Harvest extraction keys and date labels
 
-`harvest_keys.py` scans `review-ui/data/folders/*` (standard library only, no venv):
+`harvest_keys.py` scans `core-pipeline/outputs/charts/*` (standard library only, no venv):
 
 ```bash
 python utilities/harvest_keys.py                 # DOS keys -> utilities/output/keys/
@@ -163,7 +163,7 @@ python utilities/harvest_keys.py --field all     # every staged field
 - `keys_summary.csv` — per key and tier: found / accepted / failed counts and examples.
 - `date_labels.csv` — from the OCR text: the words before every date, counted; `known_tier` is blank when no key in `extraction/dos/keys.json` covers the label.
 - `provider_labels.csv` (provider fields) — from the OCR text: the label in front of every credentialed name (`Entered By:`, `Filed by`, `Ordering provider:`), counted; `known_key` is blank when neither `provider_name` nor `electronic_signature` keys.json covers it.
-- `member_labels.csv` (member fields) — from the OCR text, driven by the manifest like the member stage: where the chart's expected name (last name required), DOB (any printed format) or Member ID appears, the words in front of it (`Patient Name:`, `DOB:`, `MRN`), counted per field; `(no label)` = keyless; `known_key` is blank when that field's keys.json does not cover it. Expected members come from `--metadata` (default `review-ui/data/metadata`, `metadata_R*_B*.csv`).
+- `member_labels.csv` (member fields) — from the OCR text, driven by the manifest like the member stage: where the chart's expected name (last name required), DOB (any printed format) or Member ID appears, the words in front of it (`Patient Name:`, `DOB:`, `MRN`), counted per field; `(no label)` = keyless; `known_key` is blank when that field's keys.json does not cover it. Expected members come from `--metadata` (default `core-pipeline/outputs/metadata`, `metadata_R*_B*.csv`).
 
 `keys_rows.csv` columns follow the field: DOS rows carry `dos_from` / `dos_to`, provider rows `profile` / `member_hint`, e-signature rows `provider_name` / `designation` / `signature_date` (its value is the name, else the date).
 

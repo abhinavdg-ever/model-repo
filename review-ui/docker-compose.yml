@@ -2,19 +2,12 @@
 #
 #   docker compose --env-file .env up -d --build
 #
-# A read-only viewer over what core-pipeline produced. It shares exactly two
-# things with the core-pipeline deployment:
-#   * the Postgres database (available later; compose is Local Mode for now)
-#   * the chart workspace volume, mounted READ-ONLY here
-# It calls the core-pipeline API only for the admins' Playground (CORE_PIPELINE_URLS);
-# core-pipeline never calls this one.
-#
-# Two modes, switched per browser from the top bar (Local / DB):
-#   Local — OCR / imaging / page images from /data/folders.
-#   DB    — Postgres for results, Azure Blob for page images (Processed
-#           output_path first, then Raw_Input). Needs DATABASE_URL and blob
-#           access (BLOB_ACCOUNT_URL + AZURE_* or a managed identity).
-# DATA_MODE (local | production) is what a browser that never chose sees.
+# A viewer over what core-pipeline produced, plus ground-truth entry. It shares only
+# data with the core-pipeline deployment (2026-11-07):
+#   * the database: results, ground truth, users (DATABASE_URL)
+#   * Azure Blob: page images (Processed output_path first, then Raw_Input)
+# No chart folders are mounted: there is no Local mode. It calls the core-pipeline API
+# only for the admins' Playground (CORE_PIPELINE_URLS); core-pipeline never calls this one.
 
 services:
   backend:
@@ -26,24 +19,13 @@ services:
     env_file:
       - ./.env
     environment:
-      DATA_MODE: ${DATA_MODE:-local}
-      DATA_ROOT: /data/folders
-      METADATA_ROOT: ${METADATA_ROOT:-/data/metadata}
-      PIPELINE_ROOT: /data/pipeline
-      MONOREPO_ROOT: /data/pipeline
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:4001,http://localhost:4001}
-      # DB mode, Manual Review and Accuracy read Postgres through this.
+      # Every screen reads the database through this.
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs}
       DB_SCHEMA: ${DB_SCHEMA:-public}
       DB_POOL_MIN: ${DB_POOL_MIN:-4}
       DB_POOL_MAX: ${DB_POOL_MAX:-20}
       DB_POOL_WAIT_SEC: ${DB_POOL_WAIT_SEC:-10}
-      # Seconds a scan of /data/folders is trusted before it is rechecked
-      # against file mtimes. core-pipeline writes this volume while the UI is
-      # serving, so a long TTL shows stale stage badges.
-      LOCAL_CACHE_TTL_SECONDS: ${LOCAL_CACHE_TTL_SECONDS:-5}
-      # Optional File Viewer (Azure Blob). Off unless FILE_VIEWER_BLOB_ENABLED=true.
-      FILE_VIEWER_BLOB_ENABLED: ${FILE_VIEWER_BLOB_ENABLED:-false}
       # Same names as core-pipeline (AZURE_STORAGE_*); the BLOB_* ones still work.
       AZURE_STORAGE_AUTH: ${AZURE_STORAGE_AUTH:-entra}
       AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME:-}
@@ -68,9 +50,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ${DATA_HOST_PATH:-./data/folders}:/data/folders:ro
-      - ${PIPELINE_HOST_PATH:-./data/pipeline}:/data/pipeline:ro
-      - ${METADATA_HOST_PATH:-./data/metadata}:/data/metadata:ro
       # Optional: MiniLM for the accuracy report's semantic page-type match
       - ${SEMANTIC_MODEL_HOST_PATH:-../core-pipeline/models/semantic-model}:/models/semantic-model:ro
     restart: unless-stopped

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Harvest every extraction key, and the labels written before dates and provider names.
 
-Scans ``review-ui/data/folders/*`` and writes these CSVs:
+Scans ``core-pipeline/outputs/charts/*`` and writes these CSVs:
 
 ``keys_rows.csv``
     One row per staged key/value pair in ``staging/extraction.json``: chart, page,
@@ -37,7 +37,7 @@ Scans ``review-ui/data/folders/*`` and writes these CSVs:
 
 ``member_labels.csv``
     Read from the OCR text, driven by the manifest as the member stage is: for each chart
-    with a row in the metadata CSVs (``--metadata``, review-ui/data/metadata), every place
+    with a row in the metadata CSVs (``--metadata``, core-pipeline/outputs/metadata), every place
     the expected member's name (first / last), DOB (any printed date format) or Member ID
     appears, and the words in front of it on its line ('Patient Name:', 'DOB:', 'MRN'),
     counted per field (the staging ids: name, dob, member_id). ``(no label)`` = the value
@@ -58,7 +58,7 @@ Standard library only; no venv needed::
     python utilities/harvest_keys.py --field provider
     python utilities/harvest_keys.py --field member
     python utilities/harvest_keys.py --field dos --out /tmp/keys
-    python utilities/harvest_keys.py --folders review-ui/data/folders --label-words 4
+    python utilities/harvest_keys.py --folders core-pipeline/outputs/charts --label-words 4
 """
 from __future__ import annotations
 

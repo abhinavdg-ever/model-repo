@@ -26,9 +26,10 @@ services:
       DB_POOL_MIN: ${DB_POOL_MIN:-1}
       DB_POOL_MAX: ${DB_POOL_MAX:-20}
 
-      # Chart workspace. Must resolve to the same storage review-ui mounts.
-      DATA_ROOT: /data/folders
-      METADATA_ROOT: /data/metadata
+      # Scratch: chart working folders (purged after OUTPUTS_RETENTION_DAYS) and manifests.
+      # review-ui does not mount these; it reads the database and Azure Blob.
+      DATA_ROOT: /data/outputs/charts
+      METADATA_ROOT: /data/outputs/metadata
 
       # Pages per chart × charts in a batch must fit the pool (see BATCH_*).
       STAGE_WORKERS: ${STAGE_WORKERS:-4}
@@ -82,9 +83,8 @@ services:
       # Colour worker tags in stdout (docker compose logs preserves ANSI).
       LOG_COLOR: ${LOG_COLOR:-true}
     volumes:
-      # Chart workspace — written here, read by review-ui.
-      - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
-      - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
+      # core-pipeline/outputs/ on the host: scratch, not shared with review-ui.
+      - ${OUTPUTS_HOST_PATH:-./outputs}:/data/outputs
       # core-pipeline/models/ on the host: large checkpoints plus the small
       # models (blank-junk/, kv-extraction/, hw/). page-family/page-leaf/,
       # page-family/page-axes/ and encounter/ come with git (encoders via

@@ -68,7 +68,7 @@ def main() -> None:
             action="store_true",
             default=False,
             help="Local only: no Postgres; write workspace under "
-                 "data/folders/<chart>-test for review-ui. Env TEST_MODE=true.",
+                 "outputs/charts/<chart>-test for review-ui. Env TEST_MODE=true.",
         )
         parser_obj.add_argument(
             "--skip-db-write",
@@ -242,7 +242,7 @@ def main() -> None:
     p_manifest.add_argument(
         "--no-mirror",
         action="store_true",
-        help="Do not mirror blob files into review-ui/data/metadata",
+        help="Do not mirror blob files into core-pipeline/outputs/metadata",
     )
 
     # Back-compat aliases

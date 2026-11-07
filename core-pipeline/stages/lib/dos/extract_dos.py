@@ -151,7 +151,7 @@ def main() -> None:
         "--data-root",
         type=Path,
         default=default_data_root(ui),
-        help="Path to data/folders",
+        help="Path to outputs/charts",
     )
     parser.add_argument(
         "--out",

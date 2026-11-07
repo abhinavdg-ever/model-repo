@@ -212,7 +212,7 @@ never written back).
 | `skip_ocr: true`         | `false`             | Reuse existing OCR instead of re-running the OCR engines — no Final2 billing. Quality/rotation and every non-OCR stage still re-run. See § skip_ocr below.                                                                                                         |
 | `skip_completed: true`   | `false`             | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. Batch: add `min_run_date` to skip only the charts finished on or after that date. |
 | `skip_page_download`     | `true`              | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.)                                                                                                      |
-| `--test-mode` (CLI only) | off                 | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API.                                                                                                                            |
+| `--test-mode` (CLI only) | off                 | **Local only.** No Postgres. Workspace under `outputs/charts/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API.                                                                                                                            |
 
 A batch clears a chart's previous results only when that chart's own run starts; the
 charts still waiting in the queue keep showing their last run.
@@ -236,19 +236,19 @@ python cli.py run \
 ```
 
 - Reads images from `/data/inbox/52743839_44976074/`
-- Writes workspace to `data/folders/52743839_44976074-test/` (pages, ocr, imaging)
+- Writes workspace to `outputs/charts/52743839_44976074-test/` (pages, ocr, imaging)
 - Never opens Postgres (in-memory stage state for this process only)
 - Rejects blob sources and `--chart-id` / `--chart-name` resume
 - review-ui Local Mode: open the `…-test` folder to inspect
 - Member verify: if MemoryStore has no manifesto row, loads matching
-`recordId` from on-disk CSVs under `review-ui/data/metadata/` or
-`review-ui/data/folders/manifest/` (strips the `-test` suffix for the lookup)
+`recordId` from on-disk CSVs under `core-pipeline/outputs/metadata/` or
+`core-pipeline/outputs/charts/manifest/` (strips the `-test` suffix for the lookup)
 
 `--skip-db-write` is a deprecated alias for the same behaviour.
 
 ### What `skip_ocr` does
 
-Looks under `data/folders/<chart>/` (review-ui workspace):
+Looks under `outputs/charts/<chart>/` (review-ui workspace):
 
 1. `pages/` **present** → use it. **Missing** → download from **Raw_Input** (`input_path`).
 2. `ocr/` **present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.

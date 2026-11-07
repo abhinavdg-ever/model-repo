@@ -1,7 +1,7 @@
 # core-pipeline — chart intake + the imaging stage chain.
 #
 # Deployed independently of review-ui. The two share a Postgres database and the
-# data/folders volume (this service writes it, review-ui mounts it read-only);
+# outputs/charts volume (this service writes it, review-ui mounts it read-only);
 # there is no HTTP call between them.
 FROM python:3.12-slim
 

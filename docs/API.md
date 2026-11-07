@@ -1,6 +1,6 @@
 # How to run
 
-Two services, started separately. They share Postgres and `review-ui/data/folders`. They do not call each other.
+Two services, started separately. They share Postgres and `core-pipeline/outputs/charts`. They do not call each other.
 
 | Service | Command | URL |
 |---|---|---|

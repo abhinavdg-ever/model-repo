@@ -60,22 +60,6 @@ export type FolderListParams = {
   sort_dir?: "asc" | "desc";
 };
 
-export type FileViewerFolder = {
-  id: string;
-  name: string;
-  page_count: number;
-  has_corrected: boolean;
-};
-
-export type FileViewerListResponse = {
-  items: FileViewerFolder[];
-  total: number;
-};
-
-export type FileViewerFolderDetail = FileViewerFolder & {
-  pages: PageSummary[];
-};
-
 export type FolderListResponse = {
   items: FolderSummary[];
   total: number;
@@ -378,6 +362,7 @@ export type BlobAuthMode = "entra" | "sas";
 
 export type AppConfig = {
   /** The mode this browser is in: its Local / DB switch, else DATA_MODE. */
+  /** Always "production": the database is the only source (2026-11-07). */
   data_mode: string;
   /** A database is configured, so the DB side of the switch is offered. */
   db_available?: boolean;
@@ -651,23 +636,6 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   return api(`/api/folders${qs ? `?${qs}` : ""}`);
 }
 
-export function listFileViewerFolders(): Promise<FileViewerListResponse> {
-  return api("/api/file-viewer/folders");
-}
-
-export function getFileViewerFolder(folderId: string): Promise<FileViewerFolderDetail> {
-  return api(`/api/file-viewer/folders/${encodeURIComponent(folderId)}`);
-}
-
-export function fileViewerPageImageUrl(
-  folderId: string,
-  pageNumber: number,
-  corrected = false,
-): string {
-  const base = `/api/file-viewer/folders/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
-  return corrected ? `${base}?corrected=1` : base;
-}
-
 export function getFolder(folderId: string): Promise<FolderDetail> {
   return api(`/api/folders/${encodeURIComponent(folderId)}`);
 }
@@ -913,10 +881,6 @@ export async function retryPageImages(): Promise<string> {
   } catch {
     return "";
   }
-}
-
-export function blobPageImageUrl(folderId: string, pageNumber: number): string {
-  return `/api/blob/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
 }
 
 /** UNVALIDATED: matched on PDF ID + Page Number with no field to compare --

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, FlaskConical, FolderOpen, History, Layers, LogOut, Search, Users } from "lucide-react";
+import { ClipboardList, FlaskConical, Layers, LogOut, Search, Users } from "lucide-react";
 import { roleLabel } from "./UsersView";
 
 type Props = {
@@ -7,16 +7,13 @@ type Props = {
   initials?: string;
   /** The signed-in user's role, shown under the name (Admin / Reviewer / Viewer). */
   role?: string;
-  /** "file-viewer" shows a History link; otherwise a File Viewer link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users" | "search" | "review-log";
-  onOpenFileViewer?: () => void;
+  currentView?: "landing" | "folder" | "accuracy" | "manual-review" | "playground" | "users" | "search" | "review-log";
   /** Admins only: given, the menu offers the Playground. */
   onOpenPlayground?: () => void;
   /** Admins only: given, the menu offers Users (create a user / reset a password). */
   onOpenUsers?: () => void;
   /** Admins only: given, the menu offers Search (a word in the Tesseract OCR). */
   onOpenSearch?: () => void;
-  onOpenHistory?: () => void;
   /** Every user: their own history of ground-truth saves. */
   onOpenReviewLog?: () => void;
   /** Include Extracted: Yes scores on the better of Final and Extracted; No on the Final
@@ -32,8 +29,6 @@ export default function UserProfileMenu({
   initials = "IU",
   role,
   currentView = "landing",
-  onOpenFileViewer,
-  onOpenHistory,
   onOpenPlayground,
   onOpenUsers,
   onOpenSearch,
@@ -44,7 +39,6 @@ export default function UserProfileMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const onFileViewer = currentView === "file-viewer";
 
   useEffect(() => {
     if (!open) return;
@@ -87,33 +81,6 @@ export default function UserProfileMenu({
             </div>
           </div>
 
-          {onFileViewer ? (
-            <button
-              type="button"
-              className="user-menu-item"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onOpenHistory?.();
-              }}
-            >
-              <History size={14} aria-hidden="true" />
-              History
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="user-menu-item"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onOpenFileViewer?.();
-              }}
-            >
-              <FolderOpen size={14} aria-hidden="true" />
-              File Viewer
-            </button>
-          )}
 
           <div
             className="user-menu-item include-extracted-row"

@@ -4,7 +4,7 @@ The chart folder on blob holds one image per page. This stage:
 
   1. upserts ``chart_list`` (atomic on UNIQUE (chart_name)),
   2. ensures ``pages/`` (+ sparse ``corrected-pages/``) under the workspace —
-     prefer files already in ``review-ui/data/folders/<chart>/``, else hydrate
+     prefer files already in ``core-pipeline/outputs/charts/<chart>/``, else hydrate
      from ``chart_list.output_path`` (Processed), else download missing pages
      from Raw_Input ``blob_path``,
   3. upserts ``page_list`` with a SHA-256 and size per page,
@@ -366,7 +366,7 @@ def ensure_chart_images(
 ) -> dict[str, Any]:
     """Ensure workspace ``pages/`` for this chart.
 
-    Prefer ``data/folders/<chart>/pages/``. If missing, download from Raw_Input
+    Prefer ``outputs/charts/<chart>/pages/``. If missing, download from Raw_Input
     (``blob_path``). Corrected images are **not** hydrated here — quality/
     rotation recreates ``corrected-pages/``. ``output_path`` is unused for pages
     (Processed usually omits originals under ``skip_orig_pages``).
@@ -412,7 +412,7 @@ def ensure_chart_images(
         raise RuntimeError(
             f"No page images for chart '{chart_name}' — tried: "
             + ", ".join(tried)
-            + ". Put files under data/folders/<chart>/pages/ or provide "
+            + ". Put files under outputs/charts/<chart>/pages/ or provide "
             "blob_container + blob_path (Raw_Input)."
         )
 
@@ -771,7 +771,7 @@ def register_local_pages(
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Register an already-present ``data/folders/<chart>`` (dev / demo)."""
+    """Register an already-present ``outputs/charts/<chart>`` (dev / demo)."""
     ensure_chart_dirs(chart_name)
     files = list_local_pages(chart_name)
     if not files:

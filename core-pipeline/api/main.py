@@ -2,7 +2,7 @@
 
 Deployed on its own (see core-pipeline/docker-compose.yml). The review UI is a
 separate deployment and does not call this service — the two share the Postgres
-database and the `data/folders` volume, not an HTTP boundary.
+database and the `outputs/charts` volume, not an HTTP boundary.
 
 Long work runs in a BackgroundTask: every mutating endpoint returns 202 with a
 chart_id, and progress is read back from GET /api/charts/{id}. See
@@ -376,7 +376,7 @@ class WriteRequest(BaseModel):
 
     chart_name: str = Field(
         ...,
-        description="Folder name under data/folders — the chart to write",
+        description="Folder name under outputs/charts — the chart to write",
         examples=["52743839_44976074"],
     )
     local_write_path: Optional[str] = Field(
@@ -416,7 +416,7 @@ class ManifestSweepRequest(BaseModel):
     run_id: Optional[str] = Field(None, description="Overrides the R# in the filename")
     batch_id: Optional[str] = Field(None, description="Overrides the B# in the filename")
     mirror_local: bool = Field(
-        True, description="Copy blob manifests into review-ui/data/metadata"
+        True, description="Copy blob manifests into core-pipeline/outputs/metadata"
     )
 
     @field_validator("local_path", mode="before")
@@ -434,7 +434,7 @@ class MetadataExtraRequest(BaseModel):
     """Fill the batch metadata CSVs from the client's extra-columns dump, then the DB."""
 
     metadata_dir: Optional[str] = Field(
-        None, description="Folder of batch metadata CSVs (default review-ui/data/metadata)"
+        None, description="Folder of batch metadata CSVs (default core-pipeline/outputs/metadata)"
     )
     source: Optional[str] = Field(
         None, description="The dump (.csv / .xlsx); default <metadata_dir>/metadata_extra.csv"
@@ -1207,7 +1207,7 @@ def get_manifest(record_id: str) -> dict[str, Any]:
     """Manifest rows for one record id (= chart folder name).
 
     Prefers ``manifest_member_list`` in Postgres. If that has nothing for this
-    id, scans ``METADATA_ROOT`` (default ``review-ui/data/metadata``) for
+    id, scans ``METADATA_ROOT`` (default ``core-pipeline/outputs/metadata``) for
     matching rows in every CSV/XLSX there — the same files Local Mode reads.
     """
     from jobs.manifest_sweeper import lookup_manifest_members_on_disk

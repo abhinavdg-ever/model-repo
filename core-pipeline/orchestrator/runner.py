@@ -205,6 +205,9 @@ def run_pipeline_for_chart(
     from stages.utilities.download_blob import ensure_chart_images
 
     chart_token = set_current_chart(chart["chart_name"])
+    from jobs.outputs_cleanup import mark_chart_used
+
+    mark_chart_used(chart["chart_name"])  # the outputs purge counts days from here
     try:
         image_info = ensure_chart_images(
             chart["chart_name"],
@@ -535,7 +538,7 @@ def ingest_and_run(
     """Fetch one chart's pages into the workspace, then run the chain on it.
 
     The source is either a blob prefix or a local directory; both end with the
-    pages under data/folders/<chart>/pages as 1.jpg, 2.jpg …, so everything
+    pages under outputs/charts/<chart>/pages as 1.jpg, 2.jpg …, so everything
     downstream is identical either way. This is the whole of what /api/charts/run
     does, and what batch calls once per folder.
 
@@ -545,7 +548,7 @@ def ingest_and_run(
     wiping ``pages/``; ``redownload_pages`` is the escape hatch to re-fetch images.
 
     ``skip_db_write`` / test mode runs against an in-memory store (no Postgres)
-    and writes the workspace under ``data/folders/<chart>-test``. Local path
+    and writes the workspace under ``outputs/charts/<chart>-test``. Local path
     only — blob sources are rejected.
     """
     if bool(blob_path) == bool(local_path):

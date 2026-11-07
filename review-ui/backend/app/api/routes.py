@@ -1,4 +1,3 @@
-from urllib.parse import quote
 import json
 import logging
 import time
@@ -7,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.adapters.base import FolderRepository
 from app.adapters.factory import get_repository, request_is_production
@@ -26,11 +25,8 @@ from app.core.schemas import (
     NewUser,
     PasswordReset,
     PlaygroundRun,
-    FileViewerFolderDetail,
-    FileViewerListResponse,
     FolderDetail,
     FolderListResponse,
-    FolderSummary,
     HealthResponse,
     ExtractionPagesResponse,
     ExtractionReviewResponse,
@@ -44,19 +40,16 @@ from app.core.schemas import (
     EncounterReviewSave,
     ChartGroundTruth,
 )
-from app.services.blob_store import download_blob_bytes
 from pydantic import BaseModel
 
 from app.services import ocr_search, playground, user_admin, value_search
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
 from app.services.extraction_review import (
-    load_extraction_pages,
     load_extraction_pages_from_db,
-    load_extraction_review,
     load_extraction_review_from_db,
 )
-from app.services.staged_continuity import load_encounters_from_db, load_staged_encounters
+from app.services.staged_continuity import load_encounters_from_db
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache, load_report
@@ -85,10 +78,6 @@ from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
     is_tiff_name,
-    is_tiff_path,
-    path_to_display_jpeg,
-    tiff_bytes_to_jpeg_bytes,
-    tiff_path_to_jpeg_bytes,
 )
 
 logger = logging.getLogger("review_ui.api")
@@ -137,39 +126,8 @@ def me(user: SignedInUser | None = Depends(current_user)) -> SignedInUserRespons
     return SignedInUserResponse(id=user.id, username=user.username, name=user.name, role=user.role)
 
 
-def _build_blob_url(
-    settings: Settings,
-    *,
-    folder_id: str,
-    filename: str,
-    page_number: int,
-) -> str:
-    account = settings.blob_account_url.strip().rstrip("/")
-    container = settings.blob_container.strip().strip("/")
-    if not account or not container:
-        raise HTTPException(status_code=400, detail="BLOB_ACCOUNT_URL / BLOB_CONTAINER not configured")
-
-    template = settings.blob_path_template.strip() or "{folder}/pages/{filename}"
-    key = (
-        template.replace("{folder}", folder_id)
-        .replace("{filename}", filename)
-        .replace("{page}", str(page_number))
-        .lstrip("/")
-    )
-    encoded_key = "/".join(quote(part, safe="") for part in key.split("/"))
-    sas = settings.blob_sas_token.strip()
-    if sas.startswith("?"):
-        sas = sas[1:]
-    base = f"{account}/{container}/{encoded_key}"
-    return f"{base}?{sas}" if sas else base
 
 
-def _filename_for_page(repo: FolderRepository, folder_id: str, page_number: int) -> str:
-    detail = repo.get_folder(folder_id)
-    for page in detail.pages:
-        if page.page_number == page_number:
-            return page.filename
-    raise HTTPException(status_code=404, detail=f"Page {page_number} not found in {folder_id}")
 
 
 def _mode(request: Request) -> tuple[str, str]:
@@ -194,7 +152,7 @@ def app_config(request: Request) -> AppConfigResponse:
         data_mode=data_mode,
         mode_label=label,
         db_available=database_url_usable(settings.database_url),
-        default_mode="production" if settings.is_production_mode else "local",
+        default_mode="production",
         file_viewer_blob_enabled=settings.file_viewer_blob_enabled,
         blob_auth_mode=settings.blob_auth_mode,
         blob_account_url=settings.blob_account_url.strip().rstrip("/"),
@@ -259,20 +217,14 @@ def list_folders(
         limit=limit,
         offset=offset,
     )
-    # Production lists chart_list only; Local Mode merges in the workspace folders.
-    data_root = None if settings.is_production_mode else settings.resolved_data_root
-    db_url = settings.database_url
-    full_local = None
-    # Expensive full disk scan only when Postgres is unavailable.
-    if not database_url_usable(db_url):
-        full_local = repo.list_folders()
+    # chart_list only: review-ui reads no chart folders (2026-11-07).
     result = build_folder_list(
-        database_url=db_url,
+        database_url=settings.database_url,
         db_schema=settings.db_schema,
-        data_root=data_root if data_root is not None and data_root.is_dir() else None,
-        full_local_rows=full_local,
+        data_root=None,
+        full_local_rows=None,
         params=params,
-        metadata_dir=None if settings.is_production_mode else settings.resolved_metadata_root,
+        metadata_dir=None,
     )
     logger.info(
         "list_folders total=%d returned=%d limit=%s offset=%d",
@@ -301,65 +253,6 @@ def list_folders(
         limit=result.limit,
         offset=result.offset,
     )
-
-
-def _file_viewer_repo(settings: Settings):
-    """Disk reader for File Viewer. Never opens Postgres."""
-    from app.adapters.local.repository import LocalFolderRepository
-
-    return LocalFolderRepository(settings.resolved_data_root, database_url="")
-
-
-def _serve_disk_image(path: Path) -> Response:
-    cache_hdr = "private, max-age=300"
-    if is_tiff_path(path):
-        try:
-            jpeg = tiff_path_to_jpeg_bytes(path)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not convert image for display: {exc}",
-            ) from exc
-        return Response(
-            content=jpeg,
-            media_type="image/jpeg",
-            headers={"Cache-Control": cache_hdr},
-        )
-    return FileResponse(
-        path,
-        media_type=_media_type(path.suffix),
-        headers={"Cache-Control": cache_hdr},
-    )
-
-
-@router.get("/file-viewer/folders", response_model=FileViewerListResponse)
-def list_file_viewer_folders(
-    settings: Settings = Depends(get_settings),
-) -> FileViewerListResponse:
-    """Folders under data/folders that contain pages/. No database."""
-    items = _file_viewer_repo(settings).list_file_viewer_folders()
-    return FileViewerListResponse(items=items, total=len(items))
-
-
-@router.get("/file-viewer/folders/{folder_id}", response_model=FileViewerFolderDetail)
-def get_file_viewer_folder(
-    folder_id: str,
-    settings: Settings = Depends(get_settings),
-) -> FileViewerFolderDetail:
-    return _file_viewer_repo(settings).get_file_viewer_folder(folder_id)
-
-
-@router.get("/file-viewer/folders/{folder_id}/pages/{page_number}/image")
-def get_file_viewer_page_image(
-    folder_id: str,
-    page_number: int,
-    corrected: bool = Query(False, description="Serve corrected-pages when that file exists"),
-    settings: Settings = Depends(get_settings),
-):
-    path = _file_viewer_repo(settings).get_file_viewer_image_path(
-        folder_id, page_number, corrected=corrected
-    )
-    return _serve_disk_image(path)
 
 
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
@@ -469,84 +362,38 @@ def get_page_image(
         description="Serve corrected-pages when that file exists. Default is pages/.",
     ),
 ):
-    """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw.
-
-    Production Mode prefers Azure Blob via ``chart_list.blob_path`` (and
-    Processed ``output_path`` when present). Falls back to DATA_ROOT when a
-    local workspace copy exists.
-    """
-    settings = get_settings()
+    """Serve a page image from Azure Blob (``chart_list.blob_path``, and the Processed
+    ``output_path`` when present). TIFF is re-encoded to JPEG — browsers cannot show it raw.
+    There is no disk fallback: review-ui reads the database and Blob only (2026-11-07)."""
     cache_hdr = (
         "private, max-age=3600"
         if thumb
         else "private, max-age=300"
     )
-    from app.adapters.postgres.repository import PostgresFolderRepository
-
-    # Production Mode: Azure Blob first; when Blob has no copy or fails (sign-in, network),
-    # the workspace copy of the page image. Page data never comes from disk.
     blob_error: str | None = None
     blob_missing = False  # looked in Blob, nothing there (not a sign-in / network failure)
-    if isinstance(repo, PostgresFolderRepository):
-        try:
-            served = _blob_page_image(repo, folder_id, page_number, corrected, thumb, cache_hdr)
-        except HTTPException as exc:
-            if exc.status_code not in (502, 503):
-                raise
-            blob_error = str(exc.detail)
-            served = None
-        if served is not None:
-            return served
-        if blob_error is None:
-            from app.services.blob_store import blob_unavailable
-
-            blob_error = blob_unavailable()
-        if blob_error is None:
-            # No sign-in trouble: the blob was simply not where it was looked for.
-            missing = repo.no_blob_reason(folder_id, page_number)
-            if missing:
-                blob_error, blob_missing = f"not in Azure Blob: {missing}", True
-
     try:
-        path = repo.get_page_image_path(folder_id, page_number, corrected=corrected)
-    except Exception as exc:
-        if blob_error:
-            # 503 (sign-in / network): the viewer offers "Retry images" (POST /api/blob/retry).
-            # 404: the image is not in Blob at all, so a retry cannot help.
-            raise HTTPException(
-                status_code=404 if blob_missing else 503,
-                detail=f"Page image unavailable: {blob_error}; no local copy",
-            ) from exc
-        if isinstance(exc, HTTPException):
+        served = _blob_page_image(repo, folder_id, page_number, corrected, thumb, cache_hdr)
+    except HTTPException as exc:
+        if exc.status_code not in (502, 503):
             raise
-        raise HTTPException(
-            status_code=404,
-            detail=f"Page image not found: {folder_id} #{page_number}",
-        ) from exc
+        blob_error = str(exc.detail)
+        served = None
+    if served is not None:
+        return served
+    if blob_error is None:
+        from app.services.blob_store import blob_unavailable
 
-    if thumb or is_tiff_path(path):
-        try:
-            jpeg = path_to_display_jpeg(path, thumb=thumb) if thumb else tiff_path_to_jpeg_bytes(path)
-        except Exception as exc:
-            logger.exception(
-                "Image encode failed folder=%s page=%s path=%s",
-                folder_id,
-                page_number,
-                path,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not convert image for display: {exc}",
-            ) from exc
-        return Response(
-            content=jpeg,
-            media_type="image/jpeg",
-            headers={"Cache-Control": cache_hdr},
-        )
-    return FileResponse(
-        path,
-        media_type=_media_type(path.suffix),
-        headers={"Cache-Control": cache_hdr},
+        blob_error = blob_unavailable()
+    if blob_error is None:
+        # No sign-in trouble: the blob was simply not where it was looked for.
+        missing = repo.no_blob_reason(folder_id, page_number)
+        blob_error, blob_missing = f"not in Azure Blob: {missing or 'no blob found'}", True
+    # 503 (sign-in / network): the viewer offers "Retry images" (POST /api/blob/retry).
+    # 404: the image is not in Blob at all, so a retry cannot help.
+    raise HTTPException(
+        status_code=404 if blob_missing else 503,
+        detail=f"Page image unavailable: {blob_error}",
     )
 
 
@@ -557,85 +404,6 @@ def retry_blob(settings: Settings = Depends(get_settings)) -> dict[str, str]:
 
     reset_blob_access()
     return {"blob": check_blob_access(settings)}
-
-
-@router.get("/blob/{folder_id}/pages/{page_number}/image")
-def get_blob_page_image(
-    folder_id: str,
-    page_number: int,
-    repo: FolderRepository = Depends(get_repository),
-):
-    """Serve a page image from Azure Blob.
-
-    - blob_auth_mode=entra: proxy bytes using Microsoft Entra ID (works with Shared Key disabled)
-    - blob_auth_mode=sas: redirect to object URL with server SAS (requires Shared Key allowed)
-    - TIFF always proxied + converted to JPEG (browsers cannot render image/tiff)
-    """
-    settings = get_settings()
-    if not settings.file_viewer_blob_enabled:
-        raise HTTPException(status_code=400, detail="Blob viewer is disabled")
-
-    filename = _filename_for_page(repo, folder_id, page_number)
-    needs_tiff_convert = is_tiff_name(filename)
-
-    if settings.blob_auth_mode == "entra" or needs_tiff_convert:
-        if settings.blob_auth_mode == "entra":
-            data, media_type = download_blob_bytes(
-                folder_id=folder_id,
-                filename=filename,
-                page_number=page_number,
-            )
-        else:
-            # SAS mode + TIFF: fetch via SAS URL then convert (no Entra client).
-            if not settings.blob_sas_token.strip():
-                raise HTTPException(
-                    status_code=400,
-                    detail="Server SAS not configured; set BLOB_SAS_TOKEN or use BLOB_AUTH_MODE=entra",
-                )
-            url = _build_blob_url(
-                settings,
-                folder_id=folder_id,
-                filename=filename,
-                page_number=page_number,
-            )
-            data, media_type = _fetch_url_bytes(url, fallback_name=filename)
-
-        if needs_tiff_convert or (media_type or "").lower() in {
-            "image/tiff",
-            "image/tif",
-        }:
-            try:
-                data = tiff_bytes_to_jpeg_bytes(data)
-                media_type = "image/jpeg"
-            except Exception as exc:
-                logger.exception(
-                    "Blob TIFF→JPEG failed folder=%s page=%s file=%s",
-                    folder_id,
-                    page_number,
-                    filename,
-                )
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Could not convert TIFF for display: {exc}",
-                ) from exc
-        return Response(
-            content=data,
-            media_type=media_type,
-            headers={"Cache-Control": "private, max-age=120"},
-        )
-
-    if not settings.blob_sas_token.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Server SAS not configured; set BLOB_SAS_TOKEN or use BLOB_AUTH_MODE=entra",
-        )
-    url = _build_blob_url(
-        settings,
-        folder_id=folder_id,
-        filename=filename,
-        page_number=page_number,
-    )
-    return RedirectResponse(url=url, status_code=307)
 
 
 def _fetch_url_bytes(url: str, *, fallback_name: str) -> tuple[bytes, str]:
@@ -724,12 +492,10 @@ def get_folder_extraction_pages(
 ) -> ExtractionPagesResponse:
     """Every page's extraction review in one response, so the Additional tab (Section
     Headers, Page Numbers) is ready on every page as soon as the chart opens. Same sources
-    as /extraction: the staging file (Local), additional_page_details (Production)."""
-    if settings.is_production_mode:
-        if not database_url_usable(settings.database_url):
-            return ExtractionPagesResponse(folder_id=folder_id, available=False)
-        return load_extraction_pages_from_db(settings.database_url, settings.db_schema, folder_id)
-    return load_extraction_pages(settings.resolved_data_root, folder_id)
+    as /extraction: additional_page_details."""
+    if not database_url_usable(settings.database_url):
+        return ExtractionPagesResponse(folder_id=folder_id, available=False)
+    return load_extraction_pages_from_db(settings.database_url, settings.db_schema, folder_id)
 
 
 @router.get("/folders/{folder_id}/extraction", response_model=ExtractionReviewResponse)
@@ -740,15 +506,12 @@ def get_folder_extraction(
 ) -> ExtractionReviewResponse:
     """Selected key/value extraction for one page. Processed equals extracted.
 
-    Local Mode reads the raw staging file on disk. Production Mode (Postgres + Blob only)
-    has no workspace: it reads Page Number and Section Headers from additional_page_details."""
-    if settings.is_production_mode:
-        if not database_url_usable(settings.database_url):
-            return ExtractionReviewResponse(folder_id=folder_id, available=False)
-        return load_extraction_review_from_db(
-            settings.database_url, settings.db_schema, folder_id, page
-        )
-    return load_extraction_review(settings.resolved_data_root, folder_id, page)
+    Read from the database (additional_page_details): Page Number and Section Headers."""
+    if not database_url_usable(settings.database_url):
+        return ExtractionReviewResponse(folder_id=folder_id, available=False)
+    return load_extraction_review_from_db(
+        settings.database_url, settings.db_schema, folder_id, page
+    )
 
 
 @router.delete("/folders/{folder_id}")
@@ -1274,10 +1037,6 @@ class _PipelineCharts:
         self._docs: dict[str, ImagingDocumentResponse | None] = {}
         self._runs: dict[str, datetime | None] | None = {} if self._use_db else None
 
-    def _data_root(self) -> Path:
-        root = self._settings.resolved_data_root
-        return root if isinstance(root, Path) else Path(root)
-
     def _fetch_from(self, pdf_id: str) -> None:
         """This chart and the next unfetched ones, one query."""
         start = self._order.index(pdf_id) if pdf_id in self._order else 0
@@ -1293,33 +1052,19 @@ class _PipelineCharts:
 
     def load(self, pdf_id: str) -> bytes | None:
         """None when there is no output for the chart."""
-        if self._use_db:
-            if pdf_id not in self._docs:
-                self._fetch_from(pdf_id)
-            doc = self._docs.get(pdf_id)
-        else:
-            try:
-                doc = self._repo.get_imaging(pdf_id)
-            except HTTPException:
-                doc = None  # no such chart, or no imaging output yet
-            # Every member ID each page carries, as Production Mode compares them (2026-11-03).
-            doc = excel_compare.database_algo.with_every_member_id(doc, self._data_root(), pdf_id)
+        if not self._use_db:
+            return None  # the database is the only source (2026-11-07)
+        if pdf_id not in self._docs:
+            self._fetch_from(pdf_id)
+        doc = self._docs.get(pdf_id)
         return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
 
     def last_run(self, pdf_id: str) -> str | None:
         """ISO time of the chart's last pipeline run; None when never run."""
-        if self._use_db:
-            if pdf_id not in self._docs:
-                self._fetch_from(pdf_id)
-        elif self._runs is None:
-            listed = build_folder_list(
-                database_url=self._settings.database_url,
-                db_schema=self._settings.db_schema,
-                data_root=self._data_root(),
-                full_local_rows=None,
-                params=FolderListParams(),
-            )
-            self._runs = {folder.name: folder.last_updated_at for folder in listed.items}
+        if not self._use_db:
+            return None
+        if pdf_id not in self._docs:
+            self._fetch_from(pdf_id)
         moment = self._runs.get(pdf_id)
         return moment.isoformat() if moment else None
 
@@ -1656,14 +1401,9 @@ def get_folder_imaging(
                 )
             }
         )
-    # The encounter grouping: Production Mode from encounter_type_results, Local Mode from the
-    # chart workspace's staging file.
+    # The encounter grouping, from encounter_type_results.
     if not doc.encounters:
-        encounters = (
-            load_encounters_from_db(settings.database_url, settings.db_schema, folder_id)
-            if settings.is_production_mode
-            else load_staged_encounters(settings.resolved_data_root, folder_id)
-        )
+        encounters = load_encounters_from_db(settings.database_url, settings.db_schema, folder_id)
         if encounters:
             doc = doc.model_copy(update={"encounters": encounters})
     logger.info(

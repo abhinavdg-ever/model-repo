@@ -32,10 +32,10 @@ core-pipeline/models/semantic-model/
 core-pipeline/logs/**
 !core-pipeline/logs/README.md
 core-pipeline/outputs/
-review-ui/data/folders/*
-!review-ui/data/folders/.gitkeep
-review-ui/data/metadata/*
-!review-ui/data/metadata/.gitkeep
+core-pipeline/outputs/charts/*
+!core-pipeline/outputs/charts/.gitkeep
+core-pipeline/outputs/metadata/*
+!core-pipeline/outputs/metadata/.gitkeep
 utilities/output/
 *.log
 

@@ -52,26 +52,21 @@ def test_retry_clears_the_wait(failing_blob):
     assert blob_store.blob_unavailable() is None
 
 
-def test_the_image_route_serves_the_local_copy_when_blob_fails(monkeypatch, tmp_path):
+def test_the_image_route_has_no_disk_fallback(monkeypatch):
+    """2026-11-07 (user): review-ui reads the database and Blob only. A Blob sign-in failure is
+    a 503 (the viewer offers Retry); nothing is read from disk."""
     from app.adapters.postgres.repository import PostgresFolderRepository
     from app.api import routes
-
-    image = tmp_path / "1.jpg"
-    image.write_bytes(b"\xff\xd8\xff\xd9")
 
     def blob_fails(*_a, **_k):
         raise HTTPException(status_code=503, detail="Azure Blob sign-in failed")
 
+    def disk_read(*_a, **_k):
+        raise AssertionError("read a page image from disk")
+
     repo = PostgresFolderRepository.__new__(PostgresFolderRepository)
     monkeypatch.setattr(routes, "_blob_page_image", blob_fails)
-    monkeypatch.setattr(PostgresFolderRepository, "get_page_image_path", lambda self, *a, **k: image)
-    response = routes.get_page_image("c1", 1, repo=repo, thumb=False, corrected=False)
-    assert getattr(response, "path", None) == image
-
-    def no_local(self, *a, **k):
-        raise HTTPException(status_code=404, detail="No local page image")
-
-    monkeypatch.setattr(PostgresFolderRepository, "get_page_image_path", no_local)
+    monkeypatch.setattr(PostgresFolderRepository, "get_page_image_path", disk_read)
     with pytest.raises(HTTPException) as err:
         routes.get_page_image("c1", 1, repo=repo, thumb=False, corrected=False)
-    assert err.value.status_code == 503 and "no local copy" in err.value.detail
+    assert err.value.status_code == 503 and "sign-in failed" in err.value.detail

@@ -23,7 +23,7 @@ flowchart LR
 
   BLOB[("Azure Blob<br/>chart folders + manifests")]
   PG[("PostgreSQL<br/>schema v8")]
-  VOL[/"data/folders<br/>shared volume"/]
+  VOL[/"outputs/charts<br/>shared volume"/]
 
   BLOB -- "download" --> ORCH
   ORCH -- "writes" --> PG
@@ -36,7 +36,7 @@ flowchart LR
 ```
 
 The two services **never call each other**. They share the database and the
-`data/folders` volume — core-pipeline writes it, review-ui mounts it read-only.
+`outputs/charts` volume — core-pipeline writes it, review-ui mounts it read-only.
 Either can be redeployed without the other.
 
 One exception: review-ui's **Playground** (admins only, profile
@@ -56,7 +56,7 @@ flowchart TD
   START(["POST /api/charts/run<br/>{input_type, container_name, input_path, chart_name}"]) --> DL
 
   subgraph INTAKE["Intake"]
-    DL["Download pages<br/>→ data/folders/&lt;chart&gt;/pages/1.jpg…N"]
+    DL["Download pages<br/>→ outputs/charts/&lt;chart&gt;/pages/1.jpg…N"]
     DL --> REG["chart_list + page_list<br/>sha256 + size per page"]
     REG --> SEED["Seed page_stage_status<br/>(pending × pages × stages)"]
     SEED --> LINK["Link manifest rows<br/>swept earlier"]

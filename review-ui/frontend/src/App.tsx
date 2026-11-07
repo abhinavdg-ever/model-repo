@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import LandingPage, { clearLandingFilters, savedHistoryListParams } from "./LandingPage";
 import { nextChart, type ChartSource } from "./chartSequence";
 import FolderViewer from "./FolderViewer";
-import FileViewer from "./FileViewer";
 import AccuracyView from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
 import PlaygroundView from "./PlaygroundView";
@@ -19,7 +18,6 @@ import { clearSession, initialsOf, readSession, writeSession, type Session } fro
 type Route =
   | { view: "landing" }
   | { view: "folder"; folderId: string; mode: OutputMode; from?: ChartSource; page?: number }
-  | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
   | { view: "manual-review" }
   | { view: "playground" }
@@ -55,13 +53,6 @@ function parsePath(pathname: string, search: string): Route {
   if (pathname === "/review-log" || pathname === "/review-log/") {
     return { view: "review-log" };
   }
-  const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
-  if (fileMatch) {
-    return {
-      view: "file-viewer",
-      folderId: fileMatch[1] ? decodeURIComponent(fileMatch[1]) : undefined,
-    };
-  }
   const match = pathname.match(/^\/folders\/([^/]+)\/?$/);
   if (match) {
     return {
@@ -91,20 +82,9 @@ function pathFor(route: Route): string {
   if (route.view === "users") return "/users";
   if (route.view === "search") return "/search";
   if (route.view === "review-log") return "/review-log";
-  if (route.view === "file-viewer") {
-    return route.folderId
-      ? `/file-viewer/${encodeURIComponent(route.folderId)}`
-      : "/file-viewer";
-  }
   return "/";
 }
 
-
-function modePillClass(label: string): string {
-  return label.toLowerCase().includes("production")
-    ? "mode-pill mode-pill-production"
-    : "mode-pill mode-pill-local";
-}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(readSession);
@@ -179,12 +159,6 @@ export default function App() {
     guardedNavigate({ view: "landing" });
   }
 
-  const modeLabel =
-    appConfig?.mode_label ||
-    (appConfig?.data_mode === "production" || appConfig?.data_mode === "postgres"
-      ? "Production Mode"
-      : "Local Mode");
-
   if (!authed) {
     return (
       <div className="shell shell-login">
@@ -215,24 +189,11 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-meta">
-          {/* The mode is DATA_MODE in review-ui/.env; there is no switch. */}
-          <span
-            className={modePillClass(modeLabel)}
-            title={
-              modeLabel === "Production Mode"
-                ? "OCR + imaging outputs read from Postgres; page images from Azure Blob"
-                : "OCR + imaging outputs read from local data/folders"
-            }
-          >
-            {modeLabel}
-          </span>
           <UserProfileMenu
             displayName={session?.user.name || session?.user.username || "Signed in"}
             initials={session ? initialsOf(session.user) : "U"}
             role={session?.user.role}
             currentView={route.view}
-            onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
-            onOpenHistory={() => guardedNavigate({ view: "landing" })}
             onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
             onOpenUsers={isAdmin ? () => guardedNavigate({ view: "users" }) : undefined}
             onOpenSearch={isAdmin ? () => guardedNavigate({ view: "search" }) : undefined}
@@ -305,11 +266,6 @@ export default function App() {
             isAdmin={isAdmin}
             onBack={() => navigate({ view: "landing" })}
             chartHref={(folderId, page) => pathFor({ view: "folder", folderId, mode: "imaging", page })}
-          />
-        ) : route.view === "file-viewer" ? (
-          <FileViewer
-            initialFolderId={route.folderId ?? null}
-            onBack={() => navigate({ view: "landing" })}
           />
         ) : (
           <ClientViewContext.Provider value={Boolean(appConfig?.client_view) || scoreFinalOnly()}>

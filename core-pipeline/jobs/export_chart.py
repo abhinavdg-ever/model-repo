@@ -1,7 +1,7 @@
 """Write a finished chart back out — the reverse of run's intake step.
 
 ``run`` pulls a chart folder in from blob or local disk into the workspace at
-data/folders/<chart>. This takes the same folder back out to a destination that
+outputs/charts/<chart>. This takes the same folder back out to a destination that
 is, again, either blob or local disk. A chart handed to run from a blob prefix
 and then written back to one makes a round trip with the outputs added.
 
@@ -83,7 +83,7 @@ def write_chart(
     overwrite: bool = False,
     write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
-    """Copy data/folders/<chart_name> to a local directory or a blob prefix.
+    """Copy outputs/charts/<chart_name> to a local directory or a blob prefix.
 
     Exactly one destination: ``local_path``, or ``blob_container`` +
     ``blob_path``. The chart's own name is appended to it, so writing two

@@ -7,11 +7,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CORE_ROOT = Path(__file__).resolve().parent
 REVIEW_UI_ROOT = REPO_ROOT / "review-ui"
+# core-pipeline/outputs/ is scratch (2026-11-07): nothing is written into review-ui any more,
+# which reads only the database and Azure Blob. charts/ = one working folder per chart,
+# deleted after OUTPUTS_RETENTION_DAYS without a run (jobs/outputs_cleanup.py); metadata/ =
+# manifest CSVs fetched or dropped for the manifest sweep.
+OUTPUTS_ROOT = CORE_ROOT / "outputs"
 DATA_ROOT = Path(
-    os.environ.get("DATA_ROOT") or (REVIEW_UI_ROOT / "data" / "folders")
+    os.environ.get("DATA_ROOT") or (OUTPUTS_ROOT / "charts")
 ).resolve()
 METADATA_ROOT = Path(
-    os.environ.get("METADATA_ROOT") or (REVIEW_UI_ROOT / "data" / "metadata")
+    os.environ.get("METADATA_ROOT") or (OUTPUTS_ROOT / "metadata")
 ).resolve()
 
 def _psycopg_url(url: str) -> str:

@@ -54,7 +54,7 @@ flowchart TB
   end
 
   PG[("PostgreSQL — schema v8")]
-  VOL[/"data/folders<br/>pages · ocr · imaging"/]
+  VOL[/"outputs/charts<br/>pages · ocr · imaging"/]
 
   BLOB --> ST
   ADI --> ST
@@ -77,7 +77,7 @@ service can be redeployed, scaled or taken down alone.
 |---|---|---|
 | Deploys | `core-pipeline/docker-compose.yml` | `review-ui/docker-compose.yml` |
 | Ports | 8001 | 4000 (API), 4001 (web) in Docker; 8002 / 5174 locally |
-| `data/folders` | read-write | **read-only** |
+| `outputs/charts` | read-write | **read-only** |
 | Database | required | Production Mode only |
 | Scaling | one process per chart chain | stateless, scales freely |
 
@@ -169,7 +169,7 @@ until their stage modules land.
 ## 3. The shared workspace
 
 ```
-review-ui/data/folders/<chart_name>/
+core-pipeline/outputs/charts/<chart_name>/
 ├── pages/
 │   └── 1.jpg … N.jpg              written by intake; served by review-ui
 ├── ocr/
@@ -271,7 +271,7 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | File | Role |
 |---|---|
 | `_support.py` | Shared stage plumbing: the `stage_run()` context manager (job row, page load, resume set, job close), `mark_processing` / `mark_completed` / `mark_failed` / `mark_skipped`, and the shared eligibility rule. Keeps each stage about its actual work. |
-| `utilities/download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
+| `utilities/download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `outputs/charts`. |
 | `lib/ocr/stage_prelim.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
 | `lib/image_preprocess/stage.py` | **Stage 1.** Rotation, handwriting (ConvNeXt or RF), and measured quality analyzer. Writes `ocr_quality_results` plus rotation / hw / quality CSVs. |
 | `lib/blank_junk/stage.py` | **Stages 3 and 7.** Both passes: eligibility, the verdict from `method.py` (rules R1–R8 + three-voter vote, canon `blank_junk_context_canon.json`), similarity duplicates (up to 25 pages or 10% of the chart ahead (whichever is more; each pair once)), the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
@@ -408,7 +408,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `core/schemas.py` | Response models — `FolderSummary`, `FolderDetail`, `ImagingDocumentResponse`, `OcrTextResponse` — the contract the frontend types against. |
 | `adapters/base.py` | The `FolderRepository` interface both modes implement. |
 | `adapters/factory.py` | Chooses the adapter from `DATA_MODE`. |
-| `adapters/local/repository.py` | **Local Mode.** Reads charts from `data/folders`: pages, OCR files, per-chart imaging CSVs with the legacy-pack fallback. Owns the scan cache and its mtime-based invalidation, and the per-chart stream marking that drives the folder-list badges. |
+| `adapters/local/repository.py` | **Local Mode.** Reads charts from `outputs/charts`: pages, OCR files, per-chart imaging CSVs with the legacy-pack fallback. Owns the scan cache and its mtime-based invalidation, and the per-chart stream marking that drives the folder-list badges. |
 | `adapters/postgres/repository.py` | **Production Mode.** The same interface over the v8 tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. `DATA_ROOT` is optional. |
 | `services/imaging_overlays.py` | The CSV → UI field mapping: per-result `index_*_rows` functions, the column aliases each accepts, the canonical page-type labels, date formatting, and `collect_rows`' per-chart-then-legacy precedence. |
 | `services/imaging_csv.py` | Streams the combined export CSV. |

@@ -14,7 +14,7 @@ every PDF inside it.
     python ../utilities/pdfs_to_folders.py /path/to/pdfs/
 
 Run from ``core-pipeline`` with that venv active. Pages land in
-``review-ui/data/folders/<pdf name>/pages/``.
+``core-pipeline/outputs/charts/<pdf name>/pages/``.
 
 Needs PyMuPDF: pip install pymupdf
 """

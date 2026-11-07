@@ -594,7 +594,7 @@ class PostgresFolderRepository(FolderRepository):
         if local is None:
             raise HTTPException(
                 status_code=404,
-                detail="No local page image; Production Mode serves images from blob",
+                detail="No page image: review-ui serves page images from Azure Blob only",
             )
         return local.get_page_image_path(folder_id, page_number, corrected=corrected)
 

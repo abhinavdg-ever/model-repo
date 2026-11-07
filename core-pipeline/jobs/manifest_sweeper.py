@@ -16,8 +16,8 @@ chart folder name — so a manifest can be loaded before or after its charts are
 ingested, and nothing needs linking afterwards.
 
 Usage:
-  python -m jobs.manifest_sweeper --local ../review-ui/data/metadata/metadata_R1_B1.csv
-  python -m jobs.manifest_sweeper --local ../review-ui/data/metadata/
+  python -m jobs.manifest_sweeper --local outputs/metadata/metadata_R1_B1.csv
+  python -m jobs.manifest_sweeper --local outputs/metadata/
   python -m jobs.manifest_sweeper --blob-container imaging-pipeline --blob-prefix Manifests/
 """
 from __future__ import annotations
@@ -258,8 +258,8 @@ def lookup_manifest_members_on_disk(
     Search order (first root that yields hits wins — we merge all hits from
     every readable root so a split drop still finds the row):
 
-      1. ``metadata_root`` or ``METADATA_ROOT`` (``review-ui/data/metadata``)
-      2. ``DATA_ROOT/manifest`` (``review-ui/data/folders/manifest``)
+      1. ``metadata_root`` or ``METADATA_ROOT`` (``core-pipeline/outputs/metadata``)
+      2. ``DATA_ROOT/manifest`` (``core-pipeline/outputs/charts/manifest``)
       3. sibling ``…/data/manifest`` next to the folders tree
 
     Used when Postgres / MemoryStore has no rows yet — same files review-ui
@@ -616,7 +616,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--no-mirror",
         action="store_true",
-        help="Do not copy blob files into review-ui/data/metadata",
+        help="Do not copy blob files into core-pipeline/outputs/metadata",
     )
     args = parser.parse_args(argv)
 

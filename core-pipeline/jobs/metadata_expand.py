@@ -1,7 +1,7 @@
 """Fill the batch metadata CSVs from the client's extra-columns dump, then load them.
 
 The client sends one dump across all charts, ``metadata_extra.csv`` (one row per recordId),
-placed beside the batch files in review-ui/data/metadata. It carries columns the batch
+placed beside the batch files in core-pipeline/outputs/metadata. It carries columns the batch
 files do not: MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure,
 ServiceNote. This utility:
 

@@ -5,7 +5,7 @@ Priority when skipping OCR engines:
   1. **Output folder** ``ocr/`` (``chart_list.output_path`` — local path or
      blob prefix under the chart's container). Files are copied into the
      workspace ``ocr/`` then hydrated into ``ocr_results``.
-  2. Workspace ``data/folders/<chart>/ocr/`` (same hydrate).
+  2. Workspace ``outputs/charts/<chart>/ocr/`` (same hydrate).
   3. Else ``ocr_results`` in Postgres → write the three workspace files
      (``*_prelim.txt``, ``*_final1.json``, ``*_final2.json``).
   4. Else run OCR normally.

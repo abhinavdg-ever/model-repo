@@ -16,7 +16,7 @@ Examples::
     # What would change, nothing written
     python ../utilities/fill_metadata_extra.py --dry-run
 
-    # Fill the CSVs in review-ui/data/metadata, then the database
+    # Fill the CSVs in core-pipeline/outputs/metadata, then the database
     python ../utilities/fill_metadata_extra.py --load
 
     # Another folder, or a dump with another name / an .xlsx

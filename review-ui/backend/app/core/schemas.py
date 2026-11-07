@@ -42,18 +42,8 @@ class FolderSummary(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
-class FileViewerFolder(BaseModel):
-    """A chart directory under data/folders that has a pages/ folder."""
-
-    id: str
-    name: str
-    page_count: int = 0
-    has_corrected: bool = False
 
 
-class FileViewerListResponse(BaseModel):
-    items: list[FileViewerFolder]
-    total: int = 0
 
 
 class FolderListResponse(BaseModel):
@@ -90,8 +80,6 @@ class PageSummary(BaseModel):
     has_imaging: bool = False
 
 
-class FileViewerFolderDetail(FileViewerFolder):
-    pages: list[PageSummary] = Field(default_factory=list)
 
 
 class ImagingManifestDetails(BaseModel):

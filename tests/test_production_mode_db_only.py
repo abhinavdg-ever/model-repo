@@ -16,13 +16,23 @@ def test_the_production_repository_reads_no_data_from_disk(tmp_path):
     assert repo._optional_local() is None  # no disk fallback for a chart or its page list
 
 
-def test_production_still_serves_a_workspace_page_image(tmp_path):
-    # Page images are the source document: Blob first, else the workspace copy.
+def test_no_page_image_is_read_from_disk(tmp_path):
+    # 2026-11-07 (user): Blob only. A page image on disk is never served, even when present.
+    import pytest
+    from fastapi import HTTPException
+
     settings = _production(tmp_path)
     (tmp_path / "chart1" / "pages").mkdir()
     (tmp_path / "chart1" / "pages" / "1.png").write_bytes(b"png")
     repo = build_repository(settings)
-    assert repo.get_page_image_path("chart1", 1).name == "1.png"
+    with pytest.raises(HTTPException) as err:
+        repo.get_page_image_path("chart1", 1)
+    assert err.value.status_code == 404
+
+
+def test_data_mode_local_is_ignored():
+    # An old .env with DATA_MODE=local still gets the database.
+    assert Settings(data_mode="local").is_production_mode is True
 
 
 def test_the_extraction_pane_reads_no_staging_in_production(tmp_path):

@@ -93,7 +93,7 @@ def list_local_pages(chart_name: str) -> list[Path]:
 
 
 def clear_chart_workspace(chart_name: str) -> dict[str, int]:
-    """Delete on-disk outputs under data/folders/<chart>/ for a re-submit.
+    """Delete on-disk outputs under outputs/charts/<chart>/ for a re-submit.
 
     Clears ``pages/``, ``ocr/``, ``imaging/``, and ``corrected-pages/`` files.
     Does not touch Postgres — callers reset result tables separately and keep

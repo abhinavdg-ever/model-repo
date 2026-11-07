@@ -7,8 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]  # review-ui app root
 
-# Canonical modes exposed to ops/UI. "postgres" in .env is normalized to production.
-DataMode = Literal["local", "production"]
+# One mode since 2026-11-07 (user): review-ui reads the database and Azure Blob only. Local
+# Mode (reading the pipeline's chart folders on disk) is gone; DATA_MODE is ignored.
+DataMode = Literal["production"]
 
 
 class Settings(BaseSettings):
@@ -18,11 +19,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # local = Local Mode (disk CSVs / OCR files)
-    # production | postgres = Production Mode (read outputs from Postgres)
-    data_mode: DataMode = "local"
+    # Always "production": results from the database, page images from Azure Blob.
+    data_mode: DataMode = "production"
+    # No longer set (2026-11-07): kept so internal helpers that take a folder still construct.
+    # Nothing reads the pipeline's chart folders any more.
     data_root: str = "./data/folders"
-    # Local mode: stacked metadata_R{n}_B{n}.csv for Manifest Details
     metadata_root: str = "./data/metadata"
     # Pipeline CSV drop folder (Docker: /data/pipeline). Copy pack outputs here.
     # Accepts flat files (dos_extraction.csv) or mirrored pack paths.
@@ -119,21 +120,17 @@ class Settings(BaseSettings):
     @field_validator("data_mode", mode="before")
     @classmethod
     def _normalize_data_mode(cls, value: object) -> str:
-        raw = str(value or "local").strip().lower()
-        if raw in {"prod", "production", "postgres", "db", "database"}:
-            return "production"
-        if raw in {"local", "dev", "filesystem", "disk"}:
-            return "local"
-        return raw
+        """An old .env may still say DATA_MODE=local: there is no such mode any more."""
+        return "production"
 
     @property
     def is_production_mode(self) -> bool:
-        """True when outputs should be read from Postgres."""
-        return self.data_mode == "production"
+        """Always True: the database is the only source (2026-11-07)."""
+        return True
 
     @property
     def mode_label(self) -> str:
-        return "Production Mode" if self.is_production_mode else "Local Mode"
+        return "Production Mode"
 
     @property
     def resolved_data_root(self) -> Path:

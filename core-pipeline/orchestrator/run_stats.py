@@ -48,6 +48,12 @@ def new_trigger(kind: str) -> str:
         purge_old_logs()
     except Exception as exc:  # noqa: BLE001 - housekeeping never fails a run
         logger.warning("log purge skipped: %s", exc)
+    try:  # and chart folders under core-pipeline/outputs not run for 7 days
+        from jobs.outputs_cleanup import purge_old_charts
+
+        purge_old_charts()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("outputs purge skipped: %s", exc)
     return trigger_id
 
 
