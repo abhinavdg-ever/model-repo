@@ -14,7 +14,8 @@ with Postgres; a mismatch is reported and the run exits 1.
     python ../utilities/migrate_postgres_to_cosmos.py --all --skip-existing  # resume
 
 Reads DATABASE_URL and COSMOS_* from core-pipeline/.env. Re-running is safe: documents are
-upserted. Users are not copied yet (their Cosmos shape comes with review-ui on Cosmos).
+upserted. Users go to the `users` container in review-ui's shape (store/cosmos/review.py),
+with the last 50 sign-ins from user_login.
 """
 from __future__ import annotations
 
@@ -169,14 +170,42 @@ def migrate_manifest_and_ground_truth(conn: Any, store: Any, names: list[str], *
     return {"manifest_rows": len(manifest), "ground_truth_pages": len(gt)}
 
 
+def migrate_users(conn: Any, *, dry_run: bool) -> int:
+    """Every users row as review-ui's Cosmos users doc (id = users.id as text, same hash)."""
+    from common.db.cosmos_store import _json
+
+    users = rows(conn, "SELECT * FROM users ORDER BY id")
+    if dry_run or not users:
+        return len(users)
+    logins: dict[int, list[dict[str, Any]]] = {}
+    try:
+        for r in rows(conn, "SELECT user_id, ip_address, user_agent, created_at FROM user_login ORDER BY id"):
+            logins.setdefault(int(r["user_id"]), []).append(
+                {"ip_address": r.get("ip_address"), "user_agent": r.get("user_agent"), "created_at": r.get("created_at")})
+    except Exception:  # noqa: BLE001 - an older database without user_login
+        conn.rollback()
+    container = _container("users")
+    for u in users:
+        doc = dict(u)
+        doc["id"] = str(u["id"])
+        doc.setdefault("login_count", 0)
+        doc["logins"] = logins.get(int(u["id"]), [])[-50:]
+        container.upsert_item(_json(doc))
+    return len(users)
+
+
 def _ground_truth_container() -> Any:
+    return _container("ground_truth")
+
+
+def _container(name: str) -> Any:
     import os
 
     from azure.cosmos import CosmosClient
 
     db = CosmosClient(os.environ["COSMOS_ENDPOINT"], credential=os.environ["COSMOS_KEY"]).get_database_client(
         (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
-    return db.get_container_client("ground_truth")
+    return db.get_container_client(name)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -227,8 +256,9 @@ def main(argv: list[str] | None = None) -> int:
                 diff = {k: (expected.get(k), got.get(k)) for k in expected if expected.get(k) != got.get(k)}
                 print(f"{name}: COUNT MISMATCH postgres vs cosmos {diff}")
         extra = migrate_manifest_and_ground_truth(conn, store, [c["chart_name"] for c in charts], dry_run=args.dry_run)
+        users = migrate_users(conn, dry_run=args.dry_run) if args.all else 0
     print(f"charts: {len(charts)} | copied {ok}, mismatched {bad}, skipped {skipped} | "
-          f"manifest rows {extra['manifest_rows']}, ground-truth pages {extra['ground_truth_pages']}"
+          f"manifest rows {extra['manifest_rows']}, ground-truth pages {extra['ground_truth_pages']}, users {users}"
           f"{' (dry run: nothing written)' if args.dry_run else ''}")
     return 1 if bad else 0
 
