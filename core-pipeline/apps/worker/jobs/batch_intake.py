@@ -270,25 +270,19 @@ def finished_chart_names(names: list[str], since: Optional[date] = None) -> set[
     if not names:
         return set()
     try:
-        from common.db import connect, is_skip_db_write
+        from common.db import connect, is_skip_db_write, list_finished_chart_names
     except Exception:
         return set()
     if is_skip_db_write():
         return set()
     try:
         with connect() as conn:
-            rows = conn.execute(
-                "SELECT chart_name FROM chart_list "
-                "WHERE chart_name = ANY(%s) AND status = ANY(%s) "
-                "AND (%s::date IS NULL OR updated_at >= %s::date)",
-                (list(names), sorted(FINISHED_CHART_STATUSES), since, since),
-            ).fetchall()
+            return list_finished_chart_names(conn, names, FINISHED_CHART_STATUSES, since)
     except Exception:
         logger.warning(
             "skip_completed: status lookup failed — running every chart", exc_info=True
         )
         return set()
-    return {str(r["chart_name"]) for r in rows}
 
 
 def resolve_batch_workers(requested: Optional[int] = None) -> int:

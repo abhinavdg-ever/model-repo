@@ -25,6 +25,7 @@ from typing import Any, Iterator, Optional, Sequence
 
 from common.config import DATABASE_URL
 
+from common.db.backend import StoreBackend  # noqa: E402
 from common.db.memory_store import (  # noqa: E402
     MemoryStore,
     disable_skip_db_write,
@@ -50,7 +51,8 @@ __all_memory__ = (
 
 
 def _mem(conn: Any) -> bool:
-    return isinstance(conn, MemoryStore)
+    """True for any non-Postgres backend (MemoryStore today, Cosmos next): see db/backend.py."""
+    return isinstance(conn, StoreBackend)
 
 
 # Writes that run inside their own savepoint (2026-11-04, user: one bad page must not sink a
@@ -2059,6 +2061,58 @@ def count_manifest_members(conn: Any, record_id: str) -> int:
 
 
 # Manifests (manifest_member_list) are written by db-utilities, never here (2026-11-07).
+
+
+# ---------------------------------------------------------------------------
+# Jobs, usage and batch lookups (2026-11-07: moved here from the API, usage.py and
+# batch_intake.py, so no SQL lives outside common.db)
+# ---------------------------------------------------------------------------
+
+
+@_dispatch
+def list_jobs(conn: Any, *, chart_id: Optional[int] = None, limit: int = 50) -> list[dict[str, Any]]:
+    """Recent pipeline_jobs rows, newest first: one chart's, or the whole service's."""
+    if chart_id is not None:
+        return list(conn.execute(
+            "SELECT * FROM pipeline_jobs WHERE chart_id = %s ORDER BY id DESC LIMIT %s",
+            (chart_id, limit),
+        ).fetchall())
+    return list(conn.execute("SELECT * FROM pipeline_jobs ORDER BY id DESC LIMIT %s", (limit,)).fetchall())
+
+
+@_dispatch
+def insert_run_usage(conn: Any, row: dict[str, Any], columns: Sequence[str]) -> None:
+    """One run_usage row (apps/worker/usage.py builds it). JSON columns arrive as dicts."""
+    values = [json.dumps(row[c]) if c in ("stage_seconds", "llm_usage") else row[c] for c in columns]
+    conn.execute(
+        f"INSERT INTO run_usage ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})",
+        values,
+    )
+
+
+@_dispatch
+def list_run_usage_daily(conn: Any, days: int = 14) -> list[dict[str, Any]]:
+    """The last ``days`` days of v_run_usage_daily, newest first."""
+    cur = conn.execute(
+        "SELECT * FROM v_run_usage_daily WHERE day >= current_date - %s ORDER BY day DESC", (int(days),)
+    )
+    names = [d[0] for d in cur.description]
+    return [r if isinstance(r, dict) else dict(zip(names, r)) for r in cur.fetchall()]
+
+
+@_dispatch
+def list_finished_chart_names(
+    conn: Any, names: Sequence[str], statuses: Sequence[str], since: Optional[Any] = None
+) -> set[str]:
+    """Of ``names``, those whose chart status is in ``statuses`` (updated on or after ``since``)."""
+    rows = conn.execute(
+        "SELECT chart_name FROM chart_list "
+        "WHERE chart_name = ANY(%s) AND status = ANY(%s) "
+        "AND (%s::date IS NULL OR updated_at >= %s::date)",
+        (list(names), sorted(statuses), since, since),
+    ).fetchall()
+    return {str(r["chart_name"]) for r in rows}
+
 
 
 # ---------------------------------------------------------------------------

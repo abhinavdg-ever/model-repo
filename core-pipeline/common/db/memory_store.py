@@ -8,6 +8,8 @@ test run never overwrites a production chart folder.
 """
 from __future__ import annotations
 
+from common.db.backend import StoreBackend
+
 import copy
 import os
 import threading
@@ -153,7 +155,7 @@ def _confidence_level(confidence: Optional[float]) -> Optional[str]:
     return "low"
 
 
-class MemoryStore:
+class MemoryStore(StoreBackend):
     """Process-local stand-in for the V1 working-set tables."""
 
     def __init__(self) -> None:
@@ -166,6 +168,7 @@ class MemoryStore:
         self.pages_by_chart: dict[int, list[int]] = {}
         self.page_stages: dict[tuple[int, str, int], dict[str, Any]] = {}
         self.jobs: dict[int, dict[str, Any]] = {}
+        self.run_usage: list[dict[str, Any]] = []
         self.ocr: dict[tuple[int, str], dict[str, Any]] = {}  # (page_id, type)
         self.quality: dict[int, dict[str, Any]] = {}  # page_id
         self.blank_junk: dict[tuple[int, int], dict[str, Any]] = {}  # (page_id, pass)
@@ -540,6 +543,34 @@ class MemoryStore:
         return n
 
     # -- jobs ----------------------------------------------------------------
+
+    def list_jobs(self, *, chart_id: Optional[int] = None, limit: int = 50) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = [j for j in self.jobs.values() if chart_id is None or j.get("chart_id") == chart_id]
+            return [self._copy(j) for j in sorted(rows, key=lambda j: j["id"], reverse=True)[:limit]]
+
+    def insert_run_usage(self, row: dict[str, Any], columns: Sequence[str]) -> None:
+        with self._lock:
+            self.run_usage.append({c: copy.deepcopy(row.get(c)) for c in columns})
+
+    def list_run_usage_daily(self, days: int = 14) -> list[dict[str, Any]]:
+        """No daily view in memory: the rows are in ``self.run_usage``."""
+        return []
+
+    def list_finished_chart_names(
+        self, names: Sequence[str], statuses: Sequence[str], since: Optional[Any] = None
+    ) -> set[str]:
+        wanted, done = set(names), set(statuses)
+        with self._lock:
+            out = set()
+            for chart in self.charts.values():
+                if chart.get("chart_name") not in wanted or chart.get("status") not in done:
+                    continue
+                updated = chart.get("updated_at")
+                if since is not None and updated is not None and str(updated)[:10] < str(since):
+                    continue
+                out.add(str(chart["chart_name"]))
+            return out
 
     def create_job(
         self,

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from common.db.memory_store import MemoryStore
+from common.db.backend import StoreBackend
 
 DONE = frozenset({"completed", "skipped"})
 
@@ -41,7 +41,7 @@ CHART_STATUS_VALUES = frozenset(
 
 def _stage_rows(conn: Any, chart_id: int) -> list[dict[str, Any]]:
     """Per-stage page rollup for one chart, in execution order."""
-    if isinstance(conn, MemoryStore):
+    if isinstance(conn, StoreBackend):
         return conn.stage_progress_rows(chart_id)
     return list(
         conn.execute(
@@ -150,7 +150,7 @@ def chart_is_pipeline_complete(conn: Any, chart_id: int) -> bool:
     Used by batch ``force=false`` to skip charts that already finished (e.g.
     after a timeout left some charts done and others mid-flight).
     """
-    if isinstance(conn, MemoryStore):
+    if isinstance(conn, StoreBackend):
         chart = conn.get_chart(chart_id)
         if not chart:
             return False
@@ -204,7 +204,7 @@ def refresh_chart_status(
 
     ``running``: the (stage, pass) a run in progress has just finished; the chart stays
     processing until the run's final refresh, which passes none."""
-    if isinstance(conn, MemoryStore):
+    if isinstance(conn, StoreBackend):
         chart = conn.get_chart(chart_id)
         if not chart:
             raise RuntimeError(f"chart_id={chart_id} not found")

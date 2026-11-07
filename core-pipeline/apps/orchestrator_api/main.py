@@ -41,7 +41,10 @@ from common.config import (
     DB_BACKEND,
     DB_BACKEND_ACTIVE,
 )
-from common.db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
+from common.db import (
+    close_pool, connect, get_chart, get_chart_by_name, get_member_summary, list_jobs,
+    list_manifest_members, list_pages, list_stages,
+)
 from common.db.chart_status import refresh_chart_status
 from common.db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
 from apps.worker.jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
@@ -462,16 +465,13 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
 
     write = payload.blob_write_path or payload.local_write_path
     try:
-        from common.db import connect, set_chart_output_path
+        from common.db import connect, get_chart_by_name, set_chart_output_path
         from common.db.path_ids import resolve_output_path
 
         out_path = resolve_output_path(chart_name, write_path=write)
         if out_path:
             with connect() as conn:
-                row = conn.execute(
-                    "SELECT id FROM chart_list WHERE chart_name = %s",
-                    (chart_name,),
-                ).fetchone()
+                row = get_chart_by_name(conn, chart_name)
                 if row:
                     # Explicit write path wins as-is (no Raw_Input→Processed remap).
                     set_chart_output_path(conn, int(row["id"]), out_path)
@@ -985,9 +985,7 @@ def _batch_run_impl(
 def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, Any]:
     progress = refresh_chart_status(conn, chart_id)
     chart = get_chart(conn, chart_id)
-    summary = conn.execute(
-        "SELECT * FROM member_verification_summary WHERE chart_id = %s", (chart_id,)
-    ).fetchone()
+    summary = get_member_summary(conn, chart_id)
     payload: dict[str, Any] = {
         "chart": chart,
         "progress": progress,
@@ -1057,12 +1055,7 @@ def get_manifest(record_id: str) -> dict[str, Any]:
 
     try:
         with connect() as conn:
-            rows = list(
-                conn.execute(
-                    "SELECT * FROM manifest_member_list WHERE record_id = %s ORDER BY id",
-                    (rid,),
-                ).fetchall()
-            )
+            rows = list_manifest_members(conn, record_id=rid)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"database unavailable: {exc}") from exc
     if not rows:
@@ -1080,18 +1073,7 @@ def list_jobs(
 ) -> dict[str, Any]:
     """Recent pipeline_jobs rows — the run log for a chart or the whole service."""
     with connect() as conn:
-        if chart_id is not None:
-            rows = conn.execute(
-                """
-                SELECT * FROM pipeline_jobs WHERE chart_id = %s
-                 ORDER BY id DESC LIMIT %s
-                """,
-                (chart_id, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM pipeline_jobs ORDER BY id DESC LIMIT %s", (limit,)
-            ).fetchall()
+        rows = list_jobs(conn, chart_id=chart_id, limit=limit)
     return {"jobs": rows}
 
 

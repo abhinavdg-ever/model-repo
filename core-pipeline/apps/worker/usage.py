@@ -164,17 +164,12 @@ def write(run: dict[str, Any], results: dict[str, Any]) -> Optional[dict[str, An
         logger.warning("run usage not built: %s", exc)
         return None
     try:
-        from common.db import connect, is_skip_db_write
+        from common.db import connect, insert_run_usage, is_skip_db_write
 
         if is_skip_db_write():
             return row
-        values = [json.dumps(row[c]) if c in ("stage_seconds", "llm_usage") else row[c] for c in COLUMNS]
         with connect() as conn:
-            conn.execute(
-                f"INSERT INTO run_usage ({', '.join(COLUMNS)}) VALUES ({', '.join(['%s'] * len(COLUMNS))})",
-                values,
-            )
-            conn.commit()
+            insert_run_usage(conn, row, COLUMNS)
     except Exception as exc:  # noqa: BLE001 - monitoring never fails a run
         if "run_usage" in str(exc) and "does not exist" in str(exc):
             _warn_once("table", "run_usage table missing: run schema/migrate.sql to record usage")
@@ -191,11 +186,7 @@ def write(run: dict[str, Any], results: dict[str, Any]) -> Optional[dict[str, An
 
 def daily(days: int = 14) -> list[dict[str, Any]]:
     """The last ``days`` days of v_run_usage_daily, newest first."""
-    from common.db import connect
+    from common.db import connect, list_run_usage_daily
 
     with connect() as conn:
-        cur = conn.execute(
-            "SELECT * FROM v_run_usage_daily WHERE day >= current_date - %s ORDER BY day DESC", (int(days),)
-        )
-        names = [d[0] for d in cur.description]
-        return [r if isinstance(r, dict) else dict(zip(names, r)) for r in cur.fetchall()]
+        return list_run_usage_daily(conn, days)
