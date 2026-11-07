@@ -15,15 +15,12 @@
 #   blank-junk/bert/   PRIMARY blank/junk model: DistilBERT, 8 labels (KEEP, BLANK,
 #       six JUNK sub-types), b_jnk v0.3.1 (not committed; copy b_jnk/models/bert_page here as bert/).
 #       Needs torch + transformers. Decision rules: default.json -> decision.
-#   blank-junk/default.json   model version. tfidf_flat.joblib (committed) is no
-#       longer read: without bert/ or torch the vote runs on keywords alone.
+#   blank-junk/default.json   model version. Without bert/ or torch the vote runs on keywords alone.
 #       /health -> blank_junk_model.engine says bert or keywords.
 #   page-family/page-axes/   page-axes model (PAGE_AXES_MODEL_DIR): decides page_type /
 #       page_subtype. encoder/, heads.pt, label_space.json from
 #       training/bert-training/train_axes.py. Weights (*.safetensors, heads.pt) stay
 #       local. Missing ⇒ the keyword canon (page_canon.json) decides alone.
-#   page-family-backup/2026-10-16/   the old single-head BERT, retired 2026-10-16 (was
-#       page-family/bert/). Backup only; nothing loads it.
 #   page-family/family.joblib
 #       TF-IDF + XGBoost page family. Keywords choose the subtype; no hit
 #       leaves the subtype equal to the family. Missing file ⇒ keywords choose

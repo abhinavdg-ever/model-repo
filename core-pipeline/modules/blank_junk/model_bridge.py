@@ -7,8 +7,7 @@ ballot and a confidence; nothing here decides a page.
 
 Without the BERT folder or torch / transformers there is no model: its voter abstains,
 the ballot says ``unavailable`` and the vote runs on the keyword canon alone. /health
-reports ``engine: keywords`` so a degraded run is visible. TF-IDF
-(``tfidf_flat.joblib``) is no longer read.
+reports ``engine: keywords`` so a degraded run is visible.
 
 Wired like b_jnk v3 ``scripts/infer.py``: a Docling page goes in through
 ``extract_docling_page``, plain OCR text through ``clean_ocr_text``, and the page is

@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from common.config import SEQUENCING_CROSS_ENCODER
 from common.db import (
     connect,
     get_additional_page_details_map,
@@ -153,10 +152,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 }
             )
 
-        assignments = compute_sequence_assignments(
-            seq_inputs,
-            cross_encoder_enabled=bool(SEQUENCING_CROSS_ENCODER),
-        )
+        assignments = compute_sequence_assignments(seq_inputs)
         by_str_id = {str(a["page_id"]): a for a in assignments}
 
         csv_rows: list[dict[str, Any]] = []
@@ -207,16 +203,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             imaging_csv(ctx.chart_name, "sequencing"), SEQ_COLS, csv_rows
         )
         logger.info(
-            "page_sequencing chart=%s pages=%d → %s (cross_encoder=%s)",
+            "page_sequencing chart=%s pages=%d → %s",
             ctx.chart_name,
             len(csv_rows),
             path,
-            SEQUENCING_CROSS_ENCODER,
         )
         return {
             "chart_id": chart_id,
             "sequencing_csv": str(path),
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
-            "cross_encoder": bool(SEQUENCING_CROSS_ENCODER),
         }

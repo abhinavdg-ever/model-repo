@@ -56,6 +56,8 @@ def _startup() -> None:
     db_on = database_url_usable(settings.database_url)
     logger.info("review-ui starting — database + Azure Blob")
     logger.info("  results     : Postgres %s (schema %s)", _safe_db(settings.database_url), settings.db_schema)
+    if settings.db_backend != "postgres":
+        logger.warning("  DB_BACKEND=%s: Cosmos is not wired yet, reading Postgres", settings.db_backend)
     if not db_on:
         logger.warning("  DATABASE_URL is not set: nothing to show")
     logger.info("  page images : Azure Blob")
@@ -88,6 +90,7 @@ def root() -> dict[str, str]:
     return {
         "service": "advantmed-imaging-ui",
         "data_mode": settings.data_mode,
+        "db_backend": settings.db_backend,
         "mode_label": settings.mode_label,
         "database": _database_target(),
         "docs": "/docs",

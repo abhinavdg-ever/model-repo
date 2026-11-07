@@ -24,8 +24,6 @@ logger = logging.getLogger(__name__)
 
 def compute_sequence_assignments(
     pages: list[dict[str, Any]],
-    *,
-    cross_encoder_enabled: bool = True,
 ) -> list[dict[str, Any]]:
     """Return per-page suggested sequencing fields keyed by page_id (str).
 
@@ -45,7 +43,6 @@ def compute_sequence_assignments(
         assignments = build_sequence(
             features,
             markers,
-            cross_encoder_enabled=cross_encoder_enabled,
             header_footer_enabled=True,
         )
     else:
@@ -53,7 +50,6 @@ def compute_sequence_assignments(
             features,
             split,
             markers,
-            cross_encoder_enabled=cross_encoder_enabled,
         )
 
     placed: dict[str, bool] = {}
@@ -188,8 +184,6 @@ def _sequence_multi_stream(
     all_features: list,
     split: StreamSplit,
     markers: dict[str, ExplicitMarker],
-    *,
-    cross_encoder_enabled: bool,
 ) -> list[SequenceAssignment]:
     feature_map = {f.page_id: f for f in all_features}
     out: list[SequenceAssignment] = []
@@ -198,7 +192,6 @@ def _sequence_multi_stream(
         stream_assignments = build_sequence(
             stream.features,
             stream.markers,
-            cross_encoder_enabled=cross_encoder_enabled,
             header_footer_enabled=True,
         )
         for assignment in stream_assignments:
@@ -215,7 +208,6 @@ def _sequence_multi_stream(
             build_sequence(
                 split.orphans,
                 orphan_markers,
-                cross_encoder_enabled=cross_encoder_enabled,
                 header_footer_enabled=True,
             )
         )

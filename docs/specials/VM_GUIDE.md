@@ -318,8 +318,8 @@ VM unless you are chasing a problem.
 
 | Phase | What changes for you |
 |---|---|
-| 2: DB toggle | New `.env` line `DB_BACKEND=postgres\|cosmos` in **both** core-pipeline and review-ui (already present). Stays `postgres` until cutover |
+| 2: DB toggle | `DB_BACKEND=postgres\|cosmos\|both` in **both** core-pipeline and review-ui `.env` (already there and checked at start; `/health` shows `db_backend`). `both` writes to both stores and reads Postgres. Only `postgres` is wired today, so keep it until cutover |
 | 3: outputs and debug | Nothing to do. Scratch is wiped after each run, and debug also goes to Blob |
 | 4: queue and workers | `docker compose up -d --build --scale worker=3`; callers send `X-API-Key: <ORCHESTRATOR_API_KEY>` (use a long random value, 32+ characters); Playground sends it for you |
-| 7: Postgres → Cosmos | Run the migration utility once. Both stores run side by side for a week, then `DB_BACKEND=cosmos` in both `.env` files |
+| 7: Postgres → Cosmos | Run the migration utility once. `DB_BACKEND=both` for a week (both stores written), then `DB_BACKEND=cosmos` in both `.env` files |
 | 8: resources from Blob | No more `scp` of weights. A new model or canon version is published to Blob, and workers pick it up |

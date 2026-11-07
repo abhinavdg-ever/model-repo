@@ -3,7 +3,6 @@
 ```
 models/page-family/
 └── page-axes/    this folder: the page-axes model (PAGE_AXES_MODEL_DIR); decides page_type / page_subtype
-models/page-family-backup/2026-10-16/   the old single-head BERT — retired, backup only
 ```
 
 The page-axes model goes here: the output folder of
@@ -30,4 +29,4 @@ The model must be trained on the taxonomy version named in
 `resources/canon/page_arbitration.json` → `axes.taxonomy_version`
 (v29.2); another version is refused at load, naming both, and the canon decides.
 Installed 2026-10-25: the v29.2 Bio_ClinicalBERT run; the
-DistilBERT model before it is in `models/page-family-backup/2026-10-25-distilbert/`.
+older models were archived outside the repo on 2026-11-07.

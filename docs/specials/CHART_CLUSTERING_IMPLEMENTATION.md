@@ -431,6 +431,8 @@ type", subject to "new gets noticed" ≥ 80%. The chosen values go into `version
 
 ## 7. Build plan (maps to C0–C6 of the concept note)
 
+**Status (2026-11-07):** C0 part 1 is built in `training/chart-clustering/` (`ingest_folder.py --root <folder>`: text split, pipeline CSV labels when present, capture traits from the text; writes `work/pages.csv` and `work/charts.csv`, no text kept). Next: page-leaf on text for charts without `_final.csv`, then C0b.
+
 | Step | Work | Size | Done when |
 |---|---|---|---|
 | C0 | `ingest_folder.py` (text split, page-leaf on text, blank/junk + duplicates, capture proxies; CSVs when present) | 2 days | One row per page for the 500 charts; page types agree with the pipeline's on charts that have `_final.csv` (≥ 95%) |

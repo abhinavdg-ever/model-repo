@@ -1,7 +1,6 @@
 """Resolve page order within one stream — sequence first, unified global merge."""
 from __future__ import annotations
 
-from .continuation_scorer import HIGH_CONFIDENCE_THRESHOLD, build_context_chain
 from .header_fingerprint import build_header_groups
 from .marker_detector import find_marker_conflicts
 from .order_merge import unified_page_order
@@ -13,7 +12,6 @@ def build_sequence(
     features: list[PageFeatures],
     markers: dict[str, ExplicitMarker],
     *,
-    cross_encoder_enabled: bool = True,
     header_footer_enabled: bool = True,
 ) -> list[SequenceAssignment]:
     classified = sorted([f for f in features if f.is_classified], key=lambda f: f.original_page_number)
@@ -23,7 +21,6 @@ def build_sequence(
     conflicts = find_marker_conflicts({pid: m for pid, m in markers.items() if pid in feature_map})
 
     assignments: dict[str, SequenceAssignment] = {}
-    ce_chain: list[str] = []
 
     marker_ids = [
         f.page_id for f in sequenceable if f.page_id in markers and f.page_id not in conflicts
@@ -37,38 +34,6 @@ def build_sequence(
         assignments[pid] = _assignment(feature_map[pid], method, confidence, False, marker=marker)
 
     unresolved_ids = [f.page_id for f in sequenceable if f.page_id not in assignments]
-
-    if unresolved_ids and cross_encoder_enabled and len(unresolved_ids) > 1:
-        unresolved_features = [feature_map[pid] for pid in unresolved_ids]
-        ce_chain, edge_scores = build_context_chain(unresolved_features, set(unresolved_ids))
-        if ce_chain:
-            for pid in ce_chain:
-                score = edge_scores.get(pid)
-                is_conflict = pid in conflicts
-                if pid in assignments:
-                    continue
-                if score is None:
-                    assignments[pid] = _assignment(
-                        feature_map[pid], "cross_encoder", 0.60, is_conflict, marker=markers.get(pid)
-                    )
-                elif score >= HIGH_CONFIDENCE_THRESHOLD:
-                    assignments[pid] = _assignment(
-                        feature_map[pid],
-                        "cross_encoder",
-                        score,
-                        is_conflict,
-                        marker=markers.get(pid),
-                        continuation_score=score,
-                    )
-                else:
-                    assignments[pid] = _assignment(
-                        feature_map[pid],
-                        "cross_encoder",
-                        max(score, 0.0),
-                        True,
-                        marker=markers.get(pid),
-                        continuation_score=score,
-                    )
 
     if header_footer_enabled:
         remaining = [feature_map[pid] for pid in unresolved_ids if pid not in assignments]
@@ -98,7 +63,7 @@ def build_sequence(
                 feature_map[f.page_id], "original_order", 0.30, True, marker=markers.get(f.page_id)
             )
 
-    ordered_ids = unified_page_order(sequenceable, markers, assignments, ce_chain, conflicts)
+    ordered_ids = unified_page_order(sequenceable, markers, conflicts)
 
     result: list[SequenceAssignment] = []
     for position, pid in enumerate(ordered_ids, start=1):

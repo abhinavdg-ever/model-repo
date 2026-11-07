@@ -173,7 +173,7 @@ class TestSequencingMarker:
             page(1, BODY + "Page 2 of 2", None),
             page(2, BODY, ExplicitMarker(1, 2, "page_x_of_y", 1.0)),
         ]
-        out = {a["page_id"]: a for a in compute_sequence_assignments(pages, cross_encoder_enabled=False)}
+        out = {a["page_id"]: a for a in compute_sequence_assignments(pages)}
         assert out["2"]["marker_value"] == 1
 
 

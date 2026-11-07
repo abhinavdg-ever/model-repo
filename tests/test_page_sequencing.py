@@ -37,7 +37,7 @@ def test_explicit_page_markers_order_pages():
             "is_classified": False,
         },
     ]
-    assignments = compute_sequence_assignments(pages, cross_encoder_enabled=False)
+    assignments = compute_sequence_assignments(pages)
     by_id = {a["page_id"]: a for a in assignments}
     ordered = sorted(assignments, key=lambda a: a["sequence_position"])
     assert [a["page_id"] for a in ordered] == ["11", "10", "12"]
@@ -63,7 +63,7 @@ def test_junk_pages_are_classified_last():
             "is_classified": True,
         },
     ]
-    assignments = compute_sequence_assignments(pages, cross_encoder_enabled=False)
+    assignments = compute_sequence_assignments(pages)
     by_id = {a["page_id"]: a for a in assignments}
     assert by_id["1"]["sequence_position"] == 1
     assert by_id["2"]["sequence_position"] == 2
@@ -83,7 +83,7 @@ def test_original_order_fallback_when_no_markers():
             "text": "Second page with substantial clinical narrative content here.",
         },
     ]
-    assignments = compute_sequence_assignments(pages, cross_encoder_enabled=False)
+    assignments = compute_sequence_assignments(pages)
     ordered = sorted(assignments, key=lambda a: a["sequence_position"])
     assert [a["page_id"] for a in ordered] == ["a", "b"]
 

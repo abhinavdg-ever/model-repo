@@ -1,14 +1,12 @@
-"""Merge marker anchors, cross-encoder chains, and scan order into one document sequence."""
+"""Merge marker anchors and scan order into one document sequence."""
 from __future__ import annotations
 
-from .types import ExplicitMarker, PageFeatures, SequenceAssignment
+from .types import ExplicitMarker, PageFeatures
 
 
 def unified_page_order(
     features: list[PageFeatures],
     markers: dict[str, ExplicitMarker],
-    assignments: dict[str, SequenceAssignment],
-    ce_chain: list[str],
     conflicts: set[str],
 ) -> list[str]:
     """Global page order from explicit markers + original scan order.

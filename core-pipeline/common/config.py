@@ -140,6 +140,23 @@ def _flag(name: str, default: bool) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+# Which database the results go to (2026-11-07, user): postgres (today) | cosmos | both.
+# both = write to Postgres and Cosmos, read from Postgres (the side-by-side week before the
+# switch). Only Postgres is wired yet: cosmos / both run on Postgres, and /health says so.
+DB_BACKENDS = ("postgres", "cosmos", "both")
+
+
+def _db_backend() -> str:
+    raw = (os.environ.get("DB_BACKEND") or "postgres").strip().casefold()
+    if raw not in DB_BACKENDS:
+        raise ValueError(f"DB_BACKEND={raw!r}: use one of {', '.join(DB_BACKENDS)}")
+    return raw
+
+
+DB_BACKEND = _db_backend()
+DB_BACKEND_ACTIVE = "postgres"  # what actually runs until the Cosmos writer exists
+
+
 # When true, ocr_prelim / ocr_final1 / ocr_final2 reuse existing artifacts if
 # the chart's *output folder* ``ocr/`` (or workspace ``ocr/``) already has
 # usable files (re-hydrated into ocr_results), OR if ocr_results already has
@@ -172,10 +189,6 @@ ENCOUNTER_DEBUG = _flag("ENCOUNTER_DEBUG", False)
 # debug/ is never exported.
 KV_DEBUG = _flag("KV_DEBUG", False)
 
-# Page sequencing cross-encoder (optional ONNX). Off by default — markers /
-# header groups / original order still run. Drop cross_encoder_mini_lm.onnx
-# under modules/sequencing/artifacts/ and set true to enable.
-SEQUENCING_CROSS_ENCODER = _flag("SEQUENCING_CROSS_ENCODER", False)
 
 # --- Member verification ----------------------------------------------------
 # GLiNER (the NER layer) is on by default: member verification reads names off

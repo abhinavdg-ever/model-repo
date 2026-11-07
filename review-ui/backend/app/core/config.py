@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     # Always "production": results from the database, page images from Azure Blob.
     data_mode: DataMode = "production"
+    # postgres (today) | cosmos | both (read Postgres while both are written). Only
+    # Postgres is wired yet; cosmos / both still read Postgres (logged at startup).
+    db_backend: Literal["postgres", "cosmos", "both"] = "postgres"
     # No longer set (2026-11-07): kept so internal helpers that take a folder still construct.
     # Nothing reads the pipeline's chart folders any more.
     data_root: str = "./data/folders"

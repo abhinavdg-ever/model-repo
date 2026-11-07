@@ -2517,7 +2517,7 @@ class TestCredentialListCopy:
 class TestNoModelWeightsInGit:
     """Model weights are copied onto each host, never committed. The page-axes and
     encounter encoders were in git LFS from 2026-10-25, taken out on 2026-10-26, and the
-    2026-11-02 encoders (page-leaf, page-axes, encounter) went into LFS once and came out on 2026-11-04 (user). Small files that ship on purpose (tfidf_flat.joblib,
+    2026-11-02 encoders (page-leaf, page-axes, encounter) went into LFS once and came out on 2026-11-04 (user). Small files that ship on purpose (
     image_type_classification.pkl, configs, tokenizers) are not weights in this sense."""
 
     WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")

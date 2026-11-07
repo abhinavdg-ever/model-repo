@@ -38,6 +38,8 @@ from common.config import (
     API_PORT,
     MEMBER_NER_ENABLED,
     STAGE_WORKERS,
+    DB_BACKEND,
+    DB_BACKEND_ACTIVE,
 )
 from common.db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
 from common.db.chart_status import refresh_chart_status
@@ -780,6 +782,8 @@ def health() -> dict[str, Any]:
         # page can be marked wrong_member, so no document can be Rejected.
         # blob.ready=false means run/batch-run work locally but not from blob.
         **caps,
+        # configured = DB_BACKEND in .env; active = what runs (Postgres until Cosmos is wired).
+        "db_backend": {"configured": DB_BACKEND, "active": DB_BACKEND_ACTIVE},
         "stage_workers": STAGE_WORKERS,
     }
 
