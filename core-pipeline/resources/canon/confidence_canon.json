@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file; docs/APPROACH.md section 10 explains it per module.",
+  "comment": "2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file.",
   "bands": {
     "good": 0.8,
     "review": 0.5,

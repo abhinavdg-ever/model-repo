@@ -195,7 +195,7 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 
 | Document | Covers |
 |---|---|
-| [`docs/HOW_TO_RUN.md`](docs/HOW_TO_RUN.md) | **Re-run recipes** — skip OCR, `only` / `force` / batch on charts that already finished OCR |
 | [`docs/API.md`](docs/API.md) | Environment, model downloads, and starting uvicorn |
 | [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |
+| [`docs/specials/VM_GUIDE.md`](docs/specials/VM_GUIDE.md) | Deploying on the VM: the release path and running it |
+| [`docs/specials/CHART_CLUSTERING_IMPLEMENTATION.md`](docs/specials/CHART_CLUSTERING_IMPLEMENTATION.md) | Chart-type clustering proposal (not built) |

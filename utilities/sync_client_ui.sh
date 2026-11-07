@@ -6,7 +6,7 @@
 #
 # Only what is committed at HEAD is copied, so commit review-ui first. The client
 # repo's own files (docker-compose.yml, .env.example, README.md, data/) are left
-# alone. Then review the diff, commit and push in CLIENT_DIR (docs/CLIENT_INSTANCE.md).
+# alone. Then review the diff, commit and push in CLIENT_DIR.
 set -euo pipefail
 
 repo="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"

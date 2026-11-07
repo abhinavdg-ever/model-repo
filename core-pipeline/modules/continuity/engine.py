@@ -1,4 +1,4 @@
-"""Where one document ends and the next begins (docs/APPROACH.md §4).
+"""Where one document ends and the next begins.
 
 **Gaps, not pages.** Every gap between two consecutive pages gets a *break score*, a plain
 sum of points (``continuity_canon.json`` ``points``: 1 weak, 2 moderate, 3 strong, 5

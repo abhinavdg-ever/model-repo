@@ -9,7 +9,7 @@ Writes
 
 * ``review-ui/frontend/src/gtPageTypeCanon.json`` — the canon review-ui scores with
   (``pageTypeMark`` in ``groundTruth.ts``)
-* ``docs/gt_page_type_mapping.csv`` — the same mapping, one row per GT label and
+* ``training/taxonomy/gt_page_type_mapping.csv`` — the same mapping, one row per GT label and
   target, with the target split into L1 / L2 / L3
 
 Every target must be an L1 or a prefix of a path in ``taxonomy.json``. The canon is
@@ -28,7 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 TAXONOMY = REPO / "training" / "taxonomy" / "taxonomy.json"
 CANON = REPO / "review-ui" / "frontend" / "src" / "gtPageTypeCanon.json"
-CSV_OUT = REPO / "docs" / "gt_page_type_mapping.csv"
+CSV_OUT = REPO / "training" / "taxonomy" / "gt_page_type_mapping.csv"
 SEP = " > "
 
 STATUS = {"Mapped": "mapped", "Mapped (ambiguous GT name)": "ambiguous", "Exclude from accuracy": "exclude"}
@@ -41,7 +41,7 @@ COMMENT = (
     "level, a sibling L3, or another L2 under the same L1). MISS (0) otherwise. 'exclude' labels "
     "(cover / index / fax / blank pages, NA, Misc ...) are not page types and are not scored. A page "
     "scores the better of Extracted and Final. Built by training/taxonomy/build_gt_mapping.py from "
-    "GT_mapping_v29_2.xlsx; docs/gt_page_type_mapping.csv is the same mapping as a table."
+    "GT_mapping_v29_2.xlsx; training/taxonomy/gt_page_type_mapping.csv is the same mapping as a table."
 )
 
 
@@ -112,7 +112,7 @@ def main() -> int:
     table = to_csv(canon)
     if args.check:
         stale = not CSV_OUT.is_file() or CSV_OUT.read_text(encoding="utf-8") != table
-        print("docs/gt_page_type_mapping.csv is stale" if stale else "up to date")
+        print("training/taxonomy/gt_page_type_mapping.csv is stale" if stale else "up to date")
         return int(stale)
     if args.workbook:
         CANON.write_text(json.dumps(canon, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

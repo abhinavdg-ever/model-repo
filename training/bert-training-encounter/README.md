@@ -121,7 +121,7 @@ more vote per page, asked only where the page has no tier 1 / tier 2 evidence, a
 counted only for Evisit and Home Visit at >= 0.60 and Inpatient at >= 0.70
 (`encounter_canon.json` -> `model_vote`). The pipeline's inference code
 (`modules/encounter/encounter_model.py`) is a copy of this trainer's; a test fails
-when they drift. Details: `../../docs/APPROACH.md` §5.1.
+when they drift.
 
 ## Tests
 

@@ -76,7 +76,7 @@ ALTER TABLE imaging_final
 --    Signature accuracy). review-ui re-creates the view itself
 --    the first time the accuracy report loads; nothing to run here.
 
--- 4. Continuity: the weighted revamp (docs/CONTINUITY_LOGIC.md). decided_by gains
+-- 4. Continuity: the weighted revamp. decided_by gains
 --    'weighted'; the old ladder's values stay allowed for rows written before.
 --    score and review_required (already there) are written again.
 ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;
@@ -177,7 +177,7 @@ BEGIN
     END IF;
 END $$;
 
--- 8. page_continuity_results for the gap scorer (2026-10-20, docs/CONTINUITY_LOGIC.md): no
+-- 8. page_continuity_results for the gap scorer (2026-10-20): no
 --    new columns (every score is in <chart>/staging/continuity.json); decided_by gains the
 --    scorer's reasons.
 ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;

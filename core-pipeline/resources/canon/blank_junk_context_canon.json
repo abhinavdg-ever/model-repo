@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "status": "ACTIVE: read by modules/blank_junk/method.py. Logic: docs/BLANK_JUNK_LOGIC.md.",
+  "status": "ACTIVE: read by modules/blank_junk/method.py.",
   "notes": [
     "Matching: case-insensitive, on word boundaries, after whitespace is collapsed. 'terms' are literal phrases; 'patterns' are regexes (Python syntax).",
-    "Score: UNIQUE hits. Each distinct term or pattern of a group counts once, however often it appears. group score = weight x (number of distinct terms/patterns that hit), then capped at the group's 'cap'. Overlapping phrases: the longest wins. context score = sum of its group scores. See docs/BLANK_JUNK_LOGIC.md",
+    "Score: UNIQUE hits. Each distinct term or pattern of a group counts once, however often it appears. group score = weight x (number of distinct terms/patterns that hit), then capped at the group's 'cap'. Overlapping phrases: the longest wins. context score = sum of its group scores.",
     "weight = how much one hit is worth (1 = common, ambiguous; 2 = typical; 3-4 = nearly decisive). cap = the most one group can add, so one repeated word cannot reach a threshold alone.",
     "line_start: true means the term counts only at the start of a line (alone, or followed by ':' or '-'). Used for section headings, so 'plan' inside a sentence does not count.",
     "zone: 'any' | 'header' | 'body' | 'footer'. Header is the top 'header_band' of the page height, footer the bottom 'footer_band'. Pass 1 has no coordinates, so every zone is read as 'any' there. A junk term in the header or footer only counts when the body has at least one junk hit too.",
@@ -66,7 +66,7 @@
     "signature_terms": ["signature", "signed", "e-signed", "esigned", "cosigned", "attestation", "attested"]
   },
   "short_page": {
-    "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the header band (zones.header_band, 15%) of the page height, the footer band (zones.footer_band, 8%) and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
+    "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the header band (zones.header_band, 15%) of the page height, the footer band (zones.footer_band, 8%) and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page.",
     "skip_keep_above": 0.9,
     "body_ink_max_fraction": 0.005,
     "note_body_ink": "Ink below the short band = the share of the band between the header and footer bands (15%-92%; 2026-11-03, user: one header band, one footer band in blank / junk) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R6 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
@@ -814,7 +814,7 @@
       "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R5.1), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
     "keyword": {
-      "note": "Votes from the J/C/D table docs/BLANK_JUNK_LOGIC.md Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
+      "note": "Votes from the J/C/D table. Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
       "junk_alone_min": 7,
       "note_junk_alone": "Vote row 3 (DistilBERT abstains, keywords vote JUNK): Junk only when the keyword junk score is at least this; below it the page stays Main."
     }
@@ -823,7 +823,7 @@
     "note": "Section 8.3: a JUNK vote is turned into KEEP + review only when the handwritten share of the page is above this. Needs the page-tag model (handwritten_area_pct); without it the veto does not apply and votes.hw_area = 'none'.",
     "min_handwritten_area_pct": 30
   },
-  "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R3 and R6-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1, R2 and R4 (signature) keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review.",
+  "note_confidence": "Confidence is the evidence for the verdict, not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R3 and R6-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1, R2 and R4 (signature) keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review.",
   "dos_keep_note": "2026-10-26 (user), post-processing after the ladder in pass 2: a page with an Electronic Signature or provider details (name / credentials) extracted by kv_extract is never junk -> Main. Duplicates and Blank are not changed. A DOS alone no longer keeps a page (removed the same day, user: it caught every date).",
   "lab_keep": {
     "note": "2026-11-04 (user): the last blank / junk rule, both passes: a junk page with one term of every group (Lab, Reference Range, Value) is a lab result -> Main. Blank stays Blank.",

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Fill the client's review database from ours: the charts last run on or after a cutoff,
-or the charts named in a list, our users (so the same sign-ins work), and no ground truth
-(docs/CLIENT_INSTANCE.md).
+or the charts named in a list, our users (so the same sign-ins work), and no ground truth.
 
     python utilities/clone_client_db.py --dry-run            # what would be copied
     python utilities/clone_client_db.py                      # copy into an empty target

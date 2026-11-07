@@ -76,6 +76,6 @@ plus `migrate.sql`, matches a fresh `schema.sql`. Running `migrate.sql` twice, o
 ## Postgres → Cosmos
 
 These files keep the **Postgres** database current while it is still in use
-(`DB_BACKEND=postgres`). Moving to Azure Cosmos DB (docs/PLATFORM_PLAN.md, phase 7) is a
+(`DB_BACKEND=postgres`). Moving to Azure Cosmos DB (platform plan, phase 7) is a
 different kind of migration: a data copy by `utilities/migrate_postgres_to_cosmos.py`, which
 reads a Postgres database at the `schema.sql` shape. So run `migrate.sql` first, then copy.

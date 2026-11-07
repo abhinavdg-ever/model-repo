@@ -1,5 +1,5 @@
 """Document continuity: the gap scorer that splits a chart into documents
-(modules/continuity, docs/APPROACH.md §4)."""
+(modules/continuity)."""
 from __future__ import annotations
 
 import dataclasses

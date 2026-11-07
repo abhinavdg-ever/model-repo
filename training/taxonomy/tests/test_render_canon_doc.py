@@ -1,4 +1,4 @@
-"""docs/APPROACH.md carries the canon as rendered from the JSON files."""
+"""training/taxonomy/CANON.md carries the canon as rendered from the JSON files."""
 from __future__ import annotations
 
 import sys

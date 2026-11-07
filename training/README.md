@@ -20,7 +20,8 @@ Labels are L1 > L2 > L3, plus specialty, plus a derived codeability.
   `specialty.json`, `sections.json`, `encounter_canon.json` and the labelling
   scripts are copied, for reference, into `taxonomy/rules/`;
   `taxonomy/rules/name_map.json` maps the 23 Oct names to v29.2.
-* **The approach** (page classification, continuity, encounter): `docs/APPROACH.md`.
+* **The canon, rendered** (page types, specialty, encounter, continuity): `taxonomy/CANON.md`
+  (`python taxonomy/render_canon_doc.py`).
 
 The old single-head trainer (`train.py`) was removed on 2026-10-23; it is in git
 history. Full detail is in each folder's README.
@@ -136,8 +137,7 @@ python train_encounter.py --check   # counts, split, 2 steps, time estimate; sav
 python train_encounter.py           # 20 epochs -> output/encounter/
 ```
 
-Detail: `bert-training-encounter/README.md`. The pipeline does not load it yet: see
-`docs/APPROACH.md` for how it would join the encounter engine.
+Detail: `bert-training-encounter/README.md`. The pipeline does not load it yet.
 
 ## 4. Put the model into the pipeline
 

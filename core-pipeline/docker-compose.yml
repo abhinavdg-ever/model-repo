@@ -4,7 +4,7 @@
 #
 # Shares only data with review-ui: the database (DATABASE_URL) and Azure Blob.
 # Chart working folders are scratch in ./outputs (deleted after 7 unused days);
-# review-ui does not mount them. Guide: docs/VM_GUIDE.md.
+# review-ui does not mount them. Guide: docs/specials/VM_GUIDE.md.
 #
 # Database: new  -> psql "$DATABASE_URL" -f ../schema/schema.sql
 #           existing -> psql "$DATABASE_URL" -f ../schema/migrate.sql

@@ -56,4 +56,4 @@ probabilities, marked `model_source: axes_fallback`).
 
 Every leaf gets a probability. The pipeline keeps the best 5 above 0.01, at most 3 under
 one L1, plus any leaf tied with the last kept (`top_leaves`). Then the keyword canon scores
-the same page and both are combined (APPROACH.md section 3).
+the same page and both are combined.

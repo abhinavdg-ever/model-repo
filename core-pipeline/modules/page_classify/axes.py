@@ -743,7 +743,7 @@ def _unusable(folder: Path) -> Optional[str]:
     pointers = _lfs_pointers(folder)
     if pointers:
         return (f"{', '.join(pointers)} in {folder} is a git LFS pointer, not the model; "
-                "copy the real file there (docs/APPROACH.md §7.4)")
+                "copy the real file there")
     return None
 
 

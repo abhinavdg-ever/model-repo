@@ -3,10 +3,9 @@
 A quick, end-to-end picture. It covers **today** (Postgres; the API runs charts itself),
 **after phase 4** (Service Bus queue and workers), and the release path from the Mac to
 the client VM. Detail lives in:
-- [PLATFORM_PLAN.md](PLATFORM_PLAN.md): the target design;
-- [FLOW.md](FLOW.md): what each stage does;
-- [HOW_TO_RUN.md](HOW_TO_RUN.md): re-run recipes;
-- [../deploy/README.md](../deploy/README.md): the copy into Azure DevOps.
+- [FLOW.md](../FLOW.md): what each stage does;
+- [API.md](../API.md): environment, models and the API;
+- [deploy/README.md](../../deploy/README.md): the copy into Azure DevOps.
 
 ---
 
@@ -240,6 +239,60 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' -
 `skip_ocr: true` re-runs everything except OCR, so there is no Doc Intel bill. A batch uses
 `/api/charts/batch-run` with `chart_list`. Most of the time the review-ui Playground does all
 of this for you.
+
+### 6.1 A folder of charts, start to end (upload → run → review)
+
+Example: the 9 test charts in `/Volumes/Extreme SSD/Advantmed/Training/Test Charts` (one
+subfolder per chart, the folder name is the chart name).
+
+```
+Mac / laptop folder ──upload──▶ Blob raw_input/Batch1/Run1/<chart>/*.jpg
+                                      │  POST /api/charts/batch-run (VM, port 8001)
+                                      ▼
+                     VM core-pipeline: 15 stages ──▶ Postgres (all results)
+                                      │            └▶ Blob Processed/Batch1/Run1/<chart>/
+                                      ▼
+                     review-ui (port 4001) shows the charts from Postgres + Blob
+```
+
+**1. Upload the pages to Blob** from the machine that has the folder. The script uses the
+Blob settings in `core-pipeline/.env` (`AZURE_STORAGE_ACCOUNT_NAME` must be set), skips files
+already uploaded, and `--dry-run` only lists what it would send.
+
+```bash
+# Mac (or the VM, if the folder is there)
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/upload_charts_to_blob.py "/Volumes/Extreme SSD/Advantmed/Training/Test Charts" \
+  --prefix raw_input/Batch1/Run1
+```
+
+```powershell
+# Windows laptop (needs Python 3.12 and core-pipeline\.venv; otherwise upload the
+# chart folders with Azure Storage Explorer into raw_input/Batch1/Run1/)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+python ..\utilities\upload_charts_to_blob.py "D:\Test Charts" --prefix raw_input/Batch1/Run1
+```
+
+**2. Run them on the VM.** Every chart under the input path runs; results go to
+`Processed/Batch1/Run1/<chart>/`.
+
+```bash
+# Ubuntu VM
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' -d '{
+  "input_type":"blob","container_name":"imaging-pipeline",
+  "input_path":"raw_input/Batch1/Run1","output_path":"Processed/Batch1/Run1"}'
+```
+
+```powershell
+# Windows laptop
+$body = '{"input_type":"blob","container_name":"imaging-pipeline","input_path":"raw_input/Batch1/Run1","output_path":"Processed/Batch1/Run1"}'
+Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/batch-run -ContentType 'application/json' -Body $body
+```
+
+**3. Watch and review.** `curl -s localhost:8001/api/charts/by-name/<chart>` shows the
+stage reached; `docker compose logs -f api` shows the run. When a chart finishes, it is in
+review-ui at `http://172.20.4.170:4001`. Blob paths are case-sensitive: `raw_input` and
+`Raw_Input` are different folders.
 
 **Debug mode** (`KV_DEBUG`, `DOS_DEBUG` … in `.env`): the explanation files go to
 `core-pipeline/outputs/debug/`. From phase 3 they also go to Blob `debug/`. Turn it off on the

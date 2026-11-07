@@ -10,7 +10,7 @@ Two passes, as the pipeline spec requires:
           page pass 1 did not already rule out. A Visual page pass 1 judged
           is not judged again.
 
-The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R4, then DistilBERT
+The verdict is ``method.decide``: rules R1-R4, then DistilBERT
 alone (no keyword vote). Pass 1 removes blank pages, R1-R3 junk (R3: strong cards) and the pages DistilBERT is
 sure are junk (p(junk) > 0.95); every page it settles still gets Final OCR 1, which changes
 nothing (no quality re-grade, no Final OCR 2, no later stage reads it). It also settles the

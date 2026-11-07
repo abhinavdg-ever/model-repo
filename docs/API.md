@@ -1,6 +1,6 @@
 # How to run
 
-Two services, started separately. They share Postgres and `core-pipeline/outputs/charts`. They do not call each other.
+Two services, started separately. They share only Postgres and Azure Blob, and they do not call each other. `core-pipeline/outputs/charts` is core-pipeline's scratch space; review-ui never reads it. Running it all on the Mac: [§4](#4-running-on-this-mac).
 
 | Service | Command | URL |
 |---|---|---|
@@ -133,3 +133,68 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 ```
 
 That returns 202. Poll `GET /api/charts/{chart_id}`. `skip_ocr: true` reuses OCR already on disk. Stage 5 (Azure Document Intelligence) is billed per page.
+
+---
+
+## 4. Running on this Mac
+
+The one-time setup in §1–§2 is already done on this Mac: Python 3.12 venvs, Tesseract 5.5 and `psql` from Homebrew, models under `core-pipeline/models/`, and `.env` files pointing at the shared Postgres. Every day, start the three processes, each in its own terminal:
+
+```bash
+REPO="/Volumes/Extreme SSD/Advantmed/advantmed-imaging-pipeline"
+
+# Terminal 1 — pipeline API, http://localhost:8001/docs (logs: core-pipeline/logs/core-pipeline.log)
+cd "$REPO/core-pipeline" && source .venv/bin/activate && python cli.py serve
+
+# Terminal 2 — review API, http://localhost:8002/docs
+cd "$REPO/review-ui/backend" && source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+
+# Terminal 3 — review web, http://localhost:5174
+cd "$REPO/review-ui/frontend" && npm run dev
+```
+
+Check that they are up: `curl -fsS localhost:8001/ready` should answer without an error, then open http://localhost:5174. Stop a process with Ctrl+C in its terminal. Docker is not needed on the Mac.
+
+### Run charts from a folder on the Mac
+
+The folder name is the chart name. Pages are copied in, never moved. Results go to the database, and the working files to `core-pipeline/outputs/charts/<chart>`, which is deleted after 7 days without a run.
+
+```bash
+# one chart
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"input_type":"local","input_path":"/Volumes/Extreme SSD/Advantmed/Training/Test Charts","chart_name":"22217239_25539465"}'
+
+# every chart in the folder
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{"input_type":"local","input_path":"/Volumes/Extreme SSD/Advantmed/Training/Test Charts"}'
+```
+
+### Run charts through Blob (as the VM does)
+
+This needs `AZURE_STORAGE_ACCOUNT_NAME` in `core-pipeline/.env`. With `AZURE_STORAGE_AUTH=entra`, the first call opens a browser to sign in.
+
+```bash
+cd "$REPO/core-pipeline" && source .venv/bin/activate
+
+# 1. upload: <folder>/<chart>/*.jpg -> raw_input/Batch1/Run1/<chart>/ (add --dry-run to only list)
+python ../utilities/upload_charts_to_blob.py "/Volumes/Extreme SSD/Advantmed/Training/Test Charts" \
+  --prefix raw_input/Batch1/Run1
+
+# 2. run: results to Processed/Batch1/Run1/<chart>/
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{"input_type":"blob","container_name":"imaging-pipeline","input_path":"raw_input/Batch1/Run1",
+       "output_path":"Processed/Batch1/Run1"}'
+```
+
+Blob paths are case-sensitive: `raw_input` and `Raw_Input` are different folders.
+
+### Watch and re-run
+
+```bash
+curl -s localhost:8001/api/charts/by-name/22217239_25539465 | python3 -m json.tool   # progress
+tail -f "$REPO/core-pipeline/logs/core-pipeline.log"
+cd "$REPO/core-pipeline" && source .venv/bin/activate && python cli.py usage --days 7
+```
+
+To run again without paying for OCR again, add `"skip_ocr": true`. To run one stage only, add `"only": ["dos_extract"]`.
+

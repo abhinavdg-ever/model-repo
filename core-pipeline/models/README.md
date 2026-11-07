@@ -1,7 +1,6 @@
 # Weight files for core-pipeline. .env paths are relative to core-pipeline/
 # (models/hw, models/rapidocr, models/semantic-model, models/blank-junk, models/ner).
-# Full list of what must be here, how to get each, and what happens without it:
-# docs/HOW_TO_RUN.md § "Models". Large checkpoints stay local. Committed: blank-junk/,
+# Large checkpoints stay local. Committed: blank-junk/,
 # page-family/, kv-extraction/, and hw/image_type_classification.pkl.
 #
 #   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)
@@ -22,7 +21,7 @@
 #   page-family/page-axes/   page-axes model (PAGE_AXES_MODEL_DIR): decides page_type /
 #       page_subtype. encoder/, heads.pt, label_space.json from
 #       training/bert-training/train_axes.py. Weights (*.safetensors, heads.pt) stay
-#       local. Missing ⇒ the keyword canon (page_canon.json) decides alone. Steps: docs/APPROACH.md §7.4.
+#       local. Missing ⇒ the keyword canon (page_canon.json) decides alone.
 #   page-family-backup/2026-10-16/   the old single-head BERT, retired 2026-10-16 (was
 #       page-family/bert/). Backup only; nothing loads it.
 #   page-family/family.joblib

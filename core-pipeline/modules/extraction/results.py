@@ -272,7 +272,7 @@ def signature_fields(
     provider_hits: Optional[list[dict[str, Any]]] = None,
     credential_hits: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """The page's provider signature (docs/PROVIDER_LOGIC.md).
+    """The page's provider signature.
 
     ``hit`` is the page's electronic-signature rows; one counts when accepted or scored
     above COUNTS_ABOVE (0.7). Signature present = at least one signer was found (a name or

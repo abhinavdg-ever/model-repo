@@ -14,7 +14,7 @@ services:
     build:
       context: ./backend
     ports:
-      # Host ports: a second instance on the same host (docs/CLIENT_INSTANCE.md) sets its own.
+      # Host ports: a second instance on the same host sets its own.
       - "${BACKEND_PORT:-4000}:3000"
     env_file:
       - ./.env
@@ -43,7 +43,7 @@ services:
       # Playground (admins): the core-pipeline APIs a run can go to, "Label=URL" pairs,
       # first = default. Inside this container "localhost" is the container itself:
       # the pipeline on the same host is http://host.docker.internal:8001. Set to empty in
-      # .env ("CORE_PIPELINE_URLS=") to turn the Playground off (docs/CLIENT_INSTANCE.md).
+      # .env ("CORE_PIPELINE_URLS=") to turn the Playground off.
       CORE_PIPELINE_URLS: ${CORE_PIPELINE_URLS-VM=http://172.20.4.170:8001,Local=http://host.docker.internal:8001}
       PLAYGROUND_CONTAINER: ${PLAYGROUND_CONTAINER:-imaging-pipeline}
     # host.docker.internal on Linux too (the Playground's CORE_PIPELINE_URL).

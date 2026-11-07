@@ -60,7 +60,7 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Scored on the pages the ground truth says are not blank / junk. The client's label is mapped to our L1 > L2 > L3 (gtPageTypeCanon.json; the table is docs/gt_page_type_mapping.csv). Match (1): a full target is the start of our Final or Extracted path. Partial (0.5): a listed neighbour is, or our path has the same L1 (stops above the label's level, a sibling L3, another L2). Else No Match (0). Cover / index / fax / blank, NA and Misc labels are not scored. A label not in the mapping falls back to the accepted-label lists. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
+    rule: "Scored on the pages the ground truth says are not blank / junk. The client's label is mapped to our L1 > L2 > L3 (gtPageTypeCanon.json; the table is training/taxonomy/gt_page_type_mapping.csv). Match (1): a full target is the start of our Final or Extracted path. Partial (0.5): a listed neighbour is, or our path has the same L1 (stops above the label's level, a sibling L3, another L2). Else No Match (0). Cover / index / fax / blank, NA and Misc labels are not scored. A label not in the mapping falls back to the accepted-label lists. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
   },
   {
     id: "codeable",

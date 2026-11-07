@@ -19,7 +19,7 @@
     "text_band_fraction": 0.25
   },
   "points": {
-    "comment": "The points of every signal (docs/APPROACH.md §4). + pushes toward break, - toward joined. 'side' is where the evidence is read: ending (the earlier page alone), opening (the later page alone), pair (both). 'status': measured (the difference figure from the 170 labelled gaps) or assumed.",
+    "comment": "The points of every signal. + pushes toward break, - toward joined. 'side' is where the evidence is read: ending (the earlier page alone), opening (the later page alone), pair (both). 'status': measured (the difference figure from the 170 labelled gaps) or assumed.",
     "different_dos": {
       "side": "pair",
       "points": 5,
@@ -425,7 +425,7 @@
     "long_run_without_pagination": 25
   },
   "measurement": {
-    "comment": "Provenance for the weights (docs/APPROACH.md §4.5). Measured with standalone reimplementations of the extractors, not the pipeline's own outputs: re-measure against real DOS, signature flags, line polygons and page-type confidences before trusting the exact weights. The ranking of the top signals should survive; the weights will move.",
+    "comment": "Provenance for the weights. Measured with standalone reimplementations of the extractors, not the pipeline's own outputs: re-measure against real DOS, signature flags, line polygons and page-type confidences before trusting the exact weights. The ranking of the top signals should survive; the weights will move.",
     "n_pairs": 985,
     "n_labelled": 170,
     "n_continue": 129,

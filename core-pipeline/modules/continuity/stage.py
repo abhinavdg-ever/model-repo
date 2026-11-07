@@ -1,7 +1,7 @@
 """Stage: document continuity → ``page_continuity_results``.
 
-Runs after page type and DOS. Scores every gap between consecutive pages (``engine``,
-docs/APPROACH.md §4) and groups the pages into documents and junk segments. It
+Runs after page type and DOS. Scores every gap between consecutive pages (``engine``)
+and groups the pages into documents and junk segments. It
 writes only the grouping; Final values are written by the ``imaging_final`` stage.
 
 The key/value extraction's staging (``<chart>/staging/extraction.json``) is the first

@@ -869,7 +869,7 @@ CREATE TRIGGER trg_page_sequencing_results_updated_at
 
 
 -- The page's provider signature, one row per page (stage kv_extract, the same values as
--- imaging/<chart>_provider_signature.csv; docs/PROVIDER_LOGIC.md). signature_present = an
+-- imaging/<chart>_provider_signature.csv). signature_present = an
 -- accepted electronic signature. provider_name is the first signer's name without
 -- credentials, provider_credentials theirs, signers every accepted signer (the selected one
 -- first: [{"name", "credentials", "signature_date"}]). provider_version: 2 = this rule;
@@ -955,7 +955,7 @@ CREATE TABLE page_continuity_results (
     position             VARCHAR(10) NOT NULL CHECK (position IN ('single','first','continue','last')),
     relation             VARCHAR(20) NOT NULL CHECK (relation IN ('new_document','continue','unknown')),
     decided_by           VARCHAR(20) NOT NULL CHECK (decided_by IN (
-                             -- the gap scorer (2026-10-20, docs/CONTINUITY_LOGIC.md)
+                             -- the gap scorer (2026-10-20)
                              'chart_start','decisive','decisive_conflict','sum','tie',
                              'conflict_a','conflict_b','final_pass','attached',
                              -- earlier engines; old rows
@@ -1036,7 +1036,7 @@ CREATE TABLE imaging_final (
     encounter_type           VARCHAR(30),
     provider_name            TEXT,
     -- The signer's credentials (MD, DNP): the signature's designation, else read from
-    -- its sentence, else the page's accepted credentials (docs/PROVIDER_LOGIC.md).
+    -- its sentence, else the page's accepted credentials.
     provider_credentials     TEXT,
     -- Every accepted signer, the selected one first:
     --   [{"name", "credentials", "signature_date"}]

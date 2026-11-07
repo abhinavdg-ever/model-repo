@@ -459,10 +459,10 @@ ALTER TABLE page_classification ADD COLUMN IF NOT EXISTS axes JSONB;
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
 
 -- 2026-10-18: the signer's credentials beside the provider name (the provider
--- signature rule, docs/PROVIDER_LOGIC.md). imaging_final fails on insert without it.
+-- signature rule). imaging_final fails on insert without it.
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_credentials TEXT;
 
--- 2026-10-18: every accepted signer, the selected one first (docs/PROVIDER_LOGIC.md).
+-- 2026-10-18: every accepted signer, the selected one first.
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS signers JSONB;
 
 -- 2026-10-18: provider_signature_results is written by kv_extract and read by

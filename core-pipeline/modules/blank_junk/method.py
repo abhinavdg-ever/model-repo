@@ -1,4 +1,4 @@
-"""Blank / junk decision: rules R1-R4, the short page R6, then DistilBERT (docs/BLANK_JUNK_LOGIC.md).
+"""Blank / junk decision: rules R1-R4, the short page R6, then DistilBERT.
 
 Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has them,
 DistilBERT's probabilities (model_bridge.model_scores), the page type and handwritten

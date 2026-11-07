@@ -38,8 +38,7 @@ A Printed / Print Date label's date is never a DOS.
 
 Each page keeps its own date here (the Extracted DOS). The Final DOS — the
 document's first page's on every page, or `DOS_DEFAULT_DATE` for a stand-alone
-non-visit document — is set by continuity / `imaging_final`. Full detail in
-[`docs/DOS_LOGIC.md`](../../../../docs/DOS_LOGIC.md).
+non-visit document — is set by continuity / `imaging_final`.
 
 Labels, `edge_words`, the allowed filler words, the confidences and
 `DOS_DEFAULT_DATE` live in `../../resources/canon/dos_canon.json` and reload on change.
