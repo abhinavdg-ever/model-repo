@@ -63,7 +63,7 @@
     "note": "2026-11-02 (user): pass 2, after every other rule: a page kept as content (Main) one of whose section headers (stage 6, in the Final OCR JSON; 2026-11-03, user: not a band of the page) has one of fax_terms, and that has no signature -- no Electronic Signature from kv_extract and none of signature_terms anywhere on the page -- is Junk / Letter/Fax (rule FAX). A signed faxed page stays Main.",
     "enabled": true,
     "fax_terms": ["fax", "faxed", "fax to", "fax from", "facsimile"],
-    "signature_terms": ["signature", "signed", "e-signed", "esigned", "cosigned", "attestation", "attested"]
+    "note_signed": "2026-11-07 (user): 'no signature' means kv_extract found no Electronic Signature on the page. Signature words in the text ('Orders for Signature', 'please sign') never block the rule."
   },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the header band (zones.header_band, 15%) of the page height, the footer band (zones.footer_band, 8%) and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page.",

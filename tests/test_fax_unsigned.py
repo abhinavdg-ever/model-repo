@@ -21,9 +21,12 @@ def test_an_unsigned_page_with_fax_in_a_section_header_is_junk():
     assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX")
 
 
-def test_a_signed_or_signature_mentioning_page_stays_main():
+def test_only_an_electronic_signature_keeps_a_fax_page():
+    """2026-11-07 (user): kv_extract's Electronic Signature keeps it; signature words
+    ("Orders for Signature", "Electronically signed by" in the text) do not."""
     assert _verdict(TEXT, signed=True).code == m.CODE_MAIN
-    assert _verdict(TEXT + "Electronically signed by Dr X\n").code == m.CODE_MAIN
+    assert _verdict(TEXT + "Re: Orders for Signature\n").code != m.CODE_MAIN
+    assert _verdict(TEXT + "Electronically signed by Dr X\n").code != m.CODE_MAIN
 
 
 def test_fax_not_in_a_section_header_or_in_pass_1_does_nothing():

@@ -586,11 +586,6 @@ def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optio
 # (pass 1 rule 4; was: the page's only words are cover marks, 2026-11-04).
 COVER_MARKS = frozenset({"accept", "accepted", "unaccept", "unaccepted", "cover"})
 COVER_MAX_WORDS = 5
-# Pass 2 rule 4: an explicit signed phrase on the page (not the bare word "signature").
-SIGNED_PHRASE = re.compile(
-    r"(?<![A-Za-z])(?:electronically\s+signed|digitally\s+signed|signed\s+by|e-?signed|co-?signed)(?![A-Za-z])",
-    re.IGNORECASE,
-)
 # Pass 2 rule 7: the service's JUNK stands only while the raw p(keep) is below this.
 JUNK_UNLESS_KEEP_AT = 0.99
 
@@ -694,10 +689,10 @@ def decide(inputs: PageInputs) -> Verdict:
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
         return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
-    # 4. signed: kv_extract's Electronic Signature or an explicit signed phrase.
-    phrase = SIGNED_PHRASE.search(text) or SIGNED_PHRASE.search(inputs.prelim_text or "")
-    if inputs.signed or phrase:
-        why = "Electronic Signature" if inputs.signed else f"'{phrase.group(0)}' on the page"
+    # 4. signed: kv_extract's Electronic Signature only (2026-11-07, user: a signature word on the
+    # page -- "Orders for Signature", "please sign" -- never keeps a page).
+    if inputs.signed:
+        why = "Electronic Signature"
         over = t["signature_overruled_above"]
         if p_junk is not None and p_junk > over:
             votes["r4_overruled"] = f"{why}, but raw p(junk) {p_junk:.3f} > {over}"
@@ -765,20 +760,17 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     """2026-11-02 (user): the fax word the page's header band prints when the page has no
     signature at all (canon ``fax_unsigned``); None otherwise or outside pass 2."""
     cfg = canon().raw.get("fax_unsigned") or {}
+    # Signed = kv_extract's Electronic Signature only; a signature word in the text does not
+    # count (2026-11-07, user).
     if inputs.pass_no != 2 or not cfg.get("enabled", True) or inputs.signed:
         return None
     fax = _terms(cfg.get("fax_terms") or [])
-    signature = _terms(cfg.get("signature_terms") or [])
     if fax is None:
         return None
     # The page's section headers (stage 6), not a band of the page (2026-11-03, user).
     header = "\n".join(inputs.headings)
     found = fax.search(header) if header else None
-    if not found:
-        return None
-    if signature is not None and (signature.search(inputs.text or "") or signature.search(inputs.prelim_text or "")):
-        return None
-    return found.group(0)
+    return found.group(0) if found else None
 
 
 INVOICE_RULE = "INVOICE"

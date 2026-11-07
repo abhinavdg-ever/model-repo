@@ -348,11 +348,11 @@ class TestSimplifiedLadder:
         assert (v.code, v.rule) == (method.CODE_MAIN, "HW")
 
     def test_signed_keeps_unless_raw_p_junk_over_95(self):
-        signed = "Electronically signed by Dr X. " + FILLER
-        assert run(signed, bert=bert(0.80)).rule == "R4"
+        """2026-11-07 (user): only kv_extract's Electronic Signature keeps a page; signature
+        words in the text do not."""
         assert run(FILLER, bert=bert(0.80), signed=True).rule == "R4"
-        assert run(signed, bert=bert(0.99)).code != method.CODE_MAIN
-        # The bare word "signature" (a request form's "Signature: ____") does not keep.
+        assert run(FILLER, bert=bert(0.99), signed=True).code != method.CODE_MAIN
+        assert run("Electronically signed by Dr X. " + FILLER, bert=bert(0.80)).rule == "R5"
         assert run("Signature: ____ " + FILLER, bert=bert(0.80)).rule == "R5"
 
     def test_the_service_decides_junk_unless_raw_p_keep_is_99(self):
