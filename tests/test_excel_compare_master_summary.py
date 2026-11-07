@@ -484,56 +484,10 @@ def test_algo_duplicate_reads_yes_partial_no():
     ]
 
 
-def test_local_mode_reads_duplicates_and_partials_from_the_junk_csv():
-    from app.services.imaging_overlays import index_junk_rows
-
-    rows = [
-        {"chart_name": "c", "page_name": "1.jpg", "page_number": "1", "page_classification": "Main",
-         "page_group": "main", "page_classification_confidence": "0.7", "duplicate_of_page": ""},
-        {"chart_name": "c", "page_name": "2.jpg", "page_number": "2", "page_classification": "Duplicate",
-         "page_group": "duplicate", "page_classification_confidence": "0.99", "duplicate_of_page": "1.jpg"},
-        {"chart_name": "c", "page_name": "3.jpg", "page_number": "3", "page_classification": "Main",
-         "page_group": "main", "page_classification_confidence": "0.96", "duplicate_of_page": "1.jpg"},
-    ]
-    by = index_junk_rows(rows, "c")
-    assert (by["#2"]["blankOrJunk"], by["#2"]["isDuplicate"], by["#2"]["isPartialDuplicate"]) == (
-        "No", True, False,  # a duplicate is not junk (2026-10-29)
-    )
-    assert (by["#3"]["blankOrJunk"], by["#3"]["isDuplicate"], by["#3"]["isPartialDuplicate"]) == (
-        "No", False, True,
-    )
-    assert by["#3"]["duplicateOf"] == "1.jpg"
-    assert by["#1"]["isPartialDuplicate"] is False
 
 
-def test_local_mode_reads_a_partial_on_a_junk_page():
-    from app.services.imaging_overlays import index_junk_rows
-
-    rows = [{"chart_name": "c", "page_name": "4.jpg", "page_number": "4", "page_classification": "Letter/Fax",
-             "page_group": "junk", "page_classification_confidence": "0.96", "duplicate_of_page": "3.jpg"}]
-    page4 = index_junk_rows(rows, "c")["#4"]
-    assert (page4["blankOrJunk"], page4["isDuplicate"], page4["isPartialDuplicate"]) == ("Yes (Junk)", False, True)
-    assert page4["duplicateOf"] == "3.jpg"
 
 
-def test_local_mode_reads_duplicate_scores_from_blank_junk_json(tmp_path):
-    import json
-
-    from app.services.imaging_overlays import index_duplicate_scores
-
-    staged = tmp_path / "blank_junk.json"
-    staged.write_text(json.dumps({"version": 2, "pages": {
-        "1.jpg": {"pass_1": {"duplicate": {"status": "No", "closest_page": "2.jpg", "similarity": 0.91}},
-                  "pass_2": {"duplicate": {"status": "Duplicate", "closest_page": "2.jpg", "similarity": 0.99}}},
-        "2.jpg": {"pass_1": {"duplicate": {"status": "No", "closest_page": "1.jpg", "similarity": 0.72}},
-                  "pass_2": "not judged: settled in pass 1"},
-        "3.jpg": {"pass_1": {"duplicate": {"status": "No"}}},
-    }}), encoding="utf-8")
-    by = index_duplicate_scores(staged)
-    assert by["1.jpg"]["duplicateConfidence"] == 0.99  # the last judged pass
-    assert by["#2"]["duplicateConfidence"] == 0.72
-    assert "3.jpg" not in by  # below 70%: not listed
-    assert index_duplicate_scores(tmp_path / "missing.json") == {}
 
 
 def test_master_summary_counts_a_blank_page_on_both_sides_as_a_match():

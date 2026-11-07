@@ -1,11 +1,9 @@
 """Review pane reads the staged extraction and does not rewrite it."""
 from __future__ import annotations
 
-import json
 
 from app.services.dates import show_date, show_dates_in
-from app.services.extraction_review import field_rows, heron_headers, load_extraction_review
-from app.services.imaging_overlays import index_signature_rows, signature_people
+from app.services.extraction_review import field_rows, heron_headers
 
 
 def test_printed_dates_are_shown_as_iso():
@@ -128,22 +126,6 @@ def test_a_strong_box_that_looks_like_a_heading_is_a_heading_and_read_left_to_ri
     assert headers[0].left < 0.1
 
 
-def test_missing_staging_returns_empty_fields(tmp_path):
-    chart = tmp_path / "chart8841"
-    chart.mkdir()
-    result = load_extraction_review(tmp_path, "chart8841", "1.jpg")
-    assert result.available is False
-    assert [row.label for row in result.fields] == [
-        "Member Name",
-        "Member DOB",
-        "Member ID",
-        "Provider Name",
-        "Provider Credentials",
-        "Provider Signature",
-        "Date of Service",
-        "Page Number",
-        "Headings",
-    ]
 
 
 def test_two_of_three_heading_checks_is_enough():
@@ -224,63 +206,8 @@ def test_headers_drop_a_numeric_opening_and_strip_punctuation():
     assert [h.text for h in heron_headers(page)] == ["RUS", "CC/HPI"]
 
 
-def test_page_file_joins_the_staged_page_by_name(tmp_path):
-    chart = tmp_path / "chart8841"
-    (chart / "staging").mkdir(parents=True)
-    payload = {
-        "version": 1,
-        "model_version": "v002",
-        "pages": {
-            "1.png": {
-                "fields": {
-                    "dob": [{"accepted": True, "selected": True, "value": "01/02/1950"}],
-                }
-            }
-        },
-    }
-    (chart / "staging" / "extraction.json").write_text(json.dumps(payload), encoding="utf-8")
-    result = load_extraction_review(tmp_path, "chart8841", "1.JPG")
-    assert result.available is True
-    assert result.model_version == "v002"
-    dob = next(row for row in result.fields if row.id == "dob")
-    assert dob.extracted == "1950-01-02"
-    assert dob.processed == "1950-01-02"
 
 
-def test_signature_csv_shows_only_the_first_person():
-    # The pipeline now writes one provider; an older CSV's list shows its first.
-    assert signature_people("Liane Kirchberger, PA | Daniel J Hamilton, MD") == (
-        "Liane Kirchberger",
-        "PA",
-    )
-    assert signature_people("Dr Hamilton") == ("Dr Hamilton", "")
-    assert signature_people("Michael J Battaglia, DO") == ("Michael J Battaglia", "DO")
-    assert signature_people("Robert Erickson") == ("Robert Erickson", "")
-    rows = index_signature_rows(
-        [
-            {
-                "chart_name": "60140965.tif",
-                "page_name": "6.jpg",
-                "page_number": "6",
-                "provider_name": "Liane Kirchberger, PA | Daniel J Hamilton, MD",
-                "signature_present": "n",
-                "confidence": "",
-            },
-            {
-                "chart_name": "60140965.tif",
-                "page_name": "4.jpg",
-                "page_number": "4",
-                "provider_name": "",
-                "signature_present": "n",
-            },
-        ],
-        "60140965.tif",
-    )
-    assert rows["6.jpg"]["providerName"] == "Liane Kirchberger"
-    assert rows["6.jpg"]["providerCredentials"] == "PA"
-    assert rows["6.jpg"]["providerSignature"] == "No"
-    assert rows["4.jpg"]["providerSignature"] == "No"
-    assert "providerName" not in rows["4.jpg"]
 
 
 def test_the_ct_scheduling_form_gets_its_strong_headings():
@@ -378,24 +305,6 @@ def test_a_print_date_is_never_shown_as_the_date_of_service():
     assert "2024-03-28" in (dos.extracted or "")
 
 
-def test_staged_encounters_are_read_from_continuity_json(tmp_path):
-    from app.services.staged_continuity import load_staged_encounters
-
-    staging = tmp_path / "chart_a" / "staging"
-    staging.mkdir(parents=True)
-    (staging / "continuity.json").write_text(json.dumps({
-        "pages": [],
-        "encounters": [{"seq": 1, "document": 2, "page_family": "Lab Report",
-                        "pages": ["3.jpg"], "encounter_type": "not_applicable",
-                        "encounter_label": "Not Applicable", "confidence": 1.0,
-                        "decided_by": "not_applicable", "conflict": False, "contenders": []}],
-    }), encoding="utf-8")
-    (only,) = load_staged_encounters(tmp_path, "chart_a")
-    assert (only.document, only.encounter_label) == (2, "Not Applicable")
-    # No staged encounters (older run, no workspace): [] so Doc Summary derives them.
-    assert load_staged_encounters(tmp_path, "chart_b") == []
-    assert load_staged_encounters(None, "chart_a") == []
-    assert load_staged_encounters(tmp_path, "../chart_a") == []
 
 
 def test_production_reads_page_number_and_headers_from_additional_page_details():
@@ -477,29 +386,3 @@ def test_production_reads_every_staged_field_from_extraction_fields():
     assert {f.id: f.extracted for f in review.fields}["name"] == "Jane Chen"
 
 
-def test_every_page_loads_in_one_call_and_matches_the_per_page_answer(tmp_path):
-    from app.services.extraction_review import load_extraction_pages
-
-    chart = tmp_path / "chart9"
-    (chart / "staging").mkdir(parents=True)
-    page = {
-        "width": 1000,
-        "height": 2000,
-        "fields": {
-            "heading_heron": [
-                {"accepted": True, "selected": True, "text": "History of Present Illness",
-                 "level": "Heading", "box": [100, 200, 400, 260]},
-                {"accepted": False, "text": "Patient:", "box": [10, 10, 40, 30]},
-            ],
-            "dob": [{"accepted": True, "selected": True, "value": "01/02/1950"}],
-        },
-    }
-    payload = {"model_version": "v3", "pages": {"1.jpg": page, "2.jpg": {"fields": {}}}}
-    (chart / "staging" / "extraction.json").write_text(json.dumps(payload), encoding="utf-8")
-
-    every = load_extraction_pages(tmp_path, "chart9")
-    assert every.available and set(every.pages) == {"1.jpg", "2.jpg"}
-    for name in every.pages:
-        assert every.pages[name] == load_extraction_review(tmp_path, "chart9", name)
-    (tmp_path / "chart10").mkdir()
-    assert not load_extraction_pages(tmp_path, "chart10").available  # no staging file

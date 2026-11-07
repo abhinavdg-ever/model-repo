@@ -406,7 +406,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `core/schemas.py` | Response models — `FolderSummary`, `FolderDetail`, `ImagingDocumentResponse`, `OcrTextResponse` — the contract the frontend types against. |
 | `store/base.py` | The `FolderRepository` interface. |
 | `store/factory.py` | Builds the Postgres repository (the only one since 2026-11-07). |
-| `store/local/repository.py` | Shared helpers the Postgres repository still imports (OCR display cleanup, section-header matching, labels). No longer a data source; it goes with the `store/` split (docs/PLATFORM_PLAN.md). |
+| `store/shared.py` | Helpers the Postgres repository uses for OCR display: section-header matching, OCR text clean-up, skip messages, DOS formatting. |
 | `store/postgres/repository.py` | **The repository.** The interface over the schema.sql tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. Nothing is read from disk. |
 | `services/imaging_overlays.py` | Field mapping and labels shared by the screens: the canonical page-type labels, date formatting, provider and name cleanup. |
 | `services/imaging_csv.py` | Streams the combined export CSV. |

@@ -6,7 +6,6 @@ Processed is the same string as extracted until that rewrite exists.
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from difflib import SequenceMatcher
@@ -210,15 +209,6 @@ def _credential_rows(fields: dict) -> list[dict]:
         row for row in fields.get("provider_credentials") or []
         if isinstance(row, dict) and row.get("accepted")
     ]
-
-
-def credentials_text(page: dict | None) -> str:
-    """The Provider Credentials cell of field_rows alone: one entry per provider."""
-    fields = _page_fields(page)
-    providers = _providers(_credential_rows(fields))
-    if providers:
-        return " | ".join(", ".join(creds) for _, creds in providers)
-    return _join(_hit_text("provider_credentials", hit) for hit in _chosen(fields.get("provider_credentials")))
 
 
 def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
@@ -652,41 +642,6 @@ def _page_for(pages: dict, page_file: str) -> dict | None:
     return None
 
 
-def load_extraction_review(
-    data_root: Path,
-    folder_id: str,
-    page_file: str,
-) -> ExtractionReviewResponse:
-    folder = _folder_dir(data_root, folder_id)
-    path = folder / "staging" / "extraction.json"
-    if not path.is_file():
-        return ExtractionReviewResponse(
-            folder_id=folder_id,
-            available=False,
-            page_file=page_file,
-            fields=field_rows(None),
-        )
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ExtractionReviewResponse(
-            folder_id=folder_id,
-            available=False,
-            page_file=page_file,
-            fields=field_rows(None),
-        )
-    pages = payload.get("pages") if isinstance(payload, dict) else None
-    page = _page_for(pages, page_file) if isinstance(pages, dict) else None
-    return ExtractionReviewResponse(
-        folder_id=folder_id,
-        available=True,
-        model_version=str(payload.get("model_version") or "") if isinstance(payload, dict) else "",
-        page_file=page_file,
-        fields=field_rows(page),
-        section_headers=heron_headers(page),
-    )
-
-
 # Production Mode has no chart workspace, so no staging file. The extraction stage also
 # writes each page's printed page number and its headings to additional_page_details;
 # read from there, the Additional tab still shows Page Numbers and Section Headers.
@@ -808,35 +763,6 @@ def load_extraction_review_from_db(
     the table, or one that cannot be read, answers 'not available' rather than failing."""
     pages = _additional_rows(database_url, db_schema, folder_id)
     return review_from_additional(folder_id, page_file, _page_for(pages, page_file))
-
-
-def load_extraction_pages(data_root: Path, folder_id: str) -> ExtractionPagesResponse:
-    """Local Mode: every staged page's review, read from extraction.json once."""
-    path = _folder_dir(data_root, folder_id) / "staging" / "extraction.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
-    except (OSError, ValueError):
-        payload = None
-    pages = payload.get("pages") if isinstance(payload, dict) else None
-    if not isinstance(pages, dict):
-        return ExtractionPagesResponse(folder_id=folder_id, available=False)
-    version = str(payload.get("model_version") or "")
-    return ExtractionPagesResponse(
-        folder_id=folder_id,
-        available=True,
-        pages={
-            str(name): ExtractionReviewResponse(
-                folder_id=folder_id,
-                available=True,
-                model_version=version,
-                page_file=str(name),
-                fields=field_rows(page),
-                section_headers=heron_headers(page),
-            )
-            for name, page in pages.items()
-            if isinstance(page, dict)
-        },
-    )
 
 
 def load_extraction_pages_from_db(

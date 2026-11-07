@@ -28,33 +28,6 @@ def similarity_confidence(similarity: float) -> float:
     return 0.5 ** ((similarity - DUPLICATE_SURE_BELOW) / (DUPLICATE_PARTIAL_MIN - DUPLICATE_SURE_BELOW))
 
 
-def duplicate_display_confidence(
-    is_duplicate: bool | None,
-    similarity: float | None,
-    is_partial: bool | None = None,
-    best_similarity: float | None = None,
-) -> float | None:
-    """The Duplicate column's confidence. ``best_similarity`` is the page's highest
-    duplicate similarity (``duplicate_confidence``); without it a duplicate or partial
-    row's own ``similarity`` (its stored confidence) stands in, and a page never scored
-    reads 1.0, as before the score was stored."""
-    if is_duplicate is None:
-        return None
-    score = best_similarity
-    if score is None and (is_duplicate or is_partial):
-        score = similarity
-    if score is None:
-        return 1.0 if not (is_duplicate or is_partial) else None
-    try:
-        value = float(score)
-    except (TypeError, ValueError):
-        return None
-    if (is_duplicate or is_partial) and value < DUPLICATE_PARTIAL_MIN:
-        # Flagged on its few differing words below the 95% cut: as unsure as the cut.
-        return 0.5
-    return similarity_confidence(value)
-
-
 def format_duplicate_label(
     is_duplicate: bool | None,
     confidence: float | None,

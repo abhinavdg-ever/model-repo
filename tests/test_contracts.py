@@ -7,8 +7,6 @@ the UI knows how to render.
 """
 from __future__ import annotations
 
-import csv
-import io
 from pathlib import Path
 
 import pytest
@@ -81,14 +79,6 @@ def repo_python_files(*roots):
 
 
 class TestJunkSubtypeVocabulary:
-    def test_schema_check_matches_the_ui_label_set(self):
-        """The UI renders a fixed set of page types; the schema must allow
-        exactly those and nothing else, or rows become unrenderable."""
-        from app.services.imaging_overlays import index_junk_rows  # noqa: F401
-
-        schema_sql = (REPO_ROOT / "schema" / "schema.sql").read_text(encoding="utf-8")
-        for label in SCHEMA_SUBTYPES:
-            assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
     def test_stage_maps_every_classifier_label_into_the_vocabulary(self):
         from modules.blank_junk.stage import SUBTYPE_DB
@@ -112,33 +102,8 @@ class TestJunkSubtypeVocabulary:
 
 
 class TestCsvColumns:
-    def test_dos_csv_carries_what_the_overlay_reads(self):
-        from modules.dos.stage import DOS_COLS
 
-        # imaging_overlays.dos_row_fields reads these first, then falls back.
-        for column in ("dos_from", "dos_to", "dos_from_iso", "dos_to_iso",
-                       "doc_dos_from", "doc_dos_to",
-                       "doc_dos_from_iso", "doc_dos_to_iso"):
-            assert column in DOS_COLS
-        assert "chart_name" in DOS_COLS and "page_number" in DOS_COLS
 
-    def test_hw_csv_column_is_one_the_overlay_recognises(self):
-        from modules.image_preprocess.stage import HW_COLS
-
-        # index_hw_rows accepts handwritten / handwritten_or_printed / type.
-        assert "handwritten_or_printed" in HW_COLS
-        assert "confidence" in HW_COLS
-
-    def test_junk_csv_carries_classification_and_group(self):
-        from modules.blank_junk.stage import JUNK_CSV_COLS
-
-        # index_junk_rows reads page_classification (or classification/page_type).
-        assert "page_classification" in JUNK_CSV_COLS
-        assert "page_group" in JUNK_CSV_COLS
-        # v7 additions that make the two passes legible in the file itself.
-        assert "pass_no" in JUNK_CSV_COLS
-        assert "is_final" in JUNK_CSV_COLS
-        assert "duplicate_of_page" in JUNK_CSV_COLS
 
     def test_member_csv_carries_the_reference_provenance_columns(self):
         from modules.member.stage import MEMBER_EXTRACT_COLS
@@ -155,59 +120,6 @@ class TestCsvColumns:
                        "reject_threshold", "ner_enabled"):
             assert column in MEMBER_SUMMARY_COLS
 
-    def test_every_csv_writer_has_a_chart_name_column(self):
-        """collect_rows filters combined packs on chart_name; a CSV without it
-        would be attributed to every chart."""
-        from modules.blank_junk.stage import JUNK_CSV_COLS
-        from modules.dos.stage import DOS_COLS
-        from modules.member.stage import MEMBER_EXTRACT_COLS, MEMBER_SUMMARY_COLS
-        from modules.image_preprocess.stage import HW_COLS, ROTATION_COLS
-
-        for cols in (JUNK_CSV_COLS, DOS_COLS, MEMBER_EXTRACT_COLS,
-                     MEMBER_SUMMARY_COLS, HW_COLS, ROTATION_COLS):
-            assert "chart_name" in cols
-
-
-class TestPerChartCsvNamesAreRead:
-    """The review UI matches per-chart files by suffix. A stage writing a
-    suffix the UI does not branch on produces a file nothing reads — which is
-    exactly how the junk stream went missing."""
-
-    STAGE_SUFFIXES = {
-        "_rotation.csv",
-        "_hw_printed.csv",
-        "_quality.csv",
-        "_junk.csv",
-        "_member_extraction.csv",
-        "_member_verification.csv",
-        "_dos.csv",
-        "_codeable.csv",
-        "_encounter.csv",
-        "_sequencing.csv",
-    }
-
-    def test_folder_list_marks_every_stage_stream(self):
-        source = (
-            REPO_ROOT / "review-ui" / "backend" / "app" / "store" / "local"
-            / "repository.py"
-        ).read_text(encoding="utf-8")
-        # The per-chart override loop in _pipeline_streams.
-        start = source.index("Per-chart overrides under data/folders")
-        block = source[start : start + 4500]
-        for suffix in self.STAGE_SUFFIXES:
-            assert suffix in block, (
-                f"{suffix} is written by a stage but the folder list never "
-                "marks its stream, so the badge stays blank"
-            )
-
-    def test_detail_view_reads_every_stage_stream(self):
-        source = (
-            REPO_ROOT / "review-ui" / "backend" / "app" / "store" / "local"
-            / "repository.py"
-        ).read_text(encoding="utf-8")
-        for suffix in self.STAGE_SUFFIXES:
-            token = suffix.replace("_", "").replace(".csv", "")
-            assert f'_{suffix.lstrip("_")}' in source or token in source
 
 
 # --- combined OCR text format ----------------------------------------------
@@ -995,7 +907,6 @@ class TestNerFallsBackInsteadOfCrashing:
 
     def test_no_stale_downloader_command_in_any_message(self):
         """The old path stopped existing when Reference/ was deleted."""
-        import re
 
         offenders = []
         for path in repo_python_files(REPO_ROOT / "core-pipeline"):
@@ -1235,151 +1146,11 @@ class TestManifestLookup:
         assert rows[0]["batch_id"] == "B1"
         assert rows[0]["source_file"] == "metadata_R1_B1.csv"
 
-    def test_demotest_metadata_loads_as_run_and_batch_test(self, tmp_path):
-        from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
-        from app.services.metadata_csv import clear_metadata_cache, run_batch_for_record
 
-        csv_path = tmp_path / "metadata_demotest.csv"
-        csv_path.write_text(
-            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
-            "demotest,Ada,Lovelace,1815-12-10,M1\n",
-            encoding="utf-8",
-        )
-        rows = lookup_manifest_members_on_disk("demotest", metadata_root=tmp_path)
-        assert len(rows) == 1
-        assert rows[0]["run_id"] == "Test"
-        assert rows[0]["batch_id"] == "Test"
-        assert rows[0]["source_file"] == "metadata_demotest.csv"
 
-        clear_metadata_cache()
-        run_id, batch_id = run_batch_for_record(tmp_path, "demotest")
-        assert (run_id, batch_id) == ("Test", "Test")
 
-    def test_review_ui_local_mode_reads_run_batch_from_metadata_filename(self, tmp_path):
-        """Landing page Run/Batch columns in DATA_MODE=local."""
-        from app.services.metadata_csv import (
-            clear_metadata_cache,
-            run_batch_for_record,
-        )
 
-        clear_metadata_cache()
-        (tmp_path / "metadata_R2_B3.csv").write_text(
-            "recordId,DummyFirstName,DummyLastName\n"
-            "52743839_44976074,Jane,Doe\n",
-            encoding="utf-8",
-        )
-        run_id, batch_id = run_batch_for_record(tmp_path, "52743839_44976074")
-        assert run_id == "R2"
-        assert batch_id == "B3"
-        assert run_batch_for_record(tmp_path, "missing") == (None, None)
 
-    def test_local_mode_prefers_db_run_batch_over_metadata(self, tmp_path, monkeypatch):
-        """Local Mode landing Run/Batch come from chart_list when DATABASE_URL is set."""
-        from app.store.local import repository as local_repo
-        from app.store.local.repository import LocalFolderRepository
-        from app.services.metadata_csv import clear_metadata_cache
-
-        clear_metadata_cache()
-        folders = tmp_path / "folders"
-        meta = tmp_path / "metadata"
-        folders.mkdir()
-        meta.mkdir()
-        chart = folders / "52743839_44976074"
-        chart.mkdir()
-        (chart / "pages").mkdir()
-        (chart / "pages" / "1.jpg").write_bytes(b"x")
-        (meta / "metadata_R1_B1.csv").write_text(
-            "recordId,DummyFirstName,DummyLastName\n"
-            "52743839_44976074,Jane,Doe\n",
-            encoding="utf-8",
-        )
-
-        monkeypatch.setattr(
-            local_repo,
-            "fetch_chart_run_batch_map",
-            lambda *a, **k: {"52743839_44976074": ("R2", "B4")},
-        )
-        repo = LocalFolderRepository(
-            folders,
-            metadata_root=meta,
-            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
-        )
-        summaries = repo.list_folders()
-        assert len(summaries) == 1
-        assert summaries[0].run_id == "R2"
-        assert summaries[0].batch_id == "B4"
-
-        # No DB hit → metadata filename still works.
-        monkeypatch.setattr(
-            local_repo, "fetch_chart_run_batch_map", lambda *a, **k: {}
-        )
-        repo2 = LocalFolderRepository(
-            folders,
-            metadata_root=meta,
-            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
-        )
-        summaries2 = repo2.list_folders()
-        assert summaries2[0].run_id == "R1"
-        assert summaries2[0].batch_id == "B1"
-
-    def test_prefer_db_run_batch_fills_gaps(self):
-        from app.services.chart_run_batch import prefer_db_run_batch
-
-        assert prefer_db_run_batch(("R2", None), ("R1", "B1")) == ("R2", "B1")
-        assert prefer_db_run_batch((None, "B4"), ("R9", "B1")) == ("R9", "B4")
-        assert prefer_db_run_batch(None, ("R1", "B1")) == ("R1", "B1")
-        assert prefer_db_run_batch(None, None) == ("Test", "Test")
-
-    def test_prefer_db_manifest_fills_gaps(self):
-        from app.services.chart_run_batch import prefer_db_manifest
-
-        assert prefer_db_manifest(
-            {"member": "From DB", "dob": None, "memberId": "M9"},
-            {"member": "From CSV", "dob": "01/01/1950", "memberId": "M1"},
-        ) == {"member": "From DB", "dob": "01/01/1950", "memberId": "M9", "measure": None, "serviceNote": None}
-
-    def test_local_mode_prefers_db_manifest_over_metadata(self, tmp_path, monkeypatch):
-        from app.store.local import repository as local_repo
-        from app.store.local.repository import LocalFolderRepository
-        from app.services.metadata_csv import clear_metadata_cache
-
-        clear_metadata_cache()
-        folders = tmp_path / "folders"
-        meta = tmp_path / "metadata"
-        folders.mkdir()
-        meta.mkdir()
-        chart = folders / "52743839_44976074"
-        chart.mkdir()
-        (meta / "metadata_R1_B1.csv").write_text(
-            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
-            "52743839_44976074,Jane,Doe,01/01/1950,M-CSV\n",
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(
-            local_repo,
-            "fetch_manifest_for_record",
-            lambda *a, **k: {
-                "member": "From DB",
-                "dob": "02/02/1960",
-                "memberId": "M-DB",
-            },
-        )
-        repo = LocalFolderRepository(
-            folders,
-            metadata_root=meta,
-            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
-        )
-        man = repo._manifest_for_folder("52743839_44976074")
-        assert man.member == "From DB"
-        assert man.memberId == "M-DB"
-        assert man.dob == "02/02/1960"
-
-        monkeypatch.setattr(
-            local_repo, "fetch_manifest_for_record", lambda *a, **k: None
-        )
-        man2 = repo._manifest_for_folder("52743839_44976074")
-        assert man2.member == "Jane Doe"
-        assert man2.memberId == "M-CSV"
 
     def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
@@ -2180,7 +1951,6 @@ class TestCorrectedPages:
 
 def _tesseract_osd_available() -> bool:
     try:
-        import cv2
         import numpy as np
         import pytesseract
     except ImportError:

@@ -141,12 +141,6 @@ def iter_csv_lines(
             buf.truncate(0)
 
 
-def build_csv_bytes(
-    docs: Iterable[tuple[str, ImagingDocumentResponse]],
-) -> bytes:
-    return "".join(iter_csv_lines(docs)).encode("utf-8")
-
-
 def filter_folder(
     *,
     name: str,

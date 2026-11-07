@@ -147,20 +147,6 @@ def test_source_measure_retrieval_filter_and_offer_every_value():
     assert filter_sort_page(rows, FolderListParams(scope=["(Blank)"])).total == 3
 
 
-def test_chart_metadata_from_the_csvs(tmp_path):
-    from app.services.chart_metadata import chart_metadata_map
-    from app.services.metadata_csv import clear_metadata_cache
-
-    (tmp_path / "metadata_R1_B1.csv").write_text(
-        "recordId,DummyFirstName,SourceName,Measure,RR Method,Project Scope\n"
-        "c1,Ann,Clinic A,CBP,Fax,ACA\nc2,Bob,,,,\n",
-        encoding="utf-8",
-    )
-    clear_metadata_cache()
-    found = chart_metadata_map(None, metadata_dir=tmp_path)
-    assert found == {
-        "c1": {"project_scope": "ACA", "source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}
-    }
 
 
 def test_a_workspace_only_chart_takes_its_status_from_disk(tmp_path):

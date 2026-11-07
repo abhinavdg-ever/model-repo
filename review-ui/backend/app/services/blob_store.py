@@ -6,7 +6,6 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlparse
 
 from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
@@ -80,13 +79,6 @@ _IMAGE_SUFFIXES = {
 }
 
 
-def account_name_from_url(account_url: str) -> str:
-    host = (urlparse(account_url).hostname or "").strip().lower()
-    if not host:
-        return ""
-    return host.split(".")[0]
-
-
 def filename_sort_key(name: str) -> tuple:
     """Natural sort matching core-pipeline ingest order for Raw_Input pages."""
     text = str(name or "").casefold()
@@ -104,27 +96,6 @@ def filename_sort_key(name: str) -> tuple:
 def normalize_blob_prefix(path: str) -> str:
     p = (path or "").strip().replace("\\", "/").strip("/")
     return f"{p}/" if p else ""
-
-
-def build_blob_key(
-    template: str,
-    *,
-    folder_id: str,
-    filename: str,
-    page_number: int,
-) -> str:
-    tmpl = (template or "{folder}/pages/{filename}").strip()
-    if "{folder}" not in tmpl and "{filename}" not in tmpl:
-        # Prefix-only (e.g. Raw_Input/Run1/Batch1/DEID_PNGs/) → append folder/file
-        base = tmpl.rstrip("/")
-        key = f"{base}/{folder_id}/{filename}" if base else f"{folder_id}/{filename}"
-    else:
-        key = (
-            tmpl.replace("{folder}", folder_id)
-            .replace("{filename}", filename)
-            .replace("{page}", str(page_number))
-        )
-    return key.lstrip("/")
 
 
 def _normalize_account_url(raw: str) -> str:
@@ -309,11 +280,6 @@ def list_image_blobs(container: str, blob_path: str) -> list[tuple[str, str]]:
     return out
 
 
-def list_image_blob_keys(container: str, blob_path: str) -> list[str]:
-    """Image blob keys under a chart prefix, sorted like pipeline ingest."""
-    return [key for key, _ in list_image_blobs(container, blob_path)]
-
-
 def download_blob_at(
     *,
     container: str,
@@ -376,39 +342,6 @@ def download_blob_at(
             status_code=502,
             detail=f"Blob download failed via Entra ID: {exc}",
         ) from exc
-
-
-def download_blob_bytes(
-    *,
-    folder_id: str,
-    filename: str,
-    page_number: int,
-) -> tuple[bytes, str]:
-    """Download a page image via File Viewer template (Entra).
-
-    Returns (content_bytes, media_type).
-    """
-    settings = get_settings()
-    if not settings.file_viewer_blob_enabled:
-        raise HTTPException(status_code=400, detail="Blob viewer is disabled")
-    if settings.blob_auth_mode != "entra":
-        raise HTTPException(status_code=400, detail="Blob auth mode is not entra")
-
-    container = settings.blob_container.strip().strip("/")
-    if not resolved_blob_account_url(settings) or not container:
-        raise HTTPException(
-            status_code=400,
-            detail="BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) and BLOB_CONTAINER "
-            "(or AZURE_STORAGE_CONTAINER) must be set for blob access",
-        )
-
-    key = build_blob_key(
-        settings.blob_path_template,
-        folder_id=folder_id,
-        filename=filename,
-        page_number=page_number,
-    )
-    return download_blob_at(container=container, key=key, filename=filename)
 
 
 def _guess_media_type(filename: str) -> str:

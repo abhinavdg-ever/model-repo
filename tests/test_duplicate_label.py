@@ -10,10 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "review-ui" / "backend"))
 
-from app.services.duplicate_label import (  # noqa: E402
-    duplicate_display_confidence,
-    format_duplicate_label,
-)
+from app.services.duplicate_label import format_duplicate_label  # noqa: E402
 
 
 def test_duplicate_labels():
@@ -43,18 +40,6 @@ def test_similarity_confidence_curve():
     assert below == sorted(below, reverse=True)  # rises as similarity falls below it
 
 
-def test_duplicate_display_confidence():
-    # The page's best similarity decides, whatever its verdict.
-    assert abs(duplicate_display_confidence(True, 0.985, best_similarity=0.985) - 0.8123) < 1e-4
-    assert abs(duplicate_display_confidence(False, 0.7, True, 0.96) - 0.5743) < 1e-4
-    assert abs(duplicate_display_confidence(False, 0.7, False, 0.90) - 0.6300) < 1e-4
-    assert duplicate_display_confidence(False, 0.7, False, 0.50) == 1.0
-    # Before the score was stored: a duplicate / partial row's own similarity stands in;
-    # a page never scored reads 1.0.
-    assert duplicate_display_confidence(True, 1.0) == 1.0
-    assert abs(duplicate_display_confidence(False, 0.97, True) - 0.6598) < 1e-4
-    assert duplicate_display_confidence(False, None) == 1.0
-    assert duplicate_display_confidence(None, 1.0) is None
 
 
 def test_a_duplicate_shows_its_originals_blank_junk_tag():
@@ -76,10 +61,6 @@ def test_a_duplicate_shows_its_originals_blank_junk_tag():
     assert out[1].isDuplicate is True
 
 
-def test_a_pair_flagged_on_its_word_count_below_the_cut_reads_50_percent():
-    # A short page: 4 distinct words different (a duplicate) at 90% overlap.
-    assert duplicate_display_confidence(True, 0.9, False, 0.90) == 0.5
-    assert duplicate_display_confidence(False, 0.9, True, 0.93) == 0.5
 
 
 def test_repeated_content_is_displayed_as_partial():

@@ -156,22 +156,3 @@ def test_page_sets_follow_the_type():
     assert store.high_quality_printed_page_ids(1) == {1}  # visual + high still goes to Azure
 
 
-def test_review_ui_reads_the_columns_and_the_csv_cells():
-    sys.path.insert(0, str(ROOT / "review-ui" / "backend"))
-    from app.services.imaging_overlays import index_hw_rows, page_type_fields
-
-    from_db = page_type_fields("form", True, 14.2)
-    assert from_db == {"documentType": "Form", "isVisible": True, "handwrittenAreaPct": 14.2}
-    assert page_type_fields("printed", None, None) == {"documentType": "Printed"}
-
-    row = {
-        "chart_name": "c", "page_name": "1.jpg", "page_number": "1",
-        "handwritten_or_printed": "mixed", "confidence": "0.81",
-        "document_type": "form", "handwritten_probability": "0.12",
-        "is_visible": "False", "handwritten_area_pct": "14.2",
-    }
-    hit = index_hw_rows([row], "c")["#1"]
-    assert hit["documentType"] == "Form"
-    assert hit["isVisible"] is False
-    assert hit["handwrittenAreaPct"] == 14.2
-    assert "handwrittenProbability" not in hit

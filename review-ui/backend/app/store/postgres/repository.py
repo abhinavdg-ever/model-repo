@@ -21,7 +21,7 @@ from typing import Any, Iterator
 from fastapi import HTTPException
 
 from app.store.base import FolderRepository
-from app.store.local.repository import LocalFolderRepository, _fmt_dos_display, _normalize_kind
+from app.store.shared import _fmt_dos_display, _normalize_kind
 from app.core.schemas import (
     FolderDetail,
     FolderSummary,
@@ -266,15 +266,6 @@ _IMAGING_DONE_STATUSES = frozenset({"completed", "needs_review", "rejected"})
 _BLOB_LIST_TTL_SEC = 300.0
 
 
-def _ocr_status_for(status: str | None, current_stage: str | None) -> str:
-    """UI status pill from (chart_list.status, chart_list.current_stage)."""
-    key = str(status or "").lower()
-    mapped = CHART_STATUS_TO_OCR.get(key, "QUEUED")
-    if key == "processing" and str(current_stage or "").lower() in IMAGING_STAGES:
-        return "IMAGING_IN_PROGRESS"
-    return mapped
-
-
 def _fmt_date(value: Any) -> str | None:
     if value is None:
         return None
@@ -316,16 +307,12 @@ class PostgresFolderRepository(FolderRepository):
         db_schema: str = "public",
         disk_data: bool = True,
     ):
-        """``data_root`` is the chart workspace. With ``disk_data`` false (Production Mode)
-        it serves page images only: charts, page lists and results come from Postgres."""
+        """Charts, page lists and results from Postgres; page images from Azure Blob. Nothing
+        is read from disk (2026-11-07). ``data_root``, ``metadata_root`` and ``disk_data`` are
+        accepted for old callers and ignored."""
         self.database_url = _psycopg_url(database_url)
         self._disk_data = disk_data
         self.db_schema = (db_schema or "public").strip() or "public"
-        self._local = (
-            LocalFolderRepository(data_root, metadata_root=metadata_root)
-            if data_root is not None
-            else None
-        )
         # Per-chart caches for the page image route (TTL _BLOB_LIST_TTL_SEC):
         # folder_id → sorted (key, etag) under the Raw_Input prefix
         self._raw_blob_lists: dict[str, tuple[float, list[tuple[str, str]]]] = {}
@@ -341,9 +328,9 @@ class PostgresFolderRepository(FolderRepository):
         self._no_blob_reasons: dict[tuple[str, int], str] = {}
         self._blob_list_errors: dict[str, str] = {}
 
-    def _optional_local(self) -> LocalFolderRepository | None:
-        """The workspace as a data fallback (a chart, its page list, the folder list)."""
-        return self._local if self._disk_data else None
+    def _optional_local(self) -> None:
+        """No disk fallback (2026-11-07): kept so old callers still get an answer."""
+        return None
 
     def _connect(self):
         return db.connection(self.database_url, self.db_schema)
@@ -361,7 +348,7 @@ class PostgresFolderRepository(FolderRepository):
         result = build_folder_list(
             database_url=self.database_url,
             db_schema=self.db_schema,
-            data_root=self._local.data_root if self._optional_local() else None,
+            data_root=None,
             full_local_rows=None,
             params=FolderListParams(limit=None, offset=0, sort="updated", sort_dir="desc"),
         )
@@ -559,44 +546,21 @@ class PostgresFolderRepository(FolderRepository):
         )
 
     def get_folder(self, folder_id: str) -> FolderDetail:
-        """Pages + OCR flags from Postgres first — avoid a local disk walk on open.
-
-        Local workspace is only a fallback when the chart is absent from page_list
-        (pure Local Mode folders with no DB row).
-        """
+        """Pages and OCR flags from Postgres; 404 when the chart has no pages there."""
         db_detail = self._folder_from_db(folder_id)
         if db_detail is not None and db_detail.pages:
             return db_detail
 
-        local = self._optional_local()
-        detail: FolderDetail | None = None
-        if local is not None:
-            try:
-                detail = local.get_folder(folder_id)
-            except HTTPException:
-                detail = None
-            except Exception:
-                detail = None
-        if detail is None or not detail.pages:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Chart not found: {folder_id}",
-            )
-        return detail
+        raise HTTPException(status_code=404, detail=f"Chart not found: {folder_id}")
 
     def get_page_image_path(
         self, folder_id: str, page_number: int, *, corrected: bool = False
     ) -> Path:
-        """Local path when a workspace copy exists (fallback for the image route). Page
-        images are the source document, not pipeline output: served from the workspace in
-        every mode when Blob has none."""
-        local = self._local
-        if local is None:
-            raise HTTPException(
-                status_code=404,
-                detail="No page image: review-ui serves page images from Azure Blob only",
-            )
-        return local.get_page_image_path(folder_id, page_number, corrected=corrected)
+        """Never a disk path: page images come from Azure Blob only (2026-11-07)."""
+        raise HTTPException(
+            status_code=404,
+            detail="No page image: review-ui serves page images from Azure Blob only",
+        )
 
     def _page_rows(self, folder_id: str) -> dict[int, tuple] | None:
         """page_number → (container, blob_path, output_path, page_name,
@@ -840,7 +804,7 @@ class PostgresFolderRepository(FolderRepository):
 
     def _build_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """Assemble OCR from ocr_results into ===== page ===== marker text for the UI."""
-        from app.store.local.repository import FINAL2_QUALITY_SKIP_MESSAGE
+        from app.store.shared import FINAL2_QUALITY_SKIP_MESSAGE
 
         normalized = _normalize_kind(kind)
         ocr_type = KIND_TO_OCR_TYPE[normalized]
@@ -930,7 +894,7 @@ class PostgresFolderRepository(FolderRepository):
                     "blank_junk",
                     "blank_junk_pass2",
                 }:
-                    from app.store.local.repository import (
+                    from app.store.shared import (
                         FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
                     )
 
@@ -947,18 +911,18 @@ class PostgresFolderRepository(FolderRepository):
                 and str(skip_reason or "").strip().lower()
                 in {"blank_junk_pass1", "blank_junk", "blank_junk_pass2"}
             ):
-                from app.store.local.repository import (
+                from app.store.shared import (
                     FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
                 )
 
                 body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
             if body and ocr_type in {"azuredocintel", "docling"}:
-                from app.store.local.repository import clean_ocr_display_text
+                from app.store.shared import clean_ocr_display_text
 
                 if not body.startswith("Skipped for "):
                     body = clean_ocr_display_text(body)
             if ocr_type in {"docling", "azuredocintel"} and parsed is not None:
-                from app.store.local.repository import (
+                from app.store.shared import (
                     _filter_headers_against_canon,
                     _section_headers_from_page,
                 )
@@ -1344,14 +1308,6 @@ class PostgresFolderRepository(FolderRepository):
             verification_job = pool.submit(self._verification_from_db, folder_id)
             flags_job = pool.submit(self._sections_from_db, folder_id)
         page_files = [(num, Path(name)) for num, name in pages_job.result()]
-        if not page_files:
-            local = self._optional_local()
-            if local is not None:
-                try:
-                    folder_dir = local._folder_dir(folder_id)  # noqa: SLF001
-                    page_files = local._page_files(folder_dir)  # noqa: SLF001
-                except Exception:
-                    page_files = []
         pages = empty_imaging_pages(page_files)
 
         db_fields = fields_job.result()
