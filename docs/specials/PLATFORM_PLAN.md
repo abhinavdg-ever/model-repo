@@ -222,7 +222,12 @@ no Cosmos equivalent. `users` uses `/id`; `metrics` uses `/period` (`day:2026-11
 | `ground_truth` | One doc per page, plus a chart-level doc | the ground-truth tables |
 | `users` (pk `/id`), `manifest` (pk `/chart_name`, the record id), `metrics` (pk `/period`) | — | users, manifest, accuracy snapshots |
 
-- **Stage writes** use a Cosmos patch on the stage's own sub-object, so two stages never overwrite each other.
+- **How core-pipeline writes (built 2026-11-07, `common/db/cosmos_store.py`):** the process
+  keeps each chart it is working on in memory (the tested `MemoryStore` logic), loads it from
+  Cosmos on first use, and after every write upserts only the documents that changed (one
+  page doc, plus the chart doc). Ids come from a counter document taken in blocks. One chart is
+  worked on by one process at a time, which keeps this safe; a patch per stage sub-object is a
+  later optimisation.
 - **Stage completion** is recorded as `stages.<name> = {done_at, version, input_hash}`. A redelivered message is then a no-op. `skip_ocr` and the step-by-step APIs read the same record.
 - **Size limit:** a document can be at most 2 MB. Word boxes and the full Docling / Azure JSON go to Blob; the page doc keeps the text and the blob path.
 - **Throughput (free tier):** 1,000 RU/s manual at the database level, shared by all its
@@ -377,7 +382,7 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 |---|---|---|---|---|
 | 0 | Access | Cosmos, Service Bus and Blob details in `core-pipeline/.env`; `infra/` (Bicep) creates the database, containers and queue | the code connects to all three from the Mac and from the VM | **Partly:** settings in `.env`; queue `chart-runs` created; Cosmos reached from the Mac and database `imaging` created (1,000 RU/s). No containers, no `infra/`, no pipeline code on Cosmos or Service Bus yet |
 | 1 | Restructure, no logic change | `apps/`, `modules/`, `common/`, `resources/`; review-ui `backend/` + `frontend/` each with its own Dockerfile | same outputs on the test charts; tests pass | **Done** except: the API is still one `main.py` (not split into routers), and the API and worker are one image, one process |
-| 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **Toggle only:** the setting is checked and shown; no interface, no Cosmos implementation |
+| 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **core-pipeline built** (2026-11-07): all DB access through `common/db` (69 functions, contract test); `CosmosStore` (MemoryStore + write-through, ids from a Cosmos counter) runs with `DB_BACKEND=cosmos`, checked against the real database. Not yet: `both`, a full chart run on Cosmos, review-ui, db-utilities |
 | 3 | Outputs and debug | every file written inventoried; stage-to-stage data into page docs; `artifacts.write`; scratch wiped per run; debug to disk and Blob | a non-debug run writes only to the DB and Blob | **Partly:** scratch with a 7-day purge; debug goes to local disk only; `staging/*.json` still carries data between stages |
 | 4 | Service Bus + API key | orchestrator enqueues, workers consume (sessions, lock renewal, dead-letter); `X-API-Key` | kill a worker mid-chart and the chart finishes on another | **Not started** |
 | 5 | Step-by-step APIs | stage graph, version / input-hash check, `/v1/...` endpoints | `/member-verify` runs only what it needs; a second call is instant | **Not started** |
@@ -483,9 +488,11 @@ connection string and queue; the API key; the Blob account. Still open:
 
 In build order. Everything listed runs on Postgres today; nothing below is built.
 
-1. **Storage interface (phase 2).** One `store` interface in core-pipeline, review-ui and
-   db-utilities, with the Postgres code moved behind it. Without it nothing else can switch.
-2. **Cosmos implementation (phases 2 and 6)**, checked from the Mac and the VM. The containers in §4.1, `store/cosmos/` in each
+1. **Storage layer, review-ui and db-utilities (phase 2).** core-pipeline is done
+   (`common/db` + `CosmosStore`); review-ui's SQL (about 20 files) and db-utilities' loaders
+   still need the same treatment.
+2. **Cosmos implementation (phases 2 and 6)**, checked from the Mac and the VM: core-pipeline
+   done; a full test chart run with `DB_BACKEND=cosmos` is next. The containers in §4.1, `store/cosmos/` in each
    deployment, precomputed `metrics` docs for review-ui's cross-chart pages, and the
    rewrite of every SQL join (§4.4a). The largest item.
 3. **`DB_BACKEND=both` writing to both stores** (phase 7), then the history migration

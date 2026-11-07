@@ -139,7 +139,7 @@ def _flag(name: str, default: bool) -> bool:
 
 # Which database the results go to (2026-11-07, user): postgres (today) | cosmos | both.
 # both = write to Postgres and Cosmos, read from Postgres (the side-by-side week before the
-# switch). Only Postgres is wired yet: cosmos / both run on Postgres, and /health says so.
+# switch). cosmos runs on Cosmos (built 2026-11-07); both is not wired yet and runs on Postgres.
 DB_BACKENDS = ("postgres", "cosmos", "both")
 
 
@@ -151,7 +151,9 @@ def _db_backend() -> str:
 
 
 DB_BACKEND = _db_backend()
-DB_BACKEND_ACTIVE = "postgres"  # what actually runs until the Cosmos writer exists
+# What actually runs: cosmos (common/db/cosmos_store.py, built 2026-11-07) or postgres.
+# "both" (write both, read Postgres) is not wired yet, so it runs on Postgres alone.
+DB_BACKEND_ACTIVE = "cosmos" if DB_BACKEND == "cosmos" else "postgres"
 
 
 # When true, ocr_prelim / ocr_final1 / ocr_final2 reuse existing artifacts if

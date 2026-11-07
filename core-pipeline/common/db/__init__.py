@@ -158,6 +158,13 @@ def connect() -> Iterator[Any]:
     if is_skip_db_write():
         yield get_memory_store()
         return
+    from common.config import DB_BACKEND_ACTIVE
+
+    if DB_BACKEND_ACTIVE == "cosmos":
+        from common.db.cosmos_store import get_cosmos_store
+
+        yield get_cosmos_store()
+        return
 
     pool = _get_pool()
     if pool:

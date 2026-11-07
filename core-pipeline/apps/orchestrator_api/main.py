@@ -74,6 +74,10 @@ app = FastAPI(
 )
 
 
+class _StartupDone(Exception):
+    """Ends the startup probe early (the Cosmos backend needs no schema check)."""
+
+
 def _safe_db_url(url: str) -> str:
     """DATABASE_URL with the password replaced by ***, for logging.
 
@@ -107,11 +111,18 @@ def _startup() -> None:
     try:
         import psycopg
 
+        if DB_BACKEND_ACTIVE == "cosmos":
+            from common.db.cosmos_store import get_cosmos_store
+
+            logger.info("  database    : Cosmos, container %s reachable", get_cosmos_store().ping())
+            raise _StartupDone
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT count(*) FROM pipeline_stage")
                 count = cur.fetchone()[0]
         logger.info("  schema      : OK, %d stage(s) registered", count)
+    except _StartupDone:
+        pass
     except Exception as exc:
         logger.warning("  database    : UNREACHABLE — %s", str(exc).splitlines()[0])
         logger.warning(
@@ -661,6 +672,11 @@ def _require_db() -> None:
     from common.config import DATABASE_URL
 
     try:
+        if DB_BACKEND_ACTIVE == "cosmos":
+            from common.db.cosmos_store import get_cosmos_store
+
+            get_cosmos_store().ping()
+            return
         with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
             conn.execute("SELECT 1")
     except Exception as exc:
@@ -706,6 +722,10 @@ def health() -> dict[str, Any]:
 def ready() -> dict[str, Any]:
     """Readiness — verifies the database is reachable and schema v7 is applied."""
     try:
+        if DB_BACKEND_ACTIVE == "cosmos":
+            from common.db.cosmos_store import get_cosmos_store
+
+            get_cosmos_store().ping()
         with connect() as conn:
             stages = list_stages(conn)
     except Exception as exc:
