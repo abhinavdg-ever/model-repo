@@ -1,300 +1,161 @@
 # Flow — what happens when
 
 What moves through the system, in order, and what each step leaves behind.
-For the HTTP surface, see [API.md](API.md).
+Setup and the API: [API.md](API.md). The VM and the release path:
+[specials/VM_GUIDE.md](specials/VM_GUIDE.md).
 
 ---
 
-## 1. The two deployments
+## 1. The pieces
 
-```mermaid
-flowchart LR
-  subgraph CP["core-pipeline (own docker-compose, port 8001)"]
-    API["FastAPI<br/>ingest · rerun · manifest"]
-    ORCH["Orchestrator<br/>9-stage chain"]
-    API --> ORCH
-  end
-
-  subgraph RU["review-ui (own docker-compose, Docker ports 4000/4001)"]
-    RAPI["FastAPI viewer :4000 (host) / :3000 (container)"]
-    WEB["Vite + React :4001 (host) / :3001 (container)"]
-    WEB --> RAPI
-  end
-
-  BLOB[("Azure Blob<br/>chart folders + manifests")]
-  PG[("PostgreSQL<br/>schema v8")]
-  VOL[/"outputs/charts<br/>shared volume"/]
-
-  BLOB -- "download" --> ORCH
-  ORCH -- "writes" --> PG
-  ORCH -- "writes" --> VOL
-  RAPI -- "reads" --> PG
-  VOL -- "read-only" --> RAPI
-
-  style CP fill:#e8f0fe,stroke:#4a76c7
-  style RU fill:#eaf6ec,stroke:#4c9a5b
+```
+            Azure Blob                                   PostgreSQL
+  raw_input/... (page images)                    every result, per page
+  Processed/... (the chart's outputs)            (schema/schema.sql)
+        │   ▲                                         ▲        │
+        │   │ writes outputs                   writes │        │ reads
+        ▼   │                                         │        ▼
+  ┌───────────────────────────┐              ┌──────────────────────────┐
+  │ core-pipeline  (port 8001)│              │ review-ui  (4000 / 4001) │
+  │ FastAPI + the 15 stages   │              │ viewer + ground truth    │
+  │ outputs/charts = scratch  │              │ page images from Blob    │
+  └───────────────────────────┘              └──────────────────────────┘
 ```
 
-The two services **never call each other**. They share the database and the
-`outputs/charts` volume — core-pipeline writes it, review-ui mounts it read-only.
-Either can be redeployed without the other.
-
-One exception: review-ui's **Playground** (admins only, profile
-menu) starts a core-pipeline batch run (`POST /api/charts/batch-run`, blob input,
-output derived as `Raw_Input/Run2/Batch6/DEID_PNGs` → `Processed/Run2/Batch6`)
-on the pipeline the admin picks from `CORE_PIPELINE_URLS` in `review-ui/.env`
-("Label=URL" pairs; default `VM=http://172.20.4.170:8001,Local=http://localhost:8001`,
-VM preselected; empty turns it off). core-pipeline never calls
-review-ui.
+- The two services share **data, not code**: the database and Azure Blob.
+- They never call each other, with one exception: review-ui's **Playground** (admins
+  only) starts a core-pipeline batch run on one of `CORE_PIPELINE_URLS`.
+- `core-pipeline/outputs/charts/<chart>/` is core-pipeline's working folder. review-ui
+  never reads it, and a folder not run for 7 days is deleted.
+- Either service can be redeployed without the other.
 
 ---
 
-## 2. End-to-end chart flow
+## 2. One chart, end to end
 
-```mermaid
-flowchart TD
-  START(["POST /api/charts/run<br/>{input_type, container_name, input_path, chart_name}"]) --> DL
-
-  subgraph INTAKE["Intake"]
-    DL["Download pages<br/>→ outputs/charts/&lt;chart&gt;/pages/1.jpg…N"]
-    DL --> REG["chart_list + page_list<br/>sha256 + size per page"]
-    REG --> SEED["Seed page_stage_status<br/>(pending × pages × stages)"]
-    SEED --> LINK["Link manifest rows<br/>swept earlier"]
-  end
-
-  LINK --> S1
-
-  subgraph CHAIN["Stage chain — API reprocesses every page; CLI --resume skips completed pages"]
-    S1["1 · ocr_quality<br/>rotation + handwriting"]
-    S2["2 · ocr_prelim<br/>Tesseract, every page"]
-    S3["3 · blank_junk pass 1<br/>printed pages, prelim text"]
-    S4["4 · ocr_final1<br/>Docling+RapidOCR"]
-    S5["5 · ocr_final2<br/>Azure DocIntel · billed"]
-    S5b["6 · section_headers<br/>canon match from JSON"]
-    S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
-    S7["8 · member_verify<br/>rules → NER → what-if"]
-    S8["9 · page_subtype<br/>model top 3 → canon → Others (Extracted)"]
-    S9["10 · dos_extract<br/>key/value best date → edge keyword"]
-    S9b["11 · continuity<br/>documents · Final page type + DOS"]
-    S10["12 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
-    S11["13 · page_sequencing<br/>markers → streams → suggested order"]
-    S12["14 · imaging_final<br/>every field's Final value"]
-    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8 --> S9 --> S9b --> S10 --> S11 --> S12
-  end
-
-  S12 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
-
-  style S5 fill:#fde8e8,stroke:#c74a4a
-  style S7 fill:#fff4e0,stroke:#c78a4a
+```
+POST /api/charts/run  {input_type, container_name, input_path, chart_name, output_path}
+   │   returns 202 at once; the work runs in the background
+   ▼
+INTAKE   download pages -> outputs/charts/<chart>/pages/1.jpg ... N.jpg
+         chart_list + page_list rows; page_stage_status seeded (pages x stages)
+         manifest rows swept earlier are linked to the chart
+   ▼
+STAGES   1 ocr_quality ─ 2 ocr_prelim ─ 3 blank_junk (1) ─ 4 ocr_final1 ─ 5 ocr_final2 ($)
+         ─ 6 section_headers ─ 7 kv_extract ─ 8 blank_junk (2) ─ 9 member_verify
+         ─ 10 page_subtype ─ 11 dos_extract ─ 12 continuity ─ 13 encounter_type
+         ─ 14 page_sequencing ─ 15 imaging_final
+   ▼
+FINISH   refresh_chart_status -> completed / needs_review / failed
+         outputs written to Blob <output_path>/<chart>/ when an output_path is given
 ```
 
-Stages 5 and 7 are highlighted: **stage 5 costs money per page** (which is why
-`skip_ocr` matters), and **stage 7 produces the accept/reject decision**.
+Progress: `GET /api/charts/{chart_id}` or `/api/charts/by-name/{chart_name}`.
+**Stage 5 is billed per page** (Azure Document Intelligence). **Stage 9 decides
+accept / reject** (it needs GLiNER: without it no page can be marked wrong-member).
 
 ---
 
 ## 3. What each stage reads and writes
 
-| # | Stage | Runs on | Reads | Writes to Postgres | Writes to disk |
-|---|-------|---------|-------|--------------------|----------------|
-| 1 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/<chart>_rotation.csv`, `_hw_printed.csv`, `_quality.csv`, and `corrected-pages/<n>.jpg` when `ROTATION_CORRECTION_ENABLED` |
-| 2 | `ocr_prelim` | every page | corrected page if one exists, else page image | `ocr_results` (`tesseract`) | `ocr/<chart>_prelim.txt` |
-| 3 | `blank_junk` pass 1 | printed + non-low-quality only | prelim text | `blank_junk_classification` (pass 1) | `imaging/<chart>_junk.csv` |
-| 4 | `ocr_final1` | not blank/junk, + HW / low-quality | corrected page if one exists, else page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.json` (incl. `section_header_candidates`) |
-| 5 | `ocr_final2` | not blank/junk, + HW / low-quality; **skips high-quality printed** (`document_type` printed only; visual pages go to Azure, 2026-10-21) | corrected page if one exists, else page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` (incl. candidates / `pagesMeta`) |
-| 6 | `section_headers` | pages with Final1 or Final2 JSON | those JSON files | updates `ocr_results` JSON blobs | rewrites `section_headers` in `*_final1.json` / `*_final2.json` |
-| 6b | `kv_extract` | pages with Final2 word boxes, else Final1 | Final2 JSON, else Final1 JSON, plus the page image | `section_headers` inside `ocr_results`. `provider_signature_results` and `additional_page_details` are defined in schema.sql | `staging/extraction.json`, `imaging/<chart>_provider_signature.csv`, `imaging/<chart>_additional_page_details.csv`. `KV_DEBUG=true` also writes `debug/<chart>_kv.json` |
-| 7 | `blank_junk` pass 2 | HW + low-quality + surviving printed | final2 text, else final1 | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
-| 8 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
-| 9 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
-| 10 | `page_subtype` | every page | best text + DOS + blank/junk | `page_classification` (main = family model, else keywords; blank/junk/dup = `non_codeable` + junk subtype) | `imaging/<chart>_codeable.csv` |
-| 11 | `encounter_type` | not blank/junk/duplicate | best text + DOS | `encounter_type_results` | `imaging/<chart>_encounter.csv` |
-| 12 | `page_sequencing` | all pages (junk flagged) | best text | `page_sequencing_results` | `imaging/<chart>_sequencing.csv` |
+The order is the `pipeline_stage` seed in `schema/schema.sql`. "Best text" means
+Final OCR 2, else Final OCR 1, else the preliminary text (only on printed pages).
 
-Every stage also writes one `pipeline_jobs` row and updates
-`page_stage_status` per page.
+| # | Stage | Runs on | Reads | Writes (database) | Writes (chart folder) |
+|---|---|---|---|---|---|
+| 1 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/_rotation.csv`, `_hw_printed.csv`, `_quality.csv`; `corrected-pages/` when a page is turned or straightened |
+| 2 | `ocr_prelim` | every page | corrected page if any, else the image | `ocr_results` (tesseract) | `ocr/<chart>_prelim.txt` |
+| 3 | `blank_junk` pass 1 | printed pages | prelim text | `blank_junk_classification` | `imaging/_junk.csv` |
+| 4 | `ocr_final1` | every page (pass-1 blank / junk / duplicate stored only) | corrected page or image | `ocr_results` (RapidOCR) | `ocr/<chart>_final1.json` |
+| 5 | `ocr_final2` | survivors + handwritten | corrected page or image | `ocr_results` (Azure) | `ocr/<chart>_final2.json` |
+| 6 | `section_headers` | pages with Final 1 / 2 JSON | those JSON files | headers inside `ocr_results` | rewrites the JSON files |
+| 7 | `kv_extract` | pages with word boxes | Final 2 JSON, else Final 1, + image | provider signature, page details | `staging/extraction.json`, `imaging/_provider_signature.csv` |
+| 8 | `blank_junk` pass 2 | handwritten + survivors | best text | final verdict (`is_final`) | rewrites `_junk.csv` |
+| 9 | `member_verify` | not blank / junk | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `imaging/_member_*.csv` |
+| 10 | `page_subtype` | every page | best text + blank / junk | `page_classification` | `imaging/_codeable.csv`, `staging/page_classification.json` |
+| 11 | `dos_extract` | not blank / junk | best text + page type | `dos_extraction_results` | `imaging/_dos.csv` |
+| 12 | `continuity` | every page | page types, dates, signatures | `page_continuity_results` | `staging/continuity.json`, `imaging/_continuity.csv` |
+| 13 | `encounter_type` | not blank / junk | best text + documents | `encounter_type_results` | `imaging/_encounter.csv` |
+| 14 | `page_sequencing` | every page (junk set aside) | best text + documents | `page_sequencing_results` | `imaging/_sequencing.csv` |
+| 15 | `imaging_final` | every page | all of the above | `imaging_final` | `imaging/_final.csv` |
 
-**"Best text"** means final2 → final1 → prelim (restricted). Prelim is never used
-for handwritten / form / blank / uncertain / low-quality pages.
-
----
-
-## 4. Skip rules — why a page drops out
-
-```mermaid
-flowchart TD
-  P["Page"] --> Q{"HW / form / blank / uncertain<br/>or quality_tag=low?"}
-  Q -- yes --> HW["Skip blank/junk pass 1"]
-  Q -- no --> BJ1["Blank/junk pass 1<br/>on prelim text"]
-
-  HW --> F1["Final OCR 1"]
-  BJ1 --> D{"blank / junk /<br/>duplicate?"}
-  D -- yes --> STOP1(["Skipped: no final OCR,<br/>no member, no DOS"])
-  D -- no --> F1
-
-  F1 --> HQ{"high quality<br/>+ printed?"}
-  HQ -- yes --> BJ2["Blank/junk pass 2<br/>(final1 text; Azure skipped)"]
-  HQ -- no --> F2["Final OCR 2 (Azure)"]
-  F2 --> BJ2b["Blank/junk pass 2<br/>final2 else final1"]
-  BJ2 --> D2{"blank / junk /<br/>duplicate?"}
-  BJ2b --> D2
-  D2 -- yes --> STOP2(["Skipped: no member, no DOS"])
-  D2 -- no --> EXTRACT["member_verify + dos_extract<br/>best text: f2→f1→prelim*"]
-```
-
-\* prelim only for printed non-low-quality pages.
-
-  style STOP1 fill:#f5f5f5,stroke:#999
-  style STOP2 fill:#f5f5f5,stroke:#999
-```
-
-Each skip is recorded — `page_stage_status.status='skipped'` with a
-`skip_reason` (`handwritten`, `blank_junk_pass1`, `blank_junk`,
-`no_final2_text`). A skipped page counts as *done* for chart-status purposes,
-so a chart of blank pages still reaches `completed`.
-
-### Adaptive skip_ocr (`skip_ocr=true`)
-
-When OCR artifacts already exist, the orchestrator:
-
-1. Hydrates `ocr/` / `ocr_results` (same as plain skip_ocr).
-2. **Force-refreshes** `ocr_quality` (rotation + HW + measured quality).
-3. Compares each page’s gate signature
-   `(hw_class, quality_tag, rotation_applied, orientation_bucket)` to the
-   pre-run snapshot (`core-pipeline/apps/worker/stages/utilities/gate_delta.py`).
-4. Sets OCR-related `page_stage_status` rows back to pending only when
-   artifacts are missing or the gate path changed (so OCR engines may re-run
-   for those pages).
-5. **Force-re-runs every non-OCR stage** — blank/junk (both passes), section
-   headers, member, DOS, codeable, encounter, sequencing — regardless of
-   prior completion.
-
-```bash
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"input_type": "blob", "container_name": "imaging-pipeline",
-       "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-       "chart_name": "52754737_48221214", "skip_ocr": true}'
-```
+Every stage also writes a `pipeline_jobs` row and updates `page_stage_status` per page.
+One bad page never sinks a chart: its error goes in `page_stage_status.error_message` and
+the stage carries on.
 
 ---
 
-## 5. Manifest flow — runs independently
+## 4. Why a page drops out
 
-```mermaid
-flowchart LR
-  M1[/"metadata_R1_B1.csv<br/>local file, directory, or blob prefix"/]
-  M1 --> SWEEP["POST /api/manifest/sweep"]
-  SWEEP --> PARSE["Parse rows<br/>split first / middle / last"]
-  PARSE --> UP["Upsert manifest_member_list<br/>keyed on record_id"]
-  UP --> LINKED{"Chart already<br/>ingested?"}
-  LINKED -- yes --> SETID["chart_id set now"]
-  LINKED -- no --> WAIT["chart_id stays NULL —<br/>ingest links it later"]
-
-  ING["Chart ingest"] --> LINK2["link_manifest_to_chart(record_id)"]
-  WAIT -.-> LINK2
+```
+page ──► printed? ── no (handwritten / form / blank / low quality) ──► skips pass 1
+           │ yes
+           ▼
+      blank / junk pass 1 on the prelim text
+           │ blank, junk or exact duplicate ──► stored only: no Azure, no member, no DOS
+           ▼
+      Final OCR 1 ──► Final OCR 2 (Azure; high-quality printed pages skip it)
+           ▼
+      blank / junk pass 2 on the best text
+           │ blank, junk or duplicate ──► no member, no DOS, no encounter
+           ▼
+      member, DOS, encounter on the best text
 ```
 
-The manifest is a fact about a **client RecordId**, not about a chart row we
-happen to hold. Sweeping does **not** create placeholder charts — v6 did, which
-filled the review UI with empty charts for records never ingested.
-
-Order does not matter: sweep before ingest or after, the link is made either
-way. `run_id` / `batch_id` come from the `R#`/`B#` in the filename unless
-overridden.
+A skip is recorded as `page_stage_status.status = 'skipped'` with a `skip_reason`.
+A skipped page counts as done, so a chart of blank pages still completes.
 
 ---
 
-## 6. Resume — what a re-run actually does
+## 5. The manifest runs on its own
 
-```mermaid
-sequenceDiagram
-  participant C as Caller
-  participant O as Orchestrator
-  participant DB as page_stage_status
-  participant AZ as Azure DocIntel
-
-  Note over O,AZ: First run — dies at page 401 of 500
-  C->>O: POST /api/charts/run
-  O->>AZ: analyse pages 1…400
-  AZ-->>DB: 400 rows 'completed'
-  O--xO: crash
-
-  Note over O,AZ: API re-run — same input_path + chart_name, reprocesses all
-  C->>O: POST /api/charts/run {"input_path":…,"chart_name":…}
-  O->>AZ: analyse pages 1…500 again
-  Note right of AZ: billed again
-
-  Note over O,AZ: CLI resume (python cli.py run --resume)
-  C->>O: cli.py run --chart-id … --resume
-  O->>DB: pages_needing_stage('ocr_final2')
-  DB-->>O: pages 401…500 only
-  O->>AZ: analyse 100 pages
+```
+metadata_R1_B1.csv (file, folder or blob prefix)
+   ──► POST /api/manifest/sweep ──► manifest_member_list (keyed on record_id)
+          chart already ingested? yes ──► linked now
+                                  no  ──► linked when the chart is ingested
 ```
 
-- API re-run (same `input_path` + `chart_name`) → workspace pages are reused
-  (`skip_page_download` defaults to `true`) and every stage **reprocesses**.
-  There is no `force` field and no page-level resume on the API.
-- `{"skip_ocr": true}` → reuse existing OCR; no Final2 re-billing (see §4).
-- `{"skip_completed": true}` → do not run a chart whose status is already
-  `completed` / `needs_review` / `rejected`.
-- `{"only": ["member_verify"]}` → run just that stage.
-- CLI `--resume` → completed and skipped pages are left alone. The CLI keeps
-  its own flags; they are not the API's fields.
+Sweeping never creates placeholder charts. Sweep before or after the ingest; the link
+is made either way. `run_id` / `batch_id` come from the `R#` / `B#` in the file name.
 
 ---
 
-## 7. Chart status over time
+## 6. Running a chart again
 
-`chart_list.status` is lifecycle; `current_stage` is position. Both are derived
-after every stage from the page rows — never set by hand.
+| Request | What happens |
+|---|---|
+| same `input_path` + `chart_name` | Pages already in the workspace are reused; **every stage runs again**, including OCR (Azure is billed again) |
+| `"skip_ocr": true` | OCR is reused; everything else runs again. No Azure bill |
+| `"only": ["dos_extract"]` | Only those stages, on what is already in the chart folder |
+| `"run_through": "ocr_final2"` | Stops after that stage |
+| `"skip_completed": true` | A chart already completed / needs_review is not run |
+| CLI `python cli.py run --resume` | Completed pages are left alone (the API has no resume) |
 
-```mermaid
-stateDiagram-v2
-  [*] --> received: chart row created
-  received --> downloading: intake starts
-  downloading --> processing: pages registered
-  processing --> processing: stage completes,<br/>current_stage advances
-  processing --> failed: a page failed in<br/>an incomplete stage
-  processing --> completed: all stages done
-  processing --> needs_review: done, but member<br/>verification unresolved
-  failed --> processing: rerun
-```
-
-Accept/reject lives on `member_verification_summary`, not on `chart_list.status`
-(``rejected`` is legacy and is no longer written).
-
-**The rule:** `current_stage` is the earliest stage, in `pipeline_stage.seq`
-order, where not every page is `completed` or `skipped`.
-
-Because stage order lives in a table rather than in code, registering
-page-subtype / encounter / sequencing later is an `INSERT` plus a stage module —
-no migration, no change to this logic.
+`only` and `skip_ocr` need the chart folder, which is deleted 7 days after the chart's
+last run. After that, run the chart in full.
 
 ---
 
-## 8. Timeline of one 500-page chart
+## 7. Chart status
 
-```mermaid
-gantt
-  title Where the wall-clock goes (indicative, STAGE_WORKERS=4)
-  dateFormat X
-  axisFormat %s
-  section Intake
-  Download 500 images        :0, 60
-  section OCR
-  Tesseract prelim           :60, 180
-  Rotation + handwriting     :240, 120
-  section Triage
-  Blank/junk pass 1          :360, 10
-  section Final OCR
-  RapidOCR (final1)          :370, 300
-  Azure DocIntel (final2)    :670, 400
-  section Triage
-  Blank/junk pass 2          :1070, 10
-  section Extraction
-  Member verify              :1080, 40
-  DOS extract                :1120, 60
+```
+received ──► downloading ──► processing ──► completed
+                                  │     └──► needs_review   (member verification unresolved)
+                                  └────────► failed ──► processing (run again)
 ```
 
-Blank/junk pass 1 pays for itself: every page it rules out is a page the two
-final OCR stages never touch, and stage 5 is the billed one.
+`chart_list.status` is the lifecycle and `current_stage` the position: the earliest
+stage, in `pipeline_stage.seq` order, where not every page is completed or skipped.
+Both are worked out from the page rows after every stage, never set by hand. Accept /
+reject is on `member_verification_summary`, not on the chart status.
+
+---
+
+## 8. Where the time goes
+
+Most of a chart's wall-clock is OCR: Tesseract on every page, RapidOCR, then Azure for
+the survivors. Blank / junk pass 1 pays for itself, because every page it rules out is
+a page the two final OCR stages never read, and stage 5 is the billed one.
+`python cli.py usage --days 7` shows the real numbers per day: runs, pages, time and
+Azure cost (`run_usage`).
