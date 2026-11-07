@@ -1193,13 +1193,6 @@ def _label(page: PageInput, tag: str, kind: str, number: Optional[int], unsure: 
     return f"{tag.capitalize()}{'?' if unsure else ''} ({where})"
 
 
-def position_label(position: Optional[str], document: Optional[int]) -> str:
-    """Legacy: 'First (Doc 3)' from a position; '' outside a document."""
-    if not position or document is None:
-        return ""
-    return f"{position.capitalize()} (Doc {document})"
-
-
 def _finish(
     rows: list[dict[str, Any]],
     pages: Sequence[PageInput],

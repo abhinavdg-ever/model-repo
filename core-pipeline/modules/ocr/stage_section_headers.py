@@ -29,7 +29,6 @@ from apps.worker.stages._support import (
 )
 from modules.ocr.section_headers_io import (
     page_has_ocr_payload,
-    refresh_ocr_json_doc,
     refresh_page_headers,
 )
 
@@ -291,30 +290,3 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         }
 
 
-def refresh_chart_json_files(chart_name: str, *, use_minilm: bool = True) -> dict[str, Any]:
-    """Offline helper: rewrite both OCR JSONs for a chart folder (no DB)."""
-    root = ocr_dir(chart_name)
-    summary: dict[str, Any] = {"chart_name": chart_name, "files": {}}
-    for kind, name, writer in (
-        ("final1", f"{chart_name}_final1.json", write_final1_json),
-        ("final2", f"{chart_name}_final2.json", write_final2_json),
-    ):
-        path = root / name
-        doc = _load_json(path)
-        if doc is None:
-            summary["files"][kind] = {"path": str(path), "status": "missing"}
-            continue
-        new_doc, n_pages, n_headers = refresh_ocr_json_doc(
-            doc, kind=kind, use_minilm=use_minilm
-        )
-        if kind == "final1":
-            writer(chart_name, list(new_doc.get("pages") or []), model=str(new_doc.get("model") or "docling+rapidocr"))
-        else:
-            writer(chart_name, list(new_doc.get("pages") or []))
-        summary["files"][kind] = {
-            "path": str(path),
-            "status": "updated",
-            "pages": n_pages,
-            "headers_kept": n_headers,
-        }
-    return summary

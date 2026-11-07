@@ -252,43 +252,6 @@ def _pull_subdir_from_blob_output(
     return copied
 
 
-def _hydrate_pages_from_output(
-    *,
-    chart_name: str,
-    output_path: Optional[str],
-    blob_container: Optional[str],
-) -> int:
-    out = (output_path or "").strip()
-    if not out:
-        return 0
-    dest = pages_dir(chart_name)
-    n = _hydrate_subdir_from_local_output(
-        chart_name=chart_name,
-        output_path=out,
-        subdir="pages",
-        dest=dest,
-        only_missing=True,
-    )
-    if list_local_pages(chart_name):
-        return max(n, len(list_local_pages(chart_name)))
-    container = (blob_container or "").strip()
-    if not container:
-        return 0
-    try:
-        ensure_blob_ready(container)
-    except Exception as exc:
-        logger.warning("Blob not ready for pages hydrate: %s", exc)
-        return 0
-    return _pull_subdir_from_blob_output(
-        container=container,
-        output_path=out,
-        chart_name=chart_name,
-        subdir="pages",
-        dest=dest,
-        only_missing=True,
-    )
-
-
 def _download_missing_from_raw_input(
     *,
     chart_name: str,

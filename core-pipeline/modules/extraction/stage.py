@@ -41,7 +41,6 @@ from apps.worker.stages._support import (
 )
 
 from . import engine, staging
-from .provider_name.extract import credentialed_providers
 from .heading.extract import heading_fields
 from .ocr_input import has_word_boxes, page_for_extraction
 from .results import (
@@ -415,17 +414,6 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     if isinstance(fields.get("signers"), list):
         fields["signers"] = trim_signers(fields["signers"])
     return fields
-
-
-def _provider_rows(staged_page: Optional[staging.StagedPage]) -> list[dict[str, Any]]:
-    """Every accepted provider with Dr. or a credential, or next to Provider, in page order.
-
-    The trained model keeps a single winner. A page can still name a provider
-    and a cosigner, so the output keeps each of them.
-    """
-    if staged_page is None:
-        return []
-    return credentialed_providers(staged_page.accepted("provider_name"))
 
 
 def _chosen(staged_page: Optional[staging.StagedPage], field_id: str) -> Optional[dict[str, Any]]:

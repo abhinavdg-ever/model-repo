@@ -28,7 +28,6 @@ Tilt is applied only when |tilt| <= max_tilt_to_apply (default 5).
 """
 from __future__ import annotations
 
-import json
 import math
 import re
 from dataclasses import dataclass, field
@@ -363,12 +362,6 @@ def group_text_lines(
         )
     return lines
 
-
-def component_mask(ink_shape: tuple[int, int], comps: list[TextComponent]) -> np.ndarray:
-    mask = np.zeros(ink_shape, dtype=np.uint8)
-    for c in comps:
-        mask[c.y : c.y + c.h, c.x : c.x + c.w] = 255
-    return mask
 
 def _rotate_gray(gray: np.ndarray, deg: int) -> np.ndarray:
     if deg == 0:
@@ -1001,7 +994,6 @@ def dictionary_share(text: str) -> tuple[float, int]:
     vocabulary = _english_words()
     known = sum(1 for token in tokens if _is_word(token, vocabulary))
     return known / len(tokens), len(tokens)
-
 
 
 def detect_mirror(

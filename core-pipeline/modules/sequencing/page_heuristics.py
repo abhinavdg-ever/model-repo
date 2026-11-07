@@ -34,22 +34,3 @@ def is_near_blank(text: str, *, word_count: int | None = None) -> bool:
     return False
 
 
-def is_cover_page(
-    *,
-    original_page_number: int,
-    header_text: str,
-    footer_text: str,
-    full_text: str,
-    word_count: int = 0,
-) -> bool:
-    combined = f"{header_text} {footer_text} {full_text}"
-    if original_page_number == 1 and matches_any(combined, _COVER_PATTERNS):
-        return True
-    if original_page_number == 1 and is_near_blank(full_text, word_count=word_count):
-        return False
-    if original_page_number == 1 and word_count < 80:
-        if matches_any(combined, _COVER_PATTERNS):
-            return True
-        if re.search(r"\b(fax|cover|enclosure)\b", combined, re.I) and word_count < 120:
-            return True
-    return False

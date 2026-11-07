@@ -129,57 +129,6 @@ def _all_candidates(feature: PageFeatures) -> list[ExplicitMarker]:
     return candidates
 
 
-def _best_marker(feature: PageFeatures, *, doc_page_count: int | None = None) -> ExplicitMarker | None:
-    extracted = _extracted(feature)
-    if extracted is not None:
-        return extracted[0]
-    candidates: list[ExplicitMarker] = []
-
-    footer_marker = detect_footer_marker(feature.footer_raw)
-    header_marker = detect_marker(feature.header_raw)
-    if footer_marker:
-        candidates.append(footer_marker)
-    if header_marker:
-        candidates.append(header_marker)
-
-    body_marker = _detect_body_marker(feature.full_text)
-    if body_marker:
-        candidates.append(body_marker)
-
-    if doc_page_count:
-        plausible = [
-            m for m in candidates
-            if m.total_pages is None or (
-                m.total_pages <= max(doc_page_count * 2, doc_page_count + 20)
-                and not (m.total_pages > 80 and doc_page_count < 50)
-            )
-        ]
-        if plausible:
-            candidates = plausible
-
-    if not candidates:
-        return None
-
-    def _rank(m: ExplicitMarker) -> tuple:
-        tp = m.total_pages
-        absolute = tp is not None and tp == doc_page_count
-        plausible_total = tp is not None and doc_page_count and tp <= doc_page_count + 5
-        return (
-            0 if absolute else 1 if plausible_total else 2,
-            0 if m.total_pages is not None else 1,
-            -m.confidence,
-        )
-
-    best = min(candidates, key=_rank)
-    if footer_marker and best is footer_marker:
-        best.source = "footer"
-    elif header_marker and best is header_marker:
-        best.source = "header"
-    else:
-        best.source = "body"
-    return best
-
-
 def detect_marker(text: str) -> ExplicitMarker | None:
     for pattern_name, pattern in MARKER_PATTERNS:
         for match in pattern.finditer(text or ""):

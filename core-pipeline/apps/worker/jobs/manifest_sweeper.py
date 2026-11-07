@@ -559,33 +559,6 @@ def run_load(
         raise
 
 
-# Back-compat aliases used by API / older CLI
-def run_sweep(
-    *,
-    blob_container: str,
-    blob_prefix: str,
-    mirror_local: bool = True,
-    run_id: Optional[str] = None,
-    batch_id: Optional[str] = None,
-) -> dict[str, Any]:
-    return run_load(
-        blob_container=blob_container,
-        blob_prefix=blob_prefix,
-        mirror_local=mirror_local,
-        run_id=run_id,
-        batch_id=batch_id,
-    )
-
-
-def run_sweep_local(
-    csv_or_xlsx: Path,
-    *,
-    run_id: Optional[str] = None,
-    batch_id: Optional[str] = None,
-) -> dict[str, Any]:
-    return run_load(local_path=csv_or_xlsx, run_id=run_id, batch_id=batch_id)
-
-
 def main(argv: Optional[list[str]] = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(message)s"

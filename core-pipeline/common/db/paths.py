@@ -215,27 +215,11 @@ def parse_ocr_json(path: Path) -> dict[str, str]:
     return out
 
 
-def parse_final2_json(path: Path) -> dict[str, str]:
-    return parse_ocr_json(path)
-
-
 def write_csv(path: Path, fieldnames: list[str], rows: Iterable[dict[str, Any]]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
-    return path
-
-
-def append_csv(path: Path, fieldnames: list[str], rows: Iterable[dict[str, Any]]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    exists = path.is_file() and path.stat().st_size > 0
-    with path.open("a", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
-        if not exists:
-            writer.writeheader()
         for row in rows:
             writer.writerow(row)
     return path
@@ -332,8 +316,3 @@ def load_ocr_text_for_page(
     return ""
 
 
-def iso_or_none(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    s = str(value).strip()
-    return s or None

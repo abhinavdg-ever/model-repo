@@ -337,12 +337,6 @@ def _stand_in() -> float:
     return conf.score(0.5, "degraded", module="image_preprocess")
 
 
-def _cv_rotation(image: Any) -> Optional[int]:
-    """rotation_cv's clockwise turn (0 / 90 / 180 / 270), or None when it has too few
-    letters to tell or fails (it is only a second opinion)."""
-    return _cv_result(image)[0]
-
-
 def _cv_result(image: Any) -> tuple[Optional[int], dict[str, Any]]:
     """(rotation_cv's turn or None, its full answer for staging/rotation.json)."""
     try:

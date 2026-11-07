@@ -306,34 +306,6 @@ def mark_failed(
     set_current_page("")
 
 
-def eligible_for_downstream(
-    quality: dict[int, dict[str, Any]],
-    bj_flags: dict[int, str],
-    page_id: int,
-    *,
-    handwritten_always: bool = False,
-) -> bool:
-    """Skip rule shared by final OCR and the extraction stages.
-
-    A page that is blank / junk / duplicate is dropped. Handwritten pages can be
-    carried through anyway (`handwritten_always`) because pass 1 never judged
-    them — their blank/junk verdict only exists after final OCR.
-    """
-    if handwritten_always:
-        from common.db import page_type
-
-        if page_type(quality.get(page_id)) == "handwritten":
-            return True
-    return bj_flags.get(page_id, "not_blank_junk") not in BJ_EXCLUDE
-
-
-def optional_float(value: Any) -> Optional[float]:
-    try:
-        return None if value is None else float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def unwrap_ocr_content(raw: Optional[str]) -> str:
     """final1/final2 rows may store JSON with a content/markdown field."""
     if not raw:

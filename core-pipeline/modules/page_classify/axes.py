@@ -333,29 +333,6 @@ def model_paths(raw: dict[str, Any], space: dict[str, Any]) -> tuple[dict[str, A
     return tuple(out)
 
 
-def canon_match(
-    text: str, headings: tuple[str, ...], level: str, l1: Optional[str] = None, l2: Optional[str] = None
-) -> tuple[Optional[str], Optional[float], Optional[str]]:
-    """The canon's best ``level`` value (L1, L2 or L3) among entries under
-    ``l1`` / ``l2``: (value, keyword confidence, canon page type)."""
-    from modules.page_classify.arbitration import keyword_confidence
-
-    canon = _CANON.get()
-    names_ = frozenset(
-        name for name, e in canon.entries.items()
-        if e["path"].get(level)
-        and (l1 is None or e["path"]["L1"] == l1)
-        and (l2 is None or e["path"].get("L2") == l2)
-    )
-    if not names_:
-        return None, None, None
-    group_of = {name: canon.entries[name]["path"][level] for name in names_}
-    found = keywords.classify(text, headings, canon=canon.keywords, subtypes=names_, group_of=group_of)
-    if found is None:
-        return None, None, None
-    return found.page_type, keyword_confidence(found), found.page_subtype
-
-
 def canon_entry(
     text: str, headings: tuple[str, ...], l1: str, l2: Optional[str] = None, l3: Optional[str] = None
 ) -> tuple[Optional[str], Optional[float]]:

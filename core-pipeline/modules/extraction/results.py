@@ -259,28 +259,6 @@ def _signer(row: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
     return name, creds
 
 
-def _page_provider(
-    provider_hits: Optional[list[dict[str, Any]]],
-    credential_hits: Optional[list[dict[str, Any]]],
-) -> tuple[Optional[str], Optional[str], Optional[float]]:
-    """The page's provider without a signature: the best counted ``provider_credentials``
-    row that names its provider (name = its ``provider_name``, credentials = its
-    ``value``), else the best counted ``provider_name`` row (its ``value``, credentials
-    split off). (name, credentials, that row's score); (None, None, None) when neither."""
-    named = _best([
-        item for item in _as_hits(credential_hits)
-        if _counts(item) and _text(item, "value") and _text(item, "provider_name")
-    ])
-    if named is not None:
-        return (split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"),
-                _named_confidence(named, provider_hits))
-    best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
-    if best is not None:
-        name, creds = split_name_credentials(caps_credentials_only(_text(best, "value")))
-        return name, creds, _confidence(best)
-    return None, None, None
-
-
 # provider_credentials values never used to derive a signer (2026-11-05, user).
 IGNORED_DERIVED_CREDENTIALS = frozenset({"RN", "DO"})
 

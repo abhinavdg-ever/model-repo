@@ -109,10 +109,6 @@ def reset_current_chart(token: contextvars.Token) -> None:
     _current_chart.reset(token)
 
 
-def get_current_chart() -> str:
-    return _current_chart.get() or ""
-
-
 def set_current_page(page_no: Optional[object]) -> contextvars.Token:
     """Bind the page number into ``[chart][page]`` for this context."""
     text = "" if page_no is None else str(page_no).strip()

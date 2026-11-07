@@ -79,10 +79,6 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
 STAGE_NAMES = [f"{name}:{pass_no}" for name, pass_no, _ in STAGE_CHAIN]
 
 
-def _stage_key(name: str, pass_no: int) -> str:
-    return f"{name}:{pass_no}"
-
-
 def resolve_stage(token: str) -> int:
     """Index into STAGE_CHAIN for a stage token, or raise ValueError.
 

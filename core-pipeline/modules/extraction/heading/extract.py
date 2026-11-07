@@ -85,22 +85,6 @@ _FUZZY_RATIO = 0.88  # 2026-11-02 (Extraction drop): was 0.7, too loose for the 
 _FILLER = frozenset({"and", "of", "the", "for", "to"})
 
 
-def _contains_heading(key: str, known: frozenset[str]) -> bool:
-    """True when a listed heading's words sit inside the line ('Office Visit' in 'Office Visit Report')."""
-    words = key.split()
-    if not words:
-        return False
-    for item in known:
-        parts = item.split()
-        size = len(parts)
-        if size == 0 or size > len(words):
-            continue
-        for start in range(len(words) - size + 1):
-            if words[start : start + size] == parts:
-                return True
-    return False
-
-
 def _common_key(text: str) -> str:
     """'PROGRESS NOTES:' == 'Progress note'; 'History & Physical' == 'History and Physical'."""
     words = re.findall(r"[a-z0-9]+", (text or "").casefold())
