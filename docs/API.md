@@ -116,7 +116,6 @@ uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
 cd review-ui/frontend && npm install && npm run dev
 ```
 
-`python cli.py serve` is the same pipeline process as the first uvicorn command.
 
 ```bash
 curl -fsS localhost:8001/health
@@ -141,10 +140,10 @@ That returns 202. Poll `GET /api/charts/{chart_id}`. `skip_ocr: true` reuses OCR
 The one-time setup in §1–§2 is already done on this Mac: Python 3.12 venvs, Tesseract 5.5 and `psql` from Homebrew, models under `core-pipeline/models/`, and `.env` files pointing at the shared Postgres. Every day, start the three processes, each in its own terminal:
 
 ```bash
-REPO="/Volumes/Extreme SSD/Advantmed/advantmed-imaging-pipeline"
+REPO="/Volumes/Extreme SSD/Advantmed/advantmed-imaging-pipeline"   # set this in each terminal
 
 # Terminal 1 — pipeline API, http://localhost:8001/docs (logs: core-pipeline/logs/core-pipeline.log)
-cd "$REPO/core-pipeline" && source .venv/bin/activate && python cli.py serve
+cd "$REPO/core-pipeline" && source .venv/bin/activate && uvicorn apps.orchestrator_api.main:app --host 0.0.0.0 --port 8001
 
 # Terminal 2 — review API, http://localhost:8002/docs
 cd "$REPO/review-ui/backend" && source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
