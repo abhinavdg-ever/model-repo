@@ -35,7 +35,7 @@ Cosmos, Service Bus and the API key are in `core-pipeline/.env` (values never in
 10. **Monitoring:** every run records time taken, Doc Intel pages and cost, and LLM tokens and cost (once an LLM is used), in one place with daily and hourly totals.
 11. **Reference data is loaded by its own job.** Manifests and ground truth go into the database through **db-utilities**, a separate Docker job, never through core-pipeline or review-ui.
 12. **Models come from Blob,** not from a manual copy (phase 8), so every host and every pod gets identical weights.
-13. **AKS later.** Every part runs as a container today, so the move to Azure Kubernetes Service is a deployment change, not a code change (§8a).
+13. **Hosting stays on the Ubuntu VM.** AKS is parked (2026-11-07); every part already runs as a container, so it stays possible later.
 
 ## 2. Overall approach
 
@@ -137,7 +137,6 @@ advantmed-imaging-pipeline/              (one GitHub repo; three deployables)
 │   ├── input/                           files to load (read-only at /input), or a Blob prefix
 │   └── .env / .env.example              DATABASE_URL (later Cosmos) + AZURE_STORAGE_*
 │
-├── k8s/                                 (phase 9) AKS manifests or Helm chart, one per deployment
 ├── schema/                            Postgres: schema.sql, migrate.sql, migrations/
 ├── deploy/                            GitHub → DevOps copy, client .gitignore
 ├── training/  scripts/  tests/        GitHub only, never on the VM
@@ -160,10 +159,11 @@ advantmed-imaging-pipeline/              (one GitHub repo; three deployables)
 Not built yet (phase 8). On the VM today the weights are copied by hand into
 `core-pipeline/models/`.
 
-Both live in Blob as versioned folders. A small `manifest.json` says which version is live.
+Both live in Blob as versioned folders in the container **`imaging-models`** (2026-11-07).
+A small `manifest.json` says which version is live.
 
 ```
-resources/                                   (Blob container)
+imaging-models/                              (Blob container)
 ├── manifest.json                            item -> live version + file fingerprints
 ├── models/<name>/<version>/…                e.g. models/page-leaf/v3/
 └── canon/<version>/*.json                   e.g. canon/2026-11-07a/
@@ -182,9 +182,7 @@ resources/                                   (Blob container)
 - **Every result records its versions.** Each stage stamps the model and canon versions it ran with into `input_hash`, so a canon change re-runs exactly the stages it affects.
 - **If Blob can't be reached,** the worker keeps what's already on disk and records that in `/health` and in the run record.
 - **What it removes:** copying model weights to the VM by hand (the first worker start downloads about 3 GB, once), and the zip → DevOps → VM round trip for a canon edit.
-- **Weights are never built into a Docker image:** an image would be many GB, every model change would need a new image, and every new AKS node would pull it again.
-- **On AKS** the same fetch runs as an **init container** that fills a shared volume before the
-  workers start (or the Blob CSI driver mounts `resources/models` read-only), §8a.
+- **Weights are never built into a Docker image:** an image would be many GB and every model change would need a new image.
 
 ### Where today's code goes
 
@@ -192,7 +190,7 @@ resources/                                   (Blob container)
 |---|---|
 | `core-pipeline/modules/*` (logic) | `core-pipeline/modules/*` |
 | `core-pipeline/resources/canon/` | git copy stays in the repo; published to Blob `resources/canon/` |
-| `core-pipeline/models/` | Blob `resources/models/`, cached in `core-pipeline/resources/models/` |
+| `core-pipeline/models/` | Blob `imaging-models/models/`, cached in `core-pipeline/resources/models/` |
 | `core-pipeline/stages/*` runners, `core-pipeline/apps/worker/runner.py` | `core-pipeline/apps/worker/worker/{stages,pipeline}/` |
 | `core-pipeline/apps/orchestrator_api/main.py` | `core-pipeline/apps/orchestrator-api/app/` (split into routers) |
 | `core-pipeline/db/*`, `blob_store.py`, `paths.py` | `core-pipeline/common/imaging_common/{cosmos,blob}/` |
@@ -221,6 +219,13 @@ Partition key is `/chart_id` everywhere except users.
 - **Stage completion** is recorded as `stages.<name> = {done_at, version, input_hash}`. A redelivered message is then a no-op. `skip_ocr` and the step-by-step APIs read the same record.
 - **Size limit:** a document can be at most 2 MB. Word boxes and the full Docling / Azure JSON go to Blob; the page doc keeps the text and the blob path.
 - **Throughput:** provisioned, at the database level and shared by the containers, with autoscale. Start at 4,000 RU/s maximum and tune from the metrics. The `pages` container gets its own dedicated throughput only if batch runs throttle it.
+- **Network: private endpoint only** (2026-11-07). Cosmos is reachable from inside the VNet
+  (the VM), not from the Mac or the internet. Development and the tests use an in-memory store
+  behind the same interface; the Cosmos code is exercised on the VM (or the Cosmos emulator).
+- **review-ui-client gets a replica:** its own database in the same account (for example
+  `imaging_client`), with the same containers, filled from the main database by the clone job
+  (today's `utilities/clone_client_db.py`, rewritten for Cosmos): the chosen charts, users, and
+  no ground truth. It never reads the main database.
 - **History is migrated** (§7, phase 7). Every Postgres chart, page result, run, ground truth and user is copied into Cosmos by a one-off utility, and counts are compared before cutover.
 
 ### 4.1a Who writes what
@@ -246,7 +251,7 @@ Each writer has its own key: workers and the orchestrator get read-write access,
 | `ocr` | `<chart>/<page>.{prelim,final1,final2}.json`: what `skip_ocr` reuses and the overlays come from |
 | `exports` | final CSV / JSON deliverables |
 | `debug` | `<run_id>/…`, written only with `debug: true` (a copy of what goes to local disk) |
-| `resources` | model weights by name and version (optional, §3) |
+| `imaging-models` | model weights and canon by name and version, plus `manifest.json` (§3) |
 
 There are no lifecycle rules for now. If storage cost becomes an issue, one rule on `debug` is the only change needed.
 
@@ -367,12 +372,11 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 | 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Not started** |
 | 7a | Monitoring | `run_usage` now; `runs.usage` + `metrics` on Cosmos; LLM wrapper; `/v1/metrics`; review-ui Usage page | every run shows time, Doc Intel pages and cost | **Partly:** `run_usage` and `cli.py usage` built; no LLM wrapper, `/v1/metrics` or Usage page |
 | 8 | Resources from Blob | `manifest.json`, `publish_resources.py`, models fetched at worker start, canon checked before each run, fingerprints | a new model reaches every host with no manual copy | **Not started** (weights still copied by hand) |
-| 9 | AKS | images in ACR; one Deployment per service; workers scaled by queue length; db-utilities as Kubernetes Jobs; secrets from Key Vault (§8a) | the VM's `docker compose` setup runs unchanged on AKS | **Not started** (needs phases 4 and 8 first) |
+| 9 | AKS | — | — | **Parked** (2026-11-07) |
 | — | db-utilities | manifests and ground truth loaded by their own Docker job | core-pipeline has no load code | **Done** on Postgres (2026-11-07); Cosmos writer in phase 7 |
 
 Phase 1 goes first because every later change then lands in its final place, and its outputs
-can be compared one for one. Phases 4 and 8 come before 9: AKS needs workers that pull from a
-queue and models that come from Blob.
+can be compared one for one.
 
 ## 8. Running and deploying
 
@@ -408,25 +412,6 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 
 **Sizing the 16 CPU / 64 GB VM.** One worker holds Docling, GLiNER and the BERT models at about 10–14 GB, and uses 4 to 5 CPUs well. Three workers plus the orchestrator API and review-ui fit with headroom. Start at `--scale worker=3` and go to 4 only if memory stays under 48 GB during a batch. Because jobs come from Service Bus, adding a worker on another machine later needs no code change.
 
-## 8a. AKS (later)
-
-Every part already runs as its own container, so moving from the VM to Azure Kubernetes
-Service changes how they are started, not the code.
-
-| Part | On AKS |
-|---|---|
-| orchestrator API | a Deployment (2 replicas) behind an internal Service / Ingress; small, no models |
-| worker | a Deployment, **scaled by KEDA on the length of the `chart-runs` queue** (0 → N pods); one chart per pod; a node pool with enough memory (about 14 GB per worker) |
-| models | an **init container** copies `resources/models/<version>` from Blob into a volume the worker mounts read-only; or the **Blob CSI driver** mounts it directly. Never inside the image |
-| review-ui backend / frontend | two Deployments + an Ingress (TLS); the frontend's `BACKEND_URL` points at the backend Service |
-| db-utilities | a Kubernetes **Job** per load (`kubectl create job … -- manifest --blob-prefix …`), reading files from Blob instead of `./input` |
-| secrets | Azure **Key Vault** through the Secrets Store CSI driver, with **workload identity** for Blob, Cosmos and Service Bus (no keys in files) |
-| images | Azure Container Registry, built by the Azure DevOps pipeline |
-| logs | stdout to Azure Monitor / Container Insights instead of `core-pipeline/logs/` |
-
-What has to exist first: the queue and separate worker (phase 4), models from Blob (phase 8),
-and settings read from the environment only (already true).
-
 ## 9. Decisions (2026-11-07)
 
 | # | Question | Decision |
@@ -449,8 +434,10 @@ and settings read from the environment only (already true).
 | 16 | Database | **Cosmos for NoSQL**: a client requirement (evening of 2026-11-07) |
 | 17 | DB toggle values | `postgres`, `cosmos`, or `both` (write both, read Postgres) |
 | 18 | Manifests and ground truth | Loaded only by **db-utilities**, a separate Docker job; not part of core-pipeline or review-ui |
-| 19 | Models | Fetched from Blob at start (phase 8); never built into images |
-| 20 | Hosting | The Ubuntu VM now; **AKS later** (§8a) |
+| 19 | Models | Blob container **`imaging-models`**, fetched at start (phase 8); never built into images |
+| 20 | Hosting | The Ubuntu VM; **AKS parked** |
+| 21 | Cosmos network | **Private endpoint only**: reachable from the VM, not from the Mac |
+| 22 | review-ui-client data | A **replica database** (same containers) in the same Cosmos account, filled by the clone job |
 
 ## 10. What I need from you
 
@@ -460,16 +447,13 @@ connection string and queue; the API key; the Blob account. Still open:
 **Cosmos DB**
 - Is 4,000 RU/s autoscale (maximum) acceptable to start?
 - A read-only key for review-ui, or the same key?
-- Public access from the VM and the Mac, or a private endpoint only?
-- review-ui-client: its own database in the same account, or another account?
-- Permission to create the containers in §4.1.
+- Permission to create the containers in §4.1 (and the replica database for review-ui-client),
+  or who creates them?
+- The replica database's name (default `imaging_client`).
 
 **Blob**
-- A `resources` container for models (phase 8), or a folder in `imaging-pipeline`?
+- Permission to create the `imaging-models` container, or who creates it?
 - On the VM: a managed identity (preferred) or a key?
-
-**AKS (when you get there)**
-- The cluster, its container registry (ACR) and whether Key Vault is the rule for secrets.
 
 ## 11. Risks
 
@@ -489,7 +473,7 @@ In build order. Everything listed runs on Postgres today; nothing below is built
 
 1. **Storage interface (phase 2).** One `store` interface in core-pipeline, review-ui and
    db-utilities, with the Postgres code moved behind it. Without it nothing else can switch.
-2. **Cosmos implementation (phases 2 and 6).** The containers in §4.1, `store/cosmos/` in each
+2. **Cosmos implementation (phases 2 and 6), tested on the VM** (private endpoint). The containers in §4.1, `store/cosmos/` in each
    deployment, precomputed `metrics` docs for review-ui's cross-chart pages, and the
    rewrite of every SQL join (§4.4a). The largest item.
 3. **`DB_BACKEND=both` writing to both stores** (phase 7), then the history migration
@@ -504,5 +488,5 @@ In build order. Everything listed runs on Postgres today; nothing below is built
 7. **Models and canon from Blob (phase 8).** `resources/manifest.json`, a publish script,
    fetch-at-start with fingerprints.
 8. **Monitoring leftovers (7a).** LLM token wrapper, `/v1/metrics`, the review-ui Usage page.
-9. **`infra/`.** Bicep for Cosmos containers, the queue and (later) AKS.
-10. **AKS (phase 9).** Manifests or a Helm chart, KEDA scaling, Key Vault, ACR.
+9. **review-ui-client replica.** The clone job rewritten for Cosmos (a replica database, same containers).
+10. **`infra/`.** Bicep for the Cosmos containers (main + replica), the queue and `imaging-models`.
