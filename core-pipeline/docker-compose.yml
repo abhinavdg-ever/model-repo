@@ -24,10 +24,9 @@ services:
       DB_POOL_MIN: ${DB_POOL_MIN:-1}
       DB_POOL_MAX: ${DB_POOL_MAX:-20}
 
-      # Scratch: chart working folders (purged after OUTPUTS_RETENTION_DAYS) and manifests.
+      # Scratch: chart working folders (purged after OUTPUTS_RETENTION_DAYS).
       # review-ui does not mount these; it reads the database and Azure Blob.
       DATA_ROOT: /data/outputs/charts
-      METADATA_ROOT: /data/outputs/metadata
 
       # Pages per chart × charts in a batch must fit the pool (see BATCH_*).
       STAGE_WORKERS: ${STAGE_WORKERS:-4}

@@ -228,51 +228,6 @@ def main() -> None:
     p_status = sub.add_parser("status", help="Show a chart's stage progress")
     p_status.add_argument("chart_id", type=int)
 
-    p_manifest = sub.add_parser(
-        "manifest",
-        help="Load a batch/group manifest (local file/dir or blob) with upsert",
-    )
-    src = p_manifest.add_mutually_exclusive_group(required=True)
-    src.add_argument(
-        "--local",
-        metavar="PATH",
-        help="Local CSV/XLSX file or directory (e.g. metadata_R1_B1.csv)",
-    )
-    src.add_argument("--blob-prefix", help="Azure blob prefix of batch manifests")
-    p_manifest.add_argument(
-        "--blob-container", help="Required with --blob-prefix"
-    )
-    p_manifest.add_argument("--run-id", help="Override run id (default: parse R# from filename)")
-    p_manifest.add_argument("--batch-id", help="Override batch id (default: parse B# from filename)")
-    p_manifest.add_argument(
-        "--no-mirror",
-        action="store_true",
-        help="Do not mirror blob files into core-pipeline/outputs/metadata",
-    )
-
-    # Back-compat aliases
-    p_manifest_sweep = sub.add_parser(
-        "manifest-sweep", help="Alias: blob manifest load"
-    )
-    p_manifest_sweep.add_argument("--container", required=True)
-    p_manifest_sweep.add_argument("--prefix", required=True)
-
-    p_manifest_local = sub.add_parser(
-        "manifest-local", help="Alias: local manifest load"
-    )
-    p_manifest_local.add_argument("file")
-
-    p_ground = sub.add_parser(
-        "ground-truth",
-        help="Load client page ground truth (CSV/XLSX) into page_ground_truth",
-    )
-    p_ground.add_argument(
-        "--local",
-        required=True,
-        metavar="PATH",
-        help="CSV/XLSX file or a directory of them. Chart_Name + Id match the page file.",
-    )
-
     p_api = sub.add_parser("serve", help="Start FastAPI server")
 
     args = parser.parse_args()
@@ -529,73 +484,6 @@ def main() -> None:
                     refresh_chart_status(conn, args.chart_id), default=str, indent=2
                 )
             )
-        return
-
-    if args.cmd == "manifest":
-        from common.db.paths import normalize_blob_path, normalize_fs_path
-        from apps.worker.jobs.manifest_sweeper import run_load
-
-        args.local = normalize_fs_path(args.local)
-        args.blob_prefix = normalize_blob_path(
-            getattr(args, "blob_prefix", None)
-        )
-
-        if args.blob_prefix and not args.blob_container:
-            raise SystemExit("--blob-container is required with --blob-prefix")
-        print(
-            json.dumps(
-                run_load(
-                    local_path=args.local,
-                    blob_container=args.blob_container,
-                    blob_prefix=args.blob_prefix,
-                    run_id=args.run_id,
-                    batch_id=args.batch_id,
-                    mirror_local=not args.no_mirror,
-                ),
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    if args.cmd == "manifest-sweep":
-        from apps.worker.jobs.manifest_sweeper import run_load
-
-        print(
-            json.dumps(
-                run_load(
-                    blob_container=args.container,
-                    blob_prefix=args.prefix,
-                ),
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    if args.cmd == "manifest-local":
-        from apps.worker.jobs.manifest_sweeper import run_load
-
-        print(
-            json.dumps(
-                run_load(local_path=Path(args.file)),
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    if args.cmd == "ground-truth":
-        from common.db.paths import normalize_fs_path
-        from apps.worker.jobs.ground_truth_load import run_load as load_ground_truth
-
-        print(
-            json.dumps(
-                load_ground_truth(normalize_fs_path(args.local) or args.local),
-                default=str,
-                indent=2,
-            )
-        )
         return
 
 

@@ -1,7 +1,7 @@
 """Fill the batch metadata CSVs from the client's extra-columns dump, then load them.
 
 The client sends one dump across all charts, ``metadata_extra.csv`` (one row per recordId),
-placed beside the batch files in core-pipeline/outputs/metadata. It carries columns the batch
+placed beside the batch files in the metadata folder (``--metadata-dir``). It carries columns the batch
 files do not: MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure,
 ServiceNote. This utility:
 
@@ -12,15 +12,13 @@ ServiceNote. This utility:
      value in the master replaces the file's; a blank in the master keeps it). Names,
      DOB and every other column are left alone,
   3. optionally writes the master records no batch file has into ``--new-file``,
-  4. with ``--load``, loads the batch files into manifest_member_list (apps.worker.jobs.manifest_sweeper),
+  4. with ``--load``, loads the batch files into manifest_member_list (dbutil.manifest),
      which writes the new columns to the database.
 
-The same is ``POST /api/manifest/metadata-extra`` and ``utilities/fill_metadata_extra.py``.
-
-Usage (from core-pipeline/):
-  python -m apps.worker.jobs.metadata_expand --dry-run                 # report only
-  python -m apps.worker.jobs.metadata_expand --load                    # fill the CSVs, then the DB
-  python -m apps.worker.jobs.metadata_expand --metadata-dir /path/to/metadata --source dump.xlsx --load
+Usage (db-utilities):
+  python -m dbutil metadata-extra --metadata-dir /input/metadata --dry-run   # report only
+  python -m dbutil metadata-extra --metadata-dir /input/metadata --load      # fill the CSVs, then the DB
+  python -m dbutil metadata-extra --metadata-dir /input/metadata --source dump.xlsx --load
 """
 from __future__ import annotations
 
@@ -32,12 +30,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from common.config import METADATA_ROOT
-from apps.worker.jobs.manifest_sweeper import (
+from dbutil.manifest import (
     EXTRA_FILE_NAME,
     EXTRA_HEADERS,
     _record_id,
@@ -170,7 +163,7 @@ def batch_files(metadata_dir: Path) -> list[Path]:
 def run(
     source: Optional[Path] = None,
     *,
-    metadata_dir: Path = METADATA_ROOT,
+    metadata_dir: Path,
     new_file: Optional[str] = None,
     load: bool = False,
     dry_run: bool = False,
@@ -202,7 +195,7 @@ def run(
 
     loaded = None
     if load and not dry_run:
-        from apps.worker.jobs.manifest_sweeper import run_load
+        from dbutil.manifest import run_load
 
         loaded = {}
         for path in files + ([metadata_dir / new_file] if new_file and (metadata_dir / new_file).is_file() else []):
@@ -228,8 +221,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         help=f"The extra-columns dump (.csv / .xlsx); default <metadata dir>/{EXTRA_FILE_NAME}",
     )
     parser.add_argument(
-        "--metadata-dir", type=Path, default=METADATA_ROOT,
-        help=f"Folder of batch metadata CSVs (default {METADATA_ROOT})",
+        "--metadata-dir", type=Path, required=True,
+        help="Folder of batch metadata CSVs (in Docker: under /input)",
     )
     parser.add_argument("--new-file", help="Write master records no batch file has to this CSV in the folder")
     parser.add_argument("--load", action="store_true", help="Then load the folder into manifest_member_list")

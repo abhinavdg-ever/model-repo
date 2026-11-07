@@ -238,3 +238,14 @@ def test_member_not_found_is_its_own_answer():
     assert yes_no_label("Not Found") == "Not Found"
     assert yes_no_label("no") == "No" and yes_no_label("Skipped") == "Skipped"
     assert yes_no_label("") is None and yes_no_label("NA") is None
+
+
+def test_the_review_ui_reader_takes_a_cp1252_csv():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "review-ui" / "backend"))
+    from app.services.excel_compare.file_reader import read_csv_any_encoding
+
+    frame = read_csv_any_encoding("Name,Sequence\nRenée,1\n".encode("cp1252"))
+    assert frame.iloc[0]["Name"] == "Renée"

@@ -1126,68 +1126,7 @@ class TestWriteChartOut:
 
 
 class TestManifestLookup:
-    """GET /api/manifest/{record_id}: Postgres first, METADATA_ROOT fallback."""
-
-    def test_lookup_on_disk_finds_matching_rows(self, tmp_path):
-        from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
-
-        csv_path = tmp_path / "metadata_R1_B1.csv"
-        csv_path.write_text(
-            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
-            "chart_a,Ada,Lovelace,1815-12-10,M1\n"
-            "chart_b,Grace,Hopper,1906-12-09,M2\n",
-            encoding="utf-8",
-        )
-        rows = lookup_manifest_members_on_disk("chart_a", metadata_root=tmp_path)
-        assert len(rows) == 1
-        assert rows[0]["member_name"] == "Ada Lovelace"
-        assert rows[0]["external_member_id"] == "M1"
-        assert rows[0]["run_id"] == "R1"
-        assert rows[0]["batch_id"] == "B1"
-        assert rows[0]["source_file"] == "metadata_R1_B1.csv"
-
-
-
-
-
-
-
-    def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
-        from fastapi.testclient import TestClient
-
-        import apps.orchestrator_api.main as main
-        from apps.worker.jobs import manifest_sweeper as sweeper
-
-        meta = tmp_path / "metadata"
-        meta.mkdir()
-        (meta / "metadata_R2_B3.csv").write_text(
-            "recordId,DummyFirstName,DummyLastName\n"
-            "52743839_44976074,Jane,Doe\n",
-            encoding="utf-8",
-        )
-
-        class _EmptyConn:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-            def execute(self, *args, **kwargs):
-                return self
-
-            def fetchall(self):
-                return []
-
-        monkeypatch.setattr(main, "connect", lambda: _EmptyConn())
-        monkeypatch.setattr(sweeper, "METADATA_ROOT", meta)
-        client = TestClient(main.app, raise_server_exceptions=False)
-        r = client.get("/api/manifest/52743839_44976074")
-        assert r.status_code == 200, r.text
-        body = r.json()
-        assert body["source"] == "metadata"
-        assert body["record_id"] == "52743839_44976074"
-        assert body["members"][0]["member_name"] == "Jane Doe"
+    """GET /api/manifest/{record_id}: manifest_member_list only (db-utilities loads it)."""
 
     def test_endpoint_prefers_postgres(self, monkeypatch):
         from fastapi.testclient import TestClient
@@ -1223,11 +1162,10 @@ class TestManifestLookup:
         assert body["source"] == "postgres"
         assert body["members"][0]["member_name"] == "From DB"
 
-    def test_endpoint_404_when_neither_has_rows(self, tmp_path, monkeypatch):
+    def test_endpoint_404_when_the_table_has_no_rows(self, monkeypatch):
         from fastapi.testclient import TestClient
 
         import apps.orchestrator_api.main as main
-        from apps.worker.jobs import manifest_sweeper as sweeper
 
         class _EmptyConn:
             def __enter__(self):
@@ -1243,7 +1181,6 @@ class TestManifestLookup:
                 return []
 
         monkeypatch.setattr(main, "connect", lambda: _EmptyConn())
-        monkeypatch.setattr(sweeper, "METADATA_ROOT", tmp_path / "empty")
         client = TestClient(main.app, raise_server_exceptions=False)
         r = client.get("/api/manifest/missing_chart")
         assert r.status_code == 404

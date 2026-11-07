@@ -1,4 +1,4 @@
-"""FastAPI surface for core-pipeline: ingest, status, rerun, manifest sweep.
+"""FastAPI surface for core-pipeline: ingest, status, rerun (manifests: db-utilities).
 
 Deployed on its own (see core-pipeline/docker-compose.yml). The review UI is a
 separate deployment and does not call this service — the two share the Postgres
@@ -44,7 +44,6 @@ from common.config import (
 from common.db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
 from common.db.chart_status import refresh_chart_status
 from common.db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
-from apps.worker.jobs.manifest_sweeper import run_load
 from apps.worker.jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
 from apps.worker import run_stats
 from apps.worker.runner import (
@@ -85,7 +84,7 @@ def _safe_db_url(url: str) -> str:
 
 @app.on_event("startup")
 def _startup() -> None:
-    from common.config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
+    from common.config import DATA_ROOT, DATABASE_URL, STAGE_WORKERS
 
     logger.info("core-pipeline starting")
     # `kill -USR1 <pid>` prints every thread's stack to stderr (docker logs):
@@ -97,7 +96,6 @@ def _startup() -> None:
         faulthandler.register(signal.SIGUSR1, all_threads=True)
     logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
     logger.info("  data root   : %s", DATA_ROOT)
-    logger.info("  metadata    : %s", METADATA_ROOT)
     logger.info("  workers     : %s", STAGE_WORKERS)
 
     # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
@@ -407,65 +405,6 @@ class WriteRequest(BaseModel):
         return normalize_folder_name(value) if value is not None else value
 
 
-class ManifestSweepRequest(BaseModel):
-    """Load a batch manifest into manifest_member_list (upsert)."""
-
-    local_path: Optional[str] = Field(
-        None, description="Local CSV/XLSX file or a directory of them"
-    )
-    blob_container: Optional[str] = None
-    blob_prefix: Optional[str] = None
-    run_id: Optional[str] = Field(None, description="Overrides the R# in the filename")
-    batch_id: Optional[str] = Field(None, description="Overrides the B# in the filename")
-    mirror_local: bool = Field(
-        True, description="Copy blob manifests into core-pipeline/outputs/metadata"
-    )
-
-    @field_validator("local_path", mode="before")
-    @classmethod
-    def _norm_local_paths(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
-
-    @field_validator("blob_prefix", mode="before")
-    @classmethod
-    def _norm_blob_paths(cls, value: Any) -> Any:
-        return normalize_blob_path(value) if value is not None else value
-
-
-class MetadataExtraRequest(BaseModel):
-    """Fill the batch metadata CSVs from the client's extra-columns dump, then the DB."""
-
-    metadata_dir: Optional[str] = Field(
-        None, description="Folder of batch metadata CSVs (default core-pipeline/outputs/metadata)"
-    )
-    source: Optional[str] = Field(
-        None, description="The dump (.csv / .xlsx); default <metadata_dir>/metadata_extra.csv"
-    )
-    new_file: Optional[str] = Field(
-        None, description="Write dump records no batch file has to this CSV in the folder"
-    )
-    load: bool = Field(True, description="Then upsert the batch files into manifest_member_list")
-    dry_run: bool = Field(False, description="Report what would change; write nothing")
-
-    @field_validator("metadata_dir", "source", mode="before")
-    @classmethod
-    def _norm_paths(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
-
-
-class GroundTruthLoadRequest(BaseModel):
-    """Load the client page spreadsheet into page_ground_truth (upsert)."""
-
-    local_path: str = Field(
-        ..., min_length=1, description="Local CSV or XLSX file, or a directory of them"
-    )
-
-    @field_validator("local_path", mode="before")
-    @classmethod
-    def _norm_gt_path(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
-
-
 # --- background wrappers ----------------------------------------------------
 
 
@@ -706,31 +645,6 @@ def _bg_batch(payload: "BatchRequest") -> None:
                 logger.warning("  failed: %s — %s", chart["name"], chart.get("error"))
     except Exception:
         logger.exception("Background batch FAILED: %s", source)
-
-
-def _bg_manifest(payload: ManifestSweepRequest) -> None:
-    source = payload.local_path or f"{payload.blob_container}/{payload.blob_prefix}"
-    logger.info("Background manifest sweep starting: %s", source)
-    try:
-        result = run_load(
-            local_path=payload.local_path,
-            blob_container=payload.blob_container,
-            blob_prefix=payload.blob_prefix,
-            run_id=payload.run_id,
-            batch_id=payload.batch_id,
-            mirror_local=payload.mirror_local,
-        )
-        logger.info(
-            "Background manifest sweep finished: %s -> %s file(s), "
-            "+%s inserted, ~%s updated, %s skipped%s",
-            source,
-            result["files"], result["inserted"], result["updated"], result["skipped"],
-            f", {len(result['errors'])} error(s)" if result.get("errors") else "",
-        )
-        for err in result.get("errors") or []:
-            logger.warning("  manifest error: %s", err)
-    except Exception:
-        logger.exception("Background manifest sweep FAILED: %s", source)
 
 
 def _require_db() -> None:
@@ -1133,95 +1047,14 @@ def rerun_chart(chart_id: int) -> dict[str, Any]:
     )
 
 
-@app.post("/api/manifest/sweep", status_code=202, tags=["manifest"])
-def manifest_sweep(
-    body: ManifestSweepRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """Load a batch manifest (local path or blob prefix) with upsert semantics.
-
-    Independent of chart ingest: a manifest can be swept before the charts it
-    describes exist. Rows are keyed on record_id and linked to a chart when that
-    chart is ingested.
-    """
-    if not body.local_path and not (body.blob_container and body.blob_prefix):
-        raise HTTPException(
-            status_code=400,
-            detail="Provide local_path, or both blob_container and blob_prefix",
-        )
-    if body.local_path and (body.blob_container or body.blob_prefix):
-        raise HTTPException(
-            status_code=400, detail="Pass either local_path or blob_*, not both"
-        )
-    _require_db()
-    background_tasks.add_task(_bg_manifest, body)
-    return {
-        "status": "accepted",
-        "mode": "local" if body.local_path else "blob",
-        "local_path": body.local_path,
-        "blob_container": body.blob_container,
-        "blob_prefix": body.blob_prefix,
-        "run_id": body.run_id,
-        "batch_id": body.batch_id,
-    }
-
-
-@app.post("/api/manifest/metadata-extra", tags=["manifest"])
-def manifest_metadata_extra(body: MetadataExtraRequest) -> dict[str, Any]:
-    """Match metadata_extra.csv to the batch metadata CSVs by recordId, add the extra
-    columns (MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure, ServiceNote) to them,
-    and with ``load`` write them to manifest_member_list. Returns what changed."""
-    from common.config import METADATA_ROOT
-    from apps.worker.jobs.metadata_expand import run as expand_metadata
-
-    if body.load and not body.dry_run:
-        _require_db()
-    folder = Path(body.metadata_dir) if body.metadata_dir else METADATA_ROOT
-    if not folder.is_dir():
-        raise HTTPException(status_code=400, detail=f"metadata_dir does not exist: {folder}")
-    try:
-        return expand_metadata(
-            Path(body.source) if body.source else None,
-            metadata_dir=folder,
-            new_file=body.new_file,
-            load=body.load,
-            dry_run=body.dry_run,
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/ground-truth/load", tags=["ground-truth"])
-def ground_truth_load(body: GroundTruthLoadRequest) -> dict[str, Any]:
-    """Load client page labels. Chart_Name + Id (1.jpg / 1.png / 1.tif) are the keys."""
-    from apps.worker.jobs.ground_truth_load import run_load
-
-    _require_db()
-    if not body.local_path or not Path(body.local_path).exists():
-        raise HTTPException(status_code=400, detail="local_path does not exist")
-    try:
-        return run_load(body.local_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 @app.get("/api/manifest/{record_id}", tags=["manifest"])
 def get_manifest(record_id: str) -> dict[str, Any]:
-    """Manifest rows for one record id (= chart folder name).
-
-    Prefers ``manifest_member_list`` in Postgres. If that has nothing for this
-    id, scans ``METADATA_ROOT`` (default ``core-pipeline/outputs/metadata``) for
-    matching rows in every CSV/XLSX there — the same files Local Mode reads.
-    """
-    from apps.worker.jobs.manifest_sweeper import lookup_manifest_members_on_disk
-
+    """Manifest rows for one record id (= chart folder name), from manifest_member_list.
+    Manifests are loaded by db-utilities (2026-11-07), not by core-pipeline."""
     rid = (record_id or "").strip()
     if not rid:
         raise HTTPException(status_code=400, detail="record_id is required")
 
-    rows: list[dict[str, Any]] = []
-    source = "postgres"
     try:
         with connect() as conn:
             rows = list(
@@ -1230,25 +1063,14 @@ def get_manifest(record_id: str) -> dict[str, Any]:
                     (rid,),
                 ).fetchall()
             )
-    except Exception:
-        logger.exception(
-            "Postgres unavailable for manifest %s — falling back to METADATA_ROOT",
-            rid,
-        )
-        rows = []
-
-    if not rows:
-        rows = lookup_manifest_members_on_disk(rid)
-        source = "metadata"
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"database unavailable: {exc}") from exc
     if not rows:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"no manifest rows for record_id={rid!r} "
-                "(checked Postgres and METADATA_ROOT)"
-            ),
+            detail=f"no manifest rows for record_id={rid!r} (load them with db-utilities)",
         )
-    return {"record_id": rid, "source": source, "members": rows}
+    return {"record_id": rid, "source": "postgres", "members": rows}
 
 
 @app.get("/api/jobs", tags=["ops"])

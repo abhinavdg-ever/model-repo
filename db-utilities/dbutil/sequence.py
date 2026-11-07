@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 """Load only the Sequence column of a ground-truth sheet into page_ground_truth.page_sequence.
 
-The full loader (``python cli.py ground-truth --local FILE``) writes every ground-truth
+The full loader (``python -m dbutil ground-truth --local FILE``) writes every ground-truth
 column the sheet has. This one writes the sequence alone, even from a full sheet, so the
 other labels (and review-ui edits to them) stay as they are. The sheet is the same as
 the full load's: Chart_Name, Id and the numeric ``Sequence`` column (a ``Page Sequence``
@@ -11,17 +10,9 @@ sequence. An empty cell clears it.
 Each page written also gets a ``bulk_upload`` entry: the page's previous bulk labels with
 the new sequence, so review-ui's "bulk upload" view keeps the other columns.
 
-Examples::
-
-    cd core-pipeline && source .venv/bin/activate
-
-    # What would be written, nothing written
-    python ../utilities/load_page_sequence.py /path/to/ground_truth.csv --dry-run
-
-    # Write it (a file, or a folder of .csv / .xlsx)
-    python ../utilities/load_page_sequence.py /path/to/ground_truth.csv
-
-Requires the core-pipeline virtualenv and ``DATABASE_URL`` (env or ``core-pipeline/.env``).
+Usage (db-utilities):
+  python -m dbutil sequence /input/ground_truth.csv --dry-run    # what would be written
+  python -m dbutil sequence /input/ground_truth.csv              # a file, or a folder
 """
 from __future__ import annotations
 
@@ -30,19 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-CORE = REPO / "core-pipeline"
-if str(CORE) not in sys.path:
-    sys.path.insert(0, str(CORE))
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv(CORE / ".env")
-except ImportError:
-    pass
-
-from apps.worker.jobs.ground_truth_load import iter_files, read_table, upsert_rows  # noqa: E402
+from dbutil.ground_truth import iter_files, read_table, upsert_rows
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {row['chart_name']}  page {row['page_number']}: {row.get('page_sequence') or '(clear)'}")
         return 0
 
-    from common.db import connect
+    from dbutil.db import connect
 
     with connect() as conn:
         upsert_rows(conn, rows, columns=("page_sequence",))

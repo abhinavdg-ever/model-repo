@@ -28,6 +28,8 @@ Setup and the API: [API.md](API.md). The VM and the release path:
 - `core-pipeline/outputs/charts/<chart>/` is core-pipeline's working folder. review-ui
   never reads it, and a folder not run for 7 days is deleted.
 - Either service can be redeployed without the other.
+- **db-utilities** is a third, separate deployment: one-off jobs that load manifests and
+  ground truth into the database (§5).
 
 ---
 
@@ -107,17 +109,18 @@ A skipped page counts as done, so a chart of blank pages still completes.
 
 ---
 
-## 5. The manifest runs on its own
+## 5. Manifests and ground truth: a separate job (db-utilities)
 
 ```
-metadata_R1_B1.csv (file, folder or blob prefix)
-   ──► POST /api/manifest/sweep ──► manifest_member_list (keyed on record_id)
-          chart already ingested? yes ──► linked now
-                                  no  ──► linked when the chart is ingested
+metadata_R1_B1.csv / ground_truth.xlsx  (a file in db-utilities/input, or a Blob prefix)
+   ──► docker compose run --rm db-utilities manifest ...      ──► manifest_member_list
+   ──► docker compose run --rm db-utilities ground-truth ...  ──► page_ground_truth
 ```
 
-Sweeping never creates placeholder charts. Sweep before or after the ingest; the link
-is made either way. `run_id` / `batch_id` come from the `R#` / `B#` in the file name.
+`db-utilities/` is its own deployment (code, image, `.env`); core-pipeline and review-ui
+never load these files. A manifest can be loaded before or after its charts run:
+`record_id` is the chart name, and the member stage reads the table when it runs (no rows
+= the member stage waits). `run_id` / `batch_id` come from the `R#` / `B#` in the file name.
 
 ---
 

@@ -55,3 +55,7 @@ dist/
 ._*
 Thumbs.db
 desktop.ini
+
+# --- db-utilities: the files to load are per host, never committed ---
+db-utilities/input/*
+!db-utilities/input/.gitkeep

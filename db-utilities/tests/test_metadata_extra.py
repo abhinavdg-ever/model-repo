@@ -1,13 +1,12 @@
 """Chart metadata (ClientID, SourceName, RR Method, Measure, ServiceNote): the batch CSV
-filler (core-pipeline/apps/worker/jobs/metadata_expand.py) and the manifest loader's new columns."""
+filler (db-utilities/dbutil/metadata_extra.py) and the manifest loader's new columns."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
-from common.db.memory_store import MemoryStore
-from apps.worker.jobs import metadata_expand
-from apps.worker.jobs.manifest_sweeper import _row_to_member
+from dbutil import metadata_extra as metadata_expand
+from dbutil.manifest import _row_to_member
 
 NOTE = 'TRC - REQUIRED - Member demographic sheet: Name and date of birth, 2026 "Evidence", long text'
 
@@ -98,17 +97,8 @@ def test_the_loader_reads_the_new_columns_in_any_spelling() -> None:
     )
 
 
-def test_memory_store_keeps_metadata_and_a_blank_does_not_erase_it() -> None:
-    store = MemoryStore()
-    base = {"record_id": "R1", "member_name": "A B", "external_member_id": "M1"}
-    store.upsert_manifest_members([{**base, "measure": "CBP", "service_note": NOTE}])
-    store.upsert_manifest_members([{**base, "measure": None, "rr_method": "Fax"}])
-    (row,) = [store.manifest_members[i] for i in store.manifest_by_record["R1"]]
-    assert (row["measure"], row["rr_method"], row["service_note"]) == ("CBP", "Fax", NOTE)
-
-
 def test_the_dump_beside_the_batch_files_is_read_by_default_and_never_a_batch(tmp_path: Path) -> None:
-    from apps.worker.jobs.manifest_sweeper import _is_manifest_file
+    from dbutil.manifest import _is_manifest_file
 
     folder = tmp_path / "metadata"
     folder.mkdir()

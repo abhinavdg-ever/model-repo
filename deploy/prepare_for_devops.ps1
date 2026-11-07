@@ -29,7 +29,8 @@ $skipDirs = @("training", "scripts", "tests", "deploy", ".venv-test", ".git", ".
               (Join-Path $Source "core-pipeline\models"), (Join-Path $Target "core-pipeline\models"),
               (Join-Path $Source "core-pipeline\logs"),   (Join-Path $Target "core-pipeline\logs"),
               (Join-Path $Source "core-pipeline\outputs"), (Join-Path $Target "core-pipeline\outputs"),
-              (Join-Path $Source "review-ui\data"),       (Join-Path $Target "review-ui\data"))
+              (Join-Path $Source "review-ui\data"),       (Join-Path $Target "review-ui\data"),
+              (Join-Path $Source "db-utilities\input"),   (Join-Path $Target "db-utilities\input"))
 $skipFiles = @(".env", "CLAUDE.md", "PLAN.md", "._*", ".DS_Store")
 
 robocopy $Source $Target /MIR /NFL /NDL /NJH /NP /XD $skipDirs /XF $skipFiles | Out-Null

@@ -17,13 +17,14 @@ the client VM. Detail lives in:
 | **review-ui backend** | FastAPI over the database and Blob; ground-truth saves | Ubuntu VM, Docker | 4000 (host) → 3000 |
 | **review-ui frontend** | React app served by nginx; talks only to the backend (`BACKEND_URL`) | Ubuntu VM, Docker (or any host) | 4001 (host) → 3001 |
 | **review-ui-client** | The client's copy of review-ui, with its own DB | Separate deployment | 5000 / 5001 |
+| **db-utilities** | One-off jobs: load manifests and ground truth into the database | Ubuntu VM, Docker (`docker compose run --rm`) | — |
 | **Postgres** | Every result, ground truth, user, and `run_usage` monitoring | Azure / VM | 5432 |
 | **Azure Blob** | Raw input pages, processed page images | Azure | — |
 | **Azure Doc Intelligence** | Final OCR 2 (billed per page) | Azure | — |
 | **Service Bus** `codingbusstd` / queue `chart-runs` | Job queue (created; used from phase 4) | Azure | — |
 | **Cosmos** `medicalimagingtest` | Future database (reachable, empty; used from phase 2) | Azure | — |
 
-The three deployments **share data, not code**. They never write into each other's folders.
+The deployments **share data, not code**. They never write into each other's folders.
 review-ui reads only the database and Blob.
 
 ---
@@ -132,6 +133,9 @@ Progress: `GET /api/charts/{chart_id}`, or the chart list in review-ui.
 ├── review-ui/
 │   ├── .env
 │   ├── backend/  frontend/
+├── db-utilities/
+│   ├── .env                 DATABASE_URL + AZURE_STORAGE_* (as core-pipeline)
+│   └── input/               files to load (mounted read-only at /input)
 ├── schema/                  schema.sql (new DB), migrate.sql (existing DB)
 └── utilities/  docs/
 ```

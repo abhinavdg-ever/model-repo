@@ -12,7 +12,7 @@ Mac ──git push──▶ GitHub ──Download ZIP──▶ Windows laptop �
 
 | | GitHub | Azure DevOps / VM |
 |---|---|---|
-| `core-pipeline/`, `review-ui/`, `schema/`, `utilities/`, `docs/` (the kept ones) | yes | yes |
+| `core-pipeline/`, `review-ui/`, `db-utilities/`, `schema/`, `utilities/`, `docs/` (the kept ones) | yes | yes |
 | `training/`, `scripts/`, `tests/`, `deploy/` | yes | **no** |
 | `.env` files | never | made on each host from `.env.example`, never pushed |
 | Big model weights (`*.safetensors`, `*.onnx`, `*.bin`, `*.pth`, NER, RapidOCR, Docling) | never | copied onto the VM by hand, never pushed |

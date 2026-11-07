@@ -550,19 +550,6 @@ def _collect_images(source: Path, *, recursive: bool) -> list[Path]:
     return sorted(files, key=_natural_key)
 
 
-def _collect_manifests(source: Path, *, recursive: bool) -> list[Path]:
-    """CSV/XLSX sitting alongside the images — the member roster for this drop."""
-    from apps.worker.jobs.manifest_sweeper import MANIFEST_SUFFIXES
-
-    walker = source.rglob("*") if recursive else source.iterdir()
-    return sorted(
-        p for p in walker
-        if p.is_file()
-        and p.suffix.casefold() in MANIFEST_SUFFIXES
-        and not p.name.startswith("._")
-    )
-
-
 def import_local_folder(
     source: str | Path,
     *,
@@ -582,8 +569,8 @@ def import_local_folder(
     The source is always **copied**, never moved: a failed import is then a
     no-op rather than data loss. Subfolders are always searched, because a
     chart folder that keeps its scans in ``pages/`` is the common shape, not a
-    special case. Any manifest alongside the images is always loaded — the
-    member stage cannot run without one.
+    special case. A manifest file beside the images is not loaded: db-utilities
+    loads manifests into manifest_member_list (2026-11-07).
 
     Existing workspace ``pages/`` are kept by default (even when ``force=True``,
     which only resets stage result tables). Pass ``redownload_pages=True`` to
@@ -669,7 +656,6 @@ def import_local_folder(
         result["source"] = str(src)
         result["imported"] = 0
         result["resumed"] = True
-        result["manifest"] = {"files": 0, "inserted": 0, "updated": 0}
         result["reset"] = reset
         result["cleared_workspace"] = cleared
         return result
@@ -688,32 +674,7 @@ def import_local_folder(
 
     logger.info("Copied %d image(s) from %s -> %s", len(copied), src, dest_dir)
 
-    # Any manifest dropped in alongside the images is loaded here. Order no
-    # longer matters — manifest rows are keyed on record_id, which IS the chart
-    # name, so there is no link step that could run too early or too late.
-    manifest_summary: dict[str, Any] = {"files": 0, "inserted": 0, "updated": 0}
-    manifests = _collect_manifests(src, recursive=True)
-    if manifests:
-        from common.config import METADATA_ROOT
-        from apps.worker.jobs.manifest_sweeper import run_load
-
-        METADATA_ROOT.mkdir(parents=True, exist_ok=True)
-        for man in manifests:
-            target = METADATA_ROOT / man.name
-            copy_file(man, target)
-            loaded = run_load(local_path=target, run_id=run_id, batch_id=batch_id)
-            # run_load flattens its counters at the top level, not under
-            # a "totals" key.
-            manifest_summary["files"] += loaded["files"]
-            manifest_summary["inserted"] += loaded["inserted"]
-            manifest_summary["updated"] += loaded["updated"]
-        logger.info(
-            "Loaded %d manifest file(s): +%d inserted, ~%d updated",
-            manifest_summary["files"],
-            manifest_summary["inserted"],
-            manifest_summary["updated"],
-        )
-
+    # Manifests are not loaded here: db-utilities loads them (2026-11-07, user).
     result = register_local_pages(name, run_id=run_id, batch_id=batch_id)
     out_path = resolve_output_path(name, read_path=str(src))
     if out_path and result.get("chart_id") is not None:
@@ -722,7 +683,6 @@ def import_local_folder(
         result["output_path"] = out_path
     result["source"] = str(src)
     result["imported"] = len(copied)
-    result["manifest"] = manifest_summary
     result["reset"] = reset
     result["cleared_workspace"] = cleared
     return result

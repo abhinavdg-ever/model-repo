@@ -613,7 +613,6 @@ def ingest_and_run(
                 "page_count": intake["page_count"],
                 "source": intake["source"],
                 "imported": intake["imported"],
-                "manifest": intake["manifest"],
             }
         else:
             if not blob_container:

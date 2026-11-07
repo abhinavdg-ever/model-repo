@@ -1,0 +1,18 @@
+# db-utilities: a job, not a server. Each `run` starts a container, does one load, exits.
+#
+#   cp .env.example .env                 # DATABASE_URL + AZURE_STORAGE_* (same values as core-pipeline/.env)
+#   docker compose build
+#   docker compose run --rm db-utilities manifest --local /input/metadata_R1_B1.csv
+#   docker compose run --rm db-utilities ground-truth --local /input/ground_truth.xlsx
+#
+# Files to load go in ./input (mounted read-only at /input), or come from Blob (--blob-prefix).
+services:
+  db-utilities:
+    build: .
+    image: db-utilities
+    env_file: .env
+    volumes:
+      - ${INPUT_HOST_PATH:-./input}:/input:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # a Postgres on the docker host
+    restart: "no"
