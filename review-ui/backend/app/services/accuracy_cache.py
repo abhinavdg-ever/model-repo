@@ -7,11 +7,13 @@ documents the screen scores. Nothing is written back.
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from app.store.postgres.repository import _blank_junk_ui, _fmt_date
 from app.core.config import Settings
@@ -39,6 +41,8 @@ from app.services.imaging_overlays import (
 
 _ready: set[tuple[str, str]] = set()
 _ready_lock = threading.Lock()
+
+logger = logging.getLogger("review_ui.accuracy")
 
 _CODEABLE = {
     "codeable": "Codable",
@@ -387,13 +391,10 @@ def load_report(
     settings: Settings, source: GroundTruthSource = "latest", fresh: bool = False
 ) -> AccuracyReportResponse:
     """The report, from the cache when it is under REPORT_TTL_SEC old and
-    ``fresh`` is not asked for. Not on Cosmos yet: the report is a cross-chart join
-    (v_accuracy_page) over every ground-truth chart's pipeline pages (NotOnCosmos, 501)."""
-    if getattr(settings, "db_backend", "postgres") == "cosmos":
-        from app.services.backend import NotOnCosmos
-
-        raise NotOnCosmos("The accuracy report")
-    key = (settings.database_url, settings.db_schema, source)
+    ``fresh`` is not asked for. On Cosmos (2026-11-08) it is built chart by chart from the
+    same imaging document the chart view reads (_build_report_cosmos)."""
+    on_cosmos = getattr(settings, "db_backend", "postgres") == "cosmos"
+    key = ("cosmos" if on_cosmos else settings.database_url, settings.db_schema, source)
     asked = time.monotonic()
     if not fresh:
         with _reports_lock:
@@ -407,7 +408,7 @@ def load_report(
             cached = _reports.get(key)
         if cached and cached[0] >= asked:
             return cached[1]
-        report = _build_report(settings, source)
+        report = _build_report_cosmos(settings, source) if on_cosmos else _build_report(settings, source)
         with _reports_lock:
             _reports[key] = (time.monotonic(), report)
         return report
@@ -514,4 +515,70 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
         )
         for folder in eligible
     ]
+    return AccuracyReportResponse(charts=charts)
+
+
+def _bulk_only(review: Any, docs: list[dict], pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
+    """Cosmos ``bulk_upload``: each page's ground truth is its latest spreadsheet load; a page
+    with no bulk upload has none (only manual labels), as _with_bulk_labels does on Postgres."""
+    from app.services.ground_truth import _ground_truth_from_row, _page_id
+    from app.store.cosmos.review import entries, truth_row
+
+    bulk: dict[int, Any] = {}
+    for doc in docs:
+        loads = [e for e in entries(doc) if e.get("entry_mode") == "bulk_upload"]
+        if not loads:
+            continue
+        last = loads[-1]
+        labelled = {**doc, **(last.get("labels") or {}), "updated_at": last.get("created_at")}
+        bulk[int(doc["page_number"])] = _ground_truth_from_row(truth_row(labelled))
+    out = []
+    for page in pages:
+        number = _page_id(page.fileName)
+        out.append(page.model_copy(update={"groundTruth": bulk.get(number) if number is not None else None}))
+    return out
+
+
+def _as_moment(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else None
+    except ValueError:
+        return None
+
+
+def _build_report_cosmos(settings: Settings, source: GroundTruthSource) -> AccuracyReportResponse:
+    """The report on Cosmos: every eligible chart's imaging document (pipeline values, ground
+    truth, manifest member, sections) as the chart view builds it, one chart at a time.
+    lastVerifiedAt is the chart's latest ground-truth save. Cached like the Postgres one."""
+    from app.services import backend
+
+    review = backend.cosmos()
+    eligible = _eligible(settings)
+    charts = []
+    for folder in eligible:
+        try:
+            document = review.repo.get_imaging(folder.id)
+            docs = review.truth_docs(folder.id)
+        except Exception as exc:  # one chart that fails to load does not sink the report
+            logger.warning("accuracy: chart %s skipped on Cosmos: %s", folder.id, exc)
+            continue
+        if source == "bulk_upload":
+            document = document.model_copy(update={"pages": _bulk_only(review, docs, document.pages)})
+        moments = [m for m in (_as_moment(d.get("updated_at")) for d in docs) if m is not None]
+        charts.append(AccuracyChartPayload(
+            chartId=folder.id,
+            chartName=folder.name,
+            lastUpdatedAt=folder.last_updated_at,
+            lastVerifiedAt=max(moments) if moments else None,
+            runId=folder.run_id,
+            batchId=folder.batch_id,
+            projectScope=folder.project_scope,
+            sourceName=folder.source_name,
+            measure=folder.measure,
+            rrMethod=folder.rr_method,
+            tags=list(folder.tags),
+            document=document,
+        ))
     return AccuracyReportResponse(charts=charts)

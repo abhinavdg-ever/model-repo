@@ -653,28 +653,67 @@ def test_ocr_search_matches_postgres(cosmos, containers, monkeypatch):
     assert ocr_search.search_tesseract("", "public", "three", run_id="R9")["total_pages"] == 0
 
 
-def test_accuracy_and_value_search_are_501_on_cosmos(cosmos, monkeypatch):
+def test_value_search_is_501_on_cosmos(cosmos, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from app.core.config import Settings, get_settings
-    from app.routers import accuracy, search
+    from app.routers import search
     from app.routers.deps import current_user
     from app.services.auth import SignedInUser
 
     app = FastAPI()
-    app.include_router(accuracy.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
     settings = Settings(_env_file=None, db_backend="cosmos", cosmos_endpoint="https://x", cosmos_key="k")
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[current_user] = lambda: SignedInUser(id=1, username="a", name="a", role="admin")
     client = TestClient(app)
-    res = client.get("/api/accuracy")
-    assert res.status_code == 501 and "not available on Cosmos" in res.json()["detail"]
     res = client.post("/api/search/values", json={"conditions": [{"column": "page_type", "value": "x"}]})
     assert res.status_code == 501
     assert client.get("/api/search/values/options", params={"column": "page_type"}).status_code == 501
     assert client.get("/api/search/values/columns").status_code == 200
+
+
+def test_the_accuracy_report_reads_cosmos(cosmos, containers, monkeypatch):
+    """2026-11-08 (user): the Accuracy View on Cosmos, chart by chart from the imaging document;
+    ground truth latest or bulk_upload only."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings, get_settings
+    from app.routers import accuracy
+    from app.routers.deps import current_user
+    from app.services import accuracy_cache
+    from app.services.auth import SignedInUser
+
+    ids = _write_chart(containers)
+    CosmosStore(containers).set_chart_status(ids["chart_id"], "completed")   # a running chart is left out
+    cosmos.upsert_page_ground_truth("C1", 1, None, {"page_type": "Progress Note", "blank_page": "No"}, None)
+    cosmos.upsert_page_ground_truth("C1", 3, None, {"page_type": "Lab"}, None)
+    # page 1 also had a spreadsheet load before the manual save
+    doc = next(d for (pk, _), d in containers["ground_truth"].items.items() if d.get("page_number") == 1)
+    doc["entries"].insert(0, {"entry_mode": "bulk_upload", "labels": {"page_type": "Consult"},
+                              "created_at": "2026-11-01T00:00:00+00:00"})
+    containers["ground_truth"].upsert_item(doc)
+
+    app = FastAPI()
+    app.include_router(accuracy.router, prefix="/api")
+    settings = Settings(_env_file=None, db_backend="cosmos", cosmos_endpoint="https://x", cosmos_key="k")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[current_user] = lambda: SignedInUser(id=1, username="a", name="a", role="admin")
+    client = TestClient(app)
+    accuracy_cache.clear_report_cache()
+    res = client.get("/api/accuracy", params={"refresh": True})
+    assert res.status_code == 200, res.text
+    chart = res.json()["charts"][0]
+    assert chart["chartName"] == "C1" and chart["lastVerifiedAt"]
+    truth = {p["pageNumber"]: (p.get("groundTruth") or {}).get("pageType") for p in chart["document"]["pages"]}
+    assert truth == {1: "Progress Note", 2: None, 3: "Lab"}
+    assert chart["document"]["pages"][0]["memberName"]           # pipeline values come along
+    accuracy_cache.clear_report_cache()
+    bulk = client.get("/api/accuracy", params={"ground_truth": "bulk_upload", "refresh": True}).json()
+    truth = {p["pageNumber"]: (p.get("groundTruth") or {}).get("pageType") for p in bulk["charts"][0]["document"]["pages"]}
+    assert truth == {1: "Consult", 2: None, 3: None}
 
 
 def test_manual_review_reads_cosmos(cosmos, containers):

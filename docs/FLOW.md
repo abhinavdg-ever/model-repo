@@ -107,6 +107,11 @@ page ──► printed? ── no (handwritten / form / blank / low quality) ─
 A skip is recorded as `page_stage_status.status = 'skipped'` with a `skip_reason`.
 A skipped page counts as done, so a chart of blank pages still completes.
 
+**Who skips Azure (Final OCR 2).** Only a High-quality printed page, and only when its Final
+OCR 1 (Docling) text agrees with Tesseract: under 50% shared words drops the grade (under 10%
+to Low), so the page goes to Azure. A page with **no Docling text** always goes to Azure
+(2026-11-08). Pages pass 1 settled as blank / junk / duplicate never do.
+
 **Blank / junk pass 2, in order** (full logic: [`specials/BLANK_JUNK_LOGIC.md`](specials/BLANK_JUNK_LOGIC.md)):
 
 ```

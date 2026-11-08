@@ -107,6 +107,20 @@ def test_regrade_runs_before_the_azure_skip_and_never_twice():
     assert store.high_quality_printed_page_ids(1) == {1, 4}
 
 
+def test_a_page_with_no_docling_text_always_goes_to_azure():
+    """2026-11-08 (user): no Docling text (no row, or empty) -> never skipped as high-quality printed."""
+    import json
+
+    from common.db.memory_store import MemoryStore
+    from modules.ocr.stage_final2 import no_docling_text
+
+    store = MemoryStore()
+    store.upsert_ocr_result(chart_id=1, page_id=1, ocr_type="docling", raw_text=json.dumps({"content": "text here"}))
+    store.upsert_ocr_result(chart_id=1, page_id=2, ocr_type="docling", raw_text=json.dumps({"content": "  "}))
+    assert no_docling_text(store, 1, {1, 2, 3}) == {2, 3}
+    assert no_docling_text(store, 1, set()) == set()
+
+
 def test_regrade_leaves_pages_pass_1_settled_alone():
     """2026-10-22 (user): Final OCR 1 runs on pages pass 1 settled as blank / junk /
     duplicate, but their quality is not updated from it."""

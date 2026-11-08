@@ -487,6 +487,14 @@ def regrade_by_ocr_overlap(conn: Any, chart_id: int, skip: frozenset[int] | set[
     return changed
 
 
+def no_docling_text(conn: Any, chart_id: int, page_ids: set[int]) -> set[int]:
+    """Of ``page_ids``, those with no Docling (Final OCR 1) text: no row, or an empty one."""
+    if not page_ids:
+        return set()
+    docling = get_ocr_texts(conn, chart_id, "docling")
+    return {pid for pid in page_ids if not _docling_content(docling.get(pid) or "").strip()}
+
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     use_azure = _azure_configured()
     if not use_azure:
@@ -508,6 +516,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "Final2: %d page(s) re-graded by Docling/Tesseract overlap", regraded
                 )
             hq_printed = high_quality_printed_page_ids(conn, chart_id)
+            # 2026-11-08 (user): a page with no Docling (Final OCR 1) text was never compared
+            # with Tesseract, so its High grade proves nothing: it always goes to Doc Intel.
+            no_docling = no_docling_text(conn, chart_id, hq_printed)
+            if no_docling:
+                logger.info("Final2: %d high-quality printed page(s) have no Docling text: sent to Azure",
+                            len(no_docling))
+                hq_printed -= no_docling
 
             drop = sorted(settled & ctx.todo)
             bj_skipped = set(drop)

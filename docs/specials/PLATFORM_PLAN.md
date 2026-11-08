@@ -387,7 +387,7 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 | 3 | Outputs and debug | every file written inventoried; stage-to-stage data into page docs; `artifacts.write`; scratch wiped per run; debug to disk and Blob | a non-debug run writes only to the DB and Blob | **Partly:** scratch with a 7-day purge; debug goes to local disk only; `staging/*.json` still carries data between stages |
 | 4 | Service Bus + API key | orchestrator enqueues, workers consume (sessions, lock renewal, dead-letter); `X-API-Key` | kill a worker mid-chart and the chart finishes on another | **Built 2026-11-08, off by default** (`RUN_MODE=queue`, `API_KEY_REQUIRED=true`): `apps/worker/queue_worker.py`, compose `worker` (`--scale worker=3`), `GET /api/runs/{id}?wait=`; Playground sends the key. Checked with a smoke message on the real queue. Not yet: the kill-a-worker test on the VM, separate API / worker images |
 | 5 | Step-by-step APIs | stage graph, version / input-hash check, `/v1/...` endpoints | `/member-verify` runs only what it needs; a second call is instant | **Built 2026-11-08:** `/v1/charts/run`, `/v1/charts/{name}/ocr`, `/page-type`, `/member-verify`, `/dos`, `/v1/runs/{id}?wait=`; only the stages not yet completed run, a repeat call answers at once. Not yet: version / input-hash staleness (use `rerun: true`) |
-| 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Built 2026-11-08** (`DB_BACKEND=cosmos` / `both`): chart views, landing list, ground truth (read + save), users and sign-in, review log, tags, encounters, delete, OCR search, Manual Review. **501 on Cosmos:** accuracy report, search by value (need precomputed docs). Synced to review-ui-client 2026-11-08 |
+| 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Built 2026-11-08** (`DB_BACKEND=cosmos` / `both`): chart views, landing list, ground truth (read + save), users and sign-in, review log, tags, encounters, delete, OCR search, Manual Review. Accuracy report on Cosmos since 2026-11-08 (chart by chart from the imaging document, cached a minute). **501 on Cosmos:** search by value. Synced to review-ui-client 2026-11-08 |
 | 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Migration built** (2026-11-08): `utilities/migrate_postgres_to_cosmos.py`, the Mac's 5 charts and its user copied, counts match. Not yet: the run on the VM's database, the week on `both`, the cutover |
 | 7a | Monitoring | `run_usage` now; `runs.usage` + `metrics` on Cosmos; LLM wrapper; `/v1/metrics`; review-ui Usage page | every run shows time, Doc Intel pages and cost | **Partly:** `run_usage` and `cli.py usage` built; no LLM wrapper, `/v1/metrics` or Usage page |
 | 8 | Resources from Blob | `manifest.json`, `publish_resources.py`, models fetched at worker start, canon checked before each run, fingerprints | a new model reaches every host with no manual copy | **Built 2026-11-08, off by default** (`RESOURCES_FROM_BLOB`): `common/resources.py` fetch with sha256 check, `utilities/publish_resources.py`, `/health.resources`; checked on the real `imaging-models` container. Not yet: canon re-check before each chart, versions stamped on results |
@@ -497,9 +497,10 @@ In build order:
 
 1. **History migration (phase 7):** built (`utilities/migrate_postgres_to_cosmos.py`, the
    Mac's 5 charts and its user copied with matching counts); left: the run on the VM's database.
-2. **review-ui on Cosmos (phase 6):** built and synced to review-ui-client; left: the accuracy
-   report (and its new Download Page Level Accuracy) and search by value on Cosmos
-   (precomputed `metrics` docs).
+2. **review-ui on Cosmos (phase 6):** built and synced to review-ui-client, the Accuracy View
+   (and its Download Page Level Accuracy) included since 2026-11-08: it reads each chart's
+   documents, so with many charts precomputed `metrics` docs will be needed for speed and RU.
+   Left: search by value on Cosmos.
 3. **Models and canon from Blob (phase 8):** built (off by default); left: the canon re-check
    before each chart and model / canon versions stamped on results.
 4. **Service Bus and separate workers (phase 4):** built (off by default); left: the
