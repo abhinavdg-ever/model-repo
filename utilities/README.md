@@ -13,6 +13,38 @@ docker compose run --rm db-utilities manifest --local /input/metadata_R1_B1.csv
 docker compose run --rm db-utilities ground-truth --local /input/ground_truth.xlsx
 ```
 
+## Pull the client's ground truth into ours
+
+`pull_client_ground_truth.py` (2026-11-08) copies the ground truth the client entered in their
+review database (review-ui-client) into ours. Six tables, all by chart name: `page_ground_truth`
+(+ `page_ground_truth_entry`), `chart_ground_truth`, `encounter_review`, `chart_review`
+(+ `chart_review_entry`). For every chart the client has ground truth on, ours is replaced by
+theirs; other charts keep ours. `--apply` first backs up all six tables (schema
+`gt_backup_<stamp>` in our database + CSVs in `utilities/output/gt_backup_<stamp>/`) and
+copies in one transaction. `--restore <schema>` undoes it. A dry run is the default.
+
+```bash
+# Ubuntu VM
+cd ~/advantmed-imaging-pipeline/core-pipeline && source .venv/bin/activate
+export CLIENT_DATABASE_URL='postgresql://...client db...'     # DATABASE_URL comes from .env
+python ../utilities/pull_client_ground_truth.py                 # dry run: per-table counts
+python ../utilities/pull_client_ground_truth.py --apply         # back up, then copy
+python ../utilities/pull_client_ground_truth.py --list-backups
+python ../utilities/pull_client_ground_truth.py --restore gt_backup_20261108_093000
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+$env:CLIENT_DATABASE_URL = "postgresql://...client db..."
+python ..\utilities\pull_client_ground_truth.py
+python ..\utilities\pull_client_ground_truth.py --apply
+```
+
+`--charts-file charts.txt` limits it to those charts. `--add-users` creates the client's
+accounts we lack (inactive, no email) so their saves keep a name in the Review Log;
+without it those rows keep no user.
+
 ## Restore the sheet's Page Type (Accept / Unaccept)
 
 The client sheet's Page Type column holds Accept / Unaccept (its page type is in Encounter
