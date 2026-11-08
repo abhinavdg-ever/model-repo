@@ -13,6 +13,7 @@
     "model_sure_other_l1": 0.9,
     "top_k": 5,
     "per_l1": 3,
+    "tie_priority": ["Progress Note", "Operative Note", "Procedure Note", "Discharge Summary", "Clinical Summary", "Pharmacy Note"],
     "confidence": {
       "support": {
         "deciding_header": 1.0,

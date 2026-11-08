@@ -50,6 +50,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "model_sure_other_l1": 0.90,
     "top_k": 5,
     "per_l1": 3,
+    # An exact tie between leaves goes to these L1s first (in this order), then the taxonomy's order.
+    "tie_priority": ["Progress Note", "Operative Note", "Procedure Note", "Discharge Summary",
+                     "Clinical Summary", "Pharmacy Note"],
     # The page type's confidence (leaf.leaf_confidence).
     "confidence": {
         # Keyword support for the winner, 0-1: a Deciding word (in a section header / on the

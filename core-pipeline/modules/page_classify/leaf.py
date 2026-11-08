@@ -248,6 +248,16 @@ class Decision:
     confidence_why: dict[str, Any] = field(default_factory=dict)
 
 
+def tie_order(leaves: dict[str, Any], settings: dict[str, Any]) -> dict[str, int]:
+    """Leaf -> its place when scores tie exactly: leaves under a ``tie_priority`` L1 first (in
+    that list's order), then every other leaf; within each, the taxonomy's order."""
+    priority = [str(p) for p in settings.get("tie_priority") or []]
+    rank = {l1: i for i, l1 in enumerate(priority)}
+    taxonomy = list(leaves)
+    ordered = sorted(taxonomy, key=lambda leaf: (rank.get(leaf.split(SEP)[0], len(rank)), taxonomy.index(leaf)))
+    return {leaf: i for i, leaf in enumerate(ordered)}
+
+
 def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords,
            settings: dict[str, Any]) -> Decision:
     k, per_l1 = int(settings["top_k"]), int(settings["per_l1"])
@@ -295,9 +305,14 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     named = {leaf: t for leaf, t in scored.items() if not is_others(leaf)}
     choice_pool = named or scored
 
+    order = tie_order(leaves, settings)
+
     def key(leaf: str) -> tuple:
+        # The last term breaks an exact tie: the tie_priority L1s (the notes) first, then the
+        # taxonomy's order, so the same page always gets the same leaf (2026-11-08, user).
         return (totals[leaf], points(model_rank.get(leaf), k), kw.scores.get(leaf, 0.0),
-                _prob(model, leaf), -leaf.count(SEP) if is_others(leaf) else 0)
+                _prob(model, leaf), -leaf.count(SEP) if is_others(leaf) else 0,
+                -order.get(leaf, len(order)))
 
     if choice_pool:
         winner = max(choice_pool, key=key)

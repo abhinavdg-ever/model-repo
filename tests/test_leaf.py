@@ -131,6 +131,17 @@ class TestDecide:
         assert leaf.decide(LEAVES, node, leaf_canon.score_leaves(LEAVES, "hpi"), SETTINGS).path == "Progress Note > CC/HPI"
         assert leaf.decide(LEAVES, node, leaf_canon.score_leaves(LEAVES, "x"), SETTINGS).path == "Progress Note > Others"
 
+    def test_an_exact_tie_goes_to_the_notes_then_the_taxonomy_order(self, canon):
+        """2026-11-08 (user): a tie is never left to set order; Progress Note (the notes) first."""
+        canon({"Administrative > Superbill": {"good_to_have": ["visit"]},
+               "Progress Note > Assessment and Plan": {"good_to_have": ["visit"]},
+               "Progress Note > CC/HPI": {"good_to_have": ["visit"]}})
+        kw = leaf_canon.score_leaves(LEAVES, "visit")
+        d = leaf.decide(LEAVES, _model(), kw, SETTINGS)
+        assert d.path == "Progress Note > CC/HPI"      # Progress Note first, then taxonomy order
+        order = leaf.tie_order(LEAVES, {"tie_priority": ["Lab Report"]})
+        assert min(order, key=order.get) == "Lab Report > Lab Result > Chemistry Report"
+
     def test_an_excluded_leaf_never_wins(self, canon):
         canon({"Lab Report": {"must_have": ["specimen"]}})
         kw = leaf_canon.score_leaves(LEAVES, "sodium")
