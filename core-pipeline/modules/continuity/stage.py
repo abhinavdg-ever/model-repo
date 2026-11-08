@@ -342,9 +342,10 @@ def _kind(final: Optional[dict[str, Any]]) -> str:
 # A junk page inside a Progress Note made Main again carries this, then its junk subtype.
 # 2026-11-03 (user), undone 2026-11-04, restored 2026-11-06 (user).
 UNJUNK_MARK = "unjunked_in_progress_note:"
-# Junk that stays junk inside a note: blank / tiny / cover mark (R1, R2), contained in a nearby
-# page, and cards (junk_subtype Cards).
-_KEEP_JUNK = ("R1", "R2", "short_page_contained_in_page_id:")
+# Junk that stays junk inside a note: blank / tiny / cover mark (R1, R2), a short page (blank_junk
+# SHORT_MARK; the 2026-11-03 contained mark on older rows), a contents page (INDEX), and cards
+# (junk_subtype Cards).
+_KEEP_JUNK = ("R1", "R2", "short_page:", "short_page_contained_in_page_id:", "INDEX")
 
 
 def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:

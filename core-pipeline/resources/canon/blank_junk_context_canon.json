@@ -43,10 +43,9 @@
     "signed_copy_note": "A signature / ending page apart from its look-alike (a Main page between) is not a duplicate, unless the two are exact copies (the same distinct words, lengths within 10%) of more than 100 words each: then it is (2026-10-27, user)."
   },
   "contained_page": {
-    "note": "2026-11-03 (user): blank / junk pass 2, after the duplicate check: a Main page with at least min_words distinct words, not signed, whose distinct words are all on a longer Main page within near_pages pages, is Junk / Others; so is one whose only words not on that page are its own section headers (2026-11-05, user); either way only when its content ends in the top top_fraction of the page (2026-11-05, user: restored) (reason short_page_contained_in_page_id:<id>, confidence 0.90). It used to run in continuity against 20% of the chart's median page.",
-    "near_pages": 3,
+    "note": "2026-11-08 (user): the short page, blank / junk pass 2 (stage._classify): a page whose content ends in the top top_fraction of the page, that reached the classifier or was kept by its signature (R4). First that applies: 1. signed (Electronic Signature, raw p(junk) < 0.95) and the pages before and after are not -> Main; 2. the page before ends in a signature block (an Electronic Signature on it or on this page) carried on here: provider name / credentials or a date on this page -> Main; 3. 'End of Report' -> Junk / Cover Page; 4. fewer than junk_below_unique_words distinct words not on the page before or after -> Junk / Others, unless they are only Diagnosis / Visit Diagnosis. Reason starts short_page:, confidence 0.90. Replaces the 2026-11-03 rule (contained in a longer Main page within 3 pages, or adding only its section headers).",
     "top_fraction": 0.2,
-    "min_words": 3
+    "junk_below_unique_words": 5
   },
   "fax_unsigned": {
     "note": "2026-11-02 (user): pass 2, after every other rule: a page kept as content (Main) one of whose section headers (stage 6, in the Final OCR JSON; 2026-11-03, user: not a band of the page) has one of fax_terms, and that has no signature -- no Electronic Signature from kv_extract and none of signature_terms anywhere on the page -- is Junk / Letter/Fax (rule FAX). A signed faxed page stays Main.",

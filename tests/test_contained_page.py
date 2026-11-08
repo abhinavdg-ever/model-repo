@@ -1,6 +1,7 @@
-"""2026-11-03 (user): blank / junk pass 2 junks a page whose distinct words are all on a longer
-Main page within 3 pages, at most half its length (a report's page 2 that only repeats the
-header block and footer)."""
+"""The short page in blank / junk pass 2 (2026-11-08, user; was 2026-11-03 "contained in a page
+within 3"): content in the top 20%; signed alone -> Main; a signature carried on from the page
+before -> Main; "End of Report" -> Junk / Cover Page; < 5 distinct words not on the page before
+or after -> Junk / Others."""
 import modules.blank_junk.stage as stage
 from modules.blank_junk import method
 
@@ -23,7 +24,7 @@ def test_a_page_of_only_the_header_and_footer_is_junk(monkeypatch):
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER + "1 2", 2: HEADER + FOOTER + "2"})
     assert rows[2]["flag"] == "junk" and rows[2]["subtype"] == "Others"
-    assert rows[2]["reason"].startswith(stage.CONTAINED_MARK + "1")
+    assert rows[2]["reason"].startswith(stage.SHORT_MARK + "repeated")
     assert rows[1]["flag"] == "not_blank_junk"
 
 
@@ -31,8 +32,10 @@ def test_a_signed_page_or_one_with_its_own_words_stays(monkeypatch):
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}, signed={2})
     assert rows[2]["flag"] == "not_blank_junk"
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " addendum newword reviewed amended today"})
+    assert rows[2]["flag"] == "not_blank_junk"            # 5 words of its own
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " addendum newword"})
-    assert rows[2]["flag"] == "not_blank_junk"
+    assert rows[2]["flag"] == "junk"                      # 2 of its own: < 5
 
 
 def test_pass_1_marks_an_exact_copy_within_3_pages_the_later_page(monkeypatch):
@@ -50,20 +53,56 @@ def test_pass_1_marks_an_exact_copy_within_3_pages_the_later_page(monkeypatch):
     assert rows[7]["flag"] != "duplicate"  # 6 places from page 1, 5 from page 2: not within 3
 
 
-def test_a_page_adding_only_its_section_headers_is_junk(monkeypatch):
-    """2026-11-05 (user): no geometry; the words not on a longer page within 3 are its section
-    headers only -> Junk / Others; any other new word keeps it."""
+def test_only_the_pages_before_and_after_count(monkeypatch):
+    """2026-11-08 (user): the words left are counted against the page before and the page after
+    only, not every page within 3."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
-    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Addendum Summary"}
-    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
-    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
-    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
-    inputs[2].headings = ("Addendum Summary",)
-    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert rows[2]["flag"] == "junk" and "section headers only" in rows[2]["reason"]
-    inputs[2].headings = ("Addendum",)
-    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert rows[2]["flag"] == "not_blank_junk"
+    other = " ".join(f"other{i} words here" for i in range(60))
+    # page 3 repeats page 1 (two pages away): not looked at.
+    rows = _run({1: HEADER + BODY + FOOTER, 2: other, 3: HEADER + FOOTER})
+    assert rows[3]["flag"] == "not_blank_junk"
+    rows = _run({1: other, 2: HEADER + BODY + FOOTER, 3: HEADER + FOOTER, 4: other})
+    assert rows[3]["flag"] == "junk" and rows[3]["subtype"] == "Others"
+
+
+def test_a_signed_short_page_is_kept_only_when_its_neighbours_are_not_signed(monkeypatch):
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER, 3: HEADER + BODY + FOOTER + " more"}
+    assert _run(texts, signed={2})[2]["flag"] == "not_blank_junk"
+    # the page after is signed too: the short page is judged on its words (none of its own).
+    assert _run(texts, signed={2, 3})[2]["flag"] == "junk"
+
+
+def test_a_signature_carried_on_from_the_page_before_keeps_the_page(monkeypatch):
+    """2026-11-08 (user): the page before ends in a signature block (an Electronic Signature on
+    it), and this short page carries the name / credentials or a date -> Main."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    before = HEADER + BODY + FOOTER + "\n\nElectronically signed by"
+    rows = _run({1: before, 2: HEADER + FOOTER + " Watson MD"}, signed={1})
+    assert rows[2]["flag"] == "not_blank_junk" and "signature_continued" in rows[2]["votes"]["short_page"]
+    # no signature block at the end of the page before: judged on its words.
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Watson MD"}, signed={1})
+    assert rows[2]["flag"] == "junk"
+    # nothing of the signature here (no name, credentials or date): judged on its words.
+    rows = _run({1: before, 2: HEADER + FOOTER}, signed={1})
+    assert rows[2]["flag"] == "junk"
+
+
+def test_end_of_report_on_a_short_page_is_a_cover_page(monkeypatch):
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    words = " ".join(f"unique{i}" for i in range(30))
+    rows = _run({1: HEADER + BODY + FOOTER, 2: words + " *** End of Report ***"})
+    assert rows[2]["flag"] == "junk" and rows[2]["subtype"] == "Cover Page"
+
+
+def test_a_contents_page_is_junk_others():
+    """2026-11-08 (user): Index / Contents as a title and page numbers -> Junk / Others."""
+    text = "TABLE OF CONTENTS\nProgress Note ........ 3\nLab Results ......... 12\nDischarge Summary 20\n"
+    inputs = method.PageInputs(text=text, pass_no=2, bert={"p_keep": 0.9, "p_junk": 0.1})
+    verdict = method.decide(inputs)
+    assert verdict.rule == "INDEX" and verdict.code == stage.CODE_OTHERS
+    assert method.index_page("Body Mass Index 23\nweight 80\nheight 170\npulse 70") is None
+    assert method.index_page("Index\nPages 1-4 History\nPages 5-9 Labs") is None   # 2 lines only
 
 
 def test_a_contained_page_whose_content_goes_past_20_percent_stays_main(monkeypatch):
@@ -88,7 +127,7 @@ def test_contained_decides_before_the_classifier(monkeypatch):
                                      "confidence": 0.9, "decision_reason": "argmax"}}}
     monkeypatch.setattr(stage, "model_scores", scores)
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
-    assert rows[2]["subtype"] == "Others" and rows[2]["reason"].startswith(stage.CONTAINED_MARK + "1")
+    assert rows[2]["subtype"] == "Others" and rows[2]["reason"].startswith(stage.SHORT_MARK + "repeated")
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.995, "p_junk": 0.005, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.99, "decision_reason": "argmax"}}})
     assert _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})[2]["flag"] == "junk"
 

@@ -100,6 +100,7 @@ if str(_JUNK_LIB) not in sys.path:
 from classify import (  # noqa: E402
     CLASSIFICATION_LABELS,
     CODE_BLANK,
+    CODE_COVER_PAGE,
     CODE_DUPLICATE,
     CODE_JUNK,
     CODE_MAIN,
@@ -118,6 +119,7 @@ from classify import (  # noqa: E402
     word_overlap,
 )
 import method  # noqa: E402
+from modules.continuity.signature import has_signature_section  # noqa: E402
 from model_bridge import model_scores  # noqa: E402
 
 STAGE = "blank_junk"
@@ -272,9 +274,10 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
 # A signature / ending page apart from its look-alike is still a duplicate when the two are
 # exact copies of more than this many words (2026-10-27, user).
 SIGNED_COPY_MIN_WORDS = 100
-# The reason a contained page carries (2026-11-03: in pass 2; the same mark continuity used).
-CONTAINED_MARK = "short_page_contained_in_page_id:"
-# The words that keep a short page when they are all it adds to its neighbour (2026-11-08, user).
+# The reason a short page carries (2026-11-08, user; continuity keeps its junk inside a note).
+# Was "short_page_contained_in_page_id:" (2026-11-03), which continuity still reads on old rows.
+SHORT_MARK = "short_page:"
+# The words that keep a short page when they are all it adds to its neighbours (2026-11-08, user).
 KEEP_IF_ONLY_ADDED = frozenset({"visit", "diagnosis"})
 # Pass 1 marks exact copies this close (2026-11-03, user).
 EXACT_NEAR_PAGES = 3
@@ -704,65 +707,91 @@ def _classify(
         )
         partial.add(page_id)
 
-    # 2026-11-05 (user): a short page -- its content ends in the top 20% of the page -- that adds
-    # nothing to a longer Main page within +-n pages is Junk / Others: (a) all its distinct words
-    # are on that page, or (b) the only words it adds are its own section headers (stage 6).
-    # A page without line positions is never short. It decides in the ladder just before the
-    # classifier: every page that reached the classifier is a candidate, whatever the classifier
-    # or a later keep (LAB, p(keep) >= 0.99) made of it; a page an earlier rule settled (blank,
-    # visual, handwritten, signed, card, fax) is not. Invoice pages stay Main.
+    # The short page (2026-11-08, user; replaces the 2026-11-05 "contained in a page within 3"):
+    # a page whose content ends in the top 20% of the page (no line positions: never short).
+    # Candidates: every page that reached the classifier, whatever it made of it, and a page the
+    # signature kept (R4); a page another early rule settled (blank, visual, handwritten, card,
+    # fax, contents) is not. Invoice pages stay Main. In order, the first that applies decides:
+    #   1. signed (method.signature_keeps) and neither the page before nor after is -> Main;
+    #   2. the page before ends in a signature block (Electronic Signature on it or on this page)
+    #      that carries on here: this page has the provider's name / credentials or a date -> Main;
+    #   3. "End of Report" on it -> Junk / Cover Page;
+    #   4. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
+    #      the only ones left are "Diagnosis" / "Visit Diagnosis": a diagnosis page, kept).
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
-        near = int(cfg.get("near_pages", 3))
         top = float(cfg.get("top_fraction", 0.20))
-        min_words = int(cfg.get("min_words", 3))
+        junk_below = int(cfg.get("junk_below_unique_words", 5))
         order = [page["id"] for page in pages]
-        mains = [i for i, pid in enumerate(order)
-                 if pid not in dup_of and _main(pid) and (texts.get(pid) or "").strip()]
-        candidates = [i for i, pid in enumerate(order)
-                      if pid not in dup_of and (texts.get(pid) or "").strip()
-                      and ((by_id.get(pid) or {}).get("votes") or {}).get("reached_classifier")]
-        page_words = {i: unique_words(texts.get(order[i]) or "") for i in set(mains) | set(candidates)}
-        page_len = {i: duplicate_char_count(texts.get(order[i]) or "") for i in set(mains) | set(candidates)}
-        for i in candidates:
-            pid = order[i]
-            mine = page_words[i]
-            # An invoice page kept by the INVOICE rule stays Main (2026-11-05, user).
-            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
-            if len(mine) < min_words or _signature_page(pid) or bottom is None or bottom > top or (
-                    method.is_invoice_page((by_id.get(pid) or {}).get("reason"))):
-                continue
-            longer = sorted((k for k in mains if k != i and abs(k - i) <= near and page_len[k] > page_len[i]),
-                            key=lambda k: (abs(k - i), k))
-            if not longer:
-                continue
-            heading_words = unique_words("\n".join(getattr((inputs or {}).get(pid), "headings", ()) or ()))
-            container, why = next(((k, "contained") for k in longer if mine <= page_words[k]), (None, ""))
-            if container is None:
-                # The neighbour sharing the most words; what the page adds must be headers only.
-                k = max(longer, key=lambda k: (len(mine & page_words[k]), -abs(k - i)))
-                added = mine - page_words[k]
-                # 2026-11-08 (user): a page whose only new words are "Diagnosis" / "Visit
-                # Diagnosis" is a diagnosis page, not a repeat: never junked.
-                if added and heading_words and added <= heading_words and not (added <= KEEP_IF_ONLY_ADDED and "diagnosis" in added):
-                    container, why = k, "headers"
-            if container is None:
-                continue
-            other = page_by_id[order[container]]
-            what = (f"all {len(mine)} distinct words on page {other.get('page_number')}" if why == "contained"
-                    else f"the {len(mine - page_words[container])} word(s) not on page {other.get('page_number')} "
-                         f"are its section headers only")
-            note = (f"{CONTAINED_MARK}{order[container]} (content ends at {bottom:.0%} <= {top:.0%} of the page; "
-                    f"{what}) -> Junk / Others")
+        words_of: dict[int, frozenset[str]] = {}
+
+        def _words(index: int) -> frozenset[str]:
+            if not 0 <= index < len(order):
+                return frozenset()
+            if index not in words_of:
+                words_of[index] = frozenset(unique_words(texts.get(order[index]) or ""))
+            return words_of[index]
+
+        def _keep(pid: int, rule: str, why: str) -> None:
+            own = by_id.get(pid) or {}
+            note = f"{SHORT_MARK}{rule}: {why} -> Main"
+            if own.get("code") == CODE_MAIN:
+                own["votes"] = {**(own.get("votes") or {}), "short_page": note}
+                return
+            earlier = own.get("votes")
+            by_id[pid] = _row_for(page_by_id[pid], code=CODE_MAIN, reason=note, confidence=CONTAINED_CONFIDENCE,
+                                  votes={**earlier, "short_page": note} if earlier else None)
+
+        def _junk(pid: int, code: int, note: str) -> None:
             own = by_id.get(pid) or {}
             earlier = own.get("votes")
-            by_id[pid] = _row_for(
-                page_by_id[pid], code=CODE_OTHERS, reason=note, confidence=CONTAINED_CONFIDENCE,
-                votes={**earlier, "contained_page": note} if earlier else None,
-            )
+            by_id[pid] = _row_for(page_by_id[pid], code=code, reason=note, confidence=CONTAINED_CONFIDENCE,
+                                  votes={**earlier, "short_page": note} if earlier else None)
             partial.discard(pid)
             contained.add(pid)
+
+        for i, pid in enumerate(order):
+            own = by_id.get(pid) or {}
+            votes = own.get("votes") or {}
+            if pid in dup_of or not (texts.get(pid) or "").strip():
+                continue
+            if not (votes.get("reached_classifier") or votes.get("rule") == "R4"):
+                continue
+            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
+            if bottom is None or bottom > top or method.is_invoice_page(own.get("reason")):
+                continue
+            prev_id = order[i - 1] if i > 0 else None
+            next_id = order[i + 1] if i + 1 < len(order) else None
+            short = f"content ends at {bottom:.0%} <= {top:.0%} of the page"
+            # 1. its own signature, not on either neighbour.
+            if _signature_page(pid) and not any(n is not None and n in signed for n in (prev_id, next_id)):
+                _keep(pid, "signed", f"{short}; Electronic Signature here, not on the page before or after")
+                continue
+            # 2. the signature block at the end of the page before, carried on here.
+            if prev_id is not None and (prev_id in signed or pid in signed):
+                tail = last_paragraph(texts.get(prev_id) or "")
+                carried = method.provider_or_date(texts.get(pid) or "",
+                                                  bool(getattr((inputs or {}).get(pid), "provider", False)))
+                if carried and has_signature_section(tail):
+                    _keep(pid, "signature_continued",
+                          f"{short}; page {page_by_id[prev_id].get('page_number')} ends in a signature block, "
+                          f"carried on here ({carried})")
+                    continue
+            # 3. End of Report.
+            if method.END_OF_REPORT.search(texts.get(pid) or ""):
+                _junk(pid, CODE_COVER_PAGE, f"{SHORT_MARK}end_of_report: {short}; 'End of Report' -> Junk / Cover Page")
+                continue
+            # 4. what it adds to the pages before and after.
+            left = _words(i) - _words(i - 1) - _words(i + 1)
+            if len(left) >= junk_below:
+                continue
+            if left and left <= KEEP_IF_ONLY_ADDED and "diagnosis" in left:
+                _keep(pid, "diagnosis", f"{short}; the only words not on the pages before / after are "
+                                         f"{', '.join(sorted(left))}")
+                continue
+            _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated: {short}; {len(left)} distinct word(s) not on the "
+                                    f"page before or after (< {junk_below}) -> Junk / Others")
 
     named: dict[int, dict[str, Any]] = {}
     for page_id, match in best.items():
@@ -791,6 +820,13 @@ def _classify(
         if pid in dup_of or pid in partial or pid in contained:
             rows.append(by_id[pid])
     return rows
+
+
+def last_paragraph(text: str, max_lines: int = 6) -> str:
+    """The page's last paragraph: the lines after its last blank line, at most ``max_lines``."""
+    blocks = [b for b in re.split(r"\n\s*\n", (text or "").strip()) if b.strip()]
+    lines = (blocks[-1] if blocks else "").splitlines()
+    return "\n".join(lines[-max_lines:])
 
 
 def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:

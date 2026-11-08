@@ -28,8 +28,11 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   pass 2 (Final OCR text):
     R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's
                     p(junk) > 0.95 (a signed records-request letter is still junk)
-    R6 short page   the content ends in the top 15% and the band below has < 0.5% ink ->
-                    Junk / Others, unless DistilBERT p(keep) > 0.90
+    INDEX contents  "Index" / "Contents" as a title and 3+ lines with page numbers ->
+                    Junk / Others (2026-11-08, user)
+    short page      content in the top 20%: stage._classify (signed alone / a signature
+                    carried on -> Main; End of Report -> Junk / Cover Page; < 5 words not on
+                    the page before or after -> Junk / Others; 2026-11-08, user)
     R5 DistilBERT   p(junk) >= 0.70 -> Junk (DistilBERT's subtype); below -> Main (2026-11-03,
                     user: no review band; canon junk_at = review_junk_at = 0.7)
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
@@ -102,7 +105,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95, "INDEX": 0.95}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -721,6 +724,12 @@ def decide(inputs: PageInputs) -> Verdict:
     if word is not None:
         votes["fax_unsigned"] = word
         return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
+    # 6a. a contents / index page: the word Index or Contents as a title and a list of page
+    # numbers (2026-11-08, user) -> Junk / Others.
+    index = index_page(text, inputs.headings)
+    if index is not None:
+        votes["index_page"] = index
+        return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
     # 6b. the contained page (stage._classify) decides here, before the classifier: it needs the
     # neighbours, so the stage applies it to every page that reached this point (2026-11-05, user).
     votes["reached_classifier"] = True
@@ -844,6 +853,51 @@ def _keep_clinical_content(verdict: Verdict, inputs: PageInputs) -> Verdict:
     p_junk = float(bert["p_junk"]) if bert else None
     return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, CLINICAL_CONTENT_RULE, p_keep, p_junk),
                    CLINICAL_CONTENT_RULE, f"{verdict.reason}; {why} -> Main (never junk)", verdict.votes)
+
+
+# 2026-11-08 (user): a contents page -- "Index" / "Contents" as a title and page numbers -- is
+# Junk / Others. The title is a line of its own (or a section header), so "Body Mass Index"
+# inside a sentence never counts; the page numbers are lines ending in a page number after
+# dot leaders or spaces ("Progress Note ....... 12"), or "Page 3" / "Pages 4-7".
+INDEX_TITLE = re.compile(r"^\W*(?:table\s+of\s+contents|contents|(?:document\s+|chart\s+|record\s+)?index)\W*$",
+                         re.IGNORECASE | re.MULTILINE)
+PAGE_NUMBER_LINE = re.compile(r"^(?=.*[A-Za-z]).*?(?:\.{2,}|\s)\s*\d{1,4}\s*$|\bpages?\s*\d{1,4}(?:\s*[-\u2013]\s*\d{1,4})?\b",
+                              re.IGNORECASE)
+INDEX_MIN_PAGE_LINES = 3
+
+
+def index_page(text: str, headings: tuple[str, ...] = ()) -> Optional[str]:
+    """Why the page is a contents / index page, or None."""
+    title = INDEX_TITLE.search(text or "")
+    title_text = title.group(0).strip() if title else next(
+        (h for h in headings or () if INDEX_TITLE.fullmatch(str(h).strip())), None)
+    if not title_text:
+        return None
+    numbered = sum(1 for line in (text or "").splitlines() if PAGE_NUMBER_LINE.search(line.strip()))
+    if numbered < INDEX_MIN_PAGE_LINES:
+        return None
+    return f"'{title_text}' and {numbered} lines with page numbers"
+
+
+# 2026-11-08 (user): the short page rules (stage._classify) read these.
+END_OF_REPORT = re.compile(r"\bend\s+of\s+(?:the\s+)?report\b", re.IGNORECASE)
+CREDENTIAL = re.compile(
+    r"(?<![A-Za-z])(?:M\.?D|D\.?O|N\.?P|PA-?C|P\.?A|FNP(?:-[BC]{1,2})?|APRN|ARNP|DNP|DPM|DDS|DMD|O\.?D|CNM|CRNA|"
+    r"MBBS|LCSW|LPC|PhD|PsyD|PharmD|R\.?N)\.?(?![A-Za-z])")
+
+
+def provider_or_date(text: str, provider: bool) -> Optional[str]:
+    """What on a page carries a signature on from the page before: the provider's name /
+    credentials (kv_extract) or credentials or a date in the text."""
+    if provider:
+        return "provider name / credentials (kv_extract)"
+    cred = CREDENTIAL.search(text or "")
+    if cred:
+        return f"credentials '{cred.group(0)}'"
+    date = ANY_DATE.search(text or "")
+    if date:
+        return f"date '{date.group(0)}'"
+    return None
 
 
 # 2026-11-07 (user): an invoice is kept only when it shows a money amount and a date.
