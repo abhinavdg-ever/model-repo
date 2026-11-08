@@ -653,7 +653,8 @@ def test_ocr_search_matches_postgres(cosmos, containers, monkeypatch):
     assert ocr_search.search_tesseract("", "public", "three", run_id="R9")["total_pages"] == 0
 
 
-def test_value_search_is_501_on_cosmos(cosmos, monkeypatch):
+def test_value_search_reads_cosmos(cosmos, containers):
+    """2026-11-08 (user): Search by value on Cosmos, matched as on Postgres."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -662,15 +663,38 @@ def test_value_search_is_501_on_cosmos(cosmos, monkeypatch):
     from app.routers.deps import current_user
     from app.services.auth import SignedInUser
 
+    _write_chart(containers)
+    cosmos.upsert_page_ground_truth("C1", 1, None, {"page_type": "Progress Note", "codeable": "Codable"}, None)
     app = FastAPI()
     app.include_router(search.router, prefix="/api")
     settings = Settings(_env_file=None, db_backend="cosmos", cosmos_endpoint="https://x", cosmos_key="k")
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[current_user] = lambda: SignedInUser(id=1, username="a", name="a", role="admin")
     client = TestClient(app)
-    res = client.post("/api/search/values", json={"conditions": [{"column": "page_type", "value": "x"}]})
-    assert res.status_code == 501
-    assert client.get("/api/search/values/options", params={"column": "page_type"}).status_code == 501
+
+    res = client.post("/api/search/values", json={"conditions": [
+        {"column": "page_type", "side": "prediction", "op": "is", "value": " clinical  NOTES "},
+        {"column": "page_type", "side": "ground_truth", "op": "contains", "value": "progress"}]})
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert found["total_pages"] == 1 and found["charts"][0]["chart"] == "C1"
+    assert found["charts"][0]["total_pages"] == 3 and found["charts"][0]["run"] == "R1"
+    page = found["charts"][0]["pages"][0]
+    assert page["page_number"] == 1
+    assert page["values"]["page_type"] == {"prediction": "Clinical Notes", "ground_truth": "Progress Note"}
+    # a prediction-side Yes / No column, and "empty"
+    res = client.post("/api/search/values", json={"conditions": [
+        {"column": "provider_signature", "side": "prediction", "op": "is", "value": "yes"}]}).json()
+    assert [p["page_number"] for p in res["charts"][0]["pages"]] == [1]
+    res = client.post("/api/search/values", json={"conditions": [
+        {"column": "page_type", "side": "ground_truth", "op": "empty"}]}).json()
+    assert [p["page_number"] for p in res["charts"][0]["pages"]] == [2, 3]
+    # another run: nothing
+    res = client.post("/api/search/values", json={"run": "R9", "conditions": [
+        {"column": "page_type", "side": "prediction", "op": "empty"}]}).json()
+    assert res["total_pages"] == 0
+    opts = client.get("/api/search/values/options", params={"column": "page_type", "side": "prediction"}).json()
+    assert opts["options"] == [{"value": "Clinical Notes", "pages": 1}]
     assert client.get("/api/search/values/columns").status_code == 200
 
 
