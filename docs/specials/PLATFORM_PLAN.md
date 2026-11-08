@@ -1,10 +1,10 @@
 # Platform plan: Cosmos, Blob, Service Bus, and the apps / module / resources layout
 
-Status: **agreed approach**, updated 2026-11-07 (evening). Cosmos for **NoSQL** is a client
+Status: **agreed approach**, updated 2026-11-08 (evening). Cosmos for **NoSQL** is a client
 requirement. §7 shows what is built per phase; §12 lists what is still missing. Settings for
 Cosmos, Service Bus and the API key are in `core-pipeline/.env` (values never in chat).
 
-**Built so far (all on today's Postgres):**
+**Built so far** (Postgres stays the default; Cosmos and Service Bus are built and off until switched on):
 - **Layout (phase 1):** core-pipeline `apps/orchestrator_api/`, `apps/worker/`, `common/`,
   `modules/`, `resources/canon/`; review-ui `backend/app/{routers,store}/` and a frontend with
   its own `BACKEND_URL`. About 3,600 lines of dead code removed, and more on 2026-11-07
@@ -13,8 +13,9 @@ Cosmos, Service Bus and the API key are in `core-pipeline/.env` (values never in
 - **`core-pipeline/outputs/` is scratch:** a chart folder not run for 7 days is deleted. Logs
   are deleted after 7 days.
 - **One schema file** (`schema/schema.sql`) plus `schema/migrate.sql` for existing databases.
-- **`DB_BACKEND=postgres|cosmos|both`** is in both `.env` files, checked at start and shown in
-  `/health`. Only Postgres is wired: `cosmos` and `both` still run on Postgres.
+- **`DB_BACKEND=postgres|cosmos|both`** is in both `.env` files and wired: `cosmos` runs on
+  Cosmos, `both` writes Postgres and copies every write to Cosmos (reads stay on Postgres).
+  `RUN_MODE=queue` sends chart runs through Service Bus. See §7 and §12.
 - **db-utilities** (new, 2026-11-07): manifests and ground truth are loaded by their own Docker
   job, not by core-pipeline (§3).
 - **Monitoring on Postgres:** a `run_usage` row per chart run, daily and hourly views,
@@ -378,20 +379,20 @@ One stage registry with dependencies, for example `member_verify requires [ocr_f
 
 ## 7. Phases
 
-| # | Phase | What | Done when | Status (2026-11-07) |
+| # | Phase | What | Done when | Status (2026-11-08) |
 |---|---|---|---|---|
-| 0 | Access | Cosmos, Service Bus and Blob details in `core-pipeline/.env`; `infra/` (Bicep) creates the database, containers and queue | the code connects to all three from the Mac and from the VM | **Partly:** settings in `.env`; queue `chart-runs` created; Cosmos reached from the Mac and database `imaging` created (1,000 RU/s). No containers, no `infra/`, no pipeline code on Cosmos or Service Bus yet |
+| 0 | Access | Cosmos, Service Bus and Blob details in `core-pipeline/.env`; `infra/` (Bicep) creates the database, containers and queue | the code connects to all three from the Mac and from the VM | **Mostly:** settings in `.env`; queue `chart-runs`; database `imaging` (1,000 RU/s) and its containers created; Blob `imaging-models`. `infra/` (Bicep) written, not yet run |
 | 1 | Restructure, no logic change | `apps/`, `modules/`, `common/`, `resources/`; review-ui `backend/` + `frontend/` each with its own Dockerfile | same outputs on the test charts; tests pass | **Done** except: the API is still one `main.py` (not split into routers), and the API and worker are one image, one process |
-| 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **Built for core-pipeline and db-utilities** (2026-11-07): `common/db` + `CosmosStore`, `both` mirror, a full test chart on Cosmos (outputs match Postgres except number formatting and one page type under investigation); db-utilities `--to postgres\|cosmos\|both`. review-ui: chart views only |
+| 2 | Storage layer + DB toggle | one data-access interface, Postgres and Cosmos implementations; `DB_BACKEND=postgres\|cosmos\|both` | both pass the same tests; one chart end to end on each | **Built for core-pipeline and db-utilities** (2026-11-07): `common/db` + `CosmosStore`, `both` mirror, a full test chart on Cosmos (outputs match Postgres except number formatting and one page type: a classifier tie, fixed 2026-11-08 with `tie_priority`); db-utilities `--to postgres\|cosmos\|both`. review-ui: chart views only |
 | 3 | Outputs and debug | every file written inventoried; stage-to-stage data into page docs; `artifacts.write`; scratch wiped per run; debug to disk and Blob | a non-debug run writes only to the DB and Blob | **Partly:** scratch with a 7-day purge; debug goes to local disk only; `staging/*.json` still carries data between stages |
 | 4 | Service Bus + API key | orchestrator enqueues, workers consume (sessions, lock renewal, dead-letter); `X-API-Key` | kill a worker mid-chart and the chart finishes on another | **Built 2026-11-08, off by default** (`RUN_MODE=queue`, `API_KEY_REQUIRED=true`): `apps/worker/queue_worker.py`, compose `worker` (`--scale worker=3`), `GET /api/runs/{id}?wait=`; Playground sends the key. Checked with a smoke message on the real queue. Not yet: the kill-a-worker test on the VM, separate API / worker images |
 | 5 | Step-by-step APIs | stage graph, version / input-hash check, `/v1/...` endpoints | `/member-verify` runs only what it needs; a second call is instant | **Built 2026-11-08:** `/v1/charts/run`, `/v1/charts/{name}/ocr`, `/page-type`, `/member-verify`, `/dos`, `/v1/runs/{id}?wait=`; only the stages not yet completed run, a repeat call answers at once. Not yet: version / input-hash staleness (use `rerun: true`) |
-| 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Built 2026-11-08** (`DB_BACKEND=cosmos` / `both`): chart views, landing list, ground truth (read + save), users and sign-in, review log, tags, encounters, delete, OCR search, Manual Review. **501 on Cosmos:** accuracy report, search by value (need precomputed docs). Not yet synced to review-ui-client |
-| 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Not started** |
+| 6 | review-ui on Cosmos | `store/cosmos/`, precomputed accuracy docs; sync review-ui-client | the test charts look the same as today | **Built 2026-11-08** (`DB_BACKEND=cosmos` / `both`): chart views, landing list, ground truth (read + save), users and sign-in, review log, tags, encounters, delete, OCR search, Manual Review. **501 on Cosmos:** accuracy report, search by value (need precomputed docs). Synced to review-ui-client 2026-11-08 |
+| 7 | History migration and cutover | `utilities/migrate_postgres_to_cosmos.py`; `DB_BACKEND=both` for a week; db-utilities writes Cosmos; Cosmos becomes the default | counts match; Postgres read-only, then retired | **Migration built** (2026-11-08): `utilities/migrate_postgres_to_cosmos.py`, the Mac's 5 charts and its user copied, counts match. Not yet: the run on the VM's database, the week on `both`, the cutover |
 | 7a | Monitoring | `run_usage` now; `runs.usage` + `metrics` on Cosmos; LLM wrapper; `/v1/metrics`; review-ui Usage page | every run shows time, Doc Intel pages and cost | **Partly:** `run_usage` and `cli.py usage` built; no LLM wrapper, `/v1/metrics` or Usage page |
 | 8 | Resources from Blob | `manifest.json`, `publish_resources.py`, models fetched at worker start, canon checked before each run, fingerprints | a new model reaches every host with no manual copy | **Built 2026-11-08, off by default** (`RESOURCES_FROM_BLOB`): `common/resources.py` fetch with sha256 check, `utilities/publish_resources.py`, `/health.resources`; checked on the real `imaging-models` container. Not yet: canon re-check before each chart, versions stamped on results |
 | 9 | AKS | — | — | **Parked** (2026-11-07) |
-| — | db-utilities | manifests and ground truth loaded by their own Docker job | core-pipeline has no load code | **Done** on Postgres (2026-11-07); Cosmos writer in phase 7 |
+| — | db-utilities | manifests and ground truth loaded by their own Docker job | core-pipeline has no load code | **Done** for Postgres, Cosmos or both (`--to`, `load.sh` / `load.ps1`) |
 
 Phase 1 goes first because every later change then lands in its final place, and its outputs
 can be compared one for one.
@@ -496,8 +497,9 @@ In build order:
 
 1. **History migration (phase 7):** built (`utilities/migrate_postgres_to_cosmos.py`, the
    Mac's 5 charts and its user copied with matching counts); left: the run on the VM's database.
-2. **review-ui on Cosmos (phase 6):** built; left: the accuracy report and search by value
-   on Cosmos (precomputed `metrics` docs), and the sync to review-ui-client.
+2. **review-ui on Cosmos (phase 6):** built and synced to review-ui-client; left: the accuracy
+   report (and its new Download Page Level Accuracy) and search by value on Cosmos
+   (precomputed `metrics` docs).
 3. **Models and canon from Blob (phase 8):** built (off by default); left: the canon re-check
    before each chart and model / canon versions stamped on results.
 4. **Service Bus and separate workers (phase 4):** built (off by default); left: the
@@ -509,3 +511,60 @@ In build order:
 8. **review-ui-client replica.** The clone job rewritten for Cosmos (a replica database).
 9. **`infra/`:** written (Bicep for Cosmos, the queue, `imaging-models`); not yet run (no
    Azure CLI on the Mac).
+10. **Postgres-only utilities:** `utilities/pull_client_ground_truth.py` (the client's ground
+    truth into ours, 2026-11-08) and `utilities/tag_chart.py` (mark charts, e.g. "Special")
+    write Postgres only; with `DB_BACKEND=both`, re-run the migration for those charts or add a
+    Cosmos path. How to run them is below.
+
+### Running the two utilities
+
+Both use the core-pipeline venv and `DATABASE_URL` from `core-pipeline/.env`.
+
+**Mark charts (tags, e.g. "Special")**: `utilities/tag_chart.py`. A chart is named by its
+chart name or chart_list id. review-ui's History and Accuracy pages filter by tag.
+
+```bash
+# Ubuntu VM
+cd ~/advantmed-imaging-pipeline/core-pipeline && source .venv/bin/activate
+python ../utilities/tag_chart.py 52743839_44976074 --tag Special           # add a tag
+python ../utilities/tag_chart.py --from-file charts.txt --tag Special       # one chart per line
+python ../utilities/tag_chart.py 52743839_44976074 --remove Special         # remove it
+python ../utilities/tag_chart.py 52743839_44976074                          # show its tags
+python ../utilities/tag_chart.py --list-tags                                # every tag in use
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+python ..\utilities\tag_chart.py 52743839_44976074 --tag Special
+python ..\utilities\tag_chart.py --from-file charts.txt --tag Special
+python ..\utilities\tag_chart.py --list-tags
+```
+
+**The client's ground truth into ours**: `utilities/pull_client_ground_truth.py`. Reads the
+client's review database (`CLIENT_DATABASE_URL`, read only) and writes ours (`DATABASE_URL`).
+For every chart the client has ground truth on, ours is replaced by theirs (page labels and
+history, member decision, encounters, Reviewed mark, Review Log); other charts keep ours.
+`--apply` first backs up all six tables (schema `gt_backup_<stamp>` in our database, plus CSVs
+in `utilities/output/gt_backup_<stamp>/`). Without `--apply` it is a dry run.
+
+```bash
+# Ubuntu VM
+cd ~/advantmed-imaging-pipeline/core-pipeline && source .venv/bin/activate
+export CLIENT_DATABASE_URL='postgresql://...the client database...'
+python ../utilities/pull_client_ground_truth.py                       # dry run: counts per table
+python ../utilities/pull_client_ground_truth.py --apply               # back up, then copy
+python ../utilities/pull_client_ground_truth.py --apply --charts-file charts.txt   # only these
+python ../utilities/pull_client_ground_truth.py --apply --add-users   # client accounts too (inactive)
+python ../utilities/pull_client_ground_truth.py --list-backups
+python ../utilities/pull_client_ground_truth.py --restore gt_backup_20261108_093000   # undo
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+$env:CLIENT_DATABASE_URL = "postgresql://...the client database..."
+python ..\utilities\pull_client_ground_truth.py
+python ..\utilities\pull_client_ground_truth.py --apply
+python ..\utilities\pull_client_ground_truth.py --restore gt_backup_20261108_093000
+```

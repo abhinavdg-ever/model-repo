@@ -100,7 +100,6 @@ if str(_JUNK_LIB) not in sys.path:
 from classify import (  # noqa: E402
     CLASSIFICATION_LABELS,
     CODE_BLANK,
-    CODE_COVER_PAGE,
     CODE_DUPLICATE,
     CODE_JUNK,
     CODE_MAIN,
@@ -286,6 +285,8 @@ SAME_CONTENT_SIMILARITY = 0.98
 SAME_CONTENT_BELOW_WORDS = 7
 SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
 SAME_CONTENT_NOTE = "same content, different encounter"
+# 2026-11-08 (user): Repeated Content is off -- a pair is a Duplicate, a Partial, or nothing.
+REPEATED_CONTENT = False
 
 CONTAINED_CONFIDENCE = 0.90
 
@@ -550,7 +551,7 @@ def _classify(
                 """Pages of different encounters with the same content: >= 98% alike or fewer
                 than 7 distinct words different, lengths within 10% (2026-11-04, user); or, for
                 any pair, a shorter page mostly in the longer one (_contained_copy, 2026-11-06)."""
-                if exact_near or not find_duplicates:
+                if exact_near or not find_duplicates or not REPEATED_CONTENT:
                     return
                 la, lb = length[pid], length[nid]
                 alike = not contained_only and (
@@ -740,8 +741,7 @@ def _classify(
     #   1. the page before ends in its Electronic Signature (kv_extract: footer band, or the
     #      signature sentence in its last paragraph) and this page carries it on: the provider's
     #      name / credentials (kv_extract), the signer's name, credentials or a date -> Main;
-    #   2. "End of Report" on it -> Junk / Cover Page;
-    #   3. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
+    #   2. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
     #      the only ones left are "Diagnosis" / "Visit Diagnosis": a diagnosis page, kept).
     contained: set[int] = set()
     if find_duplicates:
@@ -799,11 +799,7 @@ def _classify(
                           f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its Electronic "
                           f"Signature ({prev_sig.get('region') or 'last paragraph'}), carried on here ({carried})")
                     continue
-            # 2. End of Report.
-            if method.END_OF_REPORT.search(texts.get(pid) or ""):
-                _junk(pid, CODE_COVER_PAGE, f"{SHORT_MARK}end_of_report: {short}; 'End of Report' -> Junk / Cover Page")
-                continue
-            # 3. what it adds to the pages before and after.
+            # 2. what it adds to the pages before and after.
             left = _words(pid) - _words(prev_id) - _words(next_id)
             if len(left) >= junk_below:
                 continue

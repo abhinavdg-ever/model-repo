@@ -193,7 +193,8 @@ class TestDistilBertLadder:
         assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "R5") and "review" not in sure.reason
         # 2026-11-03 (user): p(junk) >= 0.70 is junk, below is Main; no review band.
         at = run(FILLER, bert=bert(0.70))
-        assert at.code == classify.CODE_INVOICE and not at.votes.get("review_required")
+        # the model's Invoice without an amount and an Invoice / Due Date is Junk / Others (2026-11-08).
+        assert at.code == classify.CODE_OTHERS and not at.votes.get("review_required")
         assert run(FILLER, bert=bert(0.69)).code == classify.CODE_MAIN
 
     def test_keywords_no_longer_decide(self):
@@ -333,10 +334,15 @@ class TestSimplifiedLadder:
         assert run("x.7 :", pass_no=1).code == classify.CODE_OTHERS  # under 15 characters
         v = run(JUNK_TEXT, pass_no=1, bert=bert(0.99))  # the model is not read in pass 1
         assert (v.code, v.rule) == (method.CODE_MAIN, "P1")
-        # 2026-11-05: a cover mark with fewer than 5 words on the page; 5 or more is not.
+        # 2026-11-08: a cover mark (or End of Report) with fewer than 10 words on the page; 10 or
+        # more is not (was 5).
         assert run("Accept this invoice please", pass_no=1).code == classify.CODE_COVER_PAGE
         assert run("Fax cover 2 pages", pass_no=1).code == classify.CODE_COVER_PAGE
-        assert run("Accept this invoice please today", pass_no=1).rule == "P1"
+        assert run("Accept this invoice please today, thank you very much", pass_no=1).code == classify.CODE_COVER_PAGE
+        assert run("Accept this invoice please today, thank you very much indeed", pass_no=1).rule == "P1"
+        v = run("*** End of Report *** printed 01/02/2024 by lab", pass_no=1)
+        assert (v.code, v.rule) == (classify.CODE_COVER_PAGE, "R1E")
+        assert run("End of Report for the patient seen in clinic today with notes", pass_no=1).rule == "P1"
 
     def test_a_card_comes_before_the_visual_keep(self):
         v = run(CARD_TEXT, document_type="visual", bert=bert(0.5))
@@ -387,12 +393,17 @@ class TestInvoiceKept:
     Invoice Page."""
 
     def test_a_junk_invoice_page_is_main_by_the_invoice_rule(self):
-        """Only with a money amount and a date on it (2026-11-07, user)."""
-        text = INVOICE_TEXT + " Statement date 03/10/2026, total $120.00"
-        inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
-        v = method.post_process(decide(inputs), inputs)
-        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
-        assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
+        """Only with a money amount and an Invoice Date / Due Date on it (2026-11-08, user; was any
+        date, 2026-11-07)."""
+        for label in ("Invoice Date", "Due Date"):
+            text = INVOICE_TEXT + f" {label} 03/10/2026, total $120.00"
+            inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
+            v = decide(inputs)
+            assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+            assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
+        # any other date is not enough.
+        v = decide(PageInputs(text=INVOICE_TEXT + " Statement date 03/10/2026, total $120.00", pass_no=2, bert=bert(0.99)))
+        assert v.code == classify.CODE_OTHERS
 
     def test_an_invoice_without_an_amount_and_a_date_is_junk_others(self):
         """2026-11-07 (user): there is no Junk / Invoice -- Main / Invoice, Junk / Cards or Junk / Others."""

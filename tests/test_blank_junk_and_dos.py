@@ -1072,7 +1072,9 @@ class TestSameContentDifferentEncounter:
     """2026-11-04 (user): pages kept apart by their dates are Repeated Content when >= 98% alike
     or fewer than 7 distinct words different."""
 
-    def test_same_content_under_different_dates_is_repeated_content(self):
+    def test_same_content_under_different_dates_is_repeated_content(self, monkeypatch):
+        import modules.blank_junk.stage as bj_stage
+        monkeypatch.setattr(bj_stage, "REPEATED_CONTENT", True)   # off since 2026-11-08
         texts = {1: _body(8) + " Collected 04/30/2026", 2: _body(8) + " Collected 05/30/2026"}
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
         by_id = {r["page_id"]: r for r in rows}

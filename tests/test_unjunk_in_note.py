@@ -24,7 +24,15 @@ def calls(monkeypatch):
     return seen
 
 
-def test_junk_between_two_pages_of_a_progress_note_is_main(calls):
+def test_unjunking_inside_a_note_is_off(calls, monkeypatch):
+    """2026-11-08 (user): off for now; nothing is unjunked."""
+    from modules.continuity import stage as cont
+    assert cont.UNJUNK_IN_NOTES is False
+
+
+def test_junk_between_two_pages_of_a_progress_note_is_main(calls, monkeypatch):
+    from modules.continuity import stage as cont
+    monkeypatch.setattr(cont, "UNJUNK_IN_NOTES", True)
     rows = [{"segment_kind": "main", "document_seq": 1}, {"segment_kind": "junk", "document_seq": 9},
             {"segment_kind": "main", "document_seq": 1}, {"segment_kind": "junk", "document_seq": 9},
             {"segment_kind": "main", "document_seq": 2}]

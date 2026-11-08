@@ -342,6 +342,8 @@ def _kind(final: Optional[dict[str, Any]]) -> str:
 # A junk page inside a Progress Note made Main again carries this, then its junk subtype.
 # 2026-11-03 (user), undone 2026-11-04, restored 2026-11-06 (user).
 UNJUNK_MARK = "unjunked_in_progress_note:"
+# 2026-11-08 (user): off for now. A page an earlier run unjunked is junk again (its subtype).
+UNJUNK_IN_NOTES = False
 # Junk that stays junk inside a note: blank / tiny / cover mark (R1, R2), a short page (blank_junk
 # SHORT_MARK; the 2026-11-03 contained mark on older rows), a contents page (INDEX), and cards
 # (junk_subtype Cards).
@@ -376,6 +378,8 @@ def _unjunk_inside_notes(
             first_type[doc] = item.page_type or ""
 
     def inside_note(i: int) -> bool:
+        if not UNJUNK_IN_NOTES:
+            return False
         before = next((document[k] for k in range(i - 1, -1, -1) if document[k] is not None), None)
         after = next((document[k] for k in range(i + 1, len(inputs)) if document[k] is not None), None)
         return before is not None and before == after and first_type.get(before) == "Progress Note"

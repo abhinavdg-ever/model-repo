@@ -1,7 +1,6 @@
 """The short page in blank / junk pass 2 (2026-11-08, user; was 2026-11-03 "contained in a page
 within 3"): content in the top 20%; signed alone -> Main; a signature carried on from the page
-before -> Main; "End of Report" -> Junk / Cover Page; < 5 distinct words not on the page before
-or after -> Junk / Others."""
+before -> Main; < 5 distinct words not on the page before or after -> Junk / Others."""
 import modules.blank_junk.stage as stage
 from modules.blank_junk import method
 
@@ -110,13 +109,6 @@ def test_a_signature_carried_on_from_the_page_before_keeps_the_page(monkeypatch)
     assert _run({1: before, 2: HEADER + FOOTER}, signed={1}, signatures=footer)[2]["flag"] == "junk"
 
 
-def test_end_of_report_on_a_short_page_is_a_cover_page(monkeypatch):
-    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
-    words = " ".join(f"unique{i}" for i in range(30))
-    rows = _run({1: HEADER + BODY + FOOTER, 2: words + " *** End of Report ***"})
-    assert rows[2]["flag"] == "junk" and rows[2]["subtype"] == "Cover Page"
-
-
 def test_a_contents_page_is_junk_others():
     """2026-11-08 (user): Index / Contents as a title and page numbers -> Junk / Others."""
     text = "TABLE OF CONTENTS\nProgress Note ........ 3\nLab Results ......... 12\nDischarge Summary 20\n"
@@ -166,10 +158,16 @@ def test_a_page_an_earlier_rule_settled_is_not_a_candidate(monkeypatch):
     assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("HW")
 
 
+def test_repeated_content_is_off():
+    """2026-11-08 (user): a pair is a Duplicate, a Partial, or nothing."""
+    assert stage.REPEATED_CONTENT is False
+
+
 def test_a_shorter_page_mostly_in_another_is_repeated_content(monkeypatch):
     """2026-11-06 (user): shorter than the other, at least 80% of its length, and at most 3 of
     its distinct words not on it -> Repeated Content (Main, pointing at the earlier page), never
-    a Duplicate by this rule."""
+    a Duplicate by this rule. (Off since 2026-11-08; checked with it switched on.)"""
+    monkeypatch.setattr(stage, "REPEATED_CONTENT", True)
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     words = [f"finding{i}" for i in range(100)]
     longer = " ".join(words)

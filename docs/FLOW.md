@@ -110,17 +110,17 @@ A skipped page counts as done, so a chart of blank pages still completes.
 **Blank / junk pass 2, in order** (full logic: [`specials/BLANK_JUNK_LOGIC.md`](specials/BLANK_JUNK_LOGIC.md)):
 
 ```
-blank / tiny / placeholder ─► visual < 20 words (Main) ─► > 30% handwritten (Main)
+blank / tiny / placeholder / cover mark / End of Report (< 10 words)
+  ─► visual < 20 words (Main) ─► > 30% handwritten (Main)
   ─► Electronic Signature, none on the previous / next non-blank page, p(junk) < 0.95 (Main)
+  ─► lab result words (Main) ─► 2+ ICD-10 codes or Social History (Main)
   ─► card (Junk / Cards) ─► Fax header, unsigned (Junk / Letter/Fax)
   ─► contents page: "Index" / "Contents" title + page numbers (Junk / Others)
   ─► short page (content in the top 20%):
         a. the page before ends in its Electronic Signature, carried on here
            (provider name / credentials or a date on this page) ...... Main
-        b. "End of Report" ........................................... Junk / Cover Page
-        c. < 5 distinct words not on the previous / next page ........ Junk / Others
-  ─► the classifier
-  ─► keeps: lab results, ICD-10 / Social History; an invoice with an amount and a date
+        b. < 5 distinct words not on the previous / next page ........ Junk / Others
+  ─► the classifier (an invoice is Main only with an amount and an Invoice / Due Date)
 ```
 
 ---

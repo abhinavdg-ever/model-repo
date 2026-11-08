@@ -11,6 +11,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   R1 blank / tiny   no ink -> Blank. Not Visual: 0 characters, or the word "blank" in
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
+  R1 cover mark     Accept / Unaccept / Cover on a page of < 10 words -> Junk / Cover Page
+  R1E end of report "End of Report" on a page of < 10 words -> Junk / Cover Page (2026-11-08)
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Blank
   R3 card           pass 2, page-tag printed or visual: an ID or insurance card by
                     card_rules.detect (card or no card; no form / letter words, no section
@@ -31,17 +33,18 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     the previous / next non-blank page is signed too (2026-11-08, user)
     INDEX contents  "Index" / "Contents" as a title and 3+ lines with page numbers ->
                     Junk / Others (2026-11-08, user)
-    short page      content in the top 20%: stage._classify (signed alone / a signature
-                    carried on -> Main; End of Report -> Junk / Cover Page; < 5 words not on
-                    the page before or after -> Junk / Others; 2026-11-08, user)
+    short page      content in the top 20%: stage._classify (a signature carried on from
+                    the page before -> Main; < 5 words not on the previous / next non-blank
+                    page -> Junk / Others; 2026-11-08, user)
     R5 DistilBERT   p(junk) >= 0.70 -> Junk (DistilBERT's subtype); below -> Main (2026-11-03,
                     user: no review band; canon junk_at = review_junk_at = 0.7)
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
-After the ladder (``post_process``, 2026-10-26, user):
-  content kept     pass 2: a page with an Electronic Signature or provider details
-                   (name / credentials) extracted by kv_extract is never junk -> Main
-                   (a DOS alone no longer keeps a page: 2026-10-26, user)
+Pass 2 also has, right after the signature rule (2026-11-08, user: part of the ladder, not
+after it): LAB (Lab, Reference Range and Value on the page) -> Main and CLINICAL_CONTENT
+(2+ ICD-10 codes or a Social History header) -> Main; the classifier's Invoice is Main (Invoice
+page) with a money amount and an Invoice Date / Due Date, else Junk / Others. The full logic
+for people: docs/specials/BLANK_JUNK_LOGIC.md.
 
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
@@ -106,7 +109,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95, "INDEX": 0.95}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95, "INDEX": 0.95, "R1E": 1.0}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -604,10 +607,11 @@ def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optio
                       module="blank_junk")
 
 
-# 2026-11-05 (user): a cover mark on a page of fewer than COVER_MAX_WORDS words is a cover page
-# (pass 1 rule 4; was: the page's only words are cover marks, 2026-11-04).
+# A cover mark on a page of fewer than COVER_MAX_WORDS words is a cover page, both passes
+# (2026-11-05, user; 2026-11-08, user: under 10 words, was 5). "End of Report" on a page of
+# fewer than COVER_MAX_WORDS words is its own rule (R1E), right after.
 COVER_MARKS = frozenset({"accept", "accepted", "unaccept", "unaccepted", "cover"})
-COVER_MAX_WORDS = 5
+COVER_MAX_WORDS = 10
 # Pass 2 rule 7: the service's JUNK stands only while the raw p(keep) is below this.
 JUNK_UNLESS_KEEP_AT = 0.99
 
@@ -623,7 +627,8 @@ def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict (2026-11-04, user: the simplified ladder; first rule that fires wins).
 
     Pass 1 (Tesseract, rules only): Blank (no ink / stage 1 blank / no text / 'blank'),
-    'intentionally left blank' -> Blank, a cover mark in < 5 words -> Junk / Cover Page, < 15 characters
+    'intentionally left blank' -> Blank, a cover mark in < 10 words -> Junk / Cover Page,
+    End of Report in < 10 words -> Junk / Cover Page, < 15 characters
     -> Junk / Others; anything else waits for the Final OCR and pass 2.
 
     Pass 2 (final OCR + the teammate's PageClassifierService; p(keep) / p(junk) / p(blank)
@@ -683,6 +688,10 @@ def decide(inputs: PageInputs) -> Verdict:
     if mark is not None:
         return ruled(_junk_code("Cover Page"), "R1",
                      f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page")
+    end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
+    if end is not None:
+        return ruled(_junk_code("Cover Page"), "R1E",
+                     f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0)
     if not visual and chars < MIN_TEXT_CHARS:
         return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others")
     if not pass2:
@@ -720,6 +729,14 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["r4_not_alone"] = "Electronic Signature, but the previous or next non-blank page has one too"
     elif inputs.signed:
         votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
+    # 4a. a lab result: one term of every lab_keep group (Lab, Reference Range, Value) -> Main.
+    lab = lab_result_words(inputs)
+    if lab:
+        return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
+    # 4b. clinical content: 2+ ICD-10 codes or a Social History header -> Main.
+    clinical = clinical_content_signs(inputs)
+    if clinical:
+        return ruled(CODE_MAIN, CLINICAL_CONTENT_RULE, f"{CLINICAL_CONTENT_RULE}: {clinical} -> Main")
     if found_card is not None:
         found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
@@ -758,8 +775,10 @@ def decide(inputs: PageInputs) -> Verdict:
         near_card = subtype == "Invoice" and card is not None and bool(card.card_type)
         if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
             subtype = "Cards"
-        return ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
-                     conf.score(float(service["confidence"])))
+        verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
+                        conf.score(float(service["confidence"])))
+        # An invoice: Main (Invoice page) with an amount and an Invoice / Due Date, else Others.
+        return _keep_invoice(verdict, inputs)
     if service["flag"] == "BLANK":
         # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
         return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
@@ -809,12 +828,10 @@ INVOICE_RULE = "INVOICE"
 
 
 def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """The processing rules after the ladder, both passes: a junk page with Lab, Reference
-    Range and Value on it is a lab result -> Main (LAB, 2026-11-04); a junk page with 2+
-    ICD-10 codes or a Social History header -> Main (CLINICAL_CONTENT, 2026-11-06); a Junk /
-    Invoice page -> Main, page type Invoice / Invoice Page (INVOICE, 2026-11-05). Blank stays
-    Blank."""
-    return _keep_invoice(_keep_clinical_content(_keep_lab(verdict, inputs), inputs), inputs)
+    """Nothing after the ladder any more (2026-11-08, user): the lab result and clinical content
+    keeps are ladder rules (LAB, CLINICAL_CONTENT, after the signature) and the invoice check is
+    part of the classifier's rule. Kept so callers need no change."""
+    return verdict
 
 
 # 2026-11-06 (user): an ICD-10-CM code as printed ("I11.0", "E11.319", "F03.C0", "Z68.1"):
@@ -919,12 +936,17 @@ ANY_DATE = re.compile(
     re.IGNORECASE)
 
 
+# 2026-11-08 (user): the invoice's date is an Invoice Date or a Due Date.
+INVOICE_DATE_LABEL = re.compile(r"(?<![A-Za-z])(?:invoice|due)\s+date(?![A-Za-z])", re.IGNORECASE)
+
+
 def invoice_evidence(inputs: PageInputs) -> Optional[str]:
-    """Why a Junk / Invoice page is a real invoice (a money amount and a date on it), or None."""
+    """Why a Junk / Invoice page is a real invoice -- a money amount, and an Invoice Date or
+    Due Date with a date on the page -- or None."""
     text = f"{inputs.text or ''}\n{inputs.prelim_text or ''}"
-    money, date = MONEY.search(text), ANY_DATE.search(text)
-    if money and date:
-        return "an amount and a date on the page"
+    money, label, date = MONEY.search(text), INVOICE_DATE_LABEL.search(text), ANY_DATE.search(text)
+    if money and label and date:
+        return f"an amount and {label.group(0)} on the page"
     return None
 
 
@@ -935,9 +957,9 @@ def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
     if verdict.code != CODE_INVOICE:
         return verdict
     if invoice_evidence(inputs) is None:
-        verdict.votes["invoice_not_kept"] = "no money amount and date on the page"
+        verdict.votes["invoice_not_kept"] = "no money amount with an Invoice / Due Date on the page"
         return Verdict(CODE_OTHERS, verdict.confidence, verdict.rule,
-                       f"{verdict.reason}; no money amount and date on the page -> Junk / Others", verdict.votes)
+                       f"{verdict.reason}; no money amount with an Invoice / Due Date on the page -> Junk / Others", verdict.votes)
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE
     bert = inputs.bert or {}
