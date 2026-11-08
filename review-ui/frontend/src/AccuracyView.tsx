@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
+  Download,
   ExternalLink,
   Filter,
   Info,
@@ -50,6 +51,7 @@ import {
   matchBand,
   matchCounts,
   OVERALL_STREAMS,
+  pageAccuracyCsv,
   scoreChart,
   sumRates,
   sumTallies,
@@ -1137,6 +1139,16 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             ? "Date = Yes"
             : "Blank/Junk = Yes";
 
+  function downloadPageAccuracy() {
+    const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `page_level_accuracy_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="workspace accuracy-view">
       <div className="workspace-header">
@@ -1157,6 +1169,16 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                 Updating…
               </span>
             ) : null}
+            <button
+              type="button"
+              className="back-btn"
+              disabled={refreshing || filtered.length === 0}
+              title="Every scored page of the charts shown (filters applied): Match / No Match per metric, as a CSV"
+              onClick={downloadPageAccuracy}
+            >
+              <Download size={14} aria-hidden="true" />
+              Download Page Level Accuracy
+            </button>
             <button
               type="button"
               className="back-btn"
