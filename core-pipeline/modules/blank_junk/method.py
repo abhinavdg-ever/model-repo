@@ -27,7 +27,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
     otherwise       Main for now; Final OCR, then pass 2 decides
   pass 2 (Final OCR text):
     R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's
-                    p(junk) > 0.95 (a signed records-request letter is still junk)
+                    p(junk) > 0.95 (a signed records-request letter is still junk), and not when
+                    the previous / next non-blank page is signed too (2026-11-08, user)
     INDEX contents  "Index" / "Contents" as a title and 3+ lines with page numbers ->
                     Junk / Others (2026-11-08, user)
     short page      content in the top 20%: stage._classify (signed alone / a signature
@@ -470,6 +471,8 @@ class PageInputs:
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
+    # The previous or next non-blank page has an Electronic Signature too (stage._classify).
+    neighbour_signed: bool = False
     signature_known: bool = False  # the KV signature output was there to read
     provider: bool = False  # provider details extracted (kv_extract's provider name / credentials); pass 2
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
@@ -521,12 +524,13 @@ def _junk_code(subtype: str) -> int:
     return SUBTYPE_CODE.get(subtype, CODE_OTHERS)
 
 
-def signature_keeps(signed: bool, p_junk: Optional[float]) -> bool:
-    """THE signature condition (2026-11-07, user), used everywhere a signature saves a page:
-    kv_extract found an Electronic Signature on it AND the model's raw p(junk) is below
-    ``distilbert.signature_overruled_above`` (0.95). Signature words in the text never count.
-    No model score (None) leaves the signature standing."""
-    if not signed:
+def signature_keeps(signed: bool, p_junk: Optional[float], neighbour_signed: bool = False) -> bool:
+    """THE signature condition, used everywhere a signature saves a page, on every page:
+    kv_extract found an Electronic Signature on it, the previous and next non-blank pages have
+    none (2026-11-08, user: a signature shared with a neighbour does not save the page), AND the
+    model's raw p(junk) is below ``distilbert.signature_overruled_above`` (0.95; 2026-11-07).
+    Signature words in the text never count. No model score (None) leaves the signature standing."""
+    if not signed or neighbour_signed:
         return False
     return p_junk is None or float(p_junk) < _thresholds()["signature_overruled_above"]
 
@@ -707,11 +711,14 @@ def decide(inputs: PageInputs) -> Verdict:
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
         return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
-    # 4. signed (signature_keeps: Electronic Signature and raw p(junk) < 0.95).
-    if signature_keeps(inputs.signed, p_junk):
-        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, raw p(junk) "
+    # 4. signed (signature_keeps: Electronic Signature here, none on the previous / next non-blank
+    # page, raw p(junk) < 0.95), every page.
+    if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
+        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not on the previous / next page, raw p(junk) "
                                       f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
-    if inputs.signed:
+    if inputs.signed and inputs.neighbour_signed:
+        votes["r4_not_alone"] = "Electronic Signature, but the previous or next non-blank page has one too"
+    elif inputs.signed:
         votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
     if found_card is not None:
         found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
@@ -787,7 +794,7 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     """2026-11-02 (user): the fax word the page's header band prints when the page has no
     signature at all (canon ``fax_unsigned``); None otherwise or outside pass 2."""
     cfg = canon().raw.get("fax_unsigned") or {}
-    if inputs.pass_no != 2 or not cfg.get("enabled", True) or signature_keeps(inputs.signed, page_p_junk(inputs)):
+    if inputs.pass_no != 2 or not cfg.get("enabled", True) or signature_keeps(inputs.signed, page_p_junk(inputs), inputs.neighbour_signed):
         return None
     fax = _terms(cfg.get("fax_terms") or [])
     if fax is None:
@@ -886,11 +893,15 @@ CREDENTIAL = re.compile(
     r"MBBS|LCSW|LPC|PhD|PsyD|PharmD|R\.?N)\.?(?![A-Za-z])")
 
 
-def provider_or_date(text: str, provider: bool) -> Optional[str]:
+def provider_or_date(text: str, provider: bool, signer: str = "") -> Optional[str]:
     """What on a page carries a signature on from the page before: the provider's name /
-    credentials (kv_extract) or credentials or a date in the text."""
+    credentials (kv_extract), the signer's name (kv_extract, on the page before), or credentials
+    or a date in the text."""
     if provider:
         return "provider name / credentials (kv_extract)"
+    names = [w for w in re.findall(r"[A-Za-z]{3,}", signer or "") if w.casefold() not in {"electronically", "signed"}]
+    if names and all(re.search(rf"(?<![A-Za-z]){re.escape(w)}(?![A-Za-z])", text or "", re.IGNORECASE) for w in names):
+        return "the signer's name"
     cred = CREDENTIAL.search(text or "")
     if cred:
         return f"credentials '{cred.group(0)}'"

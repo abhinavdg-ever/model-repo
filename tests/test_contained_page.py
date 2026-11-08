@@ -10,13 +10,15 @@ FOOTER = "The information contained in this report is CONFIDENTIAL and LEGALLY P
 BODY = " ".join(f"finding{i} meniscus ligament effusion impression" for i in range(80)) + " "
 
 
-def _run(texts, signed=()):
+def _run(texts, signed=(), signatures=None):
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
     # 2026-11-05 (user): a short page's content ends in the top 20%.
     for i in texts:
         inputs[i].content_bottom = 0.9 if len(texts[i]) > 400 else 0.12
-    rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed), find_duplicates=True)
+        inputs[i].signed = i in signed
+    rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed),
+                           signatures=signatures or {}, find_duplicates=True)
     return {row["page_id"]: row for row in rows}
 
 
@@ -65,27 +67,47 @@ def test_only_the_pages_before_and_after_count(monkeypatch):
     assert rows[3]["flag"] == "junk" and rows[3]["subtype"] == "Others"
 
 
-def test_a_signed_short_page_is_kept_only_when_its_neighbours_are_not_signed(monkeypatch):
+def test_a_signature_keeps_a_page_only_when_the_pages_around_it_are_not_signed(monkeypatch):
+    """2026-11-08 (user), every page: Electronic Signature here, none on the previous / next
+    non-blank page, raw p(junk) < 0.95 -> Main (R4). Blank pages in between are skipped over."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER, 3: HEADER + BODY + FOOTER + " more"}
-    assert _run(texts, signed={2})[2]["flag"] == "not_blank_junk"
-    # the page after is signed too: the short page is judged on its words (none of its own).
-    assert _run(texts, signed={2, 3})[2]["flag"] == "junk"
+    rows = _run(texts, signed={2})
+    assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("R4")
+    # the page after is signed too: no signature keep, the short page is judged on its words.
+    rows = _run(texts, signed={2, 3})
+    assert rows[2]["flag"] == "junk" and "r4_not_alone" in rows[2]["votes"]
+    # a blank page between them does not hide the signed neighbour.
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER, 3: "", 4: HEADER + BODY + FOOTER + " more"},
+                signed={2, 4})
+    assert rows[2]["flag"] == "junk"
+    # p(junk) >= 0.95: no signature keep either.
+    assert not method.signature_keeps(True, 0.98) and method.signature_keeps(True, 0.5)
+    assert not method.signature_keeps(True, 0.5, neighbour_signed=True)
+    junky = {"p_keep": 0.02, "p_junk": 0.98, "service": {"flag": "JUNK", "subclass": "JUNK_OTHER",
+                                                         "confidence": 0.98, "decision_reason": "argmax"}}
+    assert method.decide(method.PageInputs(text=HEADER + BODY, pass_no=2, signed=True, bert=junky)).rule != "R4"
 
 
 def test_a_signature_carried_on_from_the_page_before_keeps_the_page(monkeypatch):
-    """2026-11-08 (user): the page before ends in a signature block (an Electronic Signature on
-    it), and this short page carries the name / credentials or a date -> Main."""
+    """2026-11-08 (user): the page before ends in its Electronic Signature (kv_extract: footer
+    band, or its signature sentence in the last paragraph), and this short page carries the
+    name / credentials or a date -> Main. Signature wording alone never counts."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
-    before = HEADER + BODY + FOOTER + "\n\nElectronically signed by"
-    rows = _run({1: before, 2: HEADER + FOOTER + " Watson MD"}, signed={1})
+    before = HEADER + BODY + FOOTER + "\n\nElectronically signed by Jane Watson"
+    footer = {1: {"region": "footer", "sentence": "", "provider_name": "Jane Watson"}}
+    rows = _run({1: before, 2: HEADER + FOOTER + " MD"}, signed={1}, signatures=footer)
     assert rows[2]["flag"] == "not_blank_junk" and "signature_continued" in rows[2]["votes"]["short_page"]
-    # no signature block at the end of the page before: judged on its words.
-    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Watson MD"}, signed={1})
-    assert rows[2]["flag"] == "junk"
+    # mid page, but its sentence is the last paragraph: still the end of the page.
+    mid = {1: {"region": "mid", "sentence": "Electronically signed by Jane Watson", "provider_name": "Jane Watson"}}
+    assert _run({1: before, 2: HEADER + FOOTER + " 01/02/2024"}, signed={1}, signatures=mid)[2]["flag"] == "not_blank_junk"
+    # the signature sits mid page, not at its end: judged on its words.
+    early = {1: {"region": "header", "sentence": "finding1 meniscus", "provider_name": "Jane Watson"}}
+    assert _run({1: before, 2: HEADER + FOOTER + " MD"}, signed={1}, signatures=early)[2]["flag"] == "junk"
+    # no Electronic Signature on the page before (the wording alone): judged on its words.
+    assert _run({1: before, 2: HEADER + FOOTER + " MD"}, signatures=footer)[2]["flag"] == "junk"
     # nothing of the signature here (no name, credentials or date): judged on its words.
-    rows = _run({1: before, 2: HEADER + FOOTER}, signed={1})
-    assert rows[2]["flag"] == "junk"
+    assert _run({1: before, 2: HEADER + FOOTER}, signed={1}, signatures=footer)[2]["flag"] == "junk"
 
 
 def test_end_of_report_on_a_short_page_is_a_cover_page(monkeypatch):

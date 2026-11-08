@@ -107,19 +107,18 @@ page ──► printed? ── no (handwritten / form / blank / low quality) ─
 A skip is recorded as `page_stage_status.status = 'skipped'` with a `skip_reason`.
 A skipped page counts as done, so a chart of blank pages still completes.
 
-**Blank / junk pass 2, in order** (`modules/blank_junk/README.md` has the full ladder):
+**Blank / junk pass 2, in order** (full logic: [`specials/BLANK_JUNK_LOGIC.md`](specials/BLANK_JUNK_LOGIC.md)):
 
 ```
-blank / tiny / placeholder ─► card (Junk / Cards) ─► visual < 20 words (Main)
-  ─► > 30% handwritten (Main) ─► Electronic Signature and raw p(junk) < 0.95 (Main)
-  ─► Fax header, unsigned (Junk / Letter/Fax)
+blank / tiny / placeholder ─► visual < 20 words (Main) ─► > 30% handwritten (Main)
+  ─► Electronic Signature, none on the previous / next non-blank page, p(junk) < 0.95 (Main)
+  ─► card (Junk / Cards) ─► Fax header, unsigned (Junk / Letter/Fax)
   ─► contents page: "Index" / "Contents" title + page numbers (Junk / Others)
   ─► short page (content in the top 20%):
-        1. signed, the pages before and after are not ............... Main
-        2. the page before ends in a signature block carried on here
+        a. the page before ends in its Electronic Signature, carried on here
            (provider name / credentials or a date on this page) ...... Main
-        3. "End of Report" ........................................... Junk / Cover Page
-        4. < 5 distinct words not on the page before or after ........ Junk / Others
+        b. "End of Report" ........................................... Junk / Cover Page
+        c. < 5 distinct words not on the previous / next page ........ Junk / Others
   ─► the classifier
   ─► keeps: lab results, ICD-10 / Social History; an invoice with an amount and a date
 ```

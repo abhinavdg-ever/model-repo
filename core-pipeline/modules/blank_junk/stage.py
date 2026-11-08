@@ -119,7 +119,6 @@ from classify import (  # noqa: E402
     word_overlap,
 )
 import method  # noqa: E402
-from modules.continuity.signature import has_signature_section  # noqa: E402
 from model_bridge import model_scores  # noqa: E402
 
 STAGE = "blank_junk"
@@ -377,6 +376,7 @@ def _classify(
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
     signed_ids: Optional[set[int]] = None,
+    signatures: Optional[dict[int, dict[str, str]]] = None,
     dos_by_id: Optional[dict[int, frozenset[str]]] = None,
     find_duplicates: bool = True,
     exact_near: bool = False,
@@ -410,6 +410,30 @@ def _classify(
     (2026-10-29, user).
     """
     prior = set(prior_main_ids or ())
+    signed = set(signed_ids or ())
+    # The previous / next non-blank page of each page (2026-11-08, user): a page with no text,
+    # or one stage 1 found no ink on, is skipped over.
+    order = [page["id"] for page in pages]
+
+    def _blank(page_id: int) -> bool:
+        return (not re.search(r"[A-Za-z0-9]", texts.get(page_id) or "")
+                or bool(getattr((inputs or {}).get(page_id), "no_ink", False)))
+
+    around: dict[int, tuple[Optional[int], Optional[int]]] = {}
+    last: Optional[int] = None
+    for page_id in order:
+        around[page_id] = (last, None)
+        if not _blank(page_id):
+            last = page_id
+    following: Optional[int] = None
+    for page_id in reversed(order):
+        around[page_id] = (around[page_id][0], following)
+        if not _blank(page_id):
+            following = page_id
+
+    def _neighbour_signed(page_id: int) -> bool:
+        return any(n is not None and n in signed for n in around.get(page_id, (None, None)))
+
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
@@ -418,6 +442,7 @@ def _classify(
         text = texts.get(page_id) or ""
         page_inputs = (inputs or {}).get(page_id) or method.PageInputs(text=text, pass_no=1)
         page_inputs.text = text
+        page_inputs.neighbour_signed = _neighbour_signed(page_id)
         # 2026-11-04 (user): pass 1 is rules only; the model runs in pass 2.
         scores = (model_scores(text, docling=(docling_pages or {}).get(page_id))
                   if text.strip() and page_inputs.pass_no == 2 else {})
@@ -428,13 +453,12 @@ def _classify(
             votes=verdict.votes,
         )
 
-    signed = set(signed_ids or ())
-
     def _signature_page(page_id: int) -> bool:
-        """method.signature_keeps on this page's Electronic Signature and raw p(junk)."""
+        """method.signature_keeps on this page: Electronic Signature, none on the previous / next
+        non-blank page, raw p(junk) < 0.95."""
         bert = ((by_id.get(page_id) or {}).get("votes") or {}).get("bert")
         p_junk = bert.get("p_junk") if isinstance(bert, dict) else None
-        return method.signature_keeps(page_id in signed, p_junk)
+        return method.signature_keeps(page_id in signed, p_junk, _neighbour_signed(page_id))
 
     def _main(page_id: int) -> bool:
         if page_id in by_id:
@@ -709,29 +733,29 @@ def _classify(
 
     # The short page (2026-11-08, user; replaces the 2026-11-05 "contained in a page within 3"):
     # a page whose content ends in the top 20% of the page (no line positions: never short).
-    # Candidates: every page that reached the classifier, whatever it made of it, and a page the
-    # signature kept (R4); a page another early rule settled (blank, visual, handwritten, card,
-    # fax, contents) is not. Invoice pages stay Main. In order, the first that applies decides:
-    #   1. signed (method.signature_keeps) and neither the page before nor after is -> Main;
-    #   2. the page before ends in a signature block (Electronic Signature on it or on this page)
-    #      that carries on here: this page has the provider's name / credentials or a date -> Main;
-    #   3. "End of Report" on it -> Junk / Cover Page;
-    #   4. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
+    # Candidates: every page that reached the classifier, whatever it made of it; a page an
+    # earlier rule settled (blank, visual, handwritten, signed, card, fax, contents) is not.
+    # Invoice pages stay Main. "Before" / "after" = the previous / next non-blank page.
+    # In order, the first that applies decides:
+    #   1. the page before ends in its Electronic Signature (kv_extract: footer band, or the
+    #      signature sentence in its last paragraph) and this page carries it on: the provider's
+    #      name / credentials (kv_extract), the signer's name, credentials or a date -> Main;
+    #   2. "End of Report" on it -> Junk / Cover Page;
+    #   3. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
     #      the only ones left are "Diagnosis" / "Visit Diagnosis": a diagnosis page, kept).
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         top = float(cfg.get("top_fraction", 0.20))
         junk_below = int(cfg.get("junk_below_unique_words", 5))
-        order = [page["id"] for page in pages]
         words_of: dict[int, frozenset[str]] = {}
 
-        def _words(index: int) -> frozenset[str]:
-            if not 0 <= index < len(order):
+        def _words(page_id: Optional[int]) -> frozenset[str]:
+            if page_id is None:
                 return frozenset()
-            if index not in words_of:
-                words_of[index] = frozenset(unique_words(texts.get(order[index]) or ""))
-            return words_of[index]
+            if page_id not in words_of:
+                words_of[page_id] = frozenset(unique_words(texts.get(page_id) or ""))
+            return words_of[page_id]
 
         def _keep(pid: int, rule: str, why: str) -> None:
             own = by_id.get(pid) or {}
@@ -751,39 +775,36 @@ def _classify(
             partial.discard(pid)
             contained.add(pid)
 
-        for i, pid in enumerate(order):
+        for pid in order:
             own = by_id.get(pid) or {}
             votes = own.get("votes") or {}
             if pid in dup_of or not (texts.get(pid) or "").strip():
                 continue
-            if not (votes.get("reached_classifier") or votes.get("rule") == "R4"):
+            if not votes.get("reached_classifier"):
                 continue
             bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
             if bottom is None or bottom > top or method.is_invoice_page(own.get("reason")):
                 continue
-            prev_id = order[i - 1] if i > 0 else None
-            next_id = order[i + 1] if i + 1 < len(order) else None
+            prev_id, next_id = around.get(pid, (None, None))
             short = f"content ends at {bottom:.0%} <= {top:.0%} of the page"
-            # 1. its own signature, not on either neighbour.
-            if _signature_page(pid) and not any(n is not None and n in signed for n in (prev_id, next_id)):
-                _keep(pid, "signed", f"{short}; Electronic Signature here, not on the page before or after")
-                continue
-            # 2. the signature block at the end of the page before, carried on here.
-            if prev_id is not None and (prev_id in signed or pid in signed):
-                tail = last_paragraph(texts.get(prev_id) or "")
-                carried = method.provider_or_date(texts.get(pid) or "",
-                                                  bool(getattr((inputs or {}).get(pid), "provider", False)))
-                if carried and has_signature_section(tail):
+            # 1. the page before ends in its Electronic Signature (kv_extract: in the footer band,
+            # or its signature sentence in that page's last paragraph), carried on here.
+            prev_sig = (signatures or {}).get(prev_id) if prev_id is not None and prev_id in signed else None
+            if prev_sig and signature_ends_page(prev_sig, texts.get(prev_id) or ""):
+                carried = method.provider_or_date(
+                    texts.get(pid) or "", bool(getattr((inputs or {}).get(pid), "provider", False)),
+                    signer=prev_sig.get("provider_name") or "")
+                if carried:
                     _keep(pid, "signature_continued",
-                          f"{short}; page {page_by_id[prev_id].get('page_number')} ends in a signature block, "
-                          f"carried on here ({carried})")
+                          f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its Electronic "
+                          f"Signature ({prev_sig.get('region') or 'last paragraph'}), carried on here ({carried})")
                     continue
-            # 3. End of Report.
+            # 2. End of Report.
             if method.END_OF_REPORT.search(texts.get(pid) or ""):
                 _junk(pid, CODE_COVER_PAGE, f"{SHORT_MARK}end_of_report: {short}; 'End of Report' -> Junk / Cover Page")
                 continue
-            # 4. what it adds to the pages before and after.
-            left = _words(i) - _words(i - 1) - _words(i + 1)
+            # 3. what it adds to the pages before and after.
+            left = _words(pid) - _words(prev_id) - _words(next_id)
             if len(left) >= junk_below:
                 continue
             if left and left <= KEEP_IF_ONLY_ADDED and "diagnosis" in left:
@@ -820,6 +841,35 @@ def _classify(
         if pid in dup_of or pid in partial or pid in contained:
             rows.append(by_id[pid])
     return rows
+
+
+def signature_details(chart_name: str) -> dict[str, dict[str, str]]:
+    """Page name -> kv_extract's Electronic Signature on it (provider_signature.csv, signed rows):
+    region (header / mid / footer), the signature sentence, provider name / credentials, date."""
+    import csv
+
+    from common.db.paths import imaging_csv
+
+    path = imaging_csv(chart_name, "provider_signature")
+    if not path.is_file():
+        return {}
+    keep = ("region", "sentence", "provider_name", "provider_credentials", "signature_date")
+    with path.open(newline="", encoding="utf-8") as handle:
+        return {str(row.get("page_name") or "").strip(): {k: str(row.get(k) or "") for k in keep}
+                for row in csv.DictReader(handle)
+                if str(row.get("signature_present") or "").strip().casefold() == "y"}
+
+
+def signature_ends_page(signature: dict[str, str], text: str, share: float = 0.6) -> bool:
+    """kv_extract's signature is at the end of the page: in the footer band, or most of its
+    signature sentence's words are in the page's last paragraph."""
+    if "footer" in (signature.get("region") or "").casefold():
+        return True
+    sentence = set(re.findall(r"[a-z0-9]+", (signature.get("sentence") or "").lower()))
+    if not sentence:
+        return False
+    tail = set(re.findall(r"[a-z0-9]+", last_paragraph(text).lower()))
+    return len(sentence & tail) >= share * len(sentence)
 
 
 def last_paragraph(text: str, max_lines: int = 6) -> str:
@@ -1295,19 +1345,22 @@ def _run_pass(
             inputs = _page_inputs(ctx, pass_no, quality)
         best_matches: dict[str, dict[str, Any]] = {}
         signed_ids: set[int] = set()
+        signatures: dict[int, dict[str, str]] = {}
         dos_by_id: dict[int, frozenset[str]] = {}
         if pass_no == 2:
             from modules.continuity.signature import signed_page_names
 
             signed_names = signed_page_names(ctx.chart_name)
             signed_ids = {page["id"] for page in ctx.pages if page["page_name"] in signed_names}
+            details = signature_details(ctx.chart_name)
+            signatures = {page["id"]: details[page["page_name"]] for page in ctx.pages if page["page_name"] in details}
             staged_dos = extracted_dos(ctx.chart_name)
             dos_by_id = {page["id"]: staged_dos[page["page_name"]]
                          for page in ctx.pages if staged_dos.get(page["page_name"])}
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
-            signed_ids=signed_ids, dos_by_id=dos_by_id,
+            signed_ids=signed_ids, signatures=signatures, dos_by_id=dos_by_id,
             find_duplicates=pass_no == 2,
             exact_near=pass_no == 1,
         )
