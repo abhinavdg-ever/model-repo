@@ -5,7 +5,7 @@ A quick, end-to-end picture. It covers **today** (Postgres; the API runs charts 
 the client VM. Detail lives in:
 - [FLOW.md](../FLOW.md): what each stage does;
 - [API.md](../API.md): environment, models and the API;
-- [deploy/README.md](../../deploy/README.md): the copy into Azure DevOps.
+- §5.1 below: the copy into Azure DevOps (robocopy + the DevOps `.gitignore`).
 
 ---
 
@@ -140,15 +140,12 @@ curl -s -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json
 curl -s "localhost:8001/api/runs/<run_id>?wait=60"
 ```
 
-```powershell
-# Windows laptop (PowerShell); paste the key from the VM's .env
-$key = Read-Host 'ORCHESTRATOR_API_KEY'
-$body = @{ input_type='blob'; container_name='imaging-pipeline'; input_path='Raw_Input/Run1/Batch1/DEID_PNGs'
-           chart_name='52743839_44976074'; output_path='Processed/Run1' } | ConvertTo-Json
-$run = Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/run `
-       -Headers @{ 'X-API-Key' = $key } -ContentType 'application/json' -Body $body
-Invoke-RestMethod "http://172.20.4.170:8001/api/runs/$($run.run_id)?wait=60"
-curl.exe -s http://172.20.4.170:8001/health      # run_mode, api_key_required, queue
+```bat
+:: Windows laptop (Command Prompt); paste the key from the VM's .env
+set "KEY=<ORCHESTRATOR_API_KEY>"
+curl -s -X POST http://172.20.4.170:8001/api/charts/run -H "X-API-Key: %KEY%" -H "Content-Type: application/json" -d "{\"input_type\":\"blob\",\"container_name\":\"imaging-pipeline\",\"input_path\":\"Raw_Input/Run1/Batch1/DEID_PNGs\",\"chart_name\":\"52743839_44976074\",\"output_path\":\"Processed/Run1\"}"
+curl -s "http://172.20.4.170:8001/api/runs/<run_id>?wait=60"
+curl -s http://172.20.4.170:8001/health
 ```
 
 **How many workers on the 16 CPU / 64 GB VM:**
@@ -181,7 +178,7 @@ curl.exe -s http://172.20.4.170:8001/health      # run_mode, api_key_required, q
 └── utilities/  docs/
 ```
 
-`training/`, `scripts/`, `tests/` and `deploy/` are on GitHub only. They never reach the VM.
+`training/`, `scripts/` and `tests/` are on GitHub only (the DevOps `.gitignore`). They never reach the VM.
 
 ---
 
@@ -194,17 +191,87 @@ The 2026-11-09 release (Postgres only, with the new settings and chart re-runs) 
 Mac ──git push──▶ GitHub ──Download ZIP──▶ Windows laptop ──push──▶ Azure DevOps ──git pull──▶ Ubuntu VM
 ```
 
-### 5.1 Windows laptop (PowerShell), each release
+### 5.1 Windows laptop (Command Prompt), each release
 
-```powershell
-# 1. github.com → Code → Download ZIP, then extract it
-Expand-Archive "$env:USERPROFILE\Downloads\model-repo-main.zip" "$env:USERPROFILE\Downloads" -Force
+```bat
+:: Windows (Command Prompt)
+:: 1. github.com/abhinavdg-ever/model-repo -> Code -> Download ZIP, then unpack it
+cd /d %USERPROFILE%\Downloads
+rmdir /s /q model-repo-main 2>nul
+tar -xf model-repo-main.zip
 
-# 2. Copy into the DevOps folder (drops training/scripts/tests; keeps .env, models, logs)
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\model-repo-main\deploy\prepare_for_devops.ps1" `
-    -Source "$env:USERPROFILE\Downloads\model-repo-main" -Target "C:\work\advantmed-devops"
+:: 2. Copy into the DevOps folder. /MIR makes it match GitHub (deleted files go too); the
+::    /XD folders (git, venvs, weights, logs, chart output, review data, db-utilities input)
+::    and .env files are neither copied nor deleted. Full paths: other folders share names.
+set SRC=%USERPROFILE%\Downloads\model-repo-main
+set DST=C:\work\advantmed-devops
+robocopy "%SRC%" "%DST%" /MIR /NFL /NDL /NP /XF .env ._* .DS_Store /XD .git .venv .venv-test node_modules "%SRC%\core-pipeline\models" "%DST%\core-pipeline\models" "%SRC%\core-pipeline\logs" "%DST%\core-pipeline\logs" "%SRC%\core-pipeline\outputs" "%DST%\core-pipeline\outputs" "%SRC%\review-ui\data" "%DST%\review-ui\data" "%SRC%\db-utilities\input" "%DST%\db-utilities\input"
 
-# 3. Push C:\work\advantmed-devops to Azure DevOps as usual
+:: 3. The small model files GitHub keeps (heads, configs, READMEs): added, never deleting
+::    the big weights already in the DevOps folder.
+robocopy "%SRC%\core-pipeline\models" "%DST%\core-pipeline\models" /E /NFL /NDL /NP /XF ._*
+
+:: 4. Your DevOps .gitignore (the GitHub one was just copied over it)
+copy /y C:\work\devops.gitignore "%DST%\.gitignore"
+
+:: 5. Push C:\work\advantmed-devops to Azure DevOps as usual
+```
+
+robocopy exit codes 0–7 are success (1 = files copied); 8 or more is a failure.
+
+**Once:** save this as `C:\work\devops.gitignore` (step 4 copies it in each release). It keeps
+training, scripts, tests, `.env` files, big weights and run output out of Azure DevOps:
+
+```gitignore
+# Azure DevOps repo .gitignore (kept as C:\work\devops.gitignore, copied in each release).
+# GitHub keeps everything; DevOps and the VM get only what runs.
+
+# --- Development only: on GitHub, never on the VM ---
+training/
+scripts/
+tests/
+.venv-test/
+CLAUDE.md
+PLAN.md
+
+# --- Secrets: each host keeps its own .env (made from .env.example) ---
+.env
+**/.env
+!**/.env.example
+
+# --- Weights: the big ones are copied onto the VM by hand, never committed. The small
+#     files GitHub keeps (joblib heads, heads.pt, the hw pkl) DO go through.
+*.safetensors
+*.onnx
+*.bin
+*.pth
+core-pipeline/models/blank-junk/bert/
+core-pipeline/models/ner/
+core-pipeline/models/rapidocr/
+core-pipeline/models/docling/
+core-pipeline/models/semantic-model/
+
+# --- Written at run time ---
+core-pipeline/logs/**
+!core-pipeline/logs/README.md
+core-pipeline/outputs/charts/*
+!core-pipeline/outputs/charts/.gitkeep
+core-pipeline/outputs/metadata/*
+!core-pipeline/outputs/metadata/.gitkeep
+utilities/output/
+db-utilities/input/*
+!db-utilities/input/.gitkeep
+*.log
+
+# --- Tools and OS files ---
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+._*
 ```
 
 ### 5.2 Ubuntu VM (bash), each release
@@ -256,15 +323,15 @@ come from Blob automatically.
 
 ## 6. Running and watching
 
-| Task | Ubuntu VM (bash) | Windows laptop (PowerShell, VM at 172.20.4.170) |
+| Task | Ubuntu VM (bash) | Windows laptop (Command Prompt, VM at 172.20.4.170) |
 |---|---|---|
-| Health | `curl -s localhost:8001/health` | `curl.exe -s http://172.20.4.170:8001/health` |
-| Run one chart | see below | same body with `curl.exe` |
-| Chart progress | `curl -s localhost:8001/api/charts/by-name/<chart>` | `curl.exe -s http://172.20.4.170:8001/api/charts/by-name/<chart>` |
+| Health | `curl -s localhost:8001/health` | `curl -s http://172.20.4.170:8001/health` |
+| Run one chart | see below | same body with `curl` (each `"` in the JSON written as `\"`) |
+| Chart progress | `curl -s localhost:8001/api/charts/by-name/<chart>` | `curl -s http://172.20.4.170:8001/api/charts/by-name/<chart>` |
 | Live logs | `docker compose logs -f api` (queue mode: `logs -f worker`), in `core-pipeline/` | — |
 | Log files | `core-pipeline/logs/` | — |
 | Cost and time per day | `docker compose exec api python cli.py usage --days 7` | — |
-| Stage list | `curl -s localhost:8001/api/stages` | `curl.exe -s http://172.20.4.170:8001/api/stages` |
+| Stage list | `curl -s localhost:8001/api/stages` | `curl -s http://172.20.4.170:8001/api/stages` |
 
 Run one chart from Blob:
 
@@ -314,10 +381,10 @@ python ../utilities/upload_charts_to_blob.py "/Volumes/Extreme SSD/Advantmed/Tra
   --prefix raw_input/Batch1/Run1
 ```
 
-```powershell
-# Windows laptop (needs Python 3.12 and core-pipeline\.venv; otherwise upload the
-# chart folders with Azure Storage Explorer into raw_input/Batch1/Run1/)
-cd core-pipeline; .venv\Scripts\Activate.ps1
+```bat
+:: Windows laptop (needs Python 3.12 and core-pipeline\.venv; otherwise upload the
+:: chart folders with Azure Storage Explorer into raw_input/Batch1/Run1/)
+cd core-pipeline && .venv\Scripts\activate.bat
 python ..\utilities\upload_charts_to_blob.py "D:\Test Charts" --prefix raw_input/Batch1/Run1
 ```
 
@@ -331,10 +398,9 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
   "input_path":"raw_input/Batch1/Run1","output_path":"Processed/Batch1/Run1"}'
 ```
 
-```powershell
-# Windows laptop
-$body = '{"input_type":"blob","container_name":"imaging-pipeline","input_path":"raw_input/Batch1/Run1","output_path":"Processed/Batch1/Run1"}'
-Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/batch-run -ContentType 'application/json' -Body $body
+```bat
+:: Windows laptop (Command Prompt)
+curl -s -X POST http://172.20.4.170:8001/api/charts/batch-run -H "Content-Type: application/json" -d "{\"input_type\":\"blob\",\"container_name\":\"imaging-pipeline\",\"input_path\":\"raw_input/Batch1/Run1\",\"output_path\":\"Processed/Batch1/Run1\"}"
 ```
 
 **3. Watch and review.** `curl -s localhost:8001/api/charts/by-name/<chart>` shows the

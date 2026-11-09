@@ -20,7 +20,7 @@ Cosmos, Service Bus and the API key are in `core-pipeline/.env` (values never in
   job, not by core-pipeline (§3).
 - **Monitoring on Postgres:** a `run_usage` row per chart run, daily and hourly views,
   `python cli.py usage` (§5a).
-- **`deploy/`:** the GitHub → Azure DevOps copy leaves out `training/`, `scripts/`, `tests/`.
+- **GitHub → Azure DevOps copy:** done by hand (robocopy + a DevOps `.gitignore`, VM guide §5.1); `training/`, `scripts/`, `tests/` stay out of DevOps.
 
 ## 1. Goals
 
@@ -139,7 +139,6 @@ advantmed-imaging-pipeline/              (one GitHub repo; three deployables)
 │   └── .env / .env.example              DATABASE_URL (later Cosmos) + AZURE_STORAGE_*
 │
 ├── schema/                            Postgres: schema.sql, migrate.sql, migrations/
-├── deploy/                            GitHub → DevOps copy, client .gitignore
 ├── training/  scripts/  tests/        GitHub only, never on the VM
 ├── utilities/   docs/
 └── README.md
@@ -401,13 +400,7 @@ can be compared one for one.
 
 Development happens on the Mac. On the client side the code arrives as a **zip downloaded from GitHub on the Windows laptop** (no git there), goes to **Azure DevOps**, and is deployed on the **Ubuntu VM (16 CPU, 64 GB RAM)**. Every round trip is slow, so each phase ships as one zip with every change for that phase.
 
-**Windows laptop (PowerShell): refresh the code.** `deploy/prepare_for_devops.ps1` copies the GitHub zip into the DevOps folder without `training/`, `scripts/` and `tests/`, keeps `.env` files and weights, and installs `deploy/devops.gitignore`. Full steps are in `deploy/README.md`.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\model-repo-main\deploy\prepare_for_devops.ps1" `
-    -Source "$env:USERPROFILE\Downloads\model-repo-main" -Target "C:\work\advantmed-devops"
-# then push C:\work\advantmed-devops to Azure DevOps as usual
-```
+**Windows laptop (Command Prompt): refresh the code.** Unzip the GitHub download, `robocopy /MIR` it into the DevOps folder (excluding `.env` files, weights, logs and run output), then copy in the DevOps `.gitignore`, which keeps `training/`, `scripts/` and `tests/` out. Full steps: VM guide §5.1.
 
 **Ubuntu VM (bash): deploy core-pipeline** (each deployment is started from its own folder)
 
@@ -444,7 +437,7 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 | 7 | Deployments | **core-pipeline, review-ui and review-ui-client are separate infra** |
 | 8 | Pipeline output | `core-pipeline/outputs/` is temporary; **review-ui is DB only, no Local mode** |
 | 9 | Short term | **A `DB_BACKEND=postgres\|cosmos` toggle** in core-pipeline and review-ui until Postgres is retired |
-| 10 | Client copy | `training/`, `scripts/`, `tests/` stay on GitHub only; DevOps and the VM get the runtime (`deploy/`) |
+| 10 | Client copy | `training/`, `scripts/`, `tests/` stay on GitHub only; DevOps and the VM get the runtime (the DevOps `.gitignore`, VM guide §5.1) |
 | 11 | Logic folder name | `core-pipeline/modules/` (not `model/`), imported as `modules.<concern>` (built 2026-11-07) |
 | 12 | review-ui layout | `frontend/` and `backend/` stay, each deployable on its own; the frontend talks only to the backend |
 | 13 | Models and canon delivery | Blob `resources/` with `manifest.json`: models loaded at worker start, canon checked before each run; canon also kept in git |
@@ -536,9 +529,9 @@ python ../utilities/tag_chart.py 52743839_44976074                          # sh
 python ../utilities/tag_chart.py --list-tags                                # every tag in use
 ```
 
-```powershell
-# Windows (PowerShell)
-cd core-pipeline; .venv\Scripts\Activate.ps1
+```bat
+:: Windows (Command Prompt)
+cd core-pipeline && .venv\Scripts\activate.bat
 python ..\utilities\tag_chart.py 52743839_44976074 --tag Special
 python ..\utilities\tag_chart.py --from-file charts.txt --tag Special
 python ..\utilities\tag_chart.py --list-tags
@@ -563,10 +556,10 @@ python ../utilities/pull_client_ground_truth.py --list-backups
 python ../utilities/pull_client_ground_truth.py --restore gt_backup_20261108_093000   # undo
 ```
 
-```powershell
-# Windows (PowerShell)
-cd core-pipeline; .venv\Scripts\Activate.ps1
-$env:CLIENT_DATABASE_URL = "postgresql://...the client database..."
+```bat
+:: Windows (Command Prompt)
+cd core-pipeline && .venv\Scripts\activate.bat
+set "CLIENT_DATABASE_URL=postgresql+psycopg://aiuser:<password>@172.20.4.170:5432/imaging_outputs_client"
 python ..\utilities\pull_client_ground_truth.py
 python ..\utilities\pull_client_ground_truth.py --apply
 python ..\utilities\pull_client_ground_truth.py --restore gt_backup_20261108_093000

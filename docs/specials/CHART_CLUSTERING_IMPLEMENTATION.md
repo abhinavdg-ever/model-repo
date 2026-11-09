@@ -462,11 +462,13 @@ python apply_names.py && python evaluate.py
 scp -r output/chart-types/v1 user@VM:~/advantmed-imaging-pipeline/core-pipeline/models/chart-types/
 ```
 
-**Windows laptop (PowerShell)**: the reviewer fills in the sheets and copies the model to the VM
+**Windows laptop (Command Prompt)**: the reviewer fills in the sheets and copies the model to the VM
 
-```powershell
-start .\note_looks.xlsx; start .\types.xlsx                # name looks and types, save
-scp -r .\output\chart-types\v1 user@VM:~/advantmed-imaging-pipeline/core-pipeline/models/chart-types/
+```bat
+start note_looks.xlsx
+start types.xlsx
+:: name the looks and types, save, then:
+scp -r output\chart-types\v1 user@VM:~/advantmed-imaging-pipeline/core-pipeline/models/chart-types/
 ```
 
 **Ubuntu VM (bash)**: switch on in shadow, re-type a chart, run the weekly job by hand

@@ -8,7 +8,7 @@ Two services, started separately. They share only Postgres and Azure Blob, and t
 | review-ui API | uvicorn on port 8002 | http://localhost:8002/docs |
 | review-ui web | `npm run dev` | http://localhost:5174 |
 
-On Windows use `py -3.12`, `.venv\Scripts\Activate.ps1`, `curl.exe`, and `$env:NAME = "value"`. If activation is blocked: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
+On Windows (Command Prompt) use `py -3.12`, `.venv\Scripts\activate.bat`, `curl`, and `set "NAME=value"`. In a JSON body, write each `"` as `\"`.
 
 ---
 
@@ -130,9 +130,9 @@ python -m common.resources sync --model sequencing          # pull now, into mod
 python -m common.resources sync --dest /tmp/check           # pull into another folder
 ```
 
-```powershell
-# Windows (PowerShell)
-cd core-pipeline; .venv\Scripts\Activate.ps1
+```bat
+:: Windows (Command Prompt)
+cd core-pipeline && .venv\Scripts\activate.bat
 python ..\utilities\publish_resources.py --model sequencing --version v2 --dry-run
 python ..\utilities\publish_resources.py --model sequencing --version v2
 python ..\utilities\publish_resources.py --model page-family --version v4 --from C:\data\page-family
@@ -295,9 +295,9 @@ cd core-pipeline && source .venv/bin/activate
 python -m apps.worker.queue_worker
 ```
 
-```powershell
-# Windows (PowerShell)
-cd core-pipeline; .venv\Scripts\Activate.ps1
+```bat
+:: Windows (Command Prompt)
+cd core-pipeline && .venv\Scripts\activate.bat
 python -m apps.worker.queue_worker
 ```
 
@@ -316,15 +316,12 @@ RUN=$(curl -s -X POST localhost:8001/api/charts/run -H 'Content-Type: applicatio
 curl -s "localhost:8001/api/runs/$RUN?wait=60" | python3 -m json.tool
 ```
 
-```powershell
-# Windows (PowerShell), API on the VM
-$key = ((Get-Content core-pipeline\.env | Select-String '^ORCHESTRATOR_API_KEY=') -replace '^ORCHESTRATOR_API_KEY=','')
-$body = @{ input_type='blob'; container_name='imaging-pipeline'
-           input_path='Raw_Input/Run1/Batch1/DEID_PNGs'; chart_name='52743839_44976074'
-           output_path='Processed/Run1' } | ConvertTo-Json
-$run = Invoke-RestMethod -Method Post -Uri http://172.20.4.170:8001/api/charts/run `
-       -Headers @{ 'X-API-Key' = $key } -ContentType 'application/json' -Body $body
-Invoke-RestMethod "http://172.20.4.170:8001/api/runs/$($run.run_id)?wait=60"
+```bat
+:: Windows (Command Prompt), API on the VM; paste the key from the VM's core-pipeline\.env
+set "KEY=<ORCHESTRATOR_API_KEY>"
+curl -s -X POST http://172.20.4.170:8001/api/charts/run -H "X-API-Key: %KEY%" -H "Content-Type: application/json" -d "{\"input_type\":\"blob\",\"container_name\":\"imaging-pipeline\",\"input_path\":\"Raw_Input/Run1/Batch1/DEID_PNGs\",\"chart_name\":\"52743839_44976074\",\"output_path\":\"Processed/Run1\"}"
+:: the answer has a run_id; then:
+curl -s "http://172.20.4.170:8001/api/runs/<run_id>?wait=60"
 ```
 
 Without `API_KEY_REQUIRED=true`, leave the header out. A queued run that fails five times is in
@@ -381,19 +378,12 @@ RUN=$(curl -s -X POST localhost:8001/v1/charts/52743839_44976074/ocr -H 'Content
 curl -s "localhost:8001/v1/runs/$RUN?wait=60" | python3 -m json.tool
 ```
 
-```powershell
-# Windows (PowerShell), API on the VM
-$h = @{ 'X-API-Key' = $key }
-Invoke-RestMethod -Method Post -Headers $h "http://172.20.4.170:8001/v1/charts/52743839_44976074/dos?wait=60"
-
-$body = @{ input_type='blob'; container_name='imaging-pipeline'
-           input_path='Raw_Input/Run1/Batch1/DEID_PNGs' } | ConvertTo-Json
-$run = Invoke-RestMethod -Method Post -Headers $h -ContentType 'application/json' -Body $body `
-       -Uri http://172.20.4.170:8001/v1/charts/52743839_44976074/member-verify
-Invoke-RestMethod "http://172.20.4.170:8001/v1/runs/$($run.run_id)?wait=60"
-
-# or curl.exe (not curl)
-curl.exe -s -X POST -H "X-API-Key: $key" "http://172.20.4.170:8001/v1/charts/52743839_44976074/page-type?wait=60"
+```bat
+:: Windows (Command Prompt), API on the VM (set KEY as above)
+curl -s -X POST -H "X-API-Key: %KEY%" "http://172.20.4.170:8001/v1/charts/52743839_44976074/dos?wait=60"
+curl -s -X POST -H "X-API-Key: %KEY%" "http://172.20.4.170:8001/v1/charts/52743839_44976074/page-type?wait=60"
+curl -s -X POST http://172.20.4.170:8001/v1/charts/52743839_44976074/member-verify -H "X-API-Key: %KEY%" -H "Content-Type: application/json" -d "{\"input_type\":\"blob\",\"container_name\":\"imaging-pipeline\",\"input_path\":\"Raw_Input/Run1/Batch1/DEID_PNGs\"}"
+curl -s "http://172.20.4.170:8001/v1/runs/<run_id>?wait=60"
 ```
 
 Without `API_KEY_REQUIRED=true`, leave the header out.
