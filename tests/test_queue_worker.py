@@ -389,3 +389,22 @@ class TestInlineUnchanged:
 
         body = TestClient(main.app).get("/health").json()
         assert body["run_mode"] == "inline" and "queue" not in body
+
+
+def test_the_worker_idles_in_inline_mode(monkeypatch):
+    """2026-11-09: compose starts the worker with the api; with RUN_MODE=inline it never reads
+    the queue or loads models, it just waits to be stopped."""
+    import dotenv
+
+    from apps.worker import queue_worker
+    from common import config
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(config, "RUN_MODE", "inline")
+    monkeypatch.setattr(queue_worker, "run_forever", lambda: (_ for _ in ()).throw(AssertionError("ran")))
+    monkeypatch.setattr(queue_worker.signal, "signal", lambda *a, **k: None)
+    queue_worker._stop.set()
+    try:
+        queue_worker.main()
+    finally:
+        queue_worker._stop.clear()

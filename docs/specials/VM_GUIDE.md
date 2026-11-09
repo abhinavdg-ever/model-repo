@@ -187,6 +187,9 @@ curl.exe -s http://172.20.4.170:8001/health      # run_mode, api_key_required, q
 
 ## 5. Release: Mac → GitHub → Windows → Azure DevOps → VM
 
+The 2026-11-09 release (Postgres only, with the new settings and chart re-runs) step by step:
+[`RELEASE_2026-11-09.md`](RELEASE_2026-11-09.md).
+
 ```
 Mac ──git push──▶ GitHub ──Download ZIP──▶ Windows laptop ──push──▶ Azure DevOps ──git pull──▶ Ubuntu VM
 ```

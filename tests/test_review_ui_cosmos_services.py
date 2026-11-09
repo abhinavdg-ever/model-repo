@@ -165,6 +165,7 @@ NAMES = ("charts", "pages", "runs", "manifest", "ground_truth")
 def containers():
     out = {name: Fake(name) for name in NAMES}
     out["users"] = Fake("users", pk="id")
+    out["metrics"] = Fake("metrics", pk="period")
     return out
 
 
@@ -738,6 +739,40 @@ def test_the_accuracy_report_reads_cosmos(cosmos, containers, monkeypatch):
     bulk = client.get("/api/accuracy", params={"ground_truth": "bulk_upload", "refresh": True}).json()
     truth = {p["pageNumber"]: (p.get("groundTruth") or {}).get("pageType") for p in bulk["charts"][0]["document"]["pages"]}
     assert truth == {1: "Consult", 2: None, 3: None}
+
+
+def test_cosmos_summaries_are_reused_until_the_chart_changes(cosmos, containers, monkeypatch):
+    """2026-11-09 (user): precomputed per-chart summaries in the metrics container, rebuilt only
+    when the chart, its ground truth or its manifest documents changed."""
+    from app.store.cosmos import summaries
+
+    ids = _write_chart(containers)
+    cosmos.upsert_page_ground_truth("C1", 1, None, {"page_type": "Progress Note"}, None)
+    built = []
+    real_build = summaries.build
+    monkeypatch.setattr(summaries, "build", lambda r, c, f: built.append(c) or real_build(r, c, f))
+
+    first = summaries.current(cosmos)
+    assert built == ["C1"] and ("summary", "summary-C1") in containers["metrics"].items
+    doc = summaries.document(first["C1"])
+    assert {p.pageNumber: (p.groundTruth.pageType if p.groundTruth else None) for p in doc.pages} == \
+        {1: "Progress Note", 2: None, 3: None}
+    assert [r["page_number"] for r in summaries.value_rows(first["C1"])] == [1, 2, 3]
+
+    summaries.current(cosmos)                       # nothing changed: reused
+    assert built == ["C1"]
+    cosmos.upsert_page_ground_truth("C1", 3, None, {"page_type": "Lab"}, None)
+    again = summaries.current(cosmos)               # a ground-truth save: rebuilt
+    assert built == ["C1", "C1"]
+    assert summaries.document(again["C1"]).pages[2].groundTruth.pageType == "Lab"
+    CosmosStore(containers).set_chart_status(ids["chart_id"], "completed")   # a pipeline write
+    summaries.current(cosmos)
+    assert built == ["C1", "C1", "C1"]
+
+    # no metrics container (or it fails): built for the request, not saved, still answers
+    containers["metrics"].fail_writes = True
+    cosmos.upsert_page_ground_truth("C1", 2, None, {"page_type": "Lab"}, None)
+    assert "C1" in summaries.current(cosmos)
 
 
 def test_manual_review_reads_cosmos(cosmos, containers):

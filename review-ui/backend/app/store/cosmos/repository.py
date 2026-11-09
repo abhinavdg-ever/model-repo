@@ -73,7 +73,7 @@ _TRUTH_COLUMNS = (
     "quality", "mirrored", "printed_or_handwritten", "is_duplicate", "handwritten_pct",
 )
 
-CONTAINERS = ("charts", "pages", "manifest", "ground_truth", "runs", "users")
+CONTAINERS = ("charts", "pages", "manifest", "ground_truth", "runs", "users", "metrics")
 # Charts whose page documents are kept in memory (least recently used out).
 _CHART_CACHE_SIZE = 16
 # A fingerprint whose newest _ts is this recent is not cached: _ts has one-second

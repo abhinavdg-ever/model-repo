@@ -8,9 +8,9 @@ conditions must hold (AND). A page is a ``page_list`` row; its ground truth is t
 with its matching pages and, per page, both sides of every searched column. Columns are
 named from the whitelist only; values are always bound parameters.
 
-On Cosmos (2026-11-08) the same search runs over the documents: every chart doc (run, batch),
-every page doc's ``page`` and ``imaging_final`` and every ground-truth page doc, read with
-narrow cross-partition queries and matched in Python with the same rules (``_COSMOS``).
+On Cosmos (2026-11-08) the same search runs over the precomputed chart summaries
+(store/cosmos/summaries.py: each page's ``imaging_final`` and ground truth, rebuilt only when
+the chart changed), matched in Python with the same rules (``_COSMOS``).
 """
 
 from __future__ import annotations
@@ -112,37 +112,22 @@ def _cosmos_norm(value: str | None) -> str:
 
 def _cosmos_pages(run_id: str | None, batch_id: str | None) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Every page on Cosmos as {chart, run, batch, page_number, page_name, final, truth}, in the
-    Postgres order, and each chart's page count."""
-    from app.store.cosmos.review import is_page_doc
+    Postgres order, and each chart's page count -- from the precomputed chart summaries
+    (store/cosmos/summaries.py), rebuilt only for charts that changed."""
+    from app.store.cosmos import summaries
 
-    review = backend.cosmos()
     run, batch = (run_id or "").strip(), (batch_id or "").strip()
-    charts: dict[str, dict[str, Any]] = {}
-    for doc in review.query_all("charts", "SELECT c.chart_name, c.chart FROM c WHERE c.id = 'chart'"):
-        chart = doc.get("chart") or {}
-        if (run and str(chart.get("run_id") or "") != run) or (batch and str(chart.get("batch_id") or "") != batch):
-            continue
-        charts[doc["chart_name"]] = chart
-    truth: dict[tuple[str, int], dict[str, Any]] = {}
-    for doc in review.query_all("ground_truth", "SELECT * FROM c"):
-        if is_page_doc(doc) and doc.get("chart_name") in charts:
-            truth[(doc["chart_name"], int(doc["page_number"]))] = doc
     pages: list[dict[str, Any]] = []
     totals: dict[str, int] = {}
-    for doc in review.query_all("pages", "SELECT c.chart_name, c.page, c.imaging_final FROM c WHERE IS_DEFINED(c.page)"):
-        name = doc.get("chart_name")
-        if name not in charts or not doc.get("page"):
+    for name, summary in summaries.current(backend.cosmos()).items():
+        if (run and str(summary.get("run_id") or "") != run) or (batch and str(summary.get("batch_id") or "") != batch):
             continue
-        number = doc["page"].get("page_number")
-        totals[name] = totals.get(name, 0) + 1
-        pages.append({
-            "chart": name, "run": charts[name].get("run_id"), "batch": charts[name].get("batch_id"),
-            "page_number": number, "page_name": doc["page"].get("page_name"),
-            "final": doc.get("imaging_final") or {},
-            "truth": truth.get((name, int(number))) if number is not None else None,
-        })
-    for page in pages:
-        page["truth"] = page["truth"] or {}
+        rows = summaries.value_rows(summary)
+        totals[name] = len(rows)
+        for row in rows:
+            pages.append({"chart": name, "run": summary.get("run_id"), "batch": summary.get("batch_id"),
+                          "page_number": row["page_number"], "page_name": row["page_name"],
+                          "final": row.get("final") or {}, "truth": row.get("truth") or {}})
     pages.sort(key=lambda p: (p["run"] is None, str(p["run"] or ""), p["batch"] is None, str(p["batch"] or ""),
                               p["chart"], p["page_number"] if p["page_number"] is not None else 0))
     return pages, totals

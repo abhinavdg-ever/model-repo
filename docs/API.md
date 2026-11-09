@@ -202,6 +202,9 @@ cd "$REPO/review-ui/backend" && source .venv/bin/activate && uvicorn app.main:ap
 
 # Terminal 3 — review web, http://localhost:5174
 cd "$REPO/review-ui/frontend" && npm run dev
+
+# Terminal 4 — only with RUN_MODE=queue in core-pipeline/.env (charts run here, from Service Bus)
+cd "$REPO/core-pipeline" && source .venv/bin/activate && python -m apps.worker.queue_worker
 ```
 
 Check that they are up: `curl -fsS localhost:8001/ready` should answer without an error, then open http://localhost:5174. Stop a process with Ctrl+C in its terminal. Docker is not needed on the Mac.

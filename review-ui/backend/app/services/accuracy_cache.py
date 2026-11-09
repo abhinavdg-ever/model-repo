@@ -13,7 +13,6 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from app.store.postgres.repository import _blank_junk_ui, _fmt_date
 from app.core.config import Settings
@@ -518,60 +517,36 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     return AccuracyReportResponse(charts=charts)
 
 
-def _bulk_only(review: Any, docs: list[dict], pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
-    """Cosmos ``bulk_upload``: each page's ground truth is its latest spreadsheet load; a page
-    with no bulk upload has none (only manual labels), as _with_bulk_labels does on Postgres."""
-    from app.services.ground_truth import _ground_truth_from_row, _page_id
-    from app.store.cosmos.review import entries, truth_row
-
-    bulk: dict[int, Any] = {}
-    for doc in docs:
-        loads = [e for e in entries(doc) if e.get("entry_mode") == "bulk_upload"]
-        if not loads:
-            continue
-        last = loads[-1]
-        labelled = {**doc, **(last.get("labels") or {}), "updated_at": last.get("created_at")}
-        bulk[int(doc["page_number"])] = _ground_truth_from_row(truth_row(labelled))
-    out = []
-    for page in pages:
-        number = _page_id(page.fileName)
-        out.append(page.model_copy(update={"groundTruth": bulk.get(number) if number is not None else None}))
-    return out
-
-
-def _as_moment(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else None
-    except ValueError:
-        return None
-
-
 def _build_report_cosmos(settings: Settings, source: GroundTruthSource) -> AccuracyReportResponse:
-    """The report on Cosmos: every eligible chart's imaging document (pipeline values, ground
-    truth, manifest member, sections) as the chart view builds it, one chart at a time.
-    lastVerifiedAt is the chart's latest ground-truth save. Cached like the Postgres one."""
+    """The report on Cosmos, from each eligible chart's precomputed summary
+    (store/cosmos/summaries.py: the chart view's imaging document with its ground truth, rebuilt
+    only when the chart, its ground truth or its manifest changed). ``bulk_upload``: each page's
+    latest spreadsheet load instead; a page with none has no ground truth."""
     from app.services import backend
+    from app.store.cosmos import summaries
 
     review = backend.cosmos()
     eligible = _eligible(settings)
+    found = summaries.current(review, [folder.id for folder in eligible])
     charts = []
     for folder in eligible:
-        try:
-            document = review.repo.get_imaging(folder.id)
-            docs = review.truth_docs(folder.id)
-        except Exception as exc:  # one chart that fails to load does not sink the report
-            logger.warning("accuracy: chart %s skipped on Cosmos: %s", folder.id, exc)
+        summary = found.get(folder.id)
+        if summary is None:
             continue
+        document = summaries.document(summary)
         if source == "bulk_upload":
-            document = document.model_copy(update={"pages": _bulk_only(review, docs, document.pages)})
-        moments = [m for m in (_as_moment(d.get("updated_at")) for d in docs) if m is not None]
+            bulk = summaries.bulk_truth(summary)
+            from app.services.ground_truth import _page_id
+
+            document = document.model_copy(update={"pages": [
+                page.model_copy(update={"groundTruth": bulk.get(_page_id(page.fileName))})
+                for page in document.pages]})
+        verified = summary.get("last_verified_at")
         charts.append(AccuracyChartPayload(
             chartId=folder.id,
             chartName=folder.name,
             lastUpdatedAt=folder.last_updated_at,
-            lastVerifiedAt=max(moments) if moments else None,
+            lastVerifiedAt=datetime.fromisoformat(str(verified).replace("Z", "+00:00")) if verified else None,
             runId=folder.run_id,
             batchId=folder.batch_id,
             projectScope=folder.project_scope,

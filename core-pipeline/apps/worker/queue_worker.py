@@ -218,6 +218,14 @@ def main() -> None:
     logger.info("  lock renew  : up to %.1f h per session", WORKER_LOCK_RENEW_HOURS)
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
+    from common.config import RUN_MODE
+
+    if RUN_MODE != "queue":
+        # 2026-11-09: compose starts the worker with the api; in inline mode the api runs the
+        # charts itself, so the worker waits (no queue reads, no models loaded).
+        logger.info("RUN_MODE=%s: the api runs charts itself; this worker idles until stopped", RUN_MODE)
+        _stop.wait()
+        return
     if not conn_str:
         # Idle rather than exit: under `restart: unless-stopped` an exit is a restart loop.
         logger.error("SERVICEBUS_CONNECTION_STRING is not set (.env section 14): idle until stopped")
