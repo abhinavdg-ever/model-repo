@@ -237,6 +237,7 @@ PLAN.md
 # --- Secrets: each host keeps its own .env (made from .env.example) ---
 .env
 **/.env
+**/.env.bak-*
 !**/.env.example
 
 # --- Weights: the big ones are copied onto the VM by hand, never committed. The small
