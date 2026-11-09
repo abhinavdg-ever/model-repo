@@ -48,10 +48,11 @@ The first rule that matches decides.
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
 | 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers | Junk / Others |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
-| 11 | Classifier | The model says Invoice: a money amount **and** an **Invoice Date** or **Due Date** with a date | Main (page type Invoice / Invoice Page) |
-|    |  | The model says Invoice, without both | Junk / Others |
-|    |  | The model says Invoice, but the card rule nearly matched (or the model says insurance ID) | Junk / Cards |
-|    |  | The model says JUNK otherwise (and p(keep) < 0.99) | Junk / its subtype |
+| 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
+|    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
+|    |  | Otherwise Invoice, with a money amount **and** an **Invoice Date** or **Due Date** with a date | Main (page type Invoice / Invoice Page) |
+|    |  | Otherwise Invoice | Junk / Others |
+|    |  | The model says JUNK of another kind | Junk / its subtype |
 |    |  | The model says BLANK | Junk / Others |
 |    |  | Otherwise | Main |
 
