@@ -169,6 +169,8 @@ class Settings(BaseSettings):
             [Path(raw) if Path(raw).is_absolute() else (ROOT_DIR / raw)]
             if raw
             else [
+                # the client UI repo keeps its own copy (tokenizer.json + onnx/model.onnx)
+                ROOT_DIR / "models" / "semantic-model",
                 ROOT_DIR.parent / "core-pipeline" / "models" / "semantic-model",
                 Path("/models/semantic-model"),
             ]
