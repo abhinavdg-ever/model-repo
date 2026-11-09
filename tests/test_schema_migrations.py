@@ -27,15 +27,13 @@ def test_migrations_never_drop_a_column_or_a_table_in_use():
         assert not re.search(r"\bDELETE\s+FROM\b|\bTRUNCATE\b", text, re.I), path.name
 
 
-def test_the_part_2_migration_matches_schema_sql_part_2():
-    """migrations/2026-11-07.sql creates Part 2 on an existing database: same statements."""
+def test_migrations_create_no_part_2_table():
+    """2026-11-09 (user): migrations bring a database up to what running code uses; Part 2's
+    proposal tables (unused) come only from schema.sql on a new database."""
     schema = (SCHEMA / "schema.sql").read_text(encoding="utf-8")
-    part2 = schema[schema.rfind("\n", 0, schema.index("PART 2 — NOT IMPLEMENTED YET")):]
-    migration = (SCHEMA / "migrations" / "2026-11-07.sql").read_text(encoding="utf-8")
-    copied = migration[migration.index("-- >>> PART 2 START") : migration.index("-- <<< PART 2 END")]
-
-    def statements(text):
-        code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
-        return [" ".join(s.split()) for s in code.split(";") if s.strip()]
-
-    assert statements(copied) == statements(part2)
+    part2 = schema[schema.index("PART 2 — NOT IMPLEMENTED YET"):]
+    proposals = set(re.findall(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", part2, re.I))
+    assert proposals  # the parse found Part 2
+    for path in sorted(p for p in (SCHEMA / "migrations").glob("*.sql") if not p.name.startswith("._")):
+        made = set(re.findall(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", path.read_text(encoding="utf-8"), re.I))
+        assert not made & proposals, (path.name, made & proposals)

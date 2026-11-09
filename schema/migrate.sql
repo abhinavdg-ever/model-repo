@@ -33,6 +33,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-10-28.sql
 \echo '2026-10-31  junk subtype Cards'
 \ir migrations/2026-10-31.sql
-\echo '2026-11-07  chart tags, stage label, accuracy view, Part 2 tables, run_usage monitoring'
+\echo '2026-11-07  chart tags, stage label, accuracy view, run_usage monitoring'
 \ir migrations/2026-11-07.sql
 \echo 'Done: the database matches schema/schema.sql.'

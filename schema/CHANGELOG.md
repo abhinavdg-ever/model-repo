@@ -4,6 +4,11 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * migrations/2026-11-07.sql (2026-11-09): no longer creates Part 2's proposal tables
+   (chunk_results, rejection_results, invoice_matching_results, ground_truth_csv,
+   model_registry, field_accuracy_log, model_accuracy_snapshots, manual_review, audit_log)
+   or their two views: no running code uses them. schema.sql still defines them for a new
+   database; a database that already ran the file keeps them, empty.
  * run_usage + v_run_usage_daily / v_run_usage_hourly (Part 1, 2026-11-07): monitoring, one
    row per chart run with time, stage seconds, Doc Intel pages and cost, LLM tokens and cost
    (migrations/2026-11-07.sql).
