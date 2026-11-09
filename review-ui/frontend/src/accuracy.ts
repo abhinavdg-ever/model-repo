@@ -730,7 +730,8 @@ export function pageAccuracyCsv(charts: ChartAccuracy[]): string {
           return verdict ? VERDICT_TEXT[verdict] : "Not Scored";
         }),
         page.overall ? VERDICT_TEXT[page.overall] : "Not Scored",
-        page.matches == null ? "" : `${page.matches}/${OVERALL_STREAMS}`,
+        // "6 of 7", not "6/7": Excel reads that as a date (2026-11-09, user).
+        page.matches == null ? "" : `${page.matches} of ${OVERALL_STREAMS}`,
       ].map(csvCell).join(","));
     }
   }
