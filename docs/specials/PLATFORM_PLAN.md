@@ -20,7 +20,7 @@ Cosmos, Service Bus and the API key are in `core-pipeline/.env` (values never in
   job, not by core-pipeline (§3).
 - **Monitoring on Postgres:** a `run_usage` row per chart run, daily and hourly views,
   `python cli.py usage` (§5a).
-- **GitHub → Azure DevOps copy:** done by hand (robocopy + a DevOps `.gitignore`, VM guide §5.1); `training/`, `scripts/`, `tests/` stay out of DevOps.
+- **GitHub → Azure DevOps copy:** done by hand (robocopy + a DevOps `.gitignore`, VM guide §5.1); `tests/` stays out of DevOps; `training/`, `scripts/` and `infra/` are on the Mac only (removed from GitHub 2026-11-10).
 
 ## 1. Goals
 
@@ -139,7 +139,7 @@ advantmed-imaging-pipeline/              (one GitHub repo; three deployables)
 │   └── .env / .env.example              DATABASE_URL (later Cosmos) + AZURE_STORAGE_*
 │
 ├── schema/                            Postgres: schema.sql, migrate.sql, migrations/
-├── training/  scripts/  tests/        GitHub only, never on the VM
+├── tests/                           GitHub only, never on the VM (training/, scripts/: Mac only)
 ├── utilities/   docs/
 └── README.md
 ```
@@ -437,7 +437,7 @@ docker compose up -d --build frontend         # frontend only (API URL set in it
 | 7 | Deployments | **core-pipeline, review-ui and review-ui-client are separate infra** |
 | 8 | Pipeline output | `core-pipeline/outputs/` is temporary; **review-ui is DB only, no Local mode** |
 | 9 | Short term | **A `DB_BACKEND=postgres\|cosmos` toggle** in core-pipeline and review-ui until Postgres is retired |
-| 10 | Client copy | `training/`, `scripts/`, `tests/` stay on GitHub only; DevOps and the VM get the runtime (the DevOps `.gitignore`, VM guide §5.1) |
+| 10 | Client copy | `tests/` stays on GitHub only (`training/`, `scripts/`, `infra/` on the Mac only, 2026-11-10); DevOps and the VM get the runtime (the DevOps `.gitignore`, VM guide §5.1) |
 | 11 | Logic folder name | `core-pipeline/modules/` (not `model/`), imported as `modules.<concern>` (built 2026-11-07) |
 | 12 | review-ui layout | `frontend/` and `backend/` stay, each deployable on its own; the frontend talks only to the backend |
 | 13 | Models and canon delivery | Blob `resources/` with `manifest.json`: models loaded at worker start, canon checked before each run; canon also kept in git |
@@ -505,8 +505,8 @@ In build order:
 6. **Step-by-step APIs (phase 5):** built; left: version / input-hash staleness.
 7. **Monitoring leftovers (7a).** LLM token wrapper, `/v1/metrics`, the review-ui Usage page.
 8. **review-ui-client replica.** The clone job rewritten for Cosmos (a replica database).
-9. **`infra/`:** written (Bicep for Cosmos, the queue, `imaging-models`); not yet run (no
-   Azure CLI on the Mac).
+9. **`infra/`:** removed from GitHub 2026-11-10 (Bicep for Cosmos, the queue, `imaging-models`; never run, the
+   resources were made by hand). Kept on the Mac only.
 10. **Postgres-only utilities:** `utilities/pull_client_ground_truth.py` (the client's ground
     truth into ours, 2026-11-08) and `utilities/tag_chart.py` (mark charts, e.g. "Special")
     write Postgres only; with `DB_BACKEND=both`, re-run the migration for those charts or add a

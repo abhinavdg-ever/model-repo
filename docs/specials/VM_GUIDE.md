@@ -178,7 +178,7 @@ curl -s http://172.20.4.170:8001/health
 └── utilities/  docs/
 ```
 
-`training/`, `scripts/` and `tests/` are on GitHub only (the DevOps `.gitignore`). They never reach the VM.
+`tests/` is on GitHub only (the DevOps `.gitignore` keeps it out); `training/` and `scripts/` are on the Mac only (removed from GitHub 2026-11-10). None of them reach the VM.
 
 ---
 
