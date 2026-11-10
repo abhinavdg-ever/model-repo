@@ -408,9 +408,8 @@ def code_version() -> dict[str, Any]:
 
 
 def code_version_line(version: dict[str, Any]) -> str:
-    if version.get("commit"):
-        return f"{version['committed_at']} (git {version['commit']}; files {version.get('files_changed_at')})"
-    return f"{version.get('files_changed_at') or 'unknown'} (newest code / canon file; no git here)"
+    """Just the date and time (2026-11-10, user): the last commit's, else the newest file's."""
+    return version.get("committed_at") or version.get("files_changed_at") or "unknown"
 
 
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
