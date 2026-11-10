@@ -1006,10 +1006,16 @@ class TestCardRule:
             inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=headings)
             assert method.decide(inputs).code == classify.CODE_CARDS, headings
 
-    def test_a_card_needs_the_word_card_but_no_name(self):
-        """2026-11-05 (user); no name needed since 2026-11-10 (the back of a card has none)."""
+    def test_a_card_needs_the_word_card_and_a_name_unless_the_evidence_is_strong(self):
+        """2026-11-05 (user); 2026-11-10 (user): no name needed on strong evidence (3+ card
+        groups or 3+ back-of-card lines) -- the back of a card has no name."""
         assert self._decide(self.CARD.replace("Card ", "")).code != classify.CODE_CARDS
         assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code == classify.CODE_CARDS
+        weak = "Member ID Card Member ID: 912345678 Group Number: 70123"
+        assert self._decide(weak).code != classify.CODE_CARDS
+        assert self._decide("Name: Jane Q Sample " + weak).code == classify.CODE_CARDS
+        named = method.PageInputs(text=weak, pass_no=2, document_type="printed", member_name_found=True)
+        assert method.decide(named).code == classify.CODE_CARDS
 
     def test_over_150_words_or_three_quarters_of_the_page_is_not_a_card(self):
         """2026-11-05 (user); the area limit is 75% since 2026-11-07 (was half)."""

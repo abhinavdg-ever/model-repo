@@ -6,8 +6,9 @@ with form / letter / clinical words) are not junk; the ladder goes on. The rules
 card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 
 A page is a card only when words from two different card groups are on it, and no
-form / letter words are on it. No name is needed and section headers do not block a card
-(2026-11-10, user: the back of a card has no name). 2026-11-05 (user): clinical is the section headers alone (no
+form / letter words are on it. A name is needed (a label, or the name kv_extract found on the
+page) unless the card words alone are strong evidence (STRONG_*: the back of a card has no name);
+section headers do not block a card (2026-11-10, user). 2026-11-05 (user): clinical is the section headers alone (no
 clinical word list), and the answer is binary -- a card or not (no strong / medium).
 A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
@@ -28,11 +29,18 @@ from dataclasses import dataclass, field
 # Longest page a card can be (2026-11-05, user: 150, was 300).
 MAX_WORDS = 150
 # 2026-11-05 (user), to cut false positives -- a card also needs all of:
-#   the word "card" on the page (the name requirement went on 2026-11-10, user);
+#   the word "card" on the page, and a name on it (a name label: Name, Cardholder, LN / FN, or
+#   the name kv_extract found) -- waived on strong evidence (2026-11-10, user, below);
 #   its text over at most 75% of the page (the box round every OCR word, share of the page;
 #   2026-11-07, user: was half).
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
+NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.75
+# Enough evidence to need no name (2026-11-10, user: a card's back carries none): this many
+# insurance card groups (the "Document: ID" stamp counts as one), or this many back-of-card
+# lines, or a Medicare / SSN / passport / green card / military ID found by its own lines.
+STRONG_GROUPS = 3
+STRONG_BACK_LINES = 3
 def _rx(*patterns: str) -> list[re.Pattern]:
     return [re.compile(p, re.I) for p in patterns]
 
@@ -225,7 +233,7 @@ LICENSE_KINDS = ("drivers_license", "state_id", "drivers_license_or_id")
 
 
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
-           text_area: float | None = None, visual: bool = False) -> CardResult:
+           text_area: float | None = None, visual: bool = False, name_found: bool = False) -> CardResult:
     """``headings``: the page's section headers (stage 6; no longer read, kept for callers);
     ``text_area``: the share of the page
     the text covers (None = not measured, the rule is then off); ``visual``: the page-tag model
@@ -289,7 +297,12 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append(f"too long: {words} words")
     if not CARD_WORD.search(text):
         blocked.append("no word 'card'")
-    # No name check (removed 2026-11-10, user: the back of a card carries no name).
+    # A name must be on it (2026-11-05, user): a name label, or the member name kv_extract found
+    # on the page -- unless the card words alone are strong evidence (2026-11-10, user).
+    strong = (n_ins >= STRONG_GROUPS or back_lines >= STRONG_BACK_LINES
+              or kind == "medicare" or kind in OTHER_ID)
+    if not strong and not NAME_WORD.search(text) and not name_found:
+        blocked.append("no name on it")
     # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept
     # blocking real cards; the form / letter words, the word count and the text area guard it).
     if text_area is not None and text_area > MAX_TEXT_AREA:
