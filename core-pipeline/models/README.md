@@ -1,3 +1,28 @@
+# core-pipeline/models
+
+What the code loads (2026-11-10 audit). Small files are in git; the big weight files (over
+50 MB) are copied onto each host by hand (scp) or from Blob (`RESOURCES_FROM_BLOB=true`).
+
+| Folder | Stage | Needed | Big files to copy onto a host |
+|---|---|---|---|
+| `hw/` | 1 rotation / handwriting | yes | `handwritten_printed_convnext_tiny.pth` (106 MB); `_backup.pth` only if the main one is missing |
+| `rapidocr/` | 4 Final OCR 1 (text) | yes | none: all in git (34 MB) |
+| `docling/` (`docling-layout-heron`, `docling-models` tableformer) | 4 Final OCR 1 (layout, tables) | yes | `*.safetensors` (layout 164 MB, tableformer 139 + 203 MB) |
+| `blank-junk/` | 3, 8 blank / junk | yes | `bert/model.safetensors` (255 MB) |
+| `layout_heron/` | 7 KV extraction (headings) | yes | `model.safetensors` (164 MB) |
+| `kv-extraction/` | 7 KV extraction | yes | none: all in git |
+| `ner/gliner_low/` or `ner/gliner_medium-v2.1/` | 9 member NER (`MEMBER_NER_MODEL_ID`) | the one in use | `pytorch_model.bin` (582 / 745 MB) |
+| `page-family/page-leaf/`, `page-axes/` | 10 page type | yes | `encoder/model.safetensors` (413 MB each) |
+| `encounter/` | 13 encounter type | yes | `encoder/model.safetensors` (413 MB) |
+| `semantic-model/` | 6 section headers (and review-ui's local run) | yes | `model.safetensors` (87 MB); review-ui local run also `onnx/model.onnx` |
+
+**Not used by any code** (not in git, can be deleted): `continuity/` (old GBM experiments),
+`sequencing/` (old GBM), the top-level `gliner_low/` (a copy of `ner/gliner_low/`),
+`docling/docling-project--docling-layout-heron-onnx/`, and in `semantic-model/` the other
+formats (`pytorch_model.bin`, `tf_model.h5`, `rust_model.ot`, `openvino/`, the other `onnx/` files).
+
+---
+
 # Weight files for core-pipeline. .env paths are relative to core-pipeline/
 # (models/hw, models/rapidocr, models/semantic-model, models/blank-junk, models/ner).
 # Large checkpoints stay local. Committed: blank-junk/,

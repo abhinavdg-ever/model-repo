@@ -240,17 +240,14 @@ PLAN.md
 **/.env.bak-*
 !**/.env.example
 
-# --- Weights: the big ones are copied onto the VM by hand, never committed. The small
-#     files GitHub keeps (joblib heads, heads.pt, the hw pkl) DO go through.
-*.safetensors
-*.onnx
-*.bin
-*.pth
-core-pipeline/models/blank-junk/bert/
-core-pipeline/models/ner/
-core-pipeline/models/rapidocr/
-core-pipeline/models/docling/
-core-pipeline/models/semantic-model/
+# --- Models (2026-11-10): the small files of every model the code uses come from GitHub;
+#     the big weight files (over 50 MB) are copied onto the VM by hand (or from Blob).
+core-pipeline/models/**/*.safetensors
+core-pipeline/models/**/*.bin
+core-pipeline/models/**/*.onnx
+core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth
+core-pipeline/models/**/.cache/
+core-pipeline/models/**/.gitattributes
 
 # --- Written at run time ---
 core-pipeline/logs/**
