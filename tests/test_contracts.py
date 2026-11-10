@@ -2462,10 +2462,15 @@ class TestNoModelWeightsInGit:
     # Small on purpose: the page-axes heads (280 KB) and the encounter head (17 KB).
     # The encoders they sit on (encoder/model.safetensors, 265 MB each) are never committed.
     ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt", "core-pipeline/models/encounter/head.pt",
-               "core-pipeline/models/page-family/page-leaf/heads.pt"}
+               "core-pipeline/models/page-family/page-leaf/heads.pt",
+               # 2026-11-10 (user): the small files of every model in use are in git, RapidOCR's
+               # weights (34 MB together) included; only files over 50 MB stay on each host.
+               "core-pipeline/models/rapidocr/PP-OCRv6_det_small.pth",
+               "core-pipeline/models/rapidocr/PP-OCRv6_rec_small.pth",
+               "core-pipeline/models/rapidocr/ch_ptocr_mobile_v2.0_cls_mobile.pth"}
     # The three encoders were in git LFS 2026-11-02 to 2026-11-04 (user); nothing is now.
     LFS: set[str] = set()
-    MAX_TRACKED_BYTES = 20 * 1024 * 1024
+    MAX_TRACKED_BYTES = 50 * 1024 * 1024  # 2026-11-10 (user): was 20 MB
 
     @staticmethod
     def _tracked() -> list[str]:
