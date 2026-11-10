@@ -408,8 +408,10 @@ def code_version() -> dict[str, Any]:
 
 
 def code_version_line(version: dict[str, Any]) -> str:
-    """Just the date and time (2026-11-10, user): the last commit's, else the newest file's."""
-    return version.get("committed_at") or version.get("files_changed_at") or "unknown"
+    """Just the date and time (2026-11-10, user): the newer of the last commit and the newest
+    code / canon file (a folder of copied files can be newer than its last commit)."""
+    times = [t for t in (version.get("committed_at"), version.get("files_changed_at")) if t]
+    return max(times) if times else "unknown"
 
 
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:

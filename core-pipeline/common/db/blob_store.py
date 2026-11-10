@@ -493,6 +493,17 @@ def list_blobs_with_suffixes(
     )
 
 
+def _has_image(client: Any, folder: str, page_size: int = 100) -> bool:
+    """True when the folder (or a subfolder) holds an image: names read a page at a time,
+    stopping at the first image (almost always on the first page)."""
+    pages = client.list_blobs(name_starts_with=folder, results_per_page=page_size).by_page()
+    for page in pages:
+        for blob in page:
+            if Path(blob.name).suffix.lower() in IMAGE_SUFFIXES:
+                return True
+    return False
+
+
 def list_chart_prefixes(container: str, prefix: str) -> list[str]:
     """Chart folders directly under `prefix` — those holding image blobs.
 
@@ -507,17 +518,20 @@ def list_chart_prefixes(container: str, prefix: str) -> list[str]:
     pref = normalize_prefix(prefix)
 
     def _list() -> list[str]:
+        # 2026-11-10 (user, Windows laptop): listing every page image under the prefix was
+        # thousands of entries in multi-MB responses, cut off midway on a slow or inspected
+        # connection ("Response ended prematurely"). Now: the folder names only (one small
+        # response), then each folder's first page of names until an image turns up.
         client = get_container_client(container)
-        charts: set[str] = set()
-        for blob in client.list_blobs(name_starts_with=pref):
-            rest = blob.name[len(pref):] if blob.name.startswith(pref) else blob.name
-            parts = [p for p in rest.split("/") if p]
-            if len(parts) < 2:
-                continue  # a file sitting directly in the prefix, not in a folder
-            if Path(parts[-1]).suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            charts.add(f"{pref}{parts[0]}")
-        return sorted(charts)
+        folders = sorted(
+            item.name for item in client.walk_blobs(name_starts_with=pref, delimiter="/")
+            if item.name.endswith("/")
+        )
+        charts: list[str] = []
+        for folder in folders:
+            if _has_image(client, folder):
+                charts.append(folder.rstrip("/"))
+        return charts
 
     return call_with_retry(
         _list,

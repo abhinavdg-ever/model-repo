@@ -92,3 +92,46 @@ def test_the_pipeline_blob_client_reads_a_page_in_one_get():
     kwargs = bs._blob_client_kwargs()
     assert kwargs["max_single_get_size"] == 64 * 1024 * 1024 and kwargs["read_timeout"] == 120
     assert kwargs["retry_read"] >= 3
+
+
+def test_chart_folders_are_listed_by_name_not_by_every_page(monkeypatch):
+    """2026-11-10 (user, Windows laptop): the folder names in one small listing, then each
+    folder's first images; a folder without images is left out."""
+    from types import SimpleNamespace
+
+    import common.db.blob_store as bs
+
+    blobs = ["in/A/1.jpg", "in/A/2.jpg", "in/B/manifest.csv", "in/C/sub/1.png", "in/readme.txt"]
+    calls = {"full": 0}
+
+    class Pages:
+        def __init__(self, names):
+            self.names = names
+
+        def by_page(self):
+            return iter([[SimpleNamespace(name=n) for n in self.names]])
+
+    class Client:
+        def walk_blobs(self, name_starts_with, delimiter):
+            folders = sorted({name_starts_with + b[len(name_starts_with):].split("/")[0] + "/"
+                              for b in blobs if "/" in b[len(name_starts_with):]})
+            return [SimpleNamespace(name=f) for f in folders] + [SimpleNamespace(name="in/readme.txt")]
+
+        def list_blobs(self, name_starts_with, results_per_page=None):
+            if results_per_page is None:
+                calls["full"] += 1
+            return Pages([b for b in blobs if b.startswith(name_starts_with)])
+
+    monkeypatch.setattr(bs, "get_container_client", lambda container=None: Client())
+    assert bs.list_chart_prefixes("c", "in") == ["in/A", "in/C"]
+    assert calls["full"] == 0   # never a listing of everything
+
+
+def test_a_response_cut_off_is_retried():
+    from common.azure_retry import is_transient_azure_error
+
+    class HttpResponseError(Exception):
+        status_code = None
+
+    HttpResponseError.__module__ = "azure.core.exceptions"
+    assert is_transient_azure_error(HttpResponseError("Response ended prematurely"))

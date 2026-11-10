@@ -67,7 +67,8 @@ def is_transient_azure_error(exc: BaseException) -> bool:
     # A transfer cut off midway: azure-core reports it with no status code (IncompleteReadError,
     # "Unable to stream download"). Another attempt usually succeeds (2026-11-10).
     text = str(exc).lower()
-    if name in {"IncompleteReadError", "DecodeError"} or "stream download" in text or "incompleteread" in text:
+    if name in {"IncompleteReadError", "DecodeError"} or any(
+            t in text for t in ("stream download", "incompleteread", "ended prematurely", "connection broken")):
         return True
 
     # azure-core
