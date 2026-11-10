@@ -1301,20 +1301,21 @@ class TestCapabilityReporting:
         caps = self._reload(monkeypatch)
         snapshot = caps.all_capabilities()
         labels = [label for label, _ in caps.startup_lines(snapshot)]
+        # The models in the order the stages run (2026-11-10, user); Blob has its own line.
         assert labels == [
-            "blob",
-            "HW model",
-            "RapidOCR",
-            "blank/junk model",
-            "page-axes model",
-            "page-leaf model",
-            "encounter model",
-            "KV extraction",
-            "final1 Docling",
-            "final2 OCR",
-            "member NER",
+            "1 rotation/HW",
+            "2 prelim OCR",
+            "3,8 blank/junk",
+            "4 final OCR 1",
+            "5 final OCR 2",
+            "7 KV extract",
+            "9 member NER",
+            "10 page leaf",
+            "10 page axes",
+            "13 encounter",
             "skip OCR",
         ]
+        assert caps.blob_line(snapshot["blob"])
         assert "hw_model" in snapshot
         assert "rapidocr_models" in snapshot
         assert "blank_junk_model" in snapshot

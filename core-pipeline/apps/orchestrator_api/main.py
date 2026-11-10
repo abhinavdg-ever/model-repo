@@ -14,6 +14,7 @@ from GET /api/runs/{run_id}. With API_KEY_REQUIRED=true every POST needs
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -152,11 +153,27 @@ def _safe_db_url(url: str) -> str:
     return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url or "")
 
 
+_CODE_VERSION: dict[str, Any] = {}
+
+
+def _code_version() -> dict[str, Any]:
+    """Worked out once (git + a file walk), then reused by /health."""
+    if not _CODE_VERSION:
+        from common.capabilities import code_version
+
+        _CODE_VERSION.update(code_version())
+    return dict(_CODE_VERSION)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     from common.config import DATA_ROOT, DATABASE_URL, STAGE_WORKERS
 
     logger.info("core-pipeline starting")
+    from common.capabilities import code_version_line
+
+    logger.info("pipeline")
+    logger.info("  code changed    : %s", code_version_line(_code_version()))
     # `kill -USR1 <pid>` prints every thread's stack to stderr (docker logs):
     # the way to see where a run that looks stuck is waiting.
     import faulthandler
@@ -164,10 +181,22 @@ def _startup() -> None:
 
     if hasattr(signal, "SIGUSR1"):
         faulthandler.register(signal.SIGUSR1, all_threads=True)
-    logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
-    logger.info("  data root   : %s", DATA_ROOT)
-    logger.info("  workers     : %s", STAGE_WORKERS)
+    # The banner (2026-11-10, user): pipeline change, database, Blob, how charts run, then the
+    # models in the order the stages run.
+    from common import resources as _resources
+    from common.capabilities import all_capabilities, blob_line, probe_blob, startup_lines
 
+    logger.info("database")
+    backend_line = {"postgres": "postgres (Postgres only)",
+                    "cosmos": "cosmos (Cosmos only)",
+                    "both": "both (Postgres, with a copy of every write in Cosmos)"}[DB_BACKEND]
+    logger.info("  db backend      : %s", backend_line)
+    if DB_BACKEND != "cosmos":
+        logger.info("  postgres        : %s", _safe_db_url(DATABASE_URL))
+    if DB_BACKEND in ("cosmos", "both"):
+        endpoint = (os.environ.get("COSMOS_ENDPOINT") or "").strip() or "COSMOS_ENDPOINT not set"
+        logger.info("  cosmos          : %s, database %s", endpoint,
+                    (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
     # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
     # would hold up startup — and block /docs and /health, the two endpoints
     # whose whole job is to work when the database does not.
@@ -177,30 +206,44 @@ def _startup() -> None:
         if DB_BACKEND_ACTIVE == "cosmos":
             from common.db.cosmos_store import get_cosmos_store
 
-            logger.info("  database    : Cosmos, container %s reachable", get_cosmos_store().ping())
+            logger.info("  cosmos check    : container %s reachable", get_cosmos_store().ping())
             raise _StartupDone
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT count(*) FROM pipeline_stage")
                 count = cur.fetchone()[0]
-        logger.info("  schema      : OK, %d stage(s) registered", count)
+        logger.info("  schema          : OK, %d stage(s) registered", count)
     except _StartupDone:
         pass
     except Exception as exc:
-        logger.warning("  database    : UNREACHABLE — %s", str(exc).splitlines()[0])
+        logger.warning("  database        : UNREACHABLE — %s", str(exc).splitlines()[0])
         logger.warning(
             "  Mutating endpoints will return 503 until this is fixed. "
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
-    logger.info("  run mode    : %s", RUN_MODE)
-    logger.info("  api key     : %s", "required on POST" if _api_key_enforced() else "not required")
+    logger.info("blob")
+    try:
+        logger.info("  storage         : %s", blob_line(probe_blob()))
+    except Exception as exc:  # a status probe must never stop the server
+        logger.warning("  storage         : probe failed — %s", exc)
+
+    res = _resources.settings()
+    logger.info("run")
+    logger.info("  run mode        : %s", "queue (Service Bus + workers run the charts)" if RUN_MODE == "queue"
+                else "inline (this API runs the charts itself)")
+    logger.info("  api key         : %s", "required on POST" if _api_key_enforced() else "not required")
+    logger.info("  workers         : %s per stage", STAGE_WORKERS)
+    logger.info("  data root       : %s", DATA_ROOT)
+    logger.info("  models from     : %s", f"Blob container {res['container']}" if res["enabled"]
+                else "disk (copied by hand)")
+    logger.info("  canon from      : %s", "Blob" if res["enabled"] and res["canon"] else "git (resources/canon)")
     if RUN_MODE == "queue":
         # Charts run in the workers, which fetch their own models: the API needs none.
         _QUEUE_STATUS.clear()
         _QUEUE_STATUS.update(_probe_queue())
         logger.info(
-            "  queue       : %s on %s, %s", _QUEUE_STATUS.get("queue"), _QUEUE_STATUS.get("namespace"),
+            "  queue           : %s on %s, %s", _QUEUE_STATUS.get("queue"), _QUEUE_STATUS.get("namespace"),
             "reachable" if _QUEUE_STATUS.get("reachable") else f"UNREACHABLE — {_QUEUE_STATUS.get('reason')}",
         )
     else:
@@ -210,16 +253,14 @@ def _startup() -> None:
 
         ensure_resources()
 
-    # Optional features: OK / off only — no path dumps.
+    # The models, in stage order: OK / off only — no path dumps.
     try:
-        from common.capabilities import all_capabilities, startup_lines
-
-        caps = all_capabilities(probe=True)
-        logger.info("capabilities")
+        caps = all_capabilities()
+        logger.info("models (stage order)")
         for label, value in startup_lines(caps):
-            logger.info("  %-14s : %s", label, value)
+            logger.info("  %-15s : %s", label, value)
     except Exception as exc:  # a status probe must never stop the server
-        logger.warning("  capabilities: probe failed — %s", exc)
+        logger.warning("  models: probe failed — %s", exc)
 
 
 @app.on_event("shutdown")
@@ -430,6 +471,7 @@ def health() -> dict[str, Any]:
         # inline = charts run in this process; queue = on Service Bus, run by the workers.
         # queue.reachable was checked once at startup (restart the API to re-check).
         "run_mode": RUN_MODE,
+        "code": _code_version(),
         **({"queue": dict(_QUEUE_STATUS)} if RUN_MODE == "queue" else {}),
         "api_key_required": _api_key_enforced(),
     }

@@ -362,6 +362,57 @@ def _resources_status() -> dict[str, Any]:
         return {"enabled": False, "ready": False, "reason": str(exc)}
 
 
+def tesseract_status() -> dict[str, Any]:
+    """Stage 2 (preliminary OCR): the tesseract binary (TESSERACT_CMD, else on PATH)."""
+    import shutil
+
+    from common.config import TESSERACT_CMD
+
+    found = shutil.which(TESSERACT_CMD or "tesseract")
+    if found:
+        return {"ready": True, "reason": None}
+    return {"ready": False, "reason": f"{TESSERACT_CMD or 'tesseract'} not found (set TESSERACT_CMD)"}
+
+
+def code_version() -> dict[str, Any]:
+    """When this host's pipeline code last changed (2026-11-10, user): the git commit and its
+    date when the code is a git checkout, and the newest file time of the code and canon (a
+    Docker image has no .git; COPY keeps the files' times)."""
+    import subprocess
+    from datetime import datetime
+
+    from common.config import CORE_ROOT
+
+    out: dict[str, Any] = {"commit": None, "committed_at": None, "files_changed_at": None}
+    try:
+        newest = max(
+            (p.stat().st_mtime for folder in ("apps", "common", "modules", "resources")
+             for p in (CORE_ROOT / folder).rglob("*")
+             if p.suffix in {".py", ".json"} and p.is_file() and not p.name.startswith("._")),
+            default=None,
+        )
+        if newest is not None:
+            out["files_changed_at"] = datetime.fromtimestamp(newest).strftime("%Y-%m-%d %H:%M")
+    except OSError:
+        pass
+    try:
+        line = subprocess.run(
+            ["git", "-C", str(CORE_ROOT), "log", "-1", "--format=%h|%cd", "--date=format:%Y-%m-%d %H:%M"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+        if "|" in line:
+            out["commit"], out["committed_at"] = line.split("|", 1)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return out
+
+
+def code_version_line(version: dict[str, Any]) -> str:
+    if version.get("commit"):
+        return f"{version['committed_at']} (git {version['commit']}; files {version.get('files_changed_at')})"
+    return f"{version.get('files_changed_at') or 'unknown'} (newest code / canon file; no git here)"
+
+
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
     from modules.ocr.docling_ocr import docling_status
@@ -377,6 +428,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "page_leaf_model": page_leaf_model_status(),
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),
+        "tesseract": tesseract_status(),
         "extraction": extraction_status(),
         "resources": _resources_status(),
         "skip_ocr": {
@@ -405,9 +457,20 @@ def _one_line(status: dict[str, Any], on: str) -> str:
     return f"off — {status.get('reason') or 'not configured'}"
 
 
+def blob_line(blob: dict[str, Any]) -> str:
+    """The banner's Blob line (probe_blob / blob_status): OK with the auth, else what to fix."""
+    on = f"OK — {blob.get('auth')}"
+    if blob.get("account"):
+        on += f", account={blob['account']}"
+    if blob.get("client_id"):
+        on += f", client_id={blob['client_id']}"
+    on += f", container={blob.get('container')}"
+    return _one_line(blob, on)
+
+
 def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
-    """(label, value) pairs for the startup banner — OK / off, no paths."""
-    blob = caps["blob"]
+    """(label, value) pairs for the banner's models, in stage order — OK / off, no paths.
+    Blob has its own line (blob_line), above the models (2026-11-10, user)."""
     di = caps["azure_document_intelligence"]
     ner = caps["member_ner"]
     docling = caps.get("docling_final1") or {}
@@ -419,13 +482,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     page_leaf = caps.get("page_leaf_model") or {}
     encounter = caps.get("encounter_model") or {}
     kv = caps.get("extraction") or {}
-
-    blob_on = f"OK — {blob.get('auth')}"
-    if blob.get("account"):
-        blob_on += f", account={blob['account']}"
-    if blob.get("client_id"):
-        blob_on += f", client_id={blob['client_id']}"
-    blob_on += f", container={blob.get('container')}"
 
     di_on = "OK"
     if di.get("features"):
@@ -453,17 +509,25 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         else f"off — {skip_ocr.get('reason') or 'SKIP_OCR=false'}"
     )
 
+    # Final OCR 1 is Docling, which reads the text with RapidOCR inside: one line, both named.
+    if docling.get("ready") and rapid.get("ready"):
+        final1_line = "OK — Docling layout + RapidOCR text"
+    else:
+        final1_line = "; ".join(f"{name} {_one_line(st, 'OK')}" for name, st in
+                                (("Docling", docling), ("RapidOCR", rapid)))
+    tess = caps.get("tesseract") or {}
+
+    # In the order the stages run (2026-11-10, user).
     return [
-        ("blob", _one_line(blob, blob_on)),
-        ("HW model", _one_line(hw, hw_on)),
-        ("RapidOCR", _one_line(rapid, rapid_on)),
-        ("blank/junk model", _one_line(bj, bj_on)),
-        ("page-axes model", _one_line(page_axes, axes_on)),
-        ("page-leaf model", _one_line(page_leaf, leaf_on)),
-        ("encounter model", _one_line(encounter, encounter_on)),
-        ("KV extraction", _one_line(kv, kv_on)),
-        ("final1 Docling", _one_line(docling, docling_on)),
-        ("final2 OCR", _one_line(di, di_on)),
-        ("member NER", _one_line(ner, ner_on)),
+        ("1 rotation/HW", _one_line(hw, hw_on)),
+        ("2 prelim OCR", _one_line(tess, "OK — Tesseract") if tess else "unknown"),
+        ("3,8 blank/junk", _one_line(bj, bj_on)),
+        ("4 final OCR 1", final1_line),
+        ("5 final OCR 2", _one_line(di, di_on) + " (Azure Doc Intel)" if di.get("ready") else _one_line(di, di_on)),
+        ("7 KV extract", _one_line(kv, kv_on)),
+        ("9 member NER", _one_line(ner, ner_on)),
+        ("10 page leaf", _one_line(page_leaf, leaf_on)),
+        ("10 page axes", _one_line(page_axes, axes_on)),
+        ("13 encounter", _one_line(encounter, encounter_on)),
         ("skip OCR", skip_line),
     ]
