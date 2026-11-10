@@ -392,11 +392,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # Manifest rows come only from manifest_member_list, loaded by db-utilities (2026-11-07).
         manifest = _pick_manifest_row(manifest_rows)
         if manifest is None:
-            # No roster to verify against. Blank/junk pages are still skipped so
-            # they do not leave the stage pending; remaining main pages wait on
-            # a manifesto sweep.
+            # No roster to verify against. Blank/junk pages are skipped as usual; the
+            # other pages are skipped as manifest_missing (2026-11-10, user: was left
+            # pending, so the chart never completed and showed Imaging in Progress).
+            # Loading the manifest (db-utilities) and re-running member_verify fills it in.
             logger.warning(
-                "chart %s: no manifest rows for record_id=%s; member stage cannot run",
+                "chart %s: no manifest rows for record_id=%s; member stage skipped (manifest_missing)",
                 chart_id, chart_name,
             )
             excluded = [
@@ -404,8 +405,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 for pid in ctx.todo
                 if bj_flags.get(pid, "not_blank_junk") in BJ_EXCLUDE
             ]
+            no_roster = [pid for pid in ctx.todo if pid not in set(excluded)]
             with connect() as conn:
                 mark_skipped(conn, ctx, excluded, "blank_junk")
+                mark_skipped(conn, ctx, no_roster, "manifest_missing")
                 upsert_member_summary(
                     conn,
                     chart_id=chart_id,

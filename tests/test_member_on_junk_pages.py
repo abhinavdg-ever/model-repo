@@ -35,3 +35,16 @@ def test_blank_and_junk_pages_are_read_but_not_verified(monkeypatch):
 
 def test_only_blank_and_junk_are_read_duplicates_are_not():
     assert stage.EXTRACT_ONLY_FLAGS == {"blank", "junk"}
+
+
+def test_a_chart_with_no_manifest_skips_its_pages_so_it_can_complete():
+    """2026-11-10 (user): with no manifest rows the member stage used to leave the main pages
+    pending, so the chart never completed (Imaging in Progress). They are skipped as
+    manifest_missing now; loading the manifest and re-running member_verify fills them in."""
+    import inspect
+
+    src = inspect.getsource(stage.run)
+    branch = src[src.index("if manifest is None:"):src.index("expected = expected_from_manifest(manifest)")]
+    assert 'mark_skipped(conn, ctx, excluded, "blank_junk")' in branch
+    assert 'mark_skipped(conn, ctx, no_roster, "manifest_missing")' in branch
+    assert "no_roster = [pid for pid in ctx.todo if pid not in set(excluded)]" in branch
