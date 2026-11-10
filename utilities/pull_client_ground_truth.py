@@ -212,13 +212,17 @@ def _rows(conn, table: str, charts: list[str]) -> list[dict[str, Any]]:
     return conn.execute(f"SELECT * FROM {table} WHERE chart_name = ANY(%s) ORDER BY id", (charts,)).fetchall()
 
 
-def _insert(ours, table: str, columns: list[str], rows: Iterable[tuple]) -> list[int]:
-    sql = (f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) RETURNING id")
-    ids: list[int] = []
+def _insert(ours, table: str, columns: list[str], rows: Iterable[tuple]) -> int:
+    """All rows in one batch (psycopg's executemany pipelines them), not a round trip per row:
+    row by row took minutes from a laptop to the VM's database (2026-11-10, user). Returns the
+    number of rows inserted."""
+    rows = list(rows)
+    if not rows:
+        return 0
+    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"
     with ours.cursor() as cur:
-        for row in rows:
-            ids.append(cur.execute(sql, row).fetchone()["id"])
-    return ids
+        cur.executemany(sql, rows)
+    return len(rows)
 
 
 def copy_ground_truth(client, ours, charts: list[str], add_users: bool = False) -> dict[str, Any]:
@@ -250,20 +254,23 @@ def copy_ground_truth(client, ours, charts: list[str], add_users: bool = False) 
             target = set(_columns(ours, table))
             columns = [c for c in _columns(client, table) if c in target and c != "id"]
             rows = _rows(client, table, charts)
-            ids = _insert(ours, table, columns, (tuple(value(c, r[c]) for c in columns) for r in rows))
-            counts[f"copied.{table}"] = len(ids)
-            if table == "page_ground_truth":
-                new_page_ids = {r["id"]: i for r, i in zip(rows, ids)}
+            counts[f"copied.{table}"] = _insert(ours, table, columns,
+                                                (tuple(value(c, r[c]) for c in columns) for r in rows))
+            if table == "page_ground_truth" and rows:
+                # Our new ids, by the page's natural key (chart_name, page_number is unique).
+                ours_by_page = {(r["chart_name"], r["page_number"]): r["id"] for r in ours.execute(
+                    "SELECT id, chart_name, page_number FROM page_ground_truth WHERE chart_name = ANY(%s)",
+                    (charts,)).fetchall()}
+                new_page_ids = {r["id"]: ours_by_page[(r["chart_name"], r["page_number"])] for r in rows}
         if new_page_ids and "page_ground_truth_entry" in present_client:
             target = set(_columns(ours, "page_ground_truth_entry"))
             columns = [c for c in _columns(client, "page_ground_truth_entry")
                        if c in target and c not in ("id", "page_ground_truth_id")]
             history = client.execute("SELECT * FROM page_ground_truth_entry WHERE page_ground_truth_id = ANY(%s) "
                                      "ORDER BY id", (list(new_page_ids),)).fetchall()
-            ids = _insert(ours, "page_ground_truth_entry", ["page_ground_truth_id", *columns],
-                          ((new_page_ids[h["page_ground_truth_id"]], *(value(c, h[c]) for c in columns))
-                           for h in history))
-            counts["copied.page_ground_truth_entry"] = len(ids)
+            counts["copied.page_ground_truth_entry"] = _insert(
+                ours, "page_ground_truth_entry", ["page_ground_truth_id", *columns],
+                ((new_page_ids[h["page_ground_truth_id"]], *(value(c, h[c]) for c in columns)) for h in history))
     return counts
 
 
