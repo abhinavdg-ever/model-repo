@@ -1006,10 +1006,10 @@ class TestCardRule:
             inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=headings)
             assert method.decide(inputs).code == classify.CODE_CARDS, headings
 
-    def test_a_card_needs_the_word_card_and_a_name(self):
-        """2026-11-05 (user)."""
+    def test_a_card_needs_the_word_card_but_no_name(self):
+        """2026-11-05 (user); no name needed since 2026-11-10 (the back of a card has none)."""
         assert self._decide(self.CARD.replace("Card ", "")).code != classify.CODE_CARDS
-        assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code != classify.CODE_CARDS
+        assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code == classify.CODE_CARDS
 
     def test_over_150_words_or_three_quarters_of_the_page_is_not_a_card(self):
         """2026-11-05 (user); the area limit is 75% since 2026-11-07 (was half)."""

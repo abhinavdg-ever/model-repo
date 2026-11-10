@@ -1503,12 +1503,12 @@ class TestAzureSdkLogging:
         log.addHandler(handler)
         log.propagate = False
         try:
-            ls.set_process_tag("worker-5128429608d6")
+            ls.set_process_tag("worker-2")
             log.warning("picked up")
         finally:
             ls.set_process_tag("api")
             log.removeHandler(handler)
-        assert "[worker-5128429608d6]" in stream.getvalue()
+        assert "[worker-2]" in stream.getvalue()
 
 
 class TestCorrectedPages:

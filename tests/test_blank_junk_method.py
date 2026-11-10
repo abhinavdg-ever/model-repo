@@ -488,17 +488,14 @@ Med Claims: P.O Box 30539, Salt Lake City, UT 84130-0539
 Rx Claims: OptumRx P.O. Box 650287, Dallas, TX 75265-0287"""
 
 
-def test_a_card_name_can_come_from_kv_extract():
-    """2026-11-10 (user): a UHC card front + back prints the name with no label; the member name
-    kv_extract found on the page counts. Section headers do not block a card."""
+def test_a_card_needs_no_name():
+    """2026-11-10 (user): the back of a card has no name, so no name is needed. Section headers
+    do not block a card."""
     from card_rules import detect
 
-    assert detect(UHC_CARD, text_area=0.3).blocked_by == ["no name on it"]
-    r = detect(UHC_CARD, headings=("For Members", "Providers:", "Rx Claims"),
-               text_area=0.3, name_found=True)
+    r = detect(UHC_CARD, headings=("For Members", "Providers:", "Rx Claims"), text_area=0.3)
     assert r.is_card and r.card_type == "insurance", r.blocked_by
-    assert detect(UHC_CARD, headings=("Demographics",), text_area=0.3, name_found=True).is_card
-    # the ladder passes kv_extract's name through
+    assert detect(UHC_CARD, headings=("Demographics",), text_area=0.3).is_card
     inputs = PageInputs(text=UHC_CARD, pass_no=2, document_type="printed", text_area=0.3,
-                        member_name_found=True, bert=bert(0.5))
+                        bert=bert(0.5))
     assert decide(inputs).code == classify.CODE_CARDS

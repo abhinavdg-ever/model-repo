@@ -474,8 +474,6 @@ class PageInputs:
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
-    # kv_extract found the member's name on the page (extraction.json "name"): the card rule's name.
-    member_name_found: bool = False
     # The previous or next non-blank page has an Electronic Signature too (stage._classify).
     neighbour_signed: bool = False
     signature_known: bool = False  # the KV signature output was there to read
@@ -704,7 +702,7 @@ def decide(inputs: PageInputs) -> Verdict:
     # ---- pass 2
     # 1. card (printed or visual): an ID / insurance card, junked at 5 below.
     card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area,
-                        visual=inputs.document_type == "visual", name_found=inputs.member_name_found)
+                        visual=inputs.document_type == "visual")
             if inputs.document_type in CARD_DOCUMENT_TYPES else None)
     # 2026-11-05 (user): card or no card (no strong / medium). A card goes through the same keeps
     # as any other junk (more than 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in

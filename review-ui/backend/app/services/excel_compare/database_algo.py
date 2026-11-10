@@ -124,16 +124,18 @@ def all_member_ids(chosen: str | None, rows: object) -> str | None:
     """2026-11-03 (user): every member ID the page carries, the member stage's own first, each
     value once, joined with " | " -- Manual Review matches the ground truth against any of them
     (field_comparator._values_match) and shows the one that matched."""
-    from app.services.excel_compare.normalizer import _identifier_core
+    from app.services.excel_compare.normalizer import _identifier_core, same_identifier_core
     from app.services.extraction_review import _chosen
 
     ids: list[str] = []
-    seen: set[str] = set()
+    seen: list[str] = []
     for value in [chosen or "", *(str(r.get("value") or "") for r in _chosen(rows))]:
         value = value.strip()
         key = _identifier_core(value) or value.casefold()
-        if value and value.upper() not in ("N/A", "NA", "-") and key not in seen:
-            seen.add(key)
+        # 968645600-00, 968645600 and 96864560000 are one ID (2026-11-10, user).
+        if value and value.upper() not in ("N/A", "NA", "-") and not any(
+                k == key or same_identifier_core(k, key) for k in seen):
+            seen.append(key)
             ids.append(value)
     return " | ".join(ids) or chosen
 

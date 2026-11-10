@@ -6,13 +6,12 @@ with form / letter / clinical words) are not junk; the ladder goes on. The rules
 card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 
 A page is a card only when words from two different card groups are on it, and no
-form / letter words are on it. The name may come from kv_extract (no label needed), and section
-headers no longer block a card (2026-11-10, user). 2026-11-05 (user): clinical is the section headers alone (no
+form / letter words are on it. No name is needed and section headers do not block a card
+(2026-11-10, user: the back of a card has no name). 2026-11-05 (user): clinical is the section headers alone (no
 clinical word list), and the answer is binary -- a card or not (no strong / medium).
 A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
-2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
-at most 150 words, its text over at most 75% of the page (2026-11-07; was half). The section
+2026-11-05 (user), against false positives: the word "card" must be on it, at most 150 words, its text over at most 75% of the page (2026-11-07; was half). The section
 header check (2026-11-05) was removed on 2026-11-10 (user).
 
     detect(text) -> CardResult(is_card, card_type, matched, blocked_by, words)
@@ -29,11 +28,10 @@ from dataclasses import dataclass, field
 # Longest page a card can be (2026-11-05, user: 150, was 300).
 MAX_WORDS = 150
 # 2026-11-05 (user), to cut false positives -- a card also needs all of:
-#   the word "card" on the page, and a name on it (a name label: Name, Cardholder, LN / FN);
+#   the word "card" on the page (the name requirement went on 2026-11-10, user);
 #   its text over at most 75% of the page (the box round every OCR word, share of the page;
 #   2026-11-07, user: was half).
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
-NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.75
 def _rx(*patterns: str) -> list[re.Pattern]:
     return [re.compile(p, re.I) for p in patterns]
@@ -227,7 +225,7 @@ LICENSE_KINDS = ("drivers_license", "state_id", "drivers_license_or_id")
 
 
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
-           text_area: float | None = None, visual: bool = False, name_found: bool = False) -> CardResult:
+           text_area: float | None = None, visual: bool = False) -> CardResult:
     """``headings``: the page's section headers (stage 6; no longer read, kept for callers);
     ``text_area``: the share of the page
     the text covers (None = not measured, the rule is then off); ``visual``: the page-tag model
@@ -291,10 +289,7 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append(f"too long: {words} words")
     if not CARD_WORD.search(text):
         blocked.append("no word 'card'")
-    # A name must be on it (2026-11-05, user): a name label, or (2026-11-10, user) the member
-    # name kv_extract found on the page (a UHC card prints "Hicks, Jonathan" with no label).
-    if not NAME_WORD.search(text) and not name_found:
-        blocked.append("no name on it")
+    # No name check (removed 2026-11-10, user: the back of a card carries no name).
     # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept
     # blocking real cards; the form / letter words, the word count and the text area guard it).
     if text_area is not None and text_area > MAX_TEXT_AREA:

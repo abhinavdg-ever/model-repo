@@ -440,6 +440,23 @@ def test_member_id_keys_read_in_capitals_and_manual_review_sees_every_id():
     assert _values_match("Member ID", "234567", shown, "234567", shown)
 
 
+
+def test_a_member_id_with_a_00_suffix_is_the_same_id():
+    """2026-11-10 (user): 968645600-00 = 968645600 = 96864560000."""
+    import sys
+    sys.path.insert(0, "review-ui/backend")
+    from app.services.excel_compare.database_algo import all_member_ids
+    from app.services.excel_compare.normalizer import identifiers_match
+
+    rows = [{"key": "Member ID", "value": "968645600-00", "accepted": True, "selected": True},
+            {"key": "ID", "value": "96864560000", "accepted": True, "selected": True},
+            {"key": "Acct", "value": "96864560001", "accepted": True, "selected": True}]
+    assert all_member_ids("968645600", rows) == "968645600 | 96864560001"
+    assert identifiers_match("968645600", "968645600-00")
+    assert identifiers_match("96864560000", "968645600")
+    assert not identifiers_match("968645600", "96864560001")
+    assert not identifiers_match("1200", "12")
+
 def test_the_word_provider_is_not_part_of_a_provider_name():
     from modules.names import trim_provider_name
 

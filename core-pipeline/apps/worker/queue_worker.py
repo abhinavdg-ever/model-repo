@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import re
 import socket
 import sys
 import threading
@@ -42,8 +43,24 @@ ERROR_PAUSE_SECONDS = 10    # after a connection error, before trying again
 _stop = threading.Event()
 
 
+def worker_name() -> str:
+    """The worker's name as `docker ps` shows it, shortened: ``worker-2`` (2026-11-10, user).
+    Docker's DNS answers a container's own IP with its compose name
+    (``core-pipeline-worker-2.<network>``); outside Docker, the host name."""
+    host = socket.gethostname()
+    try:
+        own_ip = socket.gethostbyname(host)
+        full = socket.gethostbyaddr(own_ip)[0].split(".")[0]
+    except OSError:
+        full = ""
+    match = re.search(r"(worker[-_]\d+)$", full)
+    if match:
+        return match.group(1).replace("_", "-")
+    return f"worker-{host[:20]}"
+
+
 def worker_id() -> str:
-    return f"{socket.gethostname()}:{os.getpid()}"
+    return f"{worker_name()} (pid {os.getpid()})"
 
 
 def request_stop(*_args: Any) -> None:
@@ -209,7 +226,7 @@ def main() -> None:
 
     # Every line this worker writes carries its tag; in Docker the hostname is the container
     # id that `docker ps` shows (2026-11-10, user).
-    set_process_tag(f"worker-{socket.gethostname()[:12]}")
+    set_process_tag(worker_name())
     configure_logging(logging.INFO)
     set_worker_name("queue-worker")
     from common import queue as q

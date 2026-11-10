@@ -403,4 +403,15 @@ def identifiers_match(gt_value, system_value):
     gt_id, system_id = _identifier_core(gt_value), _identifier_core(system_value)
     if not gt_id or not system_id:
         return clean_text(gt_value) == clean_text(system_value)
-    return gt_id == system_id
+    return same_identifier_core(gt_id, system_id)
+
+
+def same_identifier_core(a, b):
+    """Equal, or one is the other plus a "00" suffix (2026-11-10, user: 968645600-00 =
+    968645600 = 96864560000)."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) < len(b) else (b, a)
+    return len(short) >= 6 and long == short + "00"

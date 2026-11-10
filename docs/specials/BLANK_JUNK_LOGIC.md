@@ -1,6 +1,6 @@
 # Blank / Junk Logic
 
-As built on 2026-11-08. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
+As built on 2026-11-10. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
 `stage.py` the short page and duplicates). Numbers: `resources/canon/blank_junk_context_canon.json`.
 
 Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype**. The subtypes are
@@ -44,7 +44,7 @@ The first rule that matches decides.
 | 4 | **Signature** | An Electronic Signature here, **and** none on the previous or next page, **and** the model's p(junk) < 0.95 | Main |
 | 5 | Lab result | One word from each group: **Laboratory / Lab Result(s) / Lab Report / Lab Test(s)** (not "Lab" alone) · **Reference Range** (Ref Range, Reference Interval) · **Value(s)** | Main |
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
-| 7 | Card | An ID or insurance card. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
+| 7 | Card | An ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. No name needed (a card's back has none); section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
 | 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers | Junk / Others |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |

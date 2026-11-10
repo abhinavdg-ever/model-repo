@@ -1670,6 +1670,15 @@ function idKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
 }
 
+/** Two ID keys are one ID when equal, or when one is the other plus a "00" suffix
+ * (2026-11-10, user: 968645600-00 = 968645600 = 96864560000). */
+function sameIdKey(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return short.length >= 6 && long === `${short}00`;
+}
+
 /** The staged Member ID list ("Key: Value" per line) against the manifest's Member ID
  * (2026-11-01, user): the matching IDs first with "(Yes)", the rest after with "(No)".
  * When no listed ID matches but the member stage found the manifest's ID on the page
@@ -1686,22 +1695,25 @@ export function memberIdList(
   };
   // One line per ID (2026-11-03, user): two keys that read the same ID ("Account Number" and
   // "ACCOUNT NO.") show once, and a key's own colon is not doubled ("Account Number::").
-  const seen = new Set<string>();
+  const seen: string[] = [];
   const lines = list
     .split("\n")
     .map((line) => line.trim().replace(/:{2,}\s*/, ": "))
     .filter(Boolean)
     .filter((line) => {
       const key = idKey(value(line)) || line;
-      if (seen.has(key)) return false;
-      seen.add(key);
+      if (seen.some((k) => k === key || sameIdKey(k, key))) return false;
+      seen.push(key);
       return true;
     });
   const want = idKey(manifestId ?? "");
   if (!want) return lines.join("\n");
-  const yes = lines.filter((line) => idKey(value(line)) === want);
-  if (!yes.length && found && idKey(found) === want) yes.push(found.trim());
-  const no = lines.filter((line) => idKey(value(line)) !== want);
+  const matches = (line: string) => sameIdKey(idKey(value(line)), want);
+  // A matching ID with no key of its own reads "Member ID: ..." (2026-11-10, user).
+  const labelled = (line: string) => (line.includes(": ") ? line : `Member ID: ${line}`);
+  const yes = lines.filter(matches).map(labelled);
+  if (!yes.length && found && sameIdKey(idKey(found), want)) yes.push(labelled(found.trim()));
+  const no = lines.filter((line) => !matches(line));
   return [...yes.map((line) => `${line} (Yes)`), ...no.map((line) => `${line} (No)`)].join("\n");
 }
 

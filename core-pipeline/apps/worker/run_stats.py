@@ -102,6 +102,27 @@ def docintel_pages(results: dict[str, Any]) -> int:
     return int(final2.get("pages_done") or 0)
 
 
+def took(seconds: float) -> str:
+    """71.4 -> '1m 11s'; 3725 -> '1h 2m 5s'."""
+    total = int(round(seconds))
+    h, rest = divmod(total, 3600)
+    m, sec = divmod(rest, 60)
+    return f"{h}h {m}m {sec}s" if h else f"{m}m {sec}s" if m else f"{sec}s"
+
+
+def completion_line(chart_name: Any, status: str, started: datetime, ended: datetime,
+                    pages: int, error: Optional[str] = None) -> str:
+    """The one line a run ends with (2026-11-10, user: start, end and time taken). The log's
+    [process] tag says which worker ran it."""
+    verdict = "FAILED" if status == "failed" else "COMPLETED"
+    line = (f"CHART {verdict}: {chart_name} | status {status} | {pages} page(s) | "
+            f"started {started:%Y-%m-%d %H:%M:%S} | ended {ended:%H:%M:%S} | "
+            f"took {took((ended - started).total_seconds())}")
+    if error:
+        line += f" | error: {error[:200]}"
+    return line
+
+
 def record(
     chart: dict[str, Any],
     results: dict[str, Any],
@@ -113,10 +134,11 @@ def record(
     through: Optional[str] = None,
     error: Optional[str] = None,
 ) -> None:
-    """Append this run's line and rebuild the CSVs. Never raises."""
+    """Log the run's end, append its line and rebuild the CSVs. Never raises."""
     try:
         seconds = round((ended - started).total_seconds(), 1)
         pages = int((results.get("images") or {}).get("page_count") or chart.get("page_count") or 0)
+        logger.info(completion_line(chart.get("chart_name"), status, started, ended, pages, error))
         partial = ",".join(only or []) or (f"through {through}" if through else "")
         trigger_id, kind = current_trigger()
         row = {

@@ -476,3 +476,36 @@ def test_a_key_for_another_queue_is_named(monkeypatch):
     conn = "Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=p;SharedAccessKey=x;EntityPath=chart-runs"
     got = _probe(monkeypatch, conn, queue="chart-run")
     assert got["reachable"] is False and "for queue 'chart-runs'" in got["reason"] and "chart-run" in got["reason"]
+
+
+def test_a_worker_is_named_as_docker_ps_shows_it(monkeypatch):
+    """2026-11-10 (user): 'worker-2', not a container id; outside Docker the host name."""
+    from apps.worker import queue_worker as qw
+
+    monkeypatch.setattr(qw.socket, "gethostname", lambda: "5128429608d6")
+    monkeypatch.setattr(qw.socket, "gethostbyname", lambda h: "172.18.0.5")
+    monkeypatch.setattr(qw.socket, "gethostbyaddr",
+                        lambda ip: ("core-pipeline-worker-2.core-pipeline_default", [], [ip]))
+    assert qw.worker_name() == "worker-2"
+
+    def no_dns(ip):
+        raise OSError("no reverse DNS")
+
+    monkeypatch.setattr(qw.socket, "gethostbyaddr", no_dns)
+    monkeypatch.setattr(qw.socket, "gethostname", lambda: "ADVINDLP856")
+    assert qw.worker_name() == "worker-ADVINDLP856"
+
+
+def test_a_run_ends_with_a_completion_line():
+    """2026-11-10 (user): on completion, the chart, start, end and time taken."""
+    from datetime import datetime, timedelta
+
+    from apps.worker.run_stats import completion_line, took
+
+    start = datetime(2026, 11, 10, 17, 20, 1)
+    line = completion_line("C1", "completed", start, start + timedelta(seconds=703), 42)
+    assert line == ("CHART COMPLETED: C1 | status completed | 42 page(s) | started 2026-11-10 17:20:01 | "
+                    "ended 17:31:44 | took 11m 43s")
+    failed = completion_line("C1", "failed", start, start + timedelta(seconds=5), 0, "boom")
+    assert failed.startswith("CHART FAILED: C1") and failed.endswith("took 5s | error: boom")
+    assert took(3725) == "1h 2m 5s"
