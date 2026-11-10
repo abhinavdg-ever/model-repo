@@ -408,3 +408,71 @@ def test_the_worker_idles_in_inline_mode(monkeypatch):
         queue_worker.main()
     finally:
         queue_worker._stop.clear()
+
+
+class _Ctx:
+    def __init__(self, obj):
+        self.obj = obj
+
+    def __enter__(self):
+        return self.obj
+
+    def __exit__(self, *a):
+        return False
+
+
+def _probe(monkeypatch, conn, *, admin_ok=False, send_ok=True, queue="chart-runs"):
+    import sys
+    import types
+
+    from apps.orchestrator_api import main
+    from common import queue as q
+
+    monkeypatch.setattr(q, "settings", lambda: (conn, queue))
+
+    class Admin:
+        @classmethod
+        def from_connection_string(cls, c):
+            return cls()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get_queue_runtime_properties(self, name):
+            if not admin_ok:
+                raise RuntimeError("Operation returned an invalid status 'Unauthorized'")
+            return types.SimpleNamespace(active_message_count=2, dead_letter_message_count=0)
+
+    mod = types.ModuleType("azure.servicebus.management")
+    mod.ServiceBusAdministrationClient = Admin
+    monkeypatch.setitem(sys.modules, "azure.servicebus.management", mod)
+
+    class Sender:
+        def create_message_batch(self):
+            if not send_ok:
+                raise RuntimeError("Unauthorized: no Send claim")
+
+    class Client:
+        def get_queue_sender(self, name):
+            return _Ctx(Sender())
+
+    monkeypatch.setattr(q, "get_client", lambda: _Ctx(Client()))
+    return main._probe_queue()
+
+
+def test_a_send_listen_key_is_reachable_without_manage(monkeypatch):
+    """2026-11-10: the management read needs Manage; a Send + Listen key falls back to a send link."""
+    conn = "Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=pipeline;SharedAccessKey=x"
+    got = _probe(monkeypatch, conn)
+    assert got["reachable"] is True and "Manage" in got["note"]
+    assert _probe(monkeypatch, conn, admin_ok=True)["active_messages_at_start"] == 2
+    assert _probe(monkeypatch, conn, send_ok=False)["reachable"] is False
+
+
+def test_a_key_for_another_queue_is_named(monkeypatch):
+    conn = "Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=p;SharedAccessKey=x;EntityPath=chart-runs"
+    got = _probe(monkeypatch, conn, queue="chart-run")
+    assert got["reachable"] is False and "for queue 'chart-runs'" in got["reason"] and "chart-run" in got["reason"]

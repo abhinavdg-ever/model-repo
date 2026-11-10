@@ -116,6 +116,14 @@ def _probe_queue() -> dict[str, Any]:
     status: dict[str, Any] = {"queue": queue_name, "namespace": q.mask(conn_str)}
     if not conn_str:
         return {**status, "reachable": False, "reason": "SERVICEBUS_CONNECTION_STRING not set"}
+    # A key made for one queue (EntityPath=…) only works for that queue: name the mismatch.
+    import re as _re
+
+    entity = _re.search(r"EntityPath=([^;]+)", conn_str)
+    if entity and entity.group(1).strip() != queue_name:
+        return {**status, "reachable": False,
+                "reason": f"the connection string is for queue '{entity.group(1).strip()}' "
+                          f"but SERVICEBUS_QUEUE={queue_name}"}
     try:
         from azure.servicebus.management import ServiceBusAdministrationClient
 
@@ -128,6 +136,16 @@ def _probe_queue() -> dict[str, Any]:
             "active_messages_at_start": props.active_message_count,
             "dead_letter_messages_at_start": props.dead_letter_message_count,
         }
+    except Exception as exc:  # a status probe must never stop the server
+        first = str(exc).splitlines()[0][:300]
+    # 2026-11-10: the management read needs a Manage key; a Send + Listen key (all the
+    # pipeline needs) is refused there. Open a send link instead: that needs Send only.
+    try:
+        with q.get_client() as client:
+            with client.get_queue_sender(queue_name) as sender:
+                sender.create_message_batch()
+        return {**status, "reachable": True,
+                "note": f"queue counts not readable without a Manage key ({first})"}
     except Exception as exc:  # a status probe must never stop the server
         return {**status, "reachable": False, "reason": str(exc).splitlines()[0][:300]}
 
