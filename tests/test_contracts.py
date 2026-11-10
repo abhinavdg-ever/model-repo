@@ -1486,6 +1486,29 @@ class TestAzureSdkLogging:
         assert "[52743839_44976074][12]" in line
         assert "[Prelim OCR]" in line
         assert "completed" in line
+        # 2026-11-10 (user): which process wrote it: "api", or the queue worker's tag.
+        assert "[api] [52743839_44976074]" in line
+
+    def test_a_worker_tags_its_lines(self):
+        import io
+        import logging
+
+        from common import logging_setup as ls
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(ls._ChartAwareFormatter(ls.LOG_FORMAT))
+        handler.addFilter(ls._ChartContextFilter())
+        log = logging.getLogger("test.worker_tag")
+        log.addHandler(handler)
+        log.propagate = False
+        try:
+            ls.set_process_tag("worker-5128429608d6")
+            log.warning("picked up")
+        finally:
+            ls.set_process_tag("api")
+            log.removeHandler(handler)
+        assert "[worker-5128429608d6]" in stream.getvalue()
 
 
 class TestCorrectedPages:

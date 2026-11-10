@@ -122,7 +122,7 @@ def handle_message(
     delivery = getattr(message, "delivery_count", None)
     token = set_current_chart(session)
     try:
-        logger.info("run %s: chart %s starting (delivery %s, worker %s)", run_id, session, delivery, worker_id())
+        logger.info("run %s: chart %s PICKED UP by worker %s (delivery %s)", run_id, session, worker_id(), delivery)
         _update_job(run_id, status="running", started=True, error_message="")
         try:
             result = run(body) or {}
@@ -139,7 +139,7 @@ def handle_message(
             return "failed"
         _update_job(run_id, status="completed", completed=True, chart_id=result.get("chart_id"))
         receiver.complete_message(message)
-        logger.info("run %s: chart %s completed", run_id, session)
+        logger.info("run %s: chart %s FINISHED by worker %s", run_id, session, worker_id())
         return "completed"
     finally:
         reset_current_chart(token)
@@ -205,8 +205,11 @@ def main() -> None:
     except ImportError:
         pass
 
-    from common.logging_setup import configure_logging, set_worker_name
+    from common.logging_setup import configure_logging, set_process_tag, set_worker_name
 
+    # Every line this worker writes carries its tag; in Docker the hostname is the container
+    # id that `docker ps` shows (2026-11-10, user).
+    set_process_tag(f"worker-{socket.gethostname()[:12]}")
     configure_logging(logging.INFO)
     set_worker_name("queue-worker")
     from common import queue as q

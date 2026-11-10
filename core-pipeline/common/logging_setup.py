@@ -63,8 +63,17 @@ ALWAYS_QUIET = ("azure.identity._credentials.chained",)
 
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
 LOG_FORMAT = (
-    "%(asctime)s %(levelname)s [%(chart)s][%(page)s] [%(stage)s] %(message)s"
+    "%(asctime)s %(levelname)s [%(proc)s] [%(chart)s][%(page)s] [%(stage)s] %(message)s"
 )
+# Which process wrote the line (2026-11-10, user): "api", or "worker-<container id>" in a queue
+# worker, so lines from several workers in the one log file can be told apart.
+_PROCESS_TAG = "api"
+
+
+def set_process_tag(tag: str) -> str:
+    global _PROCESS_TAG
+    _PROCESS_TAG = (tag or "").strip() or "api"
+    return _PROCESS_TAG
 LOG_FORMAT_COLOR = LOG_FORMAT
 # 2026-11-07 (user): keep a week. Rotation drops older backups only when a process runs
 # across midnight, so purge_old_logs() also checks on the first trigger of each day.
@@ -141,6 +150,8 @@ def _stage_tag() -> str:
 
 
 def _bind_record(record: logging.LogRecord) -> None:
+    if not hasattr(record, "proc"):
+        record.proc = _PROCESS_TAG
     if not hasattr(record, "chart"):
         record.chart = _chart_tag()
     if not hasattr(record, "page"):
@@ -153,6 +164,7 @@ class _ChartContextFilter(logging.Filter):
     """Inject chart, page, and stage so the format string always has them."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        record.proc = _PROCESS_TAG
         record.chart = _chart_tag()
         record.page = _page_tag()
         record.stage = _stage_tag()
