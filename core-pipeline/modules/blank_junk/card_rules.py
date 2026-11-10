@@ -6,13 +6,14 @@ with form / letter / clinical words) are not junk; the ladder goes on. The rules
 card_rules.py of 2026-11-03 (the 2026-10-31 visit-heading exclusions are gone).
 
 A page is a card only when words from two different card groups are on it, and no
-form / letter words are on it. The name may come from kv_extract (no label needed), and a
-section header that is itself a card line does not block (2026-11-10, user). 2026-11-05 (user): clinical is the section headers alone (no
+form / letter words are on it. The name may come from kv_extract (no label needed), and section
+headers no longer block a card (2026-11-10, user). 2026-11-05 (user): clinical is the section headers alone (no
 clinical word list), and the answer is binary -- a card or not (no strong / medium).
 A card photocopied on an A4 sheet still
 counts: the rules read the words, not the page size. When unsure the answer is no.
 2026-11-05 (user), against false positives: the word "card" and a name label must be on it,
-no section header but Insurance / Subscriber / Policy ID / PCP (stage 6), at most 150 words, its text over at most 75% of the page (2026-11-07; was half).
+at most 150 words, its text over at most 75% of the page (2026-11-07; was half). The section
+header check (2026-11-05) was removed on 2026-11-10 (user).
 
     detect(text) -> CardResult(is_card, card_type, matched, blocked_by, words)
 
@@ -22,54 +23,18 @@ card_type: insurance, medicare, drivers_license, state_id, drivers_license_or_id
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 
 # Longest page a card can be (2026-11-05, user: 150, was 300).
 MAX_WORDS = 150
 # 2026-11-05 (user), to cut false positives -- a card also needs all of:
 #   the word "card" on the page, and a name on it (a name label: Name, Cardholder, LN / FN);
-#   none of the allowed section headers (stage 6) on the page;
 #   its text over at most 75% of the page (the box round every OCR word, share of the page;
 #   2026-11-07, user: was half).
 CARD_WORD = re.compile(r"\bcards?\b", re.I)
 NAME_WORD = re.compile(r"\bname\b|\bcard\s*holder\b|\bLN\b|\bFN\b", re.I)
 MAX_TEXT_AREA = 0.75
-# Section headers a card itself can carry (2026-11-05, user): resources/canon/
-# section_header_classes.json ``card_allowed`` (Insurance, Subscriber ...). Any other header,
-# clinical or not (Demographics), blocks a card.
-_CLASSES_FILE = Path(__file__).resolve().parents[2] / "resources" / "canon" / "section_header_classes.json"
-
-
-def _card_allowed() -> frozenset[str]:
-    try:
-        names = json.loads(_CLASSES_FILE.read_text(encoding="utf-8")).get("card_allowed") or []
-    except (OSError, ValueError):
-        names = []
-    return frozenset(" ".join(str(n).split()).casefold() for n in names)
-
-
-CARD_HEADERS = _card_allowed()
-
-
-
-def blocking_headers(headings: tuple[str, ...]) -> list[str]:
-    """The page's section headers a card cannot carry: all but CARD_HEADERS, and (2026-11-10,
-    user) but a header that is itself a card line ("For Members", "Providers:", "Rx Claims:"),
-    which stage 6 can read off the back of a card."""
-    out = []
-    for h in headings:
-        name = " ".join(str(h).split())
-        if name.casefold().rstrip(":") in CARD_HEADERS:
-            continue
-        if any(p.search(name if name.endswith(":") else name + ":") for pats in INSURANCE_GROUPS.values() for p in pats):
-            continue
-        out.append(h)
-    return out
-
-
 def _rx(*patterns: str) -> list[re.Pattern]:
     return [re.compile(p, re.I) for p in patterns]
 
@@ -263,7 +228,8 @@ LICENSE_KINDS = ("drivers_license", "state_id", "drivers_license_or_id")
 
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
            text_area: float | None = None, visual: bool = False, name_found: bool = False) -> CardResult:
-    """``headings``: the page's section headers (stage 6); ``text_area``: the share of the page
+    """``headings``: the page's section headers (stage 6; no longer read, kept for callers);
+    ``text_area``: the share of the page
     the text covers (None = not measured, the rule is then off); ``visual``: the page-tag model
     calls the page visual (a licence / state ID then needs only its own words)."""
     text = text or ""
@@ -329,11 +295,8 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
     # name kv_extract found on the page (a UHC card prints "Hicks, Jonathan" with no label).
     if not NAME_WORD.search(text) and not name_found:
         blocked.append("no name on it")
-    # The clinical check: any section header but the card's own (Insurance, Subscriber ...) and
-    # the card's own lines read as headers ("For Members", "Rx Claims:"; 2026-11-10, user).
-    blocking = blocking_headers(tuple(headings or ()))
-    if blocking:
-        blocked.append(f"section headers: {len(blocking)}")
+    # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept
+    # blocking real cards; the form / letter words, the word count and the text area guard it).
     if text_area is not None and text_area > MAX_TEXT_AREA:
         blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:

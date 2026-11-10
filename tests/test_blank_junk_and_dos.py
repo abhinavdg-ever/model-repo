@@ -999,16 +999,12 @@ class TestCardRule:
         assert self._decide(two).code == classify.CODE_CARDS
         assert self._decide("Member ID: 912345678 Group Number: 70123").code != classify.CODE_CARDS  # no card, no name
 
-    def test_section_headers_block_a_card(self):
-        """2026-11-05 (user): a card has none of the allowed section headers (stage 6)."""
-        inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Allergies",))
-        verdict = method.decide(inputs)
-        assert verdict.code != classify.CODE_CARDS and verdict.votes.get("card_near_miss")
-        # Headers a card carries (Insurance, Subscriber) do not block it; Demographics does.
-        ok = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Insurance", "Subscriber"))
-        assert method.decide(ok).code == classify.CODE_CARDS
-        demo = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=("Demographics",))
-        assert method.decide(demo).code != classify.CODE_CARDS
+    def test_section_headers_do_not_block_a_card(self):
+        """2026-11-10 (user): the section-header check (2026-11-05) is gone; a card's own lines
+        read as headers kept blocking real cards."""
+        for headings in (("Allergies",), ("Insurance", "Subscriber"), ("Demographics",)):
+            inputs = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", headings=headings)
+            assert method.decide(inputs).code == classify.CODE_CARDS, headings
 
     def test_a_card_needs_the_word_card_and_a_name(self):
         """2026-11-05 (user)."""
@@ -1102,9 +1098,6 @@ def test_section_header_classes_cover_the_canon():
     canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
     classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
     assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)
-    assert {"insurance", "subscriber"} <= card_rules.CARD_HEADERS
-    assert "demographics" not in card_rules.CARD_HEADERS
-    assert card_rules.blocking_headers(("Insurance", "Demographics", "Chief Complaint")) == ["Demographics", "Chief Complaint"]
 
 
 LICENCE_TEXT = """Patient: Doe, Jane DOB: 01/01/1950
