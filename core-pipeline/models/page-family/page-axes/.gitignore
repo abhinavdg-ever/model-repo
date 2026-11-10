@@ -1,3 +1,0 @@
-# The encoder (encoder/model.safetensors, 433 MB, Bio_ClinicalBERT) is in git LFS since
-# 2026-11-02: run `git lfs install` and `git lfs pull` on each host.
-*.bin
