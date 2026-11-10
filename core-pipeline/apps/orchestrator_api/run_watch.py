@@ -3,7 +3,7 @@ and when it finished -- start, end, time taken -- in the API's own log, not only
 
 The worker stamps its name on the queued run when it takes the message
 (``pipeline_jobs.worker_id``, queue_worker.handle_message). After a send, one background thread
-reads those runs every ``POLL_SECONDS`` and logs each change once:
+reads those runs every ``POLL_SECONDS`` (one minute) and logs each change once:
 
     run 812: chart 52743839_44976074 PICKED UP by worker-2
     run 812: CHART COMPLETED: 52743839_44976074 | status completed | 42 page(s) | started ... | took 11m 43s | worker-2
@@ -20,7 +20,7 @@ from typing import Any, Callable, Iterable, Optional
 
 logger = logging.getLogger("core-pipeline")
 
-POLL_SECONDS = 10.0
+POLL_SECONDS = 60.0
 GIVE_UP_HOURS = 48
 FINISHED = ("completed", "failed")
 
