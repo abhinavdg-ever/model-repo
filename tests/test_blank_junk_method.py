@@ -472,3 +472,35 @@ class TestClinicalContentKeep:
     def test_blank_stays_blank(self):
         inputs = PageInputs(text="", pass_no=2, headings=("Social History",))
         assert method.post_process(decide(inputs), inputs).code == method.CODE_BLANK
+
+
+UHC_CARD = """UnitedHealthcare UCard
+Hicks, Jonathan
+Member ID 968980627-00
+AARP Medicare Advantage Extra ValueRx UT-7 (HMO-POS)
+Group Number: 42030 H4604-018-000 Payer ID: LIFE1
+RxBIN RxPCN RxGRP 610097 9999 COS
+PCP $0 Specialist $50
+Benefit Award Card #: 6102 3300 3318 7266
+For Members: myAARPMedicare.com 1-844-876-6176, TTY 711
+Providers: optumproportal.com 1-877-370-2845
+Med Claims: P.O Box 30539, Salt Lake City, UT 84130-0539
+Rx Claims: OptumRx P.O. Box 650287, Dallas, TX 75265-0287"""
+
+
+def test_a_card_name_can_come_from_kv_extract():
+    """2026-11-10 (user): a UHC card front + back prints the name with no label; the member name
+    kv_extract found on the page counts. Back-of-card lines read as section headers do not
+    block; any other header still does."""
+    from card_rules import detect
+
+    assert detect(UHC_CARD, text_area=0.3).blocked_by == ["no name on it"]
+    r = detect(UHC_CARD, headings=("For Members", "Providers:", "Rx Claims"),
+               text_area=0.3, name_found=True)
+    assert r.is_card and r.card_type == "insurance", r.blocked_by
+    assert any("section headers" in b for b in
+               detect(UHC_CARD, headings=("Demographics",), text_area=0.3, name_found=True).blocked_by)
+    # the ladder passes kv_extract's name through
+    inputs = PageInputs(text=UHC_CARD, pass_no=2, document_type="printed", text_area=0.3,
+                        member_name_found=True, bert=bert(0.5))
+    assert decide(inputs).code == classify.CODE_CARDS

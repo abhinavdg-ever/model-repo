@@ -1006,6 +1006,7 @@ def _page_inputs(
     """Everything method.decide needs per page except the text and the model scores."""
     signed: set[str] = set()
     with_provider: set[str] = set()
+    with_name: set[str] = set()
     signature_known = False
     if pass_no == 2:
         from common.db.paths import imaging_csv
@@ -1014,6 +1015,7 @@ def _page_inputs(
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
+        with_name = extracted_page_names(ctx.chart_name, "name")
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
     header_canon = section_heading_canon(ctx.chart_name) if pass_no == 2 else {}
     top = float(method.canon().raw["zones"]["header_band"])
@@ -1033,6 +1035,7 @@ def _page_inputs(
             signed=page["page_name"] in signed,
             signature_known=signature_known,
             provider=page["page_name"] in with_provider,
+            member_name_found=page["page_name"] in with_name,
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
         )
         if pass_no == 2:
