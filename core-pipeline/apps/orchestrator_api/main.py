@@ -644,7 +644,12 @@ def _enqueue_charts(
                 update_job(conn, item["run_id"], status="failed", completed=True, error_message=error)
         logger.error(error)
         raise HTTPException(status_code=503, detail=error) from exc
-    return [{k: v for k, v in item.items() if k != "req"} for item in queued]
+    out = [{k: v for k, v in item.items() if k != "req"} for item in queued]
+    # The API's own log names the worker that took each chart and when it finished (2026-11-10).
+    from apps.orchestrator_api.run_watch import watch
+
+    watch(out)
+    return out
 
 
 def _batch_sources(body: BatchRequest) -> dict[str, Any]:

@@ -622,6 +622,7 @@ class MemoryStore(StoreBackend):
         pages_done: Optional[int] = None,
         pages_failed: Optional[int] = None,
         pages_skipped: Optional[int] = None,
+        worker_id: Optional[str] = None,
     ) -> None:
         with self._lock:
             row = self.jobs.get(job_id)
@@ -633,6 +634,8 @@ class MemoryStore(StoreBackend):
                 row["error_message"] = error_message
             if chart_id is not None:
                 row["chart_id"] = chart_id
+            if worker_id is not None:
+                row["worker_id"] = worker_id
             for col, val in (
                 ("pages_total", pages_total),
                 ("pages_done", pages_done),

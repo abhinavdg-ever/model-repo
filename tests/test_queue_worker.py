@@ -509,3 +509,28 @@ def test_a_run_ends_with_a_completion_line():
     failed = completion_line("C1", "failed", start, start + timedelta(seconds=5), 0, "boom")
     assert failed.startswith("CHART FAILED: C1") and failed.endswith("took 5s | error: boom")
     assert took(3725) == "1h 2m 5s"
+
+
+def test_the_api_logs_which_worker_took_a_chart_and_when_it_finished(caplog):
+    """2026-11-10 (user): the API's own log names the worker and the run's start, end, time."""
+    import logging
+
+    from apps.orchestrator_api.run_watch import report
+    from common.db import create_job, update_job
+    from common.db.memory_store import MemoryStore
+
+    store = MemoryStore()
+    run_id = create_job(store, chart_id=None, stage_name="queued_run", status="queued")
+    runs = {run_id: {"chart_name": "C1", "seen": set()}}
+    caplog.set_level(logging.INFO, logger="core-pipeline")
+    report(store, runs)
+    assert not caplog.messages  # still queued: nothing to say
+    update_job(store, run_id, status="running", started=True, worker_id="worker-2")
+    report(store, runs)
+    report(store, runs)
+    assert caplog.messages == [f"run {run_id}: chart C1 PICKED UP by worker-2"]
+    update_job(store, run_id, status="completed", completed=True)
+    report(store, runs)
+    done = caplog.messages[-1]
+    assert done.startswith(f"run {run_id}: CHART COMPLETED: C1 | status completed") and "took 0s" in done
+    assert done.endswith("| worker-2") and not runs

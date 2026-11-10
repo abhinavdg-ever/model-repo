@@ -699,6 +699,7 @@ def update_job(
     pages_done: Optional[int] = None,
     pages_failed: Optional[int] = None,
     pages_skipped: Optional[int] = None,
+    worker_id: Optional[str] = None,
 ) -> None:
     sets: list[str] = []
     args: list[Any] = []
@@ -711,6 +712,9 @@ def update_job(
     if chart_id is not None:
         sets.append("chart_id = %s")
         args.append(chart_id)
+    if worker_id is not None:
+        sets.append("worker_id = %s")
+        args.append(worker_id[:100])
     for column, value in (
         ("pages_total", pages_total),
         ("pages_done", pages_done),

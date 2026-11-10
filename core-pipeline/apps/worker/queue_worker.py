@@ -140,7 +140,7 @@ def handle_message(
     token = set_current_chart(session)
     try:
         logger.info("run %s: chart %s PICKED UP by worker %s (delivery %s)", run_id, session, worker_id(), delivery)
-        _update_job(run_id, status="running", started=True, error_message="")
+        _update_job(run_id, status="running", started=True, error_message="", worker_id=worker_name())
         try:
             result = run(body) or {}
         except Exception as exc:
