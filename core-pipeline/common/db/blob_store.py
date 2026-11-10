@@ -287,9 +287,19 @@ def _interactive_credential():
 def _blob_client_kwargs() -> dict:
     from common.azure_retry import azure_sdk_retry_kwargs
 
-    return azure_sdk_retry_kwargs(
+    kwargs = azure_sdk_retry_kwargs(
         connection_pool_maxsize=AZURE_BLOB_CONNECTION_POOL_SIZE
     )
+    # A page image in one GET (up to 64 MB) rather than 4 MB chunks, with room for a slow
+    # read: a broken chunked read surfaces as "Unable to stream download" (2026-11-10; the
+    # same settings review-ui has had since 2026-10-27).
+    kwargs.update(
+        max_single_get_size=64 * 1024 * 1024,
+        max_chunk_get_size=8 * 1024 * 1024,
+        connection_timeout=20,
+        read_timeout=120,
+    )
+    return kwargs
 
 
 def get_blob_service_client():

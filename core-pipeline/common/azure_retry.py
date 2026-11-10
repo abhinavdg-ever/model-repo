@@ -64,6 +64,12 @@ def is_transient_azure_error(exc: BaseException) -> bool:
     name = type(exc).__name__
     module = type(exc).__module__ or ""
 
+    # A transfer cut off midway: azure-core reports it with no status code (IncompleteReadError,
+    # "Unable to stream download"). Another attempt usually succeeds (2026-11-10).
+    text = str(exc).lower()
+    if name in {"IncompleteReadError", "DecodeError"} or "stream download" in text or "incompleteread" in text:
+        return True
+
     # azure-core
     if name in {
         "ServiceRequestError",

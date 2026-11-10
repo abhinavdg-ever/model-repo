@@ -65,3 +65,30 @@ def test_di_features_parser():
     assert mod._di_features() is None
     mod.AZURE_DI_FEATURES = ""
     assert mod._di_features() is None
+
+
+def test_a_download_cut_off_midway_is_retried():
+    """2026-11-10 (user, Windows): "Unable to stream download" carries no status code; it is
+    transient, so the page download tries again instead of failing the page."""
+    from common.azure_retry import is_transient_azure_error
+
+    class IncompleteReadError(Exception):
+        pass
+
+    IncompleteReadError.__module__ = "azure.core.exceptions"
+    assert is_transient_azure_error(IncompleteReadError("Connection broken: IncompleteRead"))
+
+    class ServiceResponseError(Exception):
+        pass
+
+    ServiceResponseError.__module__ = "azure.core.exceptions"
+    assert is_transient_azure_error(ServiceResponseError("Unable to stream download"))
+    assert not is_transient_azure_error(ValueError("fingerprint mismatch"))
+
+
+def test_the_pipeline_blob_client_reads_a_page_in_one_get():
+    import common.db.blob_store as bs
+
+    kwargs = bs._blob_client_kwargs()
+    assert kwargs["max_single_get_size"] == 64 * 1024 * 1024 and kwargs["read_timeout"] == 120
+    assert kwargs["retry_read"] >= 3

@@ -300,7 +300,11 @@ def _sync_item(container, blob_prefix: str, files: dict[str, dict[str, Any]],
             report["unchanged"] += 1
             continue
         try:
-            _download_verified(container, f"{blob_prefix}/{rel}", dest, expected)
+            from common.azure_retry import call_with_retry
+
+            # A transfer cut off midway is tried again (2026-11-10); a fingerprint mismatch is not.
+            call_with_retry(lambda: _download_verified(container, f"{blob_prefix}/{rel}", dest, expected),
+                            attempts=3, base_delay=2.0, max_delay=20.0, label=f"resources:{rel}")
             cache.sha256(dest)
             report["downloaded"].append(f"{blob_prefix}/{rel}")
         except Exception as exc:
