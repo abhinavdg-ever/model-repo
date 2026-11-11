@@ -34,15 +34,13 @@ def format_duplicate_label(
     is_partial: bool | None = None,
     is_content: bool | None = None,
 ) -> str:
-    """Duplicate for a duplicate; Partial for a partial duplicate; "Repeated Content" for a page
-    repeating another 100% whose encounter is not a copy (2026-10-29 / 11-03); No otherwise."""
-    del confidence  # the pipeline's flag decides; kept for callers' signature
+    """Duplicate for a duplicate; Copy for a 100% text match a hard block kept from being one
+    (2026-11-11, user: Duplicate_Logic.md; Partial is gone); No otherwise."""
+    del confidence, is_partial  # the pipeline's flag decides; kept for callers' signature
     if is_duplicate is None:
         return "NA"
     if is_duplicate:
         return "Duplicate"
-    if is_partial:
-        return "Partial"
     if is_content:
-        return "Partial"  # 2026-11-06 (user): Repeated Content is displayed as a Partial
+        return "Copy"
     return "No"

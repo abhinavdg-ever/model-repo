@@ -21,26 +21,20 @@
     "header_band": 0.15,
     "footer_band": 0.08
   },
-  "duplicates": {
-    "note": "2026-10-22 (user): pages are compared on their distinct words as read (nothing stripped). overlap = shared distinct words / all distinct words of the two pages; contained = share of the smaller page's distinct words found on the other. Overlap >= 98%, or contained >= contained_at, is a duplicate; overlap 95-98% a partial. (Page-number and changed-word rules were removed the same day.)",
-    "contained_at": 1.0,
-    "contained_min_length_ratio": 0.8,
-    "contained_max_extra_words": 3,
-    "contained_copy_note": "2026-11-06 (user): a page shorter than another (whitespace-stripped characters), at least contained_min_length_ratio of its length, with at most contained_max_extra_words of its own distinct words not on the other page, is Repeated Content (Main, the later page pointing at the earlier) when it is not already a Duplicate or Partial -- never a Duplicate by this rule.",
-    "duplicate_below_words": 8,
-    "partial_below_words": 15,
-    "count_rule_min_overlap": 0.8,
-    "duplicate_min_length_ratio": 0.9,
-    "length_note": "A duplicate's shorter page is at least duplicate_min_length_ratio of the longer one's length (whitespace-stripped characters); otherwise the pair is a partial at most (2026-10-22, user: duplicates are about the same length).",
-    "bands_note": "Distinct words different = distinct words on only one of the two pages, both sides added. Duplicate: contained, or overlap >= 98%, or fewer than duplicate_below_words different. Partial: overlap 95-98%, or fewer than partial_below_words different. Else neither (2026-10-22, user). The word counts apply only at overlap >= count_rule_min_overlap: two short unrelated pages also differ in few words.",
-    "larger_kept_above_words": 10,
-    "which_page_note": "Which page is the duplicate (2026-11-03, user): always the later page; the earlier page keeps its values (was 2026-10-29: the page with less on it). larger_kept_above_words is no longer read.",
-    "signature_note": "2026-11-07 (user): a signature page is kv_extract's Electronic Signature only (raw p(junk) at most distilbert.signature_overruled_above); the old signature_terms word list is gone.",
-    "signature_note": "2026-10-26 (user): a signature or ending page standing apart is not a duplicate: a pair with one (kv_extract's Electronic Signature in pass 2, or any signature_terms on the page) is skipped when a Main page lies between them (other notes, other DOSs). Side by side they still compare.",
-    "pass_note": "2026-10-29 (user): duplicates are found in pass 2 only, on Final OCR text with kv_extract's DOS; pass 1 marks no duplicates.",
-    "dos_note": "2026-10-26 (user): two pages that both have a kv_extract DOS that differ in any date (from or to) are not duplicates or partials, however alike their words (pass 2).",
-    "text_dates_note": "Two pages whose own text differs in any date (dates compared in ISO form, so 5/3/2024 = 05/03/2024) are never duplicates or partials, in pass 1 and pass 2 (2026-10-27, user).",
-    "signed_copy_note": "A signature / ending page apart from its look-alike (a Main page between) is not a duplicate, unless the two are exact copies (the same distinct words, lengths within 10%) of more than 100 words each: then it is (2026-10-27, user)."
+  "duplicate_logic": {
+    "note": "2026-11-11 (user: Duplicate_Logic.md; modules/blank_junk/dup_rules.py, docs/specials/BLANK_JUNK_LOGIC.md). Main pages only, body text (header / footer lines out), each page against its matches_per_page most similar earlier pages. Hard blocks: length (more than length_share or length_words apart), a differing date / time / number, signature blocks differ, a signed page under short_words, a page under short_words or a form / handwritten page whose images do not match (image_min_match of the ink on the other's), Progress Notes whose documents' Final DOS differ (continuity). Exact at any distance; within near_pages only exact; further apart Rule A (>= rule_a_min next to a duplicate of the run) and Rule B (three in a row, average >= rule_b_average, none below rule_b_min). Two partial matches to one original: neither, Review Conflict. Header / footer: the first head_lines and last foot_lines lines found on repeated_line_pages or more pages.",
+    "near_pages": 3,
+    "matches_per_page": 3,
+    "short_words": 25,
+    "length_share": 0.1,
+    "length_words": 20,
+    "rule_a_min": 0.98,
+    "rule_b_average": 0.95,
+    "rule_b_min": 0.9,
+    "repeated_line_pages": 3,
+    "head_lines": 4,
+    "foot_lines": 3,
+    "image_min_match": 0.9
   },
   "contained_page": {
     "note": "2026-11-08 (user): the short page, blank / junk pass 2 (stage._classify): a page whose content ends in the top top_fraction of the page and that got past the earlier rules (a signed page kept by R4 never comes here). Before / after = the previous / next non-blank page. First that applies: 1. the page before ends in its Electronic Signature (kv_extract: footer band, or its signature sentence in the last paragraph) carried on here: provider name / credentials or a date on this page -> Main; 2. fewer than junk_below_unique_words distinct words not on the page before or after -> Junk / Others, unless they are only Diagnosis / Visit Diagnosis. Reason starts short_page:, confidence 0.90. The signature keep (R4, every page): Electronic Signature, none on the previous / next non-blank page, raw p(junk) < 0.95.",
@@ -50,7 +44,13 @@
   "fax_unsigned": {
     "note": "2026-11-02 (user): pass 2, after every other rule: a page kept as content (Main) one of whose section headers (stage 6, in the Final OCR JSON; 2026-11-03, user: not a band of the page) has one of fax_terms, and that has no signature -- no Electronic Signature from kv_extract and none of signature_terms anywhere on the page -- is Junk / Letter/Fax (rule FAX). A signed faxed page stays Main.",
     "enabled": true,
-    "fax_terms": ["fax", "faxed", "fax to", "fax from", "facsimile"],
+    "fax_terms": [
+      "fax",
+      "faxed",
+      "fax to",
+      "fax from",
+      "facsimile"
+    ],
     "note_signed": "2026-11-07 (user): 'no signature' means kv_extract found no Electronic Signature on the page. Signature words in the text ('Orders for Signature', 'please sign') never block the rule."
   },
   "short_page": {
@@ -825,8 +825,16 @@
         "lab test",
         "lab tests"
       ],
-      ["reference range", "ref range", "ref. range", "reference interval"],
-      ["value", "values"]
+      [
+        "reference range",
+        "ref range",
+        "ref. range",
+        "reference interval"
+      ],
+      [
+        "value",
+        "values"
+      ]
     ]
   },
   "clinical_content_keep": {

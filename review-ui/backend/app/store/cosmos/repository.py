@@ -48,6 +48,7 @@ from app.core.schemas import (
 from app.store import rows as R
 from app.store.base import FolderRepository
 from app.store.blob_pages import BlobPageImages
+from app.store.cosmos import credential as cosmos_credential
 from app.store.shared import _normalize_kind
 
 logger = logging.getLogger("review_ui.cosmos")
@@ -136,12 +137,16 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
         endpoint: str = "",
         key: str = "",
         database: str = "imaging",
+        auth: str = "key",
+        client_id: str = "",
     ):
         """``containers`` (name -> container client) for tests; otherwise built on first
-        use from the endpoint, key and database."""
+        use from the endpoint, key (or managed identity: ``auth``, ``client_id``) and database."""
         self._containers = dict(containers) if containers is not None else None
         self._endpoint = (endpoint or "").strip()
         self._key = (key or "").strip()
+        self._auth = (auth or "key").strip()
+        self._client_id = (client_id or "").strip()
         self._database = (database or "imaging").strip() or "imaging"
         self._lock = threading.RLock()
         # chart name -> (fingerprint, page docs, {kind: OcrTextResponse})
@@ -153,14 +158,18 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
     def _container(self, name: str) -> Any:
         with self._lock:
             if self._containers is None:
-                if not self._endpoint or not self._key:
+                if not cosmos_credential.configured(self._endpoint, self._key, self._auth):
                     raise HTTPException(
                         status_code=503,
-                        detail="DB_BACKEND=cosmos needs COSMOS_ENDPOINT and COSMOS_KEY in review-ui/.env",
+                        detail="DB_BACKEND=cosmos needs COSMOS_ENDPOINT and COSMOS_KEY (or "
+                               "COSMOS_AUTH=managed_identity) in review-ui/.env",
                     )
                 from azure.cosmos import CosmosClient
 
-                db = CosmosClient(self._endpoint, credential=self._key).get_database_client(self._database)
+                db = CosmosClient(
+                    self._endpoint,
+                    credential=cosmos_credential.credential(self._key, self._auth, self._client_id),
+                ).get_database_client(self._database)
                 self._containers = {n: db.get_container_client(n) for n in CONTAINERS}
             return self._containers[name]
 

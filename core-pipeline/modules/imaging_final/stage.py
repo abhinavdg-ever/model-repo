@@ -83,9 +83,10 @@ def has_specialty(page_type: Optional[str], page_subtype: Optional[str] = None) 
     """True when the Final page type's L1 is one that carries a specialty."""
     return path_of(page_type, page_subtype)[0] in SPECIALTY_FAMILIES
 
-# The reason continuity's duplicate check gives a copied page that is a Main page again
-# (modules/continuity/duplicates.py CONTENT_MARK).
+# The reason a "Copy of N" page carries (blank / junk, or continuity's date-of-service block:
+# modules/continuity/duplicates.py CONTENT_MARK, DOS_NOTE).
 CONTENT_MARK = "duplicate_content_of_page_id:"
+DOS_NOTE = "blocked by date of service"
 
 FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
 
@@ -476,9 +477,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             own_values = {k: v for k, v in (row.get("confidences") or {}).items() if k in ("blank_junk", "handwriting")}
             row["confidences"] = {**(reference.get("confidences") or {}), **own_values}
 
-        # A copied page whose encounter is not a copy (continuity's duplicate check,
-        # 2026-10-29): a Main page in its own document, skipped by the stages after blank /
-        # junk as a duplicate, so the values it has none of are its original's.
+        # A "Copy of N" page (2026-11-11): a Main page; the values it has none of (a copy the
+        # date-of-service block stopped was skipped by the stages after blank / junk) are its
+        # original's.
         for page_id, row in rows.items():
             final = blank_junk.get(page_id) or {}
             original = final.get("duplicate_of_page_id")
@@ -487,7 +488,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             if CONTENT_MARK not in str(final.get("reason") or ""):
                 continue
             reference = rows[original]
+            # A copy the date-of-service block stopped (continuity, 2026-11-11) keeps its own
+            # document's DOS, never its original's.
+            dos_blocked = DOS_NOTE in str(final.get("reason") or "")
             for key in COPIED_FROM_REFERENCE:
+                if dos_blocked and key in ("dos_from", "dos_to"):
+                    continue
                 if row.get(key) in (None, "", []) and key != "document_seq":
                     row[key] = reference[key]
             row["duplicate_of_page_id"] = original

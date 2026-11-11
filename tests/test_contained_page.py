@@ -158,45 +158,6 @@ def test_a_page_an_earlier_rule_settled_is_not_a_candidate(monkeypatch):
     assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("HW")
 
 
-def test_repeated_content_is_off():
-    """2026-11-08 (user): a pair is a Duplicate, a Partial, or nothing."""
-    assert stage.REPEATED_CONTENT is False
-
-
-def test_a_shorter_page_mostly_in_another_is_repeated_content(monkeypatch):
-    """2026-11-06 (user): shorter than the other, at least 80% of its length, and at most 3 of
-    its distinct words not on it -> Repeated Content (Main, pointing at the earlier page), never
-    a Duplicate by this rule. (Off since 2026-11-08; checked with it switched on.)"""
-    monkeypatch.setattr(stage, "REPEATED_CONTENT", True)
-    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
-    words = [f"finding{i}" for i in range(100)]
-    longer = " ".join(words)
-    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in (1, 2)]
-
-    def run(second):
-        texts = {1: longer, 2: second}
-        inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
-        for i in texts:
-            inputs[i].content_bottom = 0.9
-        return {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-
-    # 85 of its words on page 1 plus 3 of its own: about 85% of page 1's length.
-    row = run(" ".join(words[:85] + [f"extra{i}" for i in range(3)]))[2]
-    assert row["flag"] == "not_blank_junk" and stage.SAME_CONTENT_MARK + "1" in row["reason"]
-    # The shorter page is the one marked, even when it comes first.
-    texts = {1: " ".join(words[:85] + [f"extra{i}" for i in range(3)]), 2: longer}
-    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
-    for i in texts:
-        inputs[i].content_bottom = 0.9
-    first = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert stage.SAME_CONTENT_MARK + "2" in first[1]["reason"]
-    assert stage.SAME_CONTENT_MARK not in (first[2]["reason"] or "")
-    # 4 words of its own: not by this rule.
-    assert stage.SAME_CONTENT_MARK not in (run(" ".join(words[:85] + [f"extra{i}" for i in range(4)]))[2]["reason"] or "")
-    # 70% of the length: too short.
-    assert stage.SAME_CONTENT_MARK not in (run(" ".join(words[:70] + ["extra1"]))[2]["reason"] or "")
-
-
 def test_a_short_page_adding_only_diagnosis_stays(monkeypatch):
     """2026-11-08 (user): when the only words a short page adds to its neighbour are "Diagnosis"
     or "Visit Diagnosis", it is not junked; any other header-only addition still is."""

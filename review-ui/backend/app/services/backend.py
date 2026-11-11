@@ -47,7 +47,9 @@ def store_usable(settings: Settings, url_check: Callable[[str | None], bool] = d
     """Whether the configured backend can be asked at all: Cosmos settings for cosmos, a
     real DATABASE_URL (``url_check``) otherwise."""
     if getattr(settings, "db_backend", "postgres") == "cosmos":
-        return bool(settings.cosmos_endpoint.strip() and settings.cosmos_key.strip())
+        from app.store.cosmos.credential import configured
+
+        return configured(settings.cosmos_endpoint, settings.cosmos_key, getattr(settings, "cosmos_auth", "key"))
     return url_check(settings.database_url)
 
 
@@ -71,7 +73,8 @@ def cosmos():
             if not isinstance(repo, CosmosFolderRepository):
                 repo = CosmosFolderRepository(
                     endpoint=settings.cosmos_endpoint, key=settings.cosmos_key,
-                    database=settings.cosmos_database,
+                    database=settings.cosmos_database, auth=settings.cosmos_auth,
+                    client_id=settings.cosmos_client_id or settings.azure_client_id,
                 )
             _store = repo.review
     return _store

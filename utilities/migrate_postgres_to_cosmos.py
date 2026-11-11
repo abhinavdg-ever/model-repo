@@ -203,7 +203,9 @@ def _container(name: str) -> Any:
 
     from azure.cosmos import CosmosClient
 
-    db = CosmosClient(os.environ["COSMOS_ENDPOINT"], credential=os.environ["COSMOS_KEY"]).get_database_client(
+    from common.db.cosmos_store import cosmos_credential
+
+    db = CosmosClient(os.environ["COSMOS_ENDPOINT"], credential=cosmos_credential()).get_database_client(
         (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
     return db.get_container_client(name)
 

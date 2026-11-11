@@ -358,12 +358,12 @@ class ImagingPageResult(BaseModel):
     # None = not run → NA; True/False when classified. True: ≥ 98% alike (or
     # contained) -- the page is a duplicate (not junk: Blank / Junk "No").
     isDuplicate: bool | None = None
-    # True: 95-98% alike -- a partial duplicate; the page keeps its own verdict (Main or junk).
+    # Always False since 2026-11-11 (user): there are no Partials any more. Kept for old clients.
     isPartialDuplicate: bool | None = None
-    # True: a copy of another page whose encounter is not a copy of that page's (the
-    # continuity stage's check, 2026-10-29): a Main page, "Repeated Content (To Page N)".
+    # True: "Copy of N" (2026-11-11, user) -- a 100% text match a hard block kept from being a
+    # duplicate; a Main page.
     isDuplicateContent: bool | None = None
-    # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
+    # Page file the duplicate (or Copy) points at, e.g. "4.png": always the earliest copy.
     duplicateOf: str | None = None
     # The page's highest duplicate similarity against its neighbors (0-1), whatever its
     # verdict; the Duplicate confidence comes from it. None when never compared.

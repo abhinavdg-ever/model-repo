@@ -420,8 +420,9 @@ def _unjunk_inside_notes(
 
 
 def _carried_copy(final: Optional[dict[str, Any]]) -> bool:
-    """A page an earlier run's duplicate check made a plain Main page (carried-forward content)."""
-    return duplicates.CARRIED_MARK in str((final or {}).get("reason") or "")
+    """A Rule A / B duplicate an earlier run's date-of-service block made a plain Main page."""
+    reason = str((final or {}).get("reason") or "")
+    return duplicates.CARRIED_MARK in reason and duplicates.DOS_NOTE in reason
 
 
 def _carried_original(final: Optional[dict[str, Any]]) -> Optional[int]:
@@ -431,16 +432,12 @@ def _carried_original(final: Optional[dict[str, Any]]) -> Optional[int]:
     return int(found.group(1)) if found else None
 
 
-# Blank / junk pass 2's same content under different encounters (2026-11-04): already decided,
-# never re-checked here.
-SAME_CONTENT_NOTE = "same content, different encounter"
-
-
 def _content_copy(final: Optional[dict[str, Any]]) -> bool:
-    """A page an earlier run's duplicate check made a Main page with duplicate content."""
+    """An exact duplicate an earlier run's date-of-service block made a "Copy of" page (blank /
+    junk's own Copy of pages carry no DOS_NOTE: they are never duplicates)."""
     reason = str((final or {}).get("reason") or "")
     return (bool((final or {}).get("duplicate_of_page_id")) and duplicates.CONTENT_MARK in reason
-            and SAME_CONTENT_NOTE not in reason)
+            and duplicates.DOS_NOTE in reason)
 
 
 def _review_duplicates(
@@ -452,93 +449,54 @@ def _review_duplicates(
     bj: dict[int, dict[str, Any]],
     rules: Any,
 ) -> list[dict[str, Any]]:
-    """The encounter check on duplicates (duplicates.py): revise the blank / junk
-    verdicts it changes, and assign the documents again when any changed."""
+    """The date-of-service block on duplicates (duplicates.dos_block, 2026-11-11, user): a
+    blocked duplicate is a Main page again; a page an earlier run blocked is a duplicate again
+    when the dates no longer differ. Documents are assigned again when anything changed."""
     from modules.blank_junk.stage import extracted_dos
 
     by_name = {item.page_name: item.page_id for item in inputs}
     dos = {by_name[name]: dates for name, dates in extracted_dos(chart_name).items() if name in by_name}
-    partial_of = {
-        item.page_id: int(bj[item.page_id]["duplicate_of_page_id"])
-        for item in inputs
-        if item.kind == "main" and (bj.get(item.page_id) or {}).get("duplicate_of_page_id")
-    }
-    result = duplicates.review(inputs, rows, texts, partial_of, dos)
-    restored = [
-        item for item in inputs
-        if (_content_copy(bj.get(item.page_id)) and item.page_id not in result.demote)
-        or (_carried_copy(bj.get(item.page_id)) and item.page_id not in result.release)
-    ]
-    if not (result.promote or result.demote or result.release or result.partial or restored):
+    blocked = duplicates.dos_block(inputs, rows, dos)
+    earlier = {item.page_id for item in inputs
+               if _content_copy(bj.get(item.page_id)) or _carried_copy(bj.get(item.page_id))}
+    restore = [item for item in inputs if item.page_id in earlier and item.page_id not in blocked]
+    if not blocked and not restore:
         return rows
+    same = duplicates.exact_text(texts)
     by_id = {item.page_id: item for item in inputs}
     with connect() as conn:
-        for page_id, (original, average) in result.promote.items():
+        for page_id, (original, mine, theirs) in blocked.items():
+            final = bj.get(page_id) or {}
+            was = str(final.get("reason") or "")
+            if page_id in earlier:  # blocked again: keep the duplicate reason it had
+                was = duplicates.restored_reason(was, original)
+            exact = same(page_id, original)
             revise_blank_junk_final(
-                conn, page_id, blank_junk_flag="duplicate", duplicate_of_page_id=original,
-                reason=f"duplicate_of_page_id:{original} (its encounter averages {average:.4f} "
-                       f"against the original's: a duplicate encounter; was a partial duplicate)",
+                conn, page_id, blank_junk_flag="not_blank_junk",
+                duplicate_of_page_id=original if exact else None,
+                reason=duplicates.blocked_reason(original, exact, mine, theirs, was),
             )
-            item = by_id[page_id]
-            item.kind, item.duplicate_of, item.text, item.dos_from, item.dos_to = "duplicate", original, "", "", ""
-        for page_id, (original, average) in result.demote.items():
-            revise_blank_junk_final(
-                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=original,
-                reason=f"{duplicates.CONTENT_MARK}{original} (its encounter averages {average:.4f} "
-                       f"against the original's, not above 0.98: duplicate content, not a duplicate encounter)",
-            )
-            # A Main page with its original's content values: the stages after blank /
-            # junk skipped it as a duplicate.
+            # A Main page with its original's page type (the stages after blank / junk skipped
+            # it as a duplicate); its DOS is its document's, never its original's.
             item, source = by_id[page_id], by_id.get(original)
             item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
             item.lines = item.lines or text_lines(item.text)
             if source is not None:
                 item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
                 item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
-                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
-        for page_id, (original, average) in result.release.items():
-            revise_blank_junk_final(
-                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=None,
-                reason=f"{duplicates.CARRIED_MARK}{original} (a single page, not a 100% copy, in another "
-                       f"encounter: carried-forward content, not a duplicate)",
-            )
-            item, source = by_id[page_id], by_id.get(original)
-            item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
-            item.lines = item.lines or text_lines(item.text)
-            if source is not None:
-                item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
-                item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
-                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
-        for page_id, (original, overlap) in result.partial.items():
-            # The same encounter, not a 100% match (2026-11-03, user): a Partial -- a Main page
-            # naming the page it nearly copies, with its original's values for grouping.
-            revise_blank_junk_final(
-                conn, page_id, blank_junk_flag="not_blank_junk", duplicate_of_page_id=original,
-                reason=f"partial_duplicate_of_page_id:{original} (overlap={overlap:.4f}: the same "
-                       f"encounter, not a 100% match)",
-            )
-            item, source = by_id[page_id], by_id.get(original)
-            item.kind, item.duplicate_of, item.text = "main", None, texts.get(page_id) or ""
-            item.lines = item.lines or text_lines(item.text)
-            if source is not None:
-                item.page_type, item.page_subtype, item.names = source.page_type, source.page_subtype, source.names
-                item.page_confidence, item.title_hit = source.page_confidence, source.title_hit
-                item.dos_from, item.dos_to, item.dos_trust = source.dos_from, source.dos_to, source.dos_trust
-        for item in restored:
-            original = bj[item.page_id].get("duplicate_of_page_id") or _carried_original(bj[item.page_id])
+        for item in restore:
+            final = bj[item.page_id]
+            original = final.get("duplicate_of_page_id") or _carried_original(final)
             if not original:
                 continue
             revise_blank_junk_final(
                 conn, item.page_id, blank_junk_flag="duplicate", duplicate_of_page_id=original,
-                reason=f"duplicate_of_page_id:{original} (re-checked: a duplicate)",
+                reason=duplicates.restored_reason(str(final.get("reason") or ""), int(original)),
             )
         _rewrite_junk_csv(conn, chart_id, chart_name)
-    logger.info(
-        "continuity chart=%s duplicate check: %d partial -> duplicate, %d duplicate -> duplicate content, "
-        "%d duplicate -> carried-forward Main, %d same-encounter duplicate -> Partial",
-        chart_name, len(result.promote), len(result.demote), len(result.release), len(result.partial),
-    )
-    return assign(inputs, rules)
+    logger.info("continuity chart=%s date-of-service block: %d duplicate(s) -> Main, %d restored",
+                chart_name, len(blocked), len(restore))
+    return assign(inputs, rules) if blocked else rows
 
 
 def _rewrite_junk_csv(conn: Any, chart_id: int, chart_name: str) -> None:
@@ -639,8 +597,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
 
         rows = assign(inputs, rules)
-        # 2026-10-29 (user): a far copy in a Progress Note / Discharge Summary / Operative Note / Clinical Summary is a
-        # duplicate only when its whole encounter is a copy.
+        # 2026-11-11 (user): two Progress Note pages whose documents' Final DOS differ are never
+        # duplicates (Duplicate_Logic.md block 1).
         rows = _review_duplicates(chart_id, ctx.chart_name, inputs, rows, own_texts, bj, rules)
         # The short page contained in a nearby page is junked in blank / junk pass 2 since
         # 2026-11-03 (user); continuity reads it as any junk page.

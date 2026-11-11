@@ -218,10 +218,10 @@ export type ImagingPageResult = {
   blankOrJunk?: string | null;
   /** null = not classified → NA */
   isDuplicate?: boolean | null;
-  /** 95–98% alike: a partial duplicate; the page keeps its own verdict (Main or junk). */
+  /** Always false since 2026-11-11 (user): there are no Partials any more. */
   isPartialDuplicate?: boolean | null;
-  /** A copied page whose encounter is not a copy (continuity, 2026-10-29): a Main page,
-   * "Repeated Content (To Page N)". */
+  /** "Copy of N" (2026-11-11, user): a 100% text match a hard block kept from being a
+   * duplicate; a Main page. */
   isDuplicateContent?: boolean | null;
   /** The page's highest duplicate similarity (0–1), whatever its verdict. */
   duplicateConfidence?: number | null;

@@ -367,7 +367,8 @@ def test_get_imaging_matches_postgres(both):
     page1 = got["pages"][0]
     assert page1["encounterType"] == "Outpatient (F2F)" and page1["finalDosFrom"] == "2024-03-15"
     assert got["pages"][1]["blankOrJunk"] == "Yes (Blank)" and got["pages"][1]["dosFrom"] is None
-    assert got["pages"][2]["isPartialDuplicate"] is True and got["pages"][2]["duplicateOf"] == "1.jpg"
+    # No Partials since 2026-11-11: a Main page naming another is not one.
+    assert got["pages"][2]["isPartialDuplicate"] is False and got["pages"][2]["duplicateOf"] == "1.jpg"
     assert got["verification"]["matchedMemberId"] == "M1"
 
 

@@ -88,14 +88,10 @@ def _yes_no(value: bool | None) -> str:
 
 
 def _duplicate(page: ImagingPageResult) -> str:
-    """Yes (≥ 98%) / Partial (95-98%) / No; not run stays blank. A copied page whose
-    encounter is not a copy reads "Repeated Content" (a No; 2026-11-03)."""
+    """Yes / No; not run stays blank. A "Copy of N" page (2026-11-11, user) stays in the chart
+    as a normal page: a No."""
     if page.isDuplicate:
         return "Yes"
-    if page.isPartialDuplicate:
-        return "Partial"
-    if page.isDuplicateContent:
-        return "Partial"  # 2026-11-06 (user): Repeated Content is displayed as a Partial
     return _yes_no(page.isDuplicate)
 
 

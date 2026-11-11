@@ -431,11 +431,10 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                 fields["blankOrJunk"] = blank
                 fields["isDuplicate"] = dup
                 pointing = (flag or "").strip().lower() in ("not_blank_junk", "junk") and bool(duplicate_of)
-                # A copied page whose encounter is not a copy (continuity, 2026-10-29).
-                content = pointing and DUPLICATE_CONTENT_MARK in (reason or "")
-                fields["isDuplicateContent"] = content
-                # Any other Main or junk page pointing at another is a partial (95-98%) duplicate.
-                fields["isPartialDuplicate"] = pointing and not content
+                # "Copy of N" (2026-11-11, user): a 100% text match a hard block kept from
+                # being a duplicate; a Main page. There are no Partials any more.
+                fields["isDuplicateContent"] = pointing and DUPLICATE_CONTENT_MARK in (reason or "")
+                fields["isPartialDuplicate"] = False
                 fields["pageType"] = page_type
                 if duplicate_of:
                     fields["duplicateOf"] = str(duplicate_of)

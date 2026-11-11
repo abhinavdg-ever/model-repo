@@ -20,36 +20,12 @@ probabilities and the deciding rule go to ``<chart>/staging/blank_junk.json`` be
 key/value extraction's ``extraction.json`` (not the database).
 
 Duplicate detection (after the verdict, among Main pages only -- never blank or junk):
-
-* Compare each comparable page with the pages after it, up to 25 pages or 10% of the
-  chart, whichever is more (``classify.duplicate_window``); each pair once.
-* Pages are compared on their distinct words, everything on the page included
-  (``classify.word_overlap``, 2026-10-22, user): the **overlap** is shared distinct
-  words / all distinct words of the two pages; **contained** is the share of the
-  smaller page's distinct words found on the other.
-* Contained (canon ``duplicates.contained_at``, 100%), overlap **≥ 98%**, or fewer than
-  ``duplicate_below_words`` (8) distinct words different, with lengths within 10%:
-  ``duplicate`` -- UI Duplicate "Duplicate (To Page N)"; not junk: Blank / Junk "No"
-  (2026-10-29, user). Overlap **[95%, 98%)** or fewer than ``partial_below_words``
-  (15) distinct words different: a partial duplicate -- the page stays Main with
-  ``duplicate_of_page_id`` set; UI "Partial (To Page N)".
-* The similarity is stored as ``confidence`` on both kinds of row.
-* On a match the **later page** is the duplicate (or partial duplicate) (2026-11-03, user;
-  was the page with less on it).
-* Blank pages and texts shorter than 300 normalized chars are never compared.
-* A signature page (kv_extract's Electronic Signature in pass 2, raw p(junk) at most 0.95;
-  2026-11-07: no signature words) is not a duplicate of a look-alike with a
-  Main page between them -- other notes, other DOSs (2026-10-26, user).
-* Two pages whose kv_extract DOS differ in any date are not duplicates or partials,
-  however alike their words (2026-10-26, user).
-* Duplicates are found in pass 2 only (2026-10-29, user), on Final OCR text with
-  kv_extract's DOS: pass 1 removes blank and junk pages, never a copy, so every
-  duplicate has full OCR and an extracted DOS for continuity's encounter check.
-* Prior-pass ``main`` pages are included as neighbors so pass 2 can still
-  match a handwritten page to a printed one from pass 1.
-
-After continuity, a duplicate far from its original in a Progress Note / Discharge
-Summary is checked encounter against encounter (``modules/continuity/duplicates.py``).
+``dup_rules.find`` (2026-11-11, user: Duplicate_Logic.md). Body text only (header / footer
+lines out), each page against its 3 most similar earlier pages; hard blocks (length, dates and
+numbers, signature, short signed page, image); exact at any distance, only exact within 3
+pages, runs (Rule A / Rule B) further apart, conflicts flagged. Pass 1 marks exact copies
+within 3 pages; pass 2 applies every rule. A 100% text match a block stops is "Copy of N"
+(Main, ``duplicate_content_of_page_id:``). Continuity applies the date-of-service block.
 
 Also: one final verdict per page (``mark_blank_junk_final``), and the junk CSV
 is fully rewritten from the database after each pass.
@@ -104,51 +80,17 @@ from classify import (  # noqa: E402
     CODE_JUNK,
     CODE_MAIN,
     CODE_OTHERS,
-    duplicate_window,
-    DUPLICATE_PARTIAL_THRESHOLD,
-    DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
-    duplicate_char_count,
-    copy_runs,
-    copy_score,
-    similar_length,
-    page_dates,
-    text_is_comparable,
     unique_words,
-    word_count,
-    word_overlap,
 )
+import dup_rules  # noqa: E402
 import method  # noqa: E402
 from model_bridge import model_scores  # noqa: E402
 
 STAGE = "blank_junk"
 
 # Every rule and the vote live in method.py.
-
-
-def _duplicate_rules() -> dict[str, float]:
-    """The canon's ``duplicates`` block (reloads on change), with its defaults:
-    ``contained_at`` (share of the smaller page's distinct words that must be on the
-    other), ``duplicate_below_words`` / ``partial_below_words`` (fewer distinct words
-    different than this is a duplicate / partial whatever the overlap), and
-    ``larger_kept_above_words`` (no longer read, 2026-10-29; a contained pair whose larger page has more distinct
-    words than this beyond the smaller keeps the larger page; otherwise the later page
-    is the duplicate)."""
-    cfg = method.canon().raw.get("duplicates", {})
-    return {
-        "contained_at": float(cfg.get("contained_at", 1.0)),
-        "duplicate_below_words": int(cfg.get("duplicate_below_words", 8)),
-        "partial_below_words": int(cfg.get("partial_below_words", 15)),
-        "count_rule_min_overlap": float(cfg.get("count_rule_min_overlap", 0.80)),
-        "duplicate_min_length_ratio": float(cfg.get("duplicate_min_length_ratio", 0.90)),
-        "larger_kept_above_words": int(cfg.get("larger_kept_above_words", 10)),
-        # 2026-11-06 (user): a page shorter than another, at least this share of its length,
-        # with at most contained_max_extra_words distinct words not on the other, is Repeated
-        # Content (never a Duplicate by this rule).
-        "contained_min_length_ratio": float(cfg.get("contained_min_length_ratio", 0.80)),
-        "contained_max_extra_words": int(cfg.get("contained_max_extra_words", 3)),
-    }
 
 
 JUNK_CSV_COLS = [
@@ -271,109 +213,41 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
     return {pid for pid, flag in existing.items() if flag == "not_blank_junk"}
 
 
-# A signature / ending page apart from its look-alike is still a duplicate when the two are
-# exact copies of more than this many words (2026-10-27, user).
-SIGNED_COPY_MIN_WORDS = 100
 # The reason a short page carries (2026-11-08, user; continuity keeps its junk inside a note).
 # Was "short_page_contained_in_page_id:" (2026-11-03), which continuity still reads on old rows.
 SHORT_MARK = "short_page:"
 # The words that keep a short page when they are all it adds to its neighbours (2026-11-08, user).
 KEEP_IF_ONLY_ADDED = frozenset({"visit", "diagnosis"})
-# Pass 1 marks exact copies this close (2026-11-03, user).
-EXACT_NEAR_PAGES = 3
-# 2026-11-04 (user): pages of different encounters with the same content are "Repeated
-# Content": >= 98% alike, or fewer than 7 distinct words different. review-ui reads the mark.
-SAME_CONTENT_SIMILARITY = 0.98
-SAME_CONTENT_BELOW_WORDS = 7
+# A page that is a Copy of an earlier one: Main, pointing at it (2026-11-11, user: "Copy of N",
+# a 100% text match a hard block kept from being a duplicate). review-ui reads the mark.
 SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
-SAME_CONTENT_NOTE = "same content, different encounter"
-# 2026-11-08 (user): Repeated Content is off -- a pair is a Duplicate, a Partial, or nothing.
-REPEATED_CONTENT = False
+# Two partial matches to one original (2026-11-11, user): neither a duplicate, both for review.
+REVIEW_MARK = "duplicate_review: "
 
 CONTAINED_CONFIDENCE = 0.90
 
-# 2026-11-06 (user): a copy run -- two or more consecutive pages, each a copy of the page the same
-# number of pages before it -- is one label. Its encounter rule (the continuity one): average
-# >= 98%, or >= 95% with at least half the pages an exact match.
-COPY_RUN_DUPLICATE_AT = 0.98
-COPY_RUN_WITH_EXACT_AT = 0.95
-COPY_RUN_EXACT_SHARE = 0.5
+def _signature_key(signature: Optional[dict[str, str]]) -> tuple[str, str]:
+    """kv_extract's signature block, compared between two pages: (provider name, signature date)."""
+    if not signature:
+        return ("", "")
+    name = re.sub(r"[^a-z0-9]+", " ", str(signature.get("provider_name") or "").lower()).strip()
+    return (name, str(signature.get("signature_date") or "").strip())
 
 
-def _settle_copy_runs(
-    pages: list[dict[str, Any]],
-    texts: dict[int, str],
-    rules: dict[str, float],
-    dos_by_id: dict[int, frozenset[str]],
-    best: dict[int, dict[str, Any]],
-    dup_of: dict[int, int],
-    dup_sim: dict[int, float],
-    dup_contained: dict[int, bool],
-    partial_of: dict[int, int],
-    partial_sim: dict[int, float],
-    content_of: dict[int, int],
-    content_score: dict[int, tuple[float, int]],
-    pair_words: dict[int, int],
-) -> None:
-    """One label per copy run (2026-11-06, user). A page belongs to a run when it is a
-    duplicate, partial or Repeated Content of a page, or its closest page is >= 95% alike but a
-    rule (a date, a signature page) kept them apart. The run is then judged as a whole:
-
-    * a different kv DOS on any page, or different written dates on at least half its pages:
-      every page **Repeated Content** (another encounter's copy);
-    * else average >= 98%, or >= 95% with at least half its pages an exact match: every page a
-      **Duplicate** of its counterpart;
-    * else every page a **Partial**.
-    """
-    target: dict[int, int] = {}
-    for pid, info in best.items():
-        # A signature page kept apart from its look-alike stays apart (2026-11-11, user).
-        if (info.get("blocked_by") and info.get("blocked_by") != "signature page apart"
-                and float(info.get("similarity") or 0.0) >= DUPLICATE_PARTIAL_THRESHOLD):
-            target[pid] = int(info["page_id"])
-    for marks in (content_of, partial_of, dup_of):  # the strongest mark wins
-        target.update(marks)
-    order = [page["id"] for page in pages]
-    for run in copy_runs(order, target):
-        scores: list[float] = []
-        details: list[tuple[int, int, float, bool, int]] = []
-        dos_differ = written_differ = 0
-        ratio = rules["duplicate_min_length_ratio"]
-        for pid, orig in run:
-            a, b = texts.get(pid) or "", texts.get(orig) or ""
-            words = word_overlap(a, b)
-            # 2026-11-11 (user): the length rule holds in a run too -- a contained page scores 1.0
-            # only when about as long as its original, and a page that is not can be a Partial at most.
-            same_length = similar_length(a, b, ratio)
-            contained = words.contained >= rules["contained_at"] and same_length
-            score = copy_score(a, b, ratio)
-            scores.append(score)
-            details.append((pid, orig, score, contained, words.different, same_length))
-            a, b = dos_by_id.get(pid), dos_by_id.get(orig)
-            if a and b and a != b:
-                dos_differ += 1
-            if page_dates(texts.get(pid) or "") != page_dates(texts.get(orig) or ""):
-                written_differ += 1
-        average = sum(scores) / len(scores)
-        exact_share = sum(1 for s in scores if s >= 1.0) / len(scores)
-        if dos_differ or written_differ * 2 >= len(run):
-            label = "content"
-        elif average >= COPY_RUN_DUPLICATE_AT or (
-            average >= COPY_RUN_WITH_EXACT_AT and exact_share >= COPY_RUN_EXACT_SHARE
-        ):
-            label = "duplicate"
-        else:
-            label = "partial"
-        for pid, orig, score, contained, different, same_length in details:
-            for marks in (dup_of, partial_of, content_of):
-                marks.pop(pid, None)
-            pair_words[pid] = different
-            if label == "duplicate" and same_length:
-                dup_of[pid], dup_sim[pid], dup_contained[pid] = orig, score, contained
-            elif label in ("duplicate", "partial"):  # a duplicate run's page of another length: Partial
-                partial_of[pid], partial_sim[pid] = orig, score
-            else:
-                content_of[pid], content_score[pid] = orig, (score, different)
+def duplicate_record(out: "dup_rules.Outcome", page_by_id: dict[int, dict[str, Any]]) -> dict[str, Any]:
+    """The fields recorded for each page (Duplicate_Logic.md section 8)."""
+    number = (page_by_id.get(out.original) or {}).get("page_number") if out.original is not None else None
+    label = (f"Duplicate of {number}" if out.is_duplicate
+             else f"Copy of {number}" if out.label == "copy" else "")
+    return {
+        "label": label,
+        "duplicate": out.is_duplicate,
+        "copy_of": number if out.label in ("duplicate", "copy") else None,
+        "rule": out.rule if out.is_duplicate else "",
+        "score": round(out.score, 4) if out.label else (out.closest or {}).get("similarity"),
+        "blocked_by": out.blocked_by or ("" if out.label else (out.closest or {}).get("blocked_by", "")),
+        "review": out.review,
+    }
 
 
 def _classify(
@@ -387,37 +261,24 @@ def _classify(
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
     signed_ids: Optional[set[int]] = None,
     signatures: Optional[dict[int, dict[str, str]]] = None,
-    dos_by_id: Optional[dict[int, frozenset[str]]] = None,
+    needs_image: Optional[set[int]] = None,
+    image_paths: Optional[dict[int, Path]] = None,
     find_duplicates: bool = True,
     exact_near: bool = False,
 ) -> list[dict[str, Any]]:
-    """Classify ``todo`` pages, then look for duplicates among Main pages.
+    """Classify ``todo`` pages, then look for duplicates among Main pages (dup_rules.find).
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
-    are added here. Duplicates are checked only after the verdict, between Main pages
-    within ``duplicate_window`` pages of each other that are at least
-    ``DUPLICATE_MIN_CHARS`` long, on their distinct words (see the module docstring for
-    the duplicate / partial rules).
+    are added here. ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier
+    pass: they are compared too, and may become a duplicate or a Copy of an earlier page.
 
-    ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
-    they participate as comparison neighbors (and may be demoted to duplicate, or
-    marked partial, when a longer page matches). Similarity is stored as
-    ``confidence`` on duplicate and partial rows.
+    ``signed_ids`` / ``signatures``: kv_extract's Electronic Signature per page (blocks 4 and 5);
+    ``needs_image``: form and handwritten pages, ``image_paths``: the page images (block 6).
+    ``best_matches`` (page name -> its closest page and duplicate record, see _write_votes) is
+    filled for every page compared.
 
-    ``best_matches`` (page name -> its highest match, see _write_votes) is filled
-    for every page compared, including earlier-pass pages that get no row here.
-
-    A signature page (``method.signature_keeps``: kv_extract's Electronic Signature and raw p(junk)
-    below 0.95; 2026-11-07, user: no signature words) standing apart from its look-alike
-    is not a duplicate: a pair with one is skipped when a Main page lies between them
-    (another note, another DOS; 2026-10-26, user). Next to each other they still compare.
-
-    ``dos_by_id`` (pass 2: kv_extract's selected DOS per page): two pages that both have
-    a DOS that differ in any date are never duplicates or partials (2026-10-26, user), nor
-    are two pages whose own text differs in any date (2026-10-27, user).
-
-    ``find_duplicates`` is false in pass 1: duplicates are found in pass 2 only
-    (2026-10-29, user).
+    ``exact_near`` (pass 1): exact copies within 3 pages only. ``find_duplicates`` (pass 2):
+    every rule.
     """
     prior = set(prior_main_ids or ())
     signed = set(signed_ids or ())
@@ -463,283 +324,74 @@ def _classify(
             votes=verdict.votes,
         )
 
-    def _signature_page(page_id: int) -> bool:
-        """method.signature_keeps on this page: Electronic Signature, none on the previous / next
-        non-blank page, raw p(junk) < 0.95."""
-        bert = ((by_id.get(page_id) or {}).get("votes") or {}).get("bert")
-        p_junk = bert.get("p_junk") if isinstance(bert, dict) else None
-        return method.signature_keeps(page_id in signed, p_junk, _neighbour_signed(page_id))
-
     def _main(page_id: int) -> bool:
         if page_id in by_id:
             return by_id[page_id]["code"] == CODE_MAIN
         return page_id in prior
 
-    def _comparable(page_id: int) -> bool:
-        """Main pages only (2026-10-22, user): blank and junk pages, and short texts,
-        are never compared."""
-        text = texts.get(page_id) or ""
-        if not text_is_comparable(text):
-            return False
-        if page_id in by_id:
-            return by_id[page_id]["code"] == CODE_MAIN
-        return page_id in prior
-
-    # Phase 2 — each comparable page against the comparable pages up to ``window``
-    # after it: each pair once. Comparability and lengths are worked out once per page.
+    # Duplicates (2026-11-11, user: Duplicate_Logic.md; dup_rules.find): Main pages only.
+    # Pass 1 marks exact copies within 3 pages; pass 2 applies every rule. The date-of-service
+    # block needs the documents: continuity applies it.
     dup_of: dict[int, int] = {}
-    dup_sim: dict[int, float] = {}
-    dup_contained: dict[int, bool] = {}
-    # Distinct words different, for the reason a duplicate / partial row carries.
-    pair_words: dict[int, int] = {}
-    # [PARTIAL, THRESHOLD): the page's closest near-copy, applied after duplicates.
-    partial_of: dict[int, int] = {}
-    partial_sim: dict[int, float] = {}
-    # 2026-11-04 (user): the later of two pages kept apart by their dates (different
-    # encounters) that are still the same content -> Repeated Content, Main.
-    content_of: dict[int, int] = {}
-    content_score: dict[int, tuple[float, int]] = {}
-    # Each page's highest match among the neighbors it was compared with, any score,
-    # for blank_junk.json and duplicate_confidence: which page, its overlap and how
-    # much of the smaller page is on the other.
-    best: dict[int, dict[str, Any]] = {}
-    rules = _duplicate_rules()
-
-    def _note_best(page_id: int, other_id: int, words: Any, score: float, contained: bool,
-                   blocked_by: str = "") -> None:
-        if score > best.get(page_id, {}).get("similarity", -1.0):
-            mine, theirs = (words.words_a, words.words_b) if page_id == pid else (words.words_b, words.words_a)
-            best[page_id] = {
-                "page_id": other_id,
-                "similarity": round(score, 4),
-                "overlap": round(words.overlap, 4),
-                "contained_share": round(words.contained, 4),
-                "contained": contained,
-                "distinct_words": mine,
-                "other_distinct_words": theirs,
-                "shared_words": words.shared,
-                "different_words": words.different,
-                # 2026-11-04 (user): why this closest page is not a duplicate / partial ('' = judged).
-                "blocked_by": blocked_by,
-            }
-
-    n = len(pages)
-    # Pass 1 (2026-11-03, user): only exact copies (the same distinct words, lengths within
-    # 10%) within EXACT_NEAR_PAGES pages; the later page is the duplicate.
-    window = EXACT_NEAR_PAGES if exact_near else duplicate_window(n)
-    comparable = [(find_duplicates or exact_near) and _comparable(page["id"]) for page in pages]
-    length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
-              for page, ok in zip(pages, comparable) if ok}
-
-    for i, page in enumerate(pages):
-        pid = page["id"]
-        if not comparable[i]:
-            continue
-        for j in range(i + 1, min(n, i + window + 1)):
-            if not comparable[j]:
-                continue
-            nid = pages[j]["id"]
-            words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
-            pair_sim = 1.0 if words.contained >= rules["contained_at"] else words.overlap
-
-            def _contained_copy(la: int, lb: int) -> bool:
-                """2026-11-06 (user): the shorter page is mostly in the longer one -- at most 3 of
-                its distinct words are not on it -- and is at least 80% of its length."""
-                if la == lb:
-                    return False
-                own = (words.words_a if la < lb else words.words_b) - words.shared
-                return (own <= rules["contained_max_extra_words"]
-                        and min(la, lb) >= rules["contained_min_length_ratio"] * max(la, lb))
-
-            def _blocked(why: str) -> None:
-                # The closest page is recorded even when a rule stops the pair (2026-11-04, user).
-                _note_best(pid, nid, words, pair_sim, words.contained >= rules["contained_at"], why)
-                _note_best(nid, pid, words, pair_sim, words.contained >= rules["contained_at"], why)
-
-            def _same_content(contained_only: bool = False) -> None:
-                """Pages of different encounters with the same content: >= 98% alike or fewer
-                than 7 distinct words different, lengths within 10% (2026-11-04, user); or, for
-                any pair, a shorter page mostly in the longer one (_contained_copy, 2026-11-06)."""
-                if exact_near or not find_duplicates or not REPEATED_CONTENT:
-                    return
-                la, lb = length[pid], length[nid]
-                alike = not contained_only and (
-                    min(la, lb) >= rules["duplicate_min_length_ratio"] * max(la, lb)
-                    and (pair_sim >= SAME_CONTENT_SIMILARITY
-                         or (words.overlap >= rules["count_rule_min_overlap"]
-                             and words.different < SAME_CONTENT_BELOW_WORDS)))
-                if not (alike or _contained_copy(la, lb)):
-                    return
-                # The later page repeats the earlier; by the contained rule alone, the shorter page
-                # (the one contained) repeats the longer.
-                copy, source = (nid, pid) if alike or lb < la else (pid, nid)
-                if pair_sim > content_score.get(copy, (-1.0, 0))[0]:
-                    content_of[copy] = source
-                    content_score[copy] = (pair_sim, words.different)
-
-            dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
-            if dates_a and dates_b and dates_a != dates_b:
-                _blocked("different DOS")
-                _same_content()
-                continue  # different dates of service: different visits (any date differs)
-            # Every date on the page, the banner's Encounter Date included: copies printed under
-            # different encounters are not duplicates (2026-11-04, user).
-            if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
-                _blocked("different written dates")
-                _same_content()
-                continue  # a date written on one page and not the other (2026-10-27, user)
-            if (_signature_page(pid) or _signature_page(nid)) and any(
-                _main(pages[k]["id"]) for k in range(i + 1, j)
-            ):
-                # A signature / ending page apart from its look-alike is not a duplicate,
-                # unless it is an exact copy of more than 100 words (2026-10-27, user).
-                exact = words.different == 0 and min(length[pid], length[nid]) >= (
-                    rules["duplicate_min_length_ratio"] * max(length[pid], length[nid])
-                )
-                if not (exact and min(word_count(texts.get(pid) or ""), word_count(texts.get(nid) or ""))
-                        > SIGNED_COPY_MIN_WORDS):
-                    _blocked("signature page apart")
-                    continue
-            is_contained = words.contained >= rules["contained_at"]
-            # A contained pair scores 1.0; otherwise its overlap.
-            sim = 1.0 if is_contained else words.overlap
-            _note_best(pid, nid, words, sim, is_contained)
-            _note_best(nid, pid, words, sim, is_contained)
-            # 2026-10-22 (user): contained, >= 98% overlap or fewer than 8 distinct words
-            # different -> duplicate; 95-98% or fewer than 15 -> partial; else neither.
-            # The word counts count only between pages that are mostly the same: two short
-            # unrelated pages also differ in few words.
-            counts = words.overlap >= rules["count_rule_min_overlap"]
-            # A duplicate is about as long as its original (2026-10-22, user): a page
-            # inside a much longer one is a partial at most.
-            len_a, len_b = length[pid], length[nid]
-            similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
-            if exact_near:
-                if not (similar_length and words.different == 0):
-                    continue
-                kind, orig, dup = "duplicate", pid, nid  # the later page is the copy
-            elif (similar_length and (
-                is_contained
-                or sim >= DUPLICATE_SIMILARITY_THRESHOLD
-                or (counts and words.different < rules["duplicate_below_words"])
-            )):
-                kind = "duplicate"
-            elif sim >= DUPLICATE_PARTIAL_THRESHOLD or (
-                counts and words.different < rules["partial_below_words"]
-            ):
-                kind = "partial"
-            else:
-                # 2026-11-06 (user): a shorter page mostly in the longer one is Repeated Content.
-                _same_content(contained_only=True)
-                continue
-            if not exact_near:
-                # 2026-11-03 (user): the later page is always the duplicate (was: the page
-                # with less on it, 2026-10-29); the earlier page keeps its values.
-                orig, dup = pid, nid
-            if kind == "partial":
-                if sim > partial_sim.get(dup, 0.0) or dup not in partial_of:
-                    partial_of[dup] = orig
-                    partial_sim[dup] = sim
-                    pair_words[dup] = words.different
-                continue
-            orig = _ultimate_original(dup_of, orig)
-            if dup == orig:
-                continue
-            for other, pointed in list(dup_of.items()):
-                if pointed == dup:
-                    dup_of[other] = orig
-                    if other in dup_sim:
-                        dup_sim[other] = max(dup_sim[other], sim)
-            prev = dup_sim.get(dup, 0.0)
-            if sim >= prev:
-                dup_of[dup] = orig
-                dup_sim[dup] = sim
-                dup_contained[dup] = is_contained
-                pair_words[dup] = words.different
-
-    # 2026-11-06 (user): a block of pages copying a block of pages gets one label, not a
-    # mix of Duplicate / Partial / Repeated Content / No page by page (_settle_copy_runs).
-    if find_duplicates and not exact_near:
-        _settle_copy_runs(
-            pages, texts, rules, dos_by_id or {}, best,
-            dup_of, dup_sim, dup_contained, partial_of, partial_sim, content_of, content_score, pair_words,
-        )
-
-    # Apply duplicate marks (including demoting prior-main pages not in todo).
-    page_by_id = {p["id"]: p for p in pages}
-    for dup_id, orig_id in dup_of.items():
-        orig_id = _ultimate_original(dup_of, orig_id)
-        if dup_id == orig_id:
-            continue
-        sim = dup_sim.get(dup_id, DUPLICATE_SIMILARITY_THRESHOLD)
-        match = (
-            "its distinct words all on the original" if dup_contained.get(dup_id)
-            else f"overlap={sim:.4f}"
-        ) + f", {pair_words.get(dup_id, 0)} distinct words different"
-        reason = (
-            f"duplicate_of_page_id:{orig_id} "
-            f"({match} within {window} pages)"
-        )
-        page = page_by_id[dup_id]
-        earlier = (by_id.get(dup_id) or {}).get("votes")
-        by_id[dup_id] = _row_for(
-            page,
-            code=CODE_DUPLICATE,
-            reason=reason,
-            duplicate_of=orig_id,
-            confidence=sim,
-            votes={**earlier, "duplicate": reason} if earlier else None,
-        )
-
-    # Same content under different encounters (2026-11-04, user): Main, pointing at the earlier
-    # page, read as "Repeated Content" by review-ui. A Duplicate or Partial of another page wins.
-    for page_id, orig_id in content_of.items():
-        if page_id in dup_of or page_id in partial_of:
-            continue
-        sim, different = content_score[page_id]
-        note = (
-            f"{SAME_CONTENT_MARK}{orig_id} ({SAME_CONTENT_NOTE}; overlap={sim:.4f}, "
-            f"{different} distinct words different)"
-        )
-        own = by_id.get(page_id) or {}
-        earlier = own.get("votes")
-        by_id[page_id] = _row_for(
-            page_by_id[page_id],
-            code=own.get("code", CODE_MAIN),
-            reason=f"{own['reason']}; {note}" if own.get("reason") else note,
-            duplicate_of=orig_id,
-            confidence=own.get("confidence", sim),
-            votes={**earlier, "same_content": note} if earlier else None,
-        )
-
-    # Partial duplicates stay Main (their own reason first, so pass 2 still reads a
-    # pass-1 keep) and point at their near-copy.
+    # Main rows this check changed (Copy of / Conflict), written even for earlier-pass pages.
     partial: set[int] = set()
-    for page_id, orig_id in partial_of.items():
-        if page_id in dup_of:
-            continue  # a full duplicate of another page
-        orig_id = _ultimate_original(dup_of, orig_id)
-        if orig_id == page_id:
-            continue
-        sim = partial_sim[page_id]
-        note = (
-            f"partial_duplicate_of_page_id:{orig_id} (overlap={sim:.4f}, "
-            f"{pair_words.get(page_id, 0)} distinct words different "
-            f"within {window} pages)"
+    best: dict[int, dict[str, Any]] = {}
+    page_by_id = {p["id"]: p for p in pages}
+    if find_duplicates or exact_near:
+        cfg = dup_rules.settings(method.canon().raw.get("duplicate_logic"))
+        candidates = [
+            dup_rules.Page(
+                page_id=page["id"], position=i, text=texts.get(page["id"]) or "",
+                signed=page["id"] in signed,
+                signature=_signature_key((signatures or {}).get(page["id"])),
+                needs_image=page["id"] in (needs_image or set()),
+                image=(image_paths or {}).get(page["id"]),
+            )
+            for i, page in enumerate(pages)
+            if _main(page["id"]) and not _blank(page["id"])
+        ]
+        outcomes = dup_rules.find(
+            candidates, all_texts=[texts.get(page["id"]) or "" for page in pages], cfg=cfg,
+            near_only=exact_near,
         )
-        own = by_id.get(page_id) or {}
-        earlier = own.get("votes")
-        by_id[page_id] = _row_for(
-            page_by_id[page_id],
-            code=own.get("code", CODE_MAIN),
-            reason=f"{own['reason']}; {note}" if own.get("reason") else note,
-            duplicate_of=orig_id,
-            # Its verdict is still its own (Main): so is its confidence. The similarity
-            # is the duplicate_confidence.
-            confidence=own.get("confidence", sim),
-            votes={**earlier, "partial_duplicate": note} if earlier else None,
-        )
-        partial.add(page_id)
+        for page_id, out in outcomes.items():
+            record = duplicate_record(out, page_by_id)
+            if out.closest:
+                other = page_by_id.get(out.closest["page_id"]) or {}
+                best[page_id] = {**out.closest, "page_name": other.get("page_name"),
+                                 "page_number": other.get("page_number"), "record": record}
+            own = by_id.get(page_id) or {}
+            earlier = own.get("votes")
+            if out.is_duplicate and out.original is not None:
+                dup_of[page_id] = out.original
+                reason = (f"duplicate_of_page_id:{out.original} ({out.rule}, score={out.score:.4f}, "
+                          f"{out.distance} pages apart)")
+                by_id[page_id] = _row_for(
+                    page_by_id[page_id], code=CODE_DUPLICATE, reason=reason, duplicate_of=out.original,
+                    confidence=out.score,
+                    votes={**earlier, "duplicate": reason, "duplicate_check": record} if earlier else None,
+                )
+                continue
+            if out.label == "copy" and out.original is not None:
+                note = f"{SAME_CONTENT_MARK}{out.original} (Copy of: 100% text match, blocked by {out.blocked_by})"
+                original = out.original
+            elif out.review:
+                note = (f"{REVIEW_MARK}{out.review} (a partial match to page id {out.original}, "
+                        f"as is page id {out.conflict_with})")
+                original = None
+            else:
+                if earlier is not None:
+                    own["votes"] = {**earlier, "duplicate_check": record}
+                continue
+            by_id[page_id] = _row_for(
+                page_by_id[page_id],
+                code=own.get("code", CODE_MAIN),
+                reason=f"{own['reason']}; {note}" if own.get("reason") else note,
+                duplicate_of=original,
+                confidence=own.get("confidence", out.score),
+                votes={**earlier, "duplicate_check": record} if earlier else None,
+            )
+            partial.add(page_id)
 
     # The short page (2026-11-08, user; replaces the 2026-11-05 "contained in a page within 3"):
     # a page whose content ends in the top 20% of the page (no line positions: never short).
@@ -819,11 +471,7 @@ def _classify(
             _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated: {short}; {len(left)} distinct word(s) not on the "
                                     f"page before or after (< {junk_below}) -> Junk / Others")
 
-    named: dict[int, dict[str, Any]] = {}
-    for page_id, match in best.items():
-        other = page_by_id.get(match["page_id"]) or {}
-        match = {key: value for key, value in match.items() if key != "_rank"}
-        named[page_id] = {"page_name": other.get("page_name"), "page_number": other.get("page_number"), **match}
+    named = best
     for page_id, row in by_id.items():
         row["best_match"] = named.get(page_id)
         # The score review-ui's Duplicate confidence is built from: its best match.
@@ -1107,24 +755,21 @@ DETAIL_FILE = "blank_junk_detail.json"
 
 
 def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
-    """Duplicate / Partial / No, and the closest page when it is at least 70% alike."""
-    reason = str(entry.get("reason") or "")
-    status = (
-        "Duplicate" if entry.get("verdict") == "Duplicate"
-        else "Partial" if "partial_duplicate_of_page_id:" in reason
-        else "Partial" if SAME_CONTENT_MARK in reason  # 2026-11-06 (user): shown as a Partial
-        else "No"
-    )
-    out: dict[str, Any] = {"status": status}
+    """The page's duplicate record (Duplicate_Logic.md section 8) and its closest page."""
     match = entry.get("best_match") or {}
-    similarity = match.get("similarity")
-    # 2026-11-04 (user): the closest page at any similarity, and what stopped the pair.
-    if similarity is not None:
+    record = entry.get("duplicate_check") or match.get("record") or {}
+    out: dict[str, Any] = {
+        "label": record.get("label") or "",
+        "duplicate": bool(record.get("duplicate")),
+        "copy_of": record.get("copy_of"),
+        "rule": record.get("rule") or "",
+        "score": record.get("score"),
+        "blocked_by": record.get("blocked_by") or "",
+        "review": record.get("review") or "",
+    }
+    if match.get("similarity") is not None:
         out["closest_page"] = match.get("page_name")
-        out["similarity"] = similarity
-        out["different_words"] = match.get("different_words")
-        if match.get("blocked_by"):
-            out["blocked_by"] = match["blocked_by"]
+        out["similarity"] = match.get("similarity")
     return out
 
 
@@ -1185,7 +830,7 @@ def _write_votes(
 
     ``blank_junk.json`` (2026-10-23, user: simple): per page, ``pass_1`` / ``pass_2`` --
     p_junk, p_keep, empty, text_ends_at (where the text stops, pass 2), card_keywords,
-    result, rule, why, and duplicate (Duplicate / Partial / No; the closest page and its
+    result, rule, why, and duplicate (label, duplicate, copy_of, rule, score, blocked_by, review; the closest page and its
     similarity when at least 70% alike) -- and ``final`` (decision, rule, why, pass). A
     page pass 1 settled reads "not judged: settled in pass 1" for pass 2.
 
@@ -1354,7 +999,8 @@ def _run_pass(
         best_matches: dict[str, dict[str, Any]] = {}
         signed_ids: set[int] = set()
         signatures: dict[int, dict[str, str]] = {}
-        dos_by_id: dict[int, frozenset[str]] = {}
+        needs_image = set(non_printed)  # form / handwritten pages: their images must match (block 6)
+        image_paths = {page["id"]: page_image_path(ctx.chart_name, page["page_name"]) for page in ctx.pages}
         if pass_no == 2:
             from modules.continuity.signature import signed_page_names
 
@@ -1362,13 +1008,11 @@ def _run_pass(
             signed_ids = {page["id"] for page in ctx.pages if page["page_name"] in signed_names}
             details = signature_details(ctx.chart_name)
             signatures = {page["id"]: details[page["page_name"]] for page in ctx.pages if page["page_name"] in details}
-            staged_dos = extracted_dos(ctx.chart_name)
-            dos_by_id = {page["id"]: staged_dos[page["page_name"]]
-                         for page in ctx.pages if staged_dos.get(page["page_name"])}
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
-            signed_ids=signed_ids, signatures=signatures, dos_by_id=dos_by_id,
+            signed_ids=signed_ids, signatures=signatures,
+            needs_image=needs_image, image_paths=image_paths,
             find_duplicates=pass_no == 2,
             exact_near=pass_no == 1,
         )

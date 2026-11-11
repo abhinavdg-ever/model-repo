@@ -464,7 +464,7 @@ connection string and queue; the API key; the Blob account. Still open:
 
 **Blob**
 - Permission to create the `imaging-models` container, or who creates it?
-- On the VM: a managed identity (preferred) or a key?
+- On the VM: a managed identity (preferred) or a key? **Both built 2026-11-11:** `COSMOS_AUTH=key | managed_identity` (+ `COSMOS_CLIENT_ID`) in the three `.env` files; the identity needs "Cosmos DB Built-in Data Contributor" (`infra/main.bicep` `cosmosDataPrincipalIds`); `utilities/cosmos_containers.py create | check`.
 
 ## 11. Risks
 

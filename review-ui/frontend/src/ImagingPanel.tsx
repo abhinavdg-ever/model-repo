@@ -22,6 +22,7 @@ import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noVa
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
+  pageRowId,
   isCompleteDuplicate,
 } from "./duplicateLabel";
 import {
@@ -1575,6 +1576,30 @@ function extractedInput(page: ImagingPageResult, sections: ImagingSectionsProces
   };
 }
 
+/** "Duplicate of 12" / "Copy of 12" with 12 linking to page 12's row (2026-11-11, user). */
+function DuplicateLink({ label }: { label: string }) {
+  const match = /^(Duplicate|Copy) of (.+)$/.exec(label);
+  if (!match) return <>{label}</>;
+  const id = `imaging-page-${match[2]}`;
+  return (
+    <span>
+      {match[1]} of{" "}
+      <a
+        href={`#${id}`}
+        onClick={(event) => {
+          const row = document.getElementById(id);
+          if (row) {
+            event.preventDefault();
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }}
+      >
+        {match[2]}
+      </a>
+    </span>
+  );
+}
+
 function ValueWithNote({ value, note }: { value: string; note?: string }) {
   if (!note) return value;
   return (
@@ -2889,7 +2914,7 @@ function DocSummary({
             const pageParts = splitPageType(p.pageType);
             const typeKnown = Boolean(sections.junk || sections.codeable);
             return (
-            <tr key={`${p.pageNumber}-${p.fileName}`}>
+            <tr key={`${p.pageNumber}-${p.fileName}`} id={pageRowId(p.fileName)}>
               <td>{p.pageNumber}</td>
               <td className="imaging-mono">{p.fileName}</td>
               <td>
@@ -2932,8 +2957,8 @@ function DocSummary({
                 />
               </td>
               <td>
-                <ValueWithNote
-                  value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate, p.isDuplicateContent)}
+                <DuplicateLink
+                  label={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate, p.isDuplicateContent)}
                 />
               </td>
               <td>

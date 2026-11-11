@@ -298,10 +298,10 @@ def test_database_algo_row_carries_document_type():
     row[-5], row[-4] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
-    # The third-last column: this Main page names the page it nearly copies (Partial);
-    # with the duplicate-content reason it is a copy whose encounter is not (2026-10-29).
+    # The third-last column: this Main page names another page. No Partials since 2026-11-11;
+    # with the duplicate-content reason it is a "Copy of N".
     row[8], row[-3] = "not_blank_junk", True
-    assert database_algo._page(tuple(row)).isPartialDuplicate is True
+    assert database_algo._page(tuple(row)).isPartialDuplicate is False
     row[-2] = "duplicate_content_of_page_id:3 (...)"
     content = database_algo._page(tuple(row))
     assert (content.isPartialDuplicate, content.isDuplicateContent) == (False, True)
@@ -461,7 +461,9 @@ def test_a_duplicate_matches_a_page_labelled_junk():
     assert match("Is Blank or Junk?", "No", "Yes (Duplicate)") is False
     # Duplicate: Yes / Partial / No, and the screen's "Yes (To Page 4)" is a Yes.
     assert match("Duplicate", "Yes", "Yes (To Page 4)") is True
-    assert match("Duplicate", "Yes", "Duplicate (To Page 4)") is True  # the screen's label
+    assert match("Duplicate", "Yes", "Duplicate (To Page 4)") is True  # the old screen label
+    assert match("Duplicate", "Yes", "Duplicate of 4") is True  # the screen's label (2026-11-11)
+    assert match("Duplicate", "No", "Copy of 4") is True
     assert match("Duplicate", "Partial", "Partial") is True
     assert match("Duplicate", "Yes", "Partial") is False
 
@@ -480,7 +482,7 @@ def test_algo_duplicate_reads_yes_partial_no():
     doc = ImagingDocumentResponse.model_construct(pages=pages, verifications=[], verification=None)
     rows = list(csv.DictReader(io.StringIO(system_csv([("100", doc)]).decode())))
     assert [(r["Duplicate"], r["Is Blank or Junk?"]) for r in rows] == [
-        ("Yes", "Yes"), ("Partial", "No"), ("No", "No"),
+        ("Yes", "Yes"), ("No", "No"), ("No", "No"),  # no Partials since 2026-11-11
     ]
 
 

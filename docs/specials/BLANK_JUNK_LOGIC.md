@@ -72,35 +72,49 @@ An invoice page is never junked by the short page rule.
 
 ---
 
-## Duplicates (pass 2, after the verdict)
+## Duplicates (after the verdict)
 
-These checks compare only Main pages. The result is **Duplicate**, **Partial**, or
-nothing; Repeated Content is off.
+Built 2026-11-11 from the user's `Duplicate_Logic.md`. Code: `dup_rules.py` (the rules),
+`stage.py` (rows), `continuity/duplicates.py` (the date-of-service block). Settings: canon
+`duplicate_logic` (defaults in `dup_rules.DEFAULTS`). One chart at a time; Main pages only.
 
-- **Duplicate:** the two pages are about the same length (the shorter at least 90% of the
-  longer), and either the shorter page is contained in the other, ≥ 98% of the words overlap,
-  or fewer than 8 distinct words differ.
-- **Partial:** 95–98% overlap, or fewer than 15 distinct words differ. Length is not checked,
-  so a page inside a much longer one is a Partial at most.
+1. **Prepare.** Header and footer lines are left out: print stamps, "Page x of y", fax lines,
+   and header / footer lines (first 4, last 3) found on 3 or more pages. Only the body is
+   compared. The score of a pair is the overlap of their distinct words.
+2. **Matches.** Each page against its 3 most similar earlier pages. The earlier page is the
+   original.
+3. **Hard blocks.** Nothing overrides them:
 
-The later page is always the duplicate. Two pages are never matched when:
-- their dates of service, or any date written on them, differ;
-- a signed page (rule 4) is apart from its look-alike (another Main page between them).
+| # | Block | Never a duplicate when |
+|---|---|---|
+| 1 | Date of service | both are Progress Note pages and their documents' Final DOS differ (applied in continuity) |
+| 2 | Length | word counts differ by more than 10% or more than 20 words |
+| 3 | Dates and numbers | any differing word is a date, time or number |
+| 4 | Signature | the signature blocks differ (signed vs not, or another signer / date) |
+| 5 | Short signed page | either page is signed with under 25 words (even if the images match) |
+| 6 | Image | either page has under 25 words, or is a form or handwritten, and the page images do not match |
 
-Pass 1 marks only exact copies up to 3 pages apart.
+4. **Exact.** The same text (stray single letters and punctuation aside), at any distance.
+5. **Within 3 pages** only an exact match counts.
+6. **Runs, more than 3 pages apart, in the same order.** Rule A: a page next to a duplicate of
+   the run that matches ≥ 98% is a duplicate too, until the run stops growing. Rule B: three
+   pages in a row averaging ≥ 95%, none below 90%, are all duplicates.
+7. **Conflicts.** Two partial (not exact) matches to one original: neither is a duplicate,
+   both are flagged `Review: Conflict` (reason `duplicate_review: Conflict`). Several exact
+   copies are all duplicates.
+8. **Labels.** **Duplicate of N** (flag duplicate); **Copy of N** (a 100% text match a block
+   stopped: a normal Main page, reason `duplicate_content_of_page_id:N`). N is always the
+   earliest copy and links to that page in review-ui. There are no Partials.
 
-**Copy runs** (two or more pages in a row, each copying the page the same distance before it)
-get one label: Repeated Content if a DOS differs, or written dates differ on half the run; else
-Duplicate when the run averages ≥ 98% (or ≥ 95% with half its pages exact); else Partial. In a
-run, too (2026-11-11):
-- a page counts as an exact copy (score 1.0) only when it is about the same length as its
-  original; a short page inside a long one scores its overlap;
-- a page that is not about the same length is a Partial at most, even in a Duplicate run;
-- a signature page kept apart from its look-alike never joins a run.
+Per page, `blank_junk.json` records label, duplicate, copy_of, rule (Exact / Rule A / Rule B),
+score, blocked_by and review.
 
-**Continuity** (Progress Note, Discharge Summary, Operative / Procedure Note, Clinical Summary)
-turns a Partial into a Duplicate when its whole encounter is a copy, and only when the Partial
-is about the same length as its original (2026-11-11).
+Pass 1 marks exact copies within 3 pages only (pages under 25 words wait for pass 2).
+Continuity applies block 1: a blocked exact duplicate becomes Copy of N, a blocked Rule A / B
+duplicate a plain Main page; a later continuity run restores it when the dates agree.
+
+Page images match when 90% of their ink (cropped to where the ink is, 96 x 96) lies on the
+other's, one pixel of give (`image_min_match`). Not yet calibrated on real charts.
 
 ## Continuity
 

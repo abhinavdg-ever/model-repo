@@ -1,10 +1,9 @@
 /** Duplicate UI label + display confidence from the pipeline's duplicate verdict.
  *
- * 2026-10-22 (user): a duplicate — ``isDuplicate`` — reads "Duplicate (To Page N)" here
- * and, since 2026-10-29, "No" under Blank / Junk (not junk); a partial duplicate —
- * ``isPartialDuplicate`` — reads "Partial (To Page N)" and stays a Main page. A copied page
- * whose encounter is not a copy — ``isDuplicateContent`` — reads "Repeated Content (To
- * Page N)". */
+ * 2026-11-11 (user: Duplicate_Logic.md): a duplicate — ``isDuplicate`` — reads "Duplicate of N"
+ * ("No" under Blank / Junk: not junk); a 100% text match a hard block kept from being a
+ * duplicate — ``isDuplicateContent`` — reads "Copy of N" and stays a normal page. N is always
+ * the earliest copy. There are no Partials any more. */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
@@ -50,9 +49,9 @@ export function duplicateDisplayConfidence(
 }
 
 /**
- * ``Duplicate (To Page 4)`` for a duplicate, ``Partial (To Page 4)`` for a partial
- * duplicate, ``No`` otherwise. ``labels.duplicateOf`` is the reference page's
- * file name.
+ * ``Duplicate of 4`` for a duplicate, ``Copy of 4`` for a blocked 100% match, ``No`` otherwise.
+ * ``labels.duplicateOf`` is the original page's file name. ``isPartial`` is ignored (no
+ * Partials since 2026-11-11).
  */
 export function formatDuplicateLabel(
   isDuplicate: boolean | null | undefined,
@@ -71,12 +70,10 @@ export function formatDuplicateLabel(
   const notFound = labels.notFound ?? "Not Found";
   if (!processed) return yetToProcess;
   if (isDuplicate == null) return notFound;
-  const target = duplicatePageRef(labels.duplicateOf);
-  const withTarget = (state: string) => (target ? `${state} (To ${target})` : state);
+  const target = duplicatePageNumber(labels.duplicateOf);
+  const withTarget = (state: string) => (target ? `${state} of ${target}` : state);
   if (isDuplicate) return withTarget("Duplicate");
-  if (labels.isPartial) return withTarget("Partial");
-  // 2026-11-06 (user): a page repeating another (Repeated Content) is displayed as a Partial.
-  if (labels.isContent) return withTarget("Partial");
+  if (labels.isContent) return withTarget("Copy");
   return "No";
 }
 
@@ -95,7 +92,7 @@ export function duplicateTargetNote(fileName: string | null | undefined): string
   return ref ? `Duplicate to ${ref}` : "";
 }
 
-/** Download cell: the same as on screen — ``Duplicate (To Page 4)``, ``Partial (To Page 4)``, ``No``. */
+/** Download cell: the same as on screen — ``Duplicate of 4``, ``Copy of 4``, ``No``. */
 export function formatDuplicateDownload(
   isDuplicate: boolean | null | undefined,
   confidence: number | null | undefined,
@@ -104,6 +101,16 @@ export function formatDuplicateDownload(
   isContent?: boolean | null,
 ): string {
   return formatDuplicateLabel(isDuplicate, confidence, true, { duplicateOf, isPartial, isContent });
+}
+
+/** "4.png" → "4". Empty when the original page was not recorded. */
+export function duplicatePageNumber(fileName: string | null | undefined): string {
+  return (fileName ?? "").replace(/\.[^.]+$/, "").trim();
+}
+
+/** The table row id of a page, so "Duplicate of 4" can link to page 4's row. */
+export function pageRowId(fileName: string | null | undefined): string {
+  return `imaging-page-${duplicatePageNumber(fileName)}`;
 }
 
 /** "4.png" → "Page 4". Empty when the original page was not recorded. */

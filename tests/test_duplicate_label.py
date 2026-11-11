@@ -1,7 +1,7 @@
-"""Duplicate Yes / Partial / No label mapping and display confidence.
+"""Duplicate / Copy / No label mapping and display confidence.
 
-2026-10-22 (user): ≥ 98% (or contained) is a duplicate, Yes; 95-98% a partial
-duplicate, Partial, which stays a Main page."""
+2026-11-11 (user: Duplicate_Logic.md): a duplicate, or a Copy (a 100% text match a hard block
+kept from being one; a normal page). There are no Partials any more."""
 from __future__ import annotations
 
 import sys
@@ -18,7 +18,8 @@ def test_duplicate_labels():
     # The pipeline's flag decides: every duplicate is ≥ 98%.
     assert format_duplicate_label(True, 1.0) == "Duplicate"
     assert format_duplicate_label(True, 0.985) == "Duplicate"
-    assert format_duplicate_label(False, 0.96, True) == "Partial"
+    assert format_duplicate_label(False, 0.96, True) == "No"  # no Partials
+    assert format_duplicate_label(False, 1.0, False, True) == "Copy"
     assert format_duplicate_label(None, 1.0) == "NA"
 
 
@@ -63,12 +64,14 @@ def test_a_duplicate_shows_its_originals_blank_junk_tag():
 
 
 
-def test_repeated_content_is_displayed_as_partial():
-    """2026-11-06 (user): Repeated Content is displayed as a Partial."""
+def test_a_copy_is_displayed_as_copy():
+    """2026-11-11 (user): a blocked 100% match reads "Copy of N", a No for comparisons."""
     import sys
     sys.path.insert(0, "review-ui/backend")
     from app.services.duplicate_label import format_duplicate_label
     from app.services.excel_compare.normalizer import normalize_labelled_yes_no
 
-    assert format_duplicate_label(False, None, is_content=True) == "Partial"
+    assert format_duplicate_label(False, None, is_content=True) == "Copy"
+    assert normalize_labelled_yes_no("Copy of 4") == "no"
+    assert normalize_labelled_yes_no("Duplicate of 4") == "yes"
     assert normalize_labelled_yes_no("Repeated Content (To Page 4)") == "no"  # older exports

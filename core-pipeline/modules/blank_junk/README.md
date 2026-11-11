@@ -17,7 +17,7 @@ the short page and duplicates in `stage._classify`.
 | `short_page:` | 2 | content in the top 20%: signature carried on → Main; < 5 words not on the previous / next page → Junk / Others |
 | R5, INVOICE | 2 | the classifier; an invoice is Main only with an amount and an Invoice / Due Date |
 
-Duplicates: pass 2, Duplicate or Partial only (Repeated Content off, `stage.REPEATED_CONTENT`).
+Duplicates: `dup_rules.py` (2026-11-11, docs/specials/BLANK_JUNK_LOGIC.md): Duplicate of N, Copy of N, or nothing.
 Continuity's unjunk inside a Progress Note is off (`continuity/stage.UNJUNK_IN_NOTES`).
 
 Settings: `../../resources/canon/blank_junk_context_canon.json`.
@@ -27,5 +27,6 @@ Settings: `../../resources/canon/blank_junk_context_canon.json`.
 | `stage.py` | the two passes, duplicates, the CSV and staging JSON |
 | `method.py` | the rule ladder |
 | `card_rules.py` | ID / insurance card detection |
-| `classify.py` | codes, labels, duplicate helpers (word overlap, window, fingerprint) |
+| `classify.py` | codes, labels, word helpers |
+| `dup_rules.py` | the duplicate rules (body text, hard blocks, exact, runs, conflicts, page images) |
 | `model_bridge.py`, `model/src/` | DistilBERT's probabilities |

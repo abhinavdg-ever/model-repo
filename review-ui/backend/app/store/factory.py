@@ -35,6 +35,8 @@ def build_repository(settings: Settings, production: bool | None = None) -> Fold
             endpoint=settings.cosmos_endpoint,
             key=settings.cosmos_key,
             database=settings.cosmos_database,
+            auth=settings.cosmos_auth,
+            client_id=settings.cosmos_client_id or settings.azure_client_id,
         )
     logger.info("repository=postgres schema=%s (page images from Azure Blob)", settings.db_schema)
     return PostgresFolderRepository(

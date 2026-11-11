@@ -96,10 +96,8 @@ def _page(row: tuple) -> ImagingPageResult:
         dosTo=_fmt_date(dos_to),
         blankOrJunk=blank,
         isDuplicate=duplicate,
-        # A Main or junk page naming the page it nearly copies: a partial (95-98%) duplicate,
-        # unless it is a copied page whose encounter is not a copy (2026-10-29).
-        isPartialDuplicate=_text(flag) in ("not_blank_junk", "junk") and bool(names_original)
-        and DUPLICATE_CONTENT_MARK not in (_text(bj_reason) or ""),
+        # "Copy of N" (2026-11-11, user); there are no Partials any more.
+        isPartialDuplicate=False,
         isDuplicateContent=_text(flag) in ("not_blank_junk", "junk") and bool(names_original)
         and DUPLICATE_CONTENT_MARK in (_text(bj_reason) or ""),
         pageType=shown_type,

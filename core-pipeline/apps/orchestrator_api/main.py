@@ -213,8 +213,10 @@ def _startup() -> None:
         logger.info("  postgres        : %s", _safe_db_url(DATABASE_URL))
     if DB_BACKEND in ("cosmos", "both"):
         endpoint = (os.environ.get("COSMOS_ENDPOINT") or "").strip() or "COSMOS_ENDPOINT not set"
-        logger.info("  cosmos          : %s, database %s", endpoint,
-                    (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
+        from common.db.cosmos_store import cosmos_auth
+
+        logger.info("  cosmos          : %s, database %s, sign-in %s", endpoint,
+                    (os.environ.get("COSMOS_DATABASE") or "imaging").strip(), cosmos_auth())
     # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
     # would hold up startup — and block /docs and /health, the two endpoints
     # whose whole job is to work when the database does not.

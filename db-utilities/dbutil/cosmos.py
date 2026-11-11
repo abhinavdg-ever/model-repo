@@ -58,10 +58,9 @@ def sink() -> CosmosSink:
     from azure.cosmos import CosmosClient
 
     endpoint = (os.environ.get("COSMOS_ENDPOINT") or "").strip()
-    key = (os.environ.get("COSMOS_KEY") or "").strip()
-    if not endpoint or not key:
-        raise RuntimeError("DB_BACKEND=cosmos needs COSMOS_ENDPOINT and COSMOS_KEY in db-utilities/.env")
-    database = CosmosClient(endpoint, credential=key).get_database_client(
+    if not endpoint:
+        raise RuntimeError("DB_BACKEND=cosmos needs COSMOS_ENDPOINT in db-utilities/.env")
+    database = CosmosClient(endpoint, credential=cosmos_credential("db-utilities/.env")).get_database_client(
         (os.environ.get("COSMOS_DATABASE") or "imaging").strip())
     return CosmosSink({n: database.get_container_client(n) for n in ("charts", "manifest", "ground_truth")})
 
@@ -204,3 +203,28 @@ def wants_cosmos() -> bool:
 __all__ = ["CosmosSink", "sink", "upsert_manifest_members", "upsert_ground_truth", "backend",
            "wants_postgres", "wants_cosmos"]
 _ = Optional  # typing re-export guard
+
+
+# How to sign in to Cosmos (2026-11-11, user): the account key (COSMOS_AUTH=key, the default) or
+# the host's managed identity (COSMOS_AUTH=managed_identity: no key; COSMOS_CLIENT_ID, else
+# AZURE_CLIENT_ID, names a user-assigned identity, blank = system-assigned). The identity needs
+# the data-plane role "Cosmos DB Built-in Data Contributor" on the account (infra/main.bicep).
+COSMOS_MANAGED_IDENTITY = frozenset({"managed_identity", "managed-identity", "managed_entity", "mi", "msi"})
+
+
+def cosmos_auth() -> str:
+    auth = (os.environ.get("COSMOS_AUTH") or "key").strip().lower()
+    return "managed_identity" if auth in COSMOS_MANAGED_IDENTITY else "key"
+
+
+def cosmos_credential(where: str = ".env") -> Any:
+    """The credential CosmosClient takes: the key, or a ManagedIdentityCredential."""
+    if cosmos_auth() == "managed_identity":
+        from azure.identity import ManagedIdentityCredential
+
+        client_id = (os.environ.get("COSMOS_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID") or "").strip()
+        return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    key = (os.environ.get("COSMOS_KEY") or "").strip()
+    if not key:
+        raise RuntimeError(f"Cosmos needs COSMOS_KEY (or COSMOS_AUTH=managed_identity) in {where}")
+    return key
