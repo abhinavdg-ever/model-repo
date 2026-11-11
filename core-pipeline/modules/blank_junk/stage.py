@@ -111,6 +111,8 @@ from classify import (  # noqa: E402
     classification_confidence,
     duplicate_char_count,
     copy_runs,
+    copy_score,
+    similar_length,
     page_dates,
     text_is_comparable,
     unique_words,
@@ -325,7 +327,9 @@ def _settle_copy_runs(
     """
     target: dict[int, int] = {}
     for pid, info in best.items():
-        if info.get("blocked_by") and float(info.get("similarity") or 0.0) >= DUPLICATE_PARTIAL_THRESHOLD:
+        # A signature page kept apart from its look-alike stays apart (2026-11-11, user).
+        if (info.get("blocked_by") and info.get("blocked_by") != "signature page apart"
+                and float(info.get("similarity") or 0.0) >= DUPLICATE_PARTIAL_THRESHOLD):
             target[pid] = int(info["page_id"])
     for marks in (content_of, partial_of, dup_of):  # the strongest mark wins
         target.update(marks)
@@ -334,12 +338,17 @@ def _settle_copy_runs(
         scores: list[float] = []
         details: list[tuple[int, int, float, bool, int]] = []
         dos_differ = written_differ = 0
+        ratio = rules["duplicate_min_length_ratio"]
         for pid, orig in run:
-            words = word_overlap(texts.get(pid) or "", texts.get(orig) or "")
-            contained = words.contained >= rules["contained_at"]
-            score = 1.0 if contained else words.overlap
+            a, b = texts.get(pid) or "", texts.get(orig) or ""
+            words = word_overlap(a, b)
+            # 2026-11-11 (user): the length rule holds in a run too -- a contained page scores 1.0
+            # only when about as long as its original, and a page that is not can be a Partial at most.
+            same_length = similar_length(a, b, ratio)
+            contained = words.contained >= rules["contained_at"] and same_length
+            score = copy_score(a, b, ratio)
             scores.append(score)
-            details.append((pid, orig, score, contained, words.different))
+            details.append((pid, orig, score, contained, words.different, same_length))
             a, b = dos_by_id.get(pid), dos_by_id.get(orig)
             if a and b and a != b:
                 dos_differ += 1
@@ -355,13 +364,13 @@ def _settle_copy_runs(
             label = "duplicate"
         else:
             label = "partial"
-        for pid, orig, score, contained, different in details:
+        for pid, orig, score, contained, different, same_length in details:
             for marks in (dup_of, partial_of, content_of):
                 marks.pop(pid, None)
             pair_words[pid] = different
-            if label == "duplicate":
+            if label == "duplicate" and same_length:
                 dup_of[pid], dup_sim[pid], dup_contained[pid] = orig, score, contained
-            elif label == "partial":
+            elif label in ("duplicate", "partial"):  # a duplicate run's page of another length: Partial
                 partial_of[pid], partial_sim[pid] = orig, score
             else:
                 content_of[pid], content_score[pid] = orig, (score, different)

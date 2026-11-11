@@ -1,6 +1,6 @@
 # Blank / Junk Logic
 
-As built on 2026-11-10. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
+As built on 2026-11-11. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
 `stage.py` the short page and duplicates). Numbers: `resources/canon/blank_junk_context_canon.json`.
 
 Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype**. The subtypes are
@@ -88,6 +88,19 @@ The later page is always the duplicate. Two pages are never matched when:
 - a signed page (rule 4) is apart from its look-alike (another Main page between them).
 
 Pass 1 marks only exact copies up to 3 pages apart.
+
+**Copy runs** (two or more pages in a row, each copying the page the same distance before it)
+get one label: Repeated Content if a DOS differs, or written dates differ on half the run; else
+Duplicate when the run averages ≥ 98% (or ≥ 95% with half its pages exact); else Partial. In a
+run, too (2026-11-11):
+- a page counts as an exact copy (score 1.0) only when it is about the same length as its
+  original; a short page inside a long one scores its overlap;
+- a page that is not about the same length is a Partial at most, even in a Duplicate run;
+- a signature page kept apart from its look-alike never joins a run.
+
+**Continuity** (Progress Note, Discharge Summary, Operative / Procedure Note, Clinical Summary)
+turns a Partial into a Duplicate when its whole encounter is a copy, and only when the Partial
+is about the same length as its original (2026-11-11).
 
 ## Continuity
 

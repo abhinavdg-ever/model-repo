@@ -39,7 +39,7 @@ _JUNK_LIB = CORE_ROOT / "modules" / "blank_junk"
 if str(_JUNK_LIB) not in sys.path:
     sys.path.insert(0, str(_JUNK_LIB))
 
-from classify import DUPLICATE_SIMILARITY_THRESHOLD, copy_runs, word_overlap  # noqa: E402
+from classify import DUPLICATE_SIMILARITY_THRESHOLD, copy_runs, copy_score, similar_length, word_overlap  # noqa: E402
 
 # A copy this close to its original is in the same encounter.
 NEAR_PAGES = 3
@@ -78,8 +78,13 @@ class Review:
 
 
 def _similarity(a: str, b: str) -> float:
-    words = word_overlap(a, b)
-    return 1.0 if words.contained >= 1.0 else words.overlap
+    """A contained page counts as 1.0 only when about as long as the other (2026-11-11, user)."""
+    return copy_score(a, b)
+
+
+def _may_promote(texts: dict[int, str], pid: int, orig: int) -> bool:
+    """A Partial becomes a Duplicate only when about as long as its original (2026-11-11, user)."""
+    return similar_length(texts.get(pid) or "", texts.get(orig) or "")
 
 
 def review(
@@ -172,7 +177,7 @@ def review(
                 if _run_is_copy(run):
                     # The whole run is a duplicate: its partials become duplicates too.
                     for pid, orig in runs[run]:
-                        if pid in partial_of:
+                        if pid in partial_of and _may_promote(texts, pid, orig):
                             out.promote[pid] = (orig, overlap)
                 else:
                     out.partial[page.page_id] = (original.page_id, overlap)
@@ -206,7 +211,7 @@ def review(
         if copied and same_dates:
             for k in encounter:
                 pid = pages[k].page_id
-                if partial_of.get(pid) in anchor_ids:
+                if partial_of.get(pid) in anchor_ids and _may_promote(texts, pid, partial_of[pid]):
                     out.promote[pid] = (partial_of[pid], average)
         else:
             for k in encounter:

@@ -180,6 +180,23 @@ def classification_confidence(code: int, *, blank_via_image: bool = False) -> fl
 # 2026-11-06 (user): a copy run is at least this many consecutive copied pages.
 COPY_RUN_MIN_PAGES = 2
 
+# A duplicate is about as long as its original (canon duplicates.duplicate_min_length_ratio).
+DUPLICATE_MIN_LENGTH_RATIO = 0.90
+
+
+def similar_length(a: str, b: str, ratio: float = DUPLICATE_MIN_LENGTH_RATIO) -> bool:
+    """The shorter page is at least ``ratio`` of the longer one (whitespace-stripped characters)."""
+    la, lb = duplicate_char_count(a), duplicate_char_count(b)
+    return min(la, lb) >= ratio * max(la, lb)
+
+
+def copy_score(a: str, b: str, ratio: float = DUPLICATE_MIN_LENGTH_RATIO) -> float:
+    """A pair's score when a copy run or an encounter is judged as a whole (2026-11-11, user):
+    a contained page scores 1.0 only when the two are about the same length; otherwise its
+    overlap. A short page inside a long one no longer reads as an exact copy."""
+    words = word_overlap(a, b)
+    return 1.0 if words.contained >= 1.0 and similar_length(a, b, ratio) else words.overlap
+
 
 def copy_runs(order: list[int], target: dict[int, int]) -> list[list[tuple[int, int]]]:
     """Runs of (page, its original) in page order: consecutive pages whose originals are the

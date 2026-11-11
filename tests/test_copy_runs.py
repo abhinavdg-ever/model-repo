@@ -69,8 +69,33 @@ class TestBlankJunkRun:
             pages, texts, dup_of={12: 5, 13: 6, 14: 7}, partial_of={10: 3, 11: 4}, content_of={8: 1},
             best={9: {"page_id": 2, "similarity": 1.0, "blocked_by": "signature page apart"}},
         )
-        assert dup_of == {pid: pid - 7 for pid in range(8, 15)}
-        assert not partial_of and not content_of
+        # 2026-11-11 (user): page 9, a signature page kept apart, stays out of the run; 8 is then
+        # alone (Repeated Content as it was) and 10-14 are the copied run.
+        assert dup_of == {pid: pid - 7 for pid in range(10, 15)}
+        assert 9 not in dup_of and 9 not in partial_of and 9 not in content_of
+        assert content_of == {8: 1} and not partial_of
+
+    def test_a_page_much_shorter_than_its_original_is_a_partial_at_most(self):
+        """2026-11-11 (user): in a copied run, a short page whose words are all on a long page
+        is not an exact copy: Partial, not Duplicate."""
+        pages, texts = _block_chart()
+        texts[3] = texts[3] + " " + _words("long3x", 14)  # page 10's original is > 10% longer
+        dup_of, partial_of, content_of = _settle(
+            pages, texts, dup_of={8: 1, 9: 2, 12: 5, 13: 6, 14: 7}, partial_of={10: 3, 11: 4}, content_of={},
+        )
+        assert partial_of == {10: 3}
+        assert dup_of == {pid: pid - 7 for pid in (8, 9, 11, 12, 13, 14)}
+
+    def test_short_template_pages_inside_long_pages_are_not_a_copied_run(self):
+        """Two short pages whose words all sit on two long pages scored 1.0 each and became
+        Duplicates; now they score their overlap and are Partials at most."""
+        pages = [{"id": pid} for pid in range(1, 5)]
+        texts = {1: _words("a", 80) + " " + _words("b", 80), 2: _words("c", 80) + " " + _words("d", 80),
+                 3: _words("a", 80), 4: _words("c", 80)}
+        dup_of, partial_of, content_of = _settle(
+            pages, texts, dup_of={}, partial_of={3: 1, 4: 2}, content_of={},
+        )
+        assert not dup_of and partial_of == {3: 1, 4: 2}
 
     def test_dates_differing_on_half_the_run_make_it_repeated_content(self):
         pages, texts = _block_chart(dates_on=(8, 9, 12, 13))
@@ -114,6 +139,16 @@ class TestContinuityRun:
         dos = {pid: frozenset({"2025-08-13"}) for pid in range(1, 15)}
         result = duplicates.review(pages, rows, texts, partial_of={}, extracted_dos=dos)
         assert not result.partial
+
+    def test_a_short_partial_is_not_promoted(self):
+        """2026-11-11 (user): a copied run's Partial becomes a Duplicate only when about as long
+        as its original."""
+        pages, rows, texts = self._chart()
+        texts[3] += " " + _words("long3x", 60)
+        pages[9] = _cont_page(10, "main")  # page 10: a Partial of page 3
+        dos = {pid: frozenset({"2025-08-13"}) for pid in range(1, 15)}
+        result = duplicates.review(pages, rows, texts, partial_of={10: 3}, extracted_dos=dos)
+        assert 10 not in result.promote
 
     def test_a_run_below_the_bar_is_all_partials(self):
         pages, rows, texts = self._chart()
