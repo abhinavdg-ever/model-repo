@@ -6639,3 +6639,45 @@ input {
 .search-modes { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
 .value-condition { margin-bottom: 8px; }
 .value-condition select { min-width: 0; }
+
+/* "Additional Metrics": a link at the top right of By metric (above Orientation). */
+.accuracy-metric-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.accuracy-extra-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand-600);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.accuracy-extra-link:hover,
+.accuracy-extra-link:focus-visible {
+  color: var(--brand-800);
+}
+
+.accuracy-extra-pop p {
+  margin: 0.1rem 0 0;
+}
+
+.accuracy-extra-pct {
+  display: block;
+  color: var(--brand-800);
+  font-size: 1.35rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.accuracy-extra-rule {
+  color: var(--muted);
+}

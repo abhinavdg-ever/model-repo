@@ -53,10 +53,12 @@ import {
   OVERALL_STREAMS,
   pageAccuracyCsv,
   scoreChart,
+  sumExtras,
   sumRates,
   sumTallies,
   type ChartAccuracy,
   type ClassRates,
+  type ExtraCounts,
   type MetricId,
   type Tally,
 } from "./accuracy";
@@ -416,6 +418,101 @@ function Donut({
         </div>
       ) : null}
     </figure>
+  );
+}
+
+/** "Additional Metrics": a link at the top right of By metric (above Orientation) opening
+ * Visibility Match % and Invoice Accuracy for the charts shown. Not part of the seven streams. */
+function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
+  const [place, setPlace] = useState<{ top: number; right: number } | null>(null);
+  const linkRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!place) return;
+    const close = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && (popRef.current?.contains(target) || linkRef.current?.contains(target))) return;
+      setPlace(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPlace(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [place]);
+
+  function toggle() {
+    if (place) {
+      setPlace(null);
+      return;
+    }
+    const rect = linkRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPlace({ top: rect.bottom + 6, right: Math.max(POP_MARGIN, window.innerWidth - rect.right) });
+  }
+
+  const { visibility, invoice } = extra;
+  const invoicePages = invoice.both + invoice.gtOnly + invoice.algoOnly;
+  return (
+    <>
+      <button
+        ref={linkRef}
+        type="button"
+        className="accuracy-extra-link"
+        aria-expanded={place !== null}
+        onClick={toggle}
+      >
+        Additional Metrics
+      </button>
+      {place
+        ? createPortal(
+            <div
+              ref={popRef}
+              className="accuracy-info-pop accuracy-extra-pop"
+              role="dialog"
+              aria-label="Additional Metrics"
+              style={{ top: place.top, right: place.right, width: Math.min(POP_WIDTH, window.innerWidth - 2 * POP_MARGIN) }}
+            >
+              <section className="accuracy-info-section">
+                <h4>Visibility Match %</h4>
+                <strong className="accuracy-extra-pct">{pct(visibility.match, visibility.scored)}</strong>
+                <p>
+                  Match {visibility.match.toLocaleString()} of {visibility.scored.toLocaleString()}{" "}
+                  {visibility.scored === 1 ? "page" : "pages"}
+                  {visibility.na > 0 ? ` · Not measured ${visibility.na.toLocaleString()}` : ""}
+                </p>
+                <p className="accuracy-extra-rule">
+                  Pages the ground truth labels Visible Yes / No: the pipeline&apos;s Is Visible equals the label.
+                  A page the pipeline did not measure is Not measured, not scored.
+                </p>
+              </section>
+              <section className="accuracy-info-section">
+                <h4>Invoice Accuracy</h4>
+                <strong className="accuracy-extra-pct">{pct(invoice.both, invoicePages)}</strong>
+                <p>
+                  Both {invoice.both.toLocaleString()} · GT only {invoice.gtOnly.toLocaleString()} · Algo only{" "}
+                  {invoice.algoOnly.toLocaleString()}
+                </p>
+                <p className="accuracy-extra-rule">
+                  Pages both the ground truth and the pipeline call an invoice / invoice pages either calls one.
+                  Ground truth: Is Invoice = Yes, or Invoice in its page type or subtype. Pipeline: Invoice in
+                  its Final or Extracted page type or subtype.
+                </p>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -1115,6 +1212,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     () => sumRates(filtered.map((row) => row.orientationRates)),
     [filtered],
   );
+  const extra = useMemo(() => sumExtras(filtered.map((row) => row.extra)), [filtered]);
   /** Class 1 counts across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk"
@@ -1205,7 +1303,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
       ) : (
         <>
           <section className="accuracy-section" aria-label="Accuracy by metric">
-            <h2>By metric</h2>
+            <div className="accuracy-metric-head">
+              <h2>By metric</h2>
+              <AdditionalMetrics extra={extra} />
+            </div>
             <p className="accuracy-compared">
               {runAfter ? <>Run after <strong>{fmtRunAfter(runAfter)}</strong> · </> : null}
               {allFilterCount || query.trim() ? <>Filtered · </> : null}

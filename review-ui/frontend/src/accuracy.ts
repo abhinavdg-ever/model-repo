@@ -152,7 +152,64 @@ export type ChartAccuracy = {
   dosRates: ClassRates;
   /** Each scored page's verdicts, for the page-level download. */
   pages: PageAccuracy[];
+  /** Additional Metrics: Visibility and Invoice (not in the seven streams). */
+  extra: ExtraCounts;
 };
+
+/** Additional Metrics (2026-11-12, user), shown behind the Accuracy View's link.
+ * Visibility: pages the ground truth labels Visible Yes / No and the pipeline measured;
+ * ``na`` = labelled, not measured. Invoice: ``both`` = pages the ground truth and the
+ * pipeline both call an invoice; ``gtOnly`` / ``algoOnly`` = one side only. */
+export type ExtraCounts = {
+  visibility: { match: number; scored: number; na: number };
+  invoice: { both: number; gtOnly: number; algoOnly: number };
+};
+
+function emptyExtra(): ExtraCounts {
+  return { visibility: { match: 0, scored: 0, na: 0 }, invoice: { both: 0, gtOnly: 0, algoOnly: 0 } };
+}
+
+const INVOICE = /invoice/i;
+
+/** The ground truth's invoice: Is Invoice = Yes, or Invoice in its page type or subtype. */
+function gtInvoice(page: ImagingPageResult): boolean {
+  const gt = page.groundTruth;
+  return yesNo(gt?.isInvoice) === "yes" || INVOICE.test(text(gt?.pageType)) || INVOICE.test(text(gt?.pageSubtype));
+}
+
+/** The pipeline's invoice: Invoice in its Final or Extracted page type or subtype. */
+function algoInvoice(page: ImagingPageResult): boolean {
+  return INVOICE.test(text(page.finalPageType)) || INVOICE.test(text(page.pageType));
+}
+
+function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
+  const truth = yesNo(page.groundTruth?.isVisible);
+  if (truth) {
+    if (page.isVisible == null) extra.visibility.na += 1;
+    else {
+      extra.visibility.scored += 1;
+      if (page.isVisible === (truth === "yes")) extra.visibility.match += 1;
+    }
+  }
+  const gt = gtInvoice(page);
+  const algo = algoInvoice(page);
+  if (gt && algo) extra.invoice.both += 1;
+  else if (gt) extra.invoice.gtOnly += 1;
+  else if (algo) extra.invoice.algoOnly += 1;
+}
+
+export function sumExtras(rows: ExtraCounts[]): ExtraCounts {
+  const total = emptyExtra();
+  for (const row of rows) {
+    total.visibility.match += row.visibility.match;
+    total.visibility.scored += row.visibility.scored;
+    total.visibility.na += row.visibility.na;
+    total.invoice.both += row.invoice.both;
+    total.invoice.gtOnly += row.invoice.gtOnly;
+    total.invoice.algoOnly += row.invoice.algoOnly;
+  }
+  return total;
+}
 
 /** One page's verdict per metric (null = not scored) and its overall: Match when all seven
  * streams match, else No Match (``matches`` of seven). */
@@ -652,6 +709,7 @@ export function scoreChart(
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyOverall();
+  const extra = emptyExtra();
   const pages: PageAccuracy[] = [];
   for (const raw of doc.pages) {
     if (!hasGroundTruth(raw.groundTruth)) continue;
@@ -681,6 +739,7 @@ export function scoreChart(
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
     addOrientationRates(orientationRates, page);
+    addExtra(extra, raw);
     // Class 1: both Name and DOB on the page (by the ground truth or the pipeline).
     addRates(
       memberRates,
@@ -699,6 +758,7 @@ export function scoreChart(
     signatureRates,
     dosRates,
     pages,
+    extra,
   };
 }
 
