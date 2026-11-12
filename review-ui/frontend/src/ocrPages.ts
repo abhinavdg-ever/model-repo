@@ -6,7 +6,10 @@
  *   ===== 2.jpg =====
  *   ===== page_0001.jpg =====
  */
-const FILE_HEADER_RE = /(?:^|\n)\s*={3,}\s*([^\n=]+?\.(?:jpe?g|png|webp|tif{1,2}))\s*={3,}\s*/gi;
+// One marker per line. Spaces around it, never newlines: a page with no text (a blank page)
+// is a marker followed straight by the next one, and a \s* that ate the newline hid the next
+// marker, so the blank page showed the next page's text and that page showed none (2026-11-12).
+const FILE_HEADER_RE = /^[ \t]*={3,}[ \t]*([^\n=]+?\.(?:jpe?g|png|webp|tif{1,2}))[ \t]*={3,}[ \t]*$/gim;
 
 export function splitOcrByFilename(fullText: string): Map<string, string> {
   const text = fullText.replace(/\r\n/g, "\n");

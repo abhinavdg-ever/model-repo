@@ -400,9 +400,12 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                         fields["handwrittenOrPrinted"] = "Printed"
                 if conf is not None:
                     fields["handwrittenOrPrintedConfidence"] = float(conf)
-                if qscore is not None:
+                # A blank page has no image quality to grade (2026-11-12, user): its
+                # sharpness and contrast say nothing, so it shows none, not Low.
+                blank_type = str(doc_type or "").strip().lower() == "blank"
+                if qscore is not None and not blank_type:
                     fields["pageQualityConfidence"] = float(qscore)
-                if qtag:
+                if qtag and not blank_type:
                     fields["pageQualityTag"] = str(qtag)
                 if orient is not None:
                     fields["orientationAngle"] = float(orient)
@@ -427,6 +430,9 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                 fields = _ensure(str(page_name))
                 if (flag or "").strip().lower() in ("blank", "junk"):
                     junk_pages.add(str(page_name))
+                if (flag or "").strip().lower() == "blank":
+                    fields.pop("pageQualityTag", None)
+                    fields.pop("pageQualityConfidence", None)
                 blank, dup, page_type = _blank_junk_ui(flag, subtype)
                 fields["blankOrJunk"] = blank
                 fields["isDuplicate"] = dup
