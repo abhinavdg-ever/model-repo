@@ -35,4 +35,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-10-31.sql
 \echo '2026-11-07  chart tags, stage label, accuracy view, run_usage monitoring'
 \ir migrations/2026-11-07.sql
+\echo '2026-11-12  accuracy view: the pipeline''s Is Visible'
+\ir migrations/2026-11-12.sql
 \echo 'Done: the database matches schema/schema.sql.'
