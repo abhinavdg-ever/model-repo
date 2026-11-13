@@ -162,24 +162,56 @@ export type ChartAccuracy = {
  * pipeline both call an invoice; ``gtOnly`` / ``algoOnly`` = one side only. */
 export type ExtraCounts = {
   visibility: { match: number; scored: number; na: number };
-  invoice: { both: number; gtOnly: number; algoOnly: number };
+  /** ``neither`` (2026-11-13): labelled pages neither side calls an invoice. */
+  invoice: { both: number; gtOnly: number; algoOnly: number; neither: number };
+  /** Duplicate (2026-11-13, user): pages with a ground-truth Is Duplicate, by
+   * "<truth>|<pipeline>" over yes / partial / no, e.g. ``"yes|partial"``. */
+  duplicate: Record<string, number>;
 };
 
+export type DupState = "yes" | "partial" | "no";
+export const DUP_STATES: DupState[] = ["yes", "partial", "no"];
+
 function emptyExtra(): ExtraCounts {
-  return { visibility: { match: 0, scored: 0, na: 0 }, invoice: { both: 0, gtOnly: 0, algoOnly: 0 } };
+  return {
+    visibility: { match: 0, scored: 0, na: 0 },
+    invoice: { both: 0, gtOnly: 0, algoOnly: 0, neither: 0 },
+    duplicate: {},
+  };
+}
+
+/** A ground-truth Is Duplicate as yes / partial / no. */
+function gtDuplicate(value: string | null | undefined): DupState | null {
+  const folded = (value ?? "").trim().toLowerCase();
+  if (folded === "1" || folded.startsWith("yes") || folded === "y" || folded === "true") return "yes";
+  if (folded.startsWith("partial")) return "partial";
+  if (folded === "0" || folded.startsWith("no") || folded === "n" || folded === "false") return "no";
+  return null;
+}
+
+/** The pipeline's Duplicate: Yes (a duplicate), Partial (a 100% text match a hard block
+ * kept a normal page), else No. */
+function algoDuplicate(page: ImagingPageResult): DupState {
+  if (page.isDuplicate === true) return "yes";
+  if (page.isDuplicateContent === true) return "partial";
+  return "no";
 }
 
 const INVOICE = /invoice/i;
 
-/** The ground truth's invoice: Is Invoice = Yes, or Invoice in its page type or subtype. */
+/** The ground truth's invoice (2026-11-12, user): Is Invoice = Yes / 1, or Invoice in its
+ * Encounter Type. */
 function gtInvoice(page: ImagingPageResult): boolean {
   const gt = page.groundTruth;
-  return yesNo(gt?.isInvoice) === "yes" || INVOICE.test(text(gt?.pageType)) || INVOICE.test(text(gt?.pageSubtype));
+  const flag = text(gt?.isInvoice).trim().toLowerCase();
+  return flag === "1" || yesNo(flag) === "yes" || INVOICE.test(text(gt?.encounterType));
 }
 
-/** The pipeline's invoice: Invoice in its Final or Extracted page type or subtype. */
+/** The pipeline's invoice (2026-11-12, user): its Final Page Type is Invoice
+ * (imaging_final.page_type; shown as "Invoice (sub-type)"). */
 function algoInvoice(page: ImagingPageResult): boolean {
-  return INVOICE.test(text(page.finalPageType)) || INVOICE.test(text(page.pageType));
+  const final = text(page.finalPageType).split(" (")[0].trim().toLowerCase();
+  return final === "invoice";
 }
 
 function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
@@ -196,6 +228,39 @@ function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
   if (gt && algo) extra.invoice.both += 1;
   else if (gt) extra.invoice.gtOnly += 1;
   else if (algo) extra.invoice.algoOnly += 1;
+  else extra.invoice.neither += 1;
+  const dupTruth = gtDuplicate(page.groundTruth?.isDuplicate);
+  if (dupTruth) {
+    const key = `${dupTruth}|${algoDuplicate(page)}`;
+    extra.duplicate[key] = (extra.duplicate[key] ?? 0) + 1;
+  }
+}
+
+/** Precision, recall, F1 and accuracy from a 2 x 2 table (null when undefined). */
+export type BinaryScores = { precision: number | null; recall: number | null; f1: number | null; accuracy: number | null };
+
+export function binaryScores(tp: number, fp: number, fn: number, tn: number): BinaryScores {
+  const precision = tp + fp ? tp / (tp + fp) : null;
+  const recall = tp + fn ? tp / (tp + fn) : null;
+  const f1 = precision != null && recall != null && precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : null;
+  const total = tp + fp + fn + tn;
+  return { precision, recall, f1, accuracy: total ? (tp + tn) / total : null };
+}
+
+/** Duplicate as a yes / no call (2026-11-13, user): Yes and Partial are both a duplicate,
+ * on either side. */
+export function duplicateScores(counts: Record<string, number>): BinaryScores & { tp: number; fp: number; fn: number; tn: number } {
+  let tp = 0, fp = 0, fn = 0, tn = 0;
+  for (const [key, n] of Object.entries(counts)) {
+    const [truth, algo] = key.split("|");
+    const t = truth !== "no";
+    const a = algo !== "no";
+    if (t && a) tp += n;
+    else if (a) fp += n;
+    else if (t) fn += n;
+    else tn += n;
+  }
+  return { ...binaryScores(tp, fp, fn, tn), tp, fp, fn, tn };
 }
 
 export function sumExtras(rows: ExtraCounts[]): ExtraCounts {
@@ -207,6 +272,10 @@ export function sumExtras(rows: ExtraCounts[]): ExtraCounts {
     total.invoice.both += row.invoice.both;
     total.invoice.gtOnly += row.invoice.gtOnly;
     total.invoice.algoOnly += row.invoice.algoOnly;
+    total.invoice.neither += row.invoice.neither ?? 0;
+    for (const [key, n] of Object.entries(row.duplicate ?? {})) {
+      total.duplicate[key] = (total.duplicate[key] ?? 0) + n;
+    }
   }
   return total;
 }

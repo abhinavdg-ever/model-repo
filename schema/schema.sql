@@ -1374,7 +1374,9 @@ SELECT
     -- NULL on a database whose imaging_final has no such column).
     to_jsonb(f) ->> 'signature_present'                       AS final_signature_present,
     -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
-    q.is_visible                                              AS algo_is_visible
+    q.is_visible                                              AS algo_is_visible,
+    -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy.
+    g.is_duplicate                                            AS gt_is_duplicate
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

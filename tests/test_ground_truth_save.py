@@ -73,8 +73,8 @@ def test_bulk_ground_truth_is_read_from_the_entry_labels():
 def test_bulk_mode_swaps_in_bulk_labels_and_drops_manual_only_pages():
     from app.services.accuracy_cache import _GT_CELLS, _GT_UPDATED_AT, _with_bulk_labels
 
-    row = tuple(["chart", 1] + ["manual"] * 41)
-    manual_only = tuple(["chart", 2] + ["manual"] * 41)
+    row = tuple(["chart", 1] + ["manual"] * 48)  # every _SELECT column
+    manual_only = tuple(["chart", 2] + ["manual"] * 48)
     out = _with_bulk_labels(
         [row, manual_only], {("chart", 1): ({"rotation": "270", "member_name": None}, "loaded")}
     )

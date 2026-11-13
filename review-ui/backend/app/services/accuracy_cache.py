@@ -121,7 +121,9 @@ SELECT
     -- NULL on a database whose imaging_final has no such column).
     to_jsonb(f) ->> 'signature_present' AS final_signature_present,
     -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
-    q.is_visible AS algo_is_visible
+    q.is_visible AS algo_is_visible,
+    -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy (2026-11-13).
+    g.is_duplicate AS gt_is_duplicate
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -158,7 +160,7 @@ SELECT chart_name, page_number, source_page_id,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
        gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
-       final_provider_version, final_signature_present, algo_is_visible
+       final_provider_version, final_signature_present, algo_is_visible, gt_is_duplicate
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -166,14 +168,18 @@ SELECT chart_name, page_number, source_page_id,
 
 
 # Duplicate page -> the page it duplicates, so a duplicate scores with its original's
-# Blank/Junk tag (as review-ui shows it).
+# Blank/Junk tag (as review-ui shows it). Also the Partials (2026-11-13, user): a 100% text
+# match a hard block kept a normal page ("Copy of N" before), for Duplicate accuracy.
 _DUPLICATES = """
-SELECT c.chart_name, p.page_name, orig.page_name
+SELECT c.chart_name, p.page_name, orig.page_name, b.blank_junk_flag = 'duplicate'
   FROM v_page_blank_junk_final b
   JOIN chart_list c ON c.id = b.chart_id
   JOIN page_list p ON p.id = b.page_id
   JOIN page_list orig ON orig.id = b.duplicate_of_page_id
- WHERE b.blank_junk_flag = 'duplicate' AND c.chart_name = ANY(%s)
+ WHERE c.chart_name = ANY(%s)
+   AND (b.blank_junk_flag = 'duplicate'
+        OR (b.blank_junk_flag IN ('not_blank_junk', 'junk')
+            AND b.reason LIKE '%%duplicate_content_of_page_id:%%'))
 """
 
 
@@ -183,7 +189,7 @@ _GT_CELLS = {
     "encounter_type": 8, "page_type": 9, "codeable": 10, "blank_page": 11,
     "junk_page": 12, "is_invoice": 13, "page_sequence": 14, "rotation": 15,
     "is_visible": 16, "rendering_provider": 17, "provider_signature": 18,
-    "provider_credentials": 42,
+    "provider_credentials": 42, "is_duplicate": 49,
 }
 _GT_UPDATED_AT = 34
 
@@ -325,8 +331,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
         gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
-        final_signed, algo_visible,
-    ) = (tuple(extra) + (None,) * 14)[:14]
+        final_signed, algo_visible, gt_duplicate,
+    ) = (tuple(extra) + (None,) * 15)[:15]
     final_key = _text(final_category) or ""
     people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -371,6 +377,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
             renderingProvider=_text(rendering_provider),
             providerSignature=_text(provider_signature),
             providerCredentials=_text(gt_provider_credentials),
+            isDuplicate=_text(gt_duplicate),
         ),
     )
 
@@ -455,7 +462,8 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             cur.execute(_SELECT, (names,))
             rows = cur.fetchall()
             cur.execute(_DUPLICATES, (names,))
-            duplicates = {(str(chart), str(page)): str(original) for chart, page, original in cur.fetchall()}
+            duplicates = {(str(chart), str(page)): (str(original), bool(full))
+                          for chart, page, original, full in cur.fetchall()}
             # The manifest member of each chart: member accuracy scores a name or DOB as
             # found only when it is this member's (2026-10-27, user).
             cur.execute(_MANIFEST_MEMBERS, (names,))
@@ -471,9 +479,11 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     for row in rows:
         chart_name = str(row[0])
         page = _page(row[:34], row[35:])
-        original = duplicates.get((chart_name, page.fileName))
-        if original:
-            page = page.model_copy(update={"isDuplicate": True, "duplicateOf": original})
+        hit = duplicates.get((chart_name, page.fileName))
+        if hit and hit[1]:
+            page = page.model_copy(update={"isDuplicate": True, "duplicateOf": hit[0]})
+        elif hit:
+            page = page.model_copy(update={"isDuplicateContent": True, "duplicateOf": hit[0]})
         pages.setdefault(chart_name, []).append(page)
         sections[chart_name] = ImagingSectionsProcessed(
             member=bool(row[30]),

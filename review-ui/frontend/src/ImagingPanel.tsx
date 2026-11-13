@@ -303,6 +303,16 @@ function fmtBlankOrJunk(
   return String(value);
 }
 
+/** A Duplicate label or ground-truth entry as yes / partial / no ("Duplicate of 4" and
+ * "Copy of 4" are the labels before 2026-11-13). */
+function duplicateSide(value: string | null | undefined): "yes" | "partial" | "no" | null {
+  const folded = (value ?? "").trim().toLowerCase();
+  if (folded.startsWith("yes") || folded.startsWith("duplicate")) return "yes";
+  if (folded.startsWith("partial") || folded.startsWith("copy")) return "partial";
+  if (folded.startsWith("no")) return "no";
+  return null;
+}
+
 function fmtDuplicate(
   isDuplicate: boolean | null | undefined,
   confidence: number | null | undefined,
@@ -800,7 +810,8 @@ const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet 
 
 /** The pipeline's value offered as the ground truth on a page nobody has labelled. */
 function confirmedValue(processed: string): string {
-  const text = processed.trim();
+  // "Yes (to page 4)" is offered as the ground-truth choice "Yes".
+  const text = processed.trim().replace(/\s*\(to page [^)]*\)$/i, "");
   if (!text || text === YET_TO_PROCESS || text === SKIPPED || text === NOT_FOUND) return "";
   return text;
 }
@@ -1576,14 +1587,14 @@ function extractedInput(page: ImagingPageResult, sections: ImagingSectionsProces
   };
 }
 
-/** "Duplicate of 12" / "Copy of 12" with 12 linking to page 12's row (2026-11-11, user). */
+/** "Yes (to page 12)" / "Partial (to page 12)" with 12 linking to page 12's row (2026-11-13, user). */
 function DuplicateLink({ label }: { label: string }) {
-  const match = /^(Duplicate|Copy) of (.+)$/.exec(label);
+  const match = /^(Yes|Partial) \(to page (.+)\)$/.exec(label);
   if (!match) return <>{label}</>;
   const id = `imaging-page-${match[2]}`;
   return (
     <span>
-      {match[1]} of{" "}
+      {match[1]} (to page{" "}
       <a
         href={`#${id}`}
         onClick={(event) => {
@@ -1596,6 +1607,7 @@ function DuplicateLink({ label }: { label: string }) {
       >
         {match[2]}
       </a>
+      )
     </span>
   );
 }
@@ -2119,6 +2131,14 @@ function PageDetails({
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
+            // 2026-11-13 (user): Yes and Partial both match a ground truth of Yes (or Partial);
+            // No matches No.
+            compare: (truth: string) => {
+              const expected = duplicateSide(truth);
+              const actual = duplicateSide(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent));
+              if (!expected || !actual) return null;
+              return (expected === "no") === (actual === "no") ? "match" : "mismatch";
+            },
           }),
           {
             ...sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(finalOr(page, "page_type", page.pageTypeConfidence), pageTypeKnown), {
@@ -2173,9 +2193,9 @@ function PageDetails({
           },
         ]}
       />
-      {/* Not on a blank / junk page (2026-11-06, user): a junk page has no provider to review.
-          A duplicate still shows it (its original's values). */}
-      {!skipped && <CompareSection
+      {/* On every page (2026-11-13, user; was hidden on blank / junk pages since 2026-11-06):
+          a page the pipeline calls junk can still carry a provider the reviewer labels. */}
+      {<CompareSection
         {...sectionProps}
         title="Provider Extraction"
         rows={[

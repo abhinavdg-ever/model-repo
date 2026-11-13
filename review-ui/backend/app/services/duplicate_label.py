@@ -34,13 +34,13 @@ def format_duplicate_label(
     is_partial: bool | None = None,
     is_content: bool | None = None,
 ) -> str:
-    """Duplicate for a duplicate; Copy for a 100% text match a hard block kept from being one
-    (2026-11-11, user: Duplicate_Logic.md; Partial is gone); No otherwise."""
+    """Yes for a duplicate; Partial for a 100% text match a hard block kept from being one
+    (2026-11-13, user; were Duplicate / Copy); No otherwise."""
     del confidence, is_partial  # the pipeline's flag decides; kept for callers' signature
     if is_duplicate is None:
         return "NA"
     if is_duplicate:
-        return "Duplicate"
+        return "Yes"
     if is_content:
-        return "Copy"
+        return "Partial"
     return "No"

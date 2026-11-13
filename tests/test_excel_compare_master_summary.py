@@ -463,9 +463,11 @@ def test_a_duplicate_matches_a_page_labelled_junk():
     assert match("Duplicate", "Yes", "Yes (To Page 4)") is True
     assert match("Duplicate", "Yes", "Duplicate (To Page 4)") is True  # the old screen label
     assert match("Duplicate", "Yes", "Duplicate of 4") is True  # the screen's label (2026-11-11)
-    assert match("Duplicate", "No", "Copy of 4") is True
+    # 2026-11-13 (user): Partial (was "Copy of N") matches Yes.
+    assert match("Duplicate", "Yes", "Partial (to page 4)") is True
+    assert match("Duplicate", "No", "Partial (to page 4)") is False
     assert match("Duplicate", "Partial", "Partial") is True
-    assert match("Duplicate", "Yes", "Partial") is False
+    assert match("Duplicate", "Yes", "Partial") is True
 
 
 def test_algo_duplicate_reads_yes_partial_no():

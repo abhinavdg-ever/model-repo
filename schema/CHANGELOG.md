@@ -4,6 +4,8 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * v_accuracy_page (2026-11-13, migrations/2026-11-13.sql): new last column gt_is_duplicate
+   (page_ground_truth.is_duplicate) for the Accuracy View's Duplicate accuracy.
  * v_accuracy_page (2026-11-12, migrations/2026-11-12.sql): new last column algo_is_visible
    (ocr_quality_results.is_visible) for the Accuracy View's Visibility Match %.
  * migrations/2026-11-07.sql (2026-11-09): no longer creates Part 2's proposal tables

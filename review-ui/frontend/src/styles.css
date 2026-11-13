@@ -6680,6 +6680,57 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
+.accuracy-extra-scores {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
+}
+
+.accuracy-extra-scores div {
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  text-align: center;
+}
+
+.accuracy-extra-scores dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.accuracy-extra-scores dd {
+  margin: 0;
+  color: var(--brand-800);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.accuracy-extra-counts {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.accuracy-extra-matrix {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.accuracy-extra-matrix th,
+.accuracy-extra-matrix td {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.accuracy-extra-matrix td.is-match {
+  background: rgba(34, 197, 94, 0.12);
+}
+
 .accuracy-extra-rule {
   color: var(--muted);
 }

@@ -143,11 +143,13 @@ def normalize_labelled_yes_no(value):
     if match:
         return match.group(1)
 
-    # The screen's Duplicate column: "Duplicate of 4" (was "Duplicate (To Page 4)") is a Yes;
-    # "Copy of 4" (2026-11-11; was "Repeated Content (To Page 4)") a No: a normal page.
-    if re.fullmatch(r"duplicate(\s+of\s+.*|\s*\(.*\))?", text):
+    # The screen's Duplicate column: "Yes (to page 4)" is a Yes (above); "Partial (to page 4)"
+    # is a Yes too (2026-11-13, user: Partial matches Yes). Older exports: "Duplicate of 4" /
+    # "Duplicate (To Page 4)" a Yes; "Copy of 4" a Yes (it is today's Partial);
+    # "Repeated Content (To Page 4)" stays a No.
+    if re.fullmatch(r"(duplicate|partial|copy)(\s+of\s+.*|\s*\(.*\))?", text):
         return "yes"
-    if re.fullmatch(r"(copy|repeated content)(\s+of\s+.*|\s*\(.*\))?", text):
+    if re.fullmatch(r"repeated content(\s+of\s+.*|\s*\(.*\))?", text):
         return "no"
 
     return normalize_yes_no(value)

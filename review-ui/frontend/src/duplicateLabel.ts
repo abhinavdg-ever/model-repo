@@ -1,9 +1,10 @@
 /** Duplicate UI label + display confidence from the pipeline's duplicate verdict.
  *
- * 2026-11-11 (user: Duplicate_Logic.md): a duplicate — ``isDuplicate`` — reads "Duplicate of N"
- * ("No" under Blank / Junk: not junk); a 100% text match a hard block kept from being a
- * duplicate — ``isDuplicateContent`` — reads "Copy of N" and stays a normal page. N is always
- * the earliest copy. There are no Partials any more. */
+ * 2026-11-11 (user: Duplicate_Logic.md): a duplicate — ``isDuplicate`` — ("No" under Blank /
+ * Junk: not junk); a 100% text match a hard block kept from being a duplicate —
+ * ``isDuplicateContent`` — stays a normal page. N is always the earliest copy.
+ * 2026-11-13 (user): they read "Yes (to page N)" and "Partial (to page N)" (were "Duplicate of
+ * N" / "Copy of N"); both match a ground truth of Yes. */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
@@ -49,7 +50,7 @@ export function duplicateDisplayConfidence(
 }
 
 /**
- * ``Duplicate of 4`` for a duplicate, ``Copy of 4`` for a blocked 100% match, ``No`` otherwise.
+ * ``Yes (to page 4)`` for a duplicate, ``Partial (to page 4)`` for a blocked 100% match, ``No``.
  * ``labels.duplicateOf`` is the original page's file name. ``isPartial`` is ignored (no
  * Partials since 2026-11-11).
  */
@@ -71,9 +72,9 @@ export function formatDuplicateLabel(
   if (!processed) return yetToProcess;
   if (isDuplicate == null) return notFound;
   const target = duplicatePageNumber(labels.duplicateOf);
-  const withTarget = (state: string) => (target ? `${state} of ${target}` : state);
-  if (isDuplicate) return withTarget("Duplicate");
-  if (labels.isContent) return withTarget("Copy");
+  const withTarget = (state: string) => (target ? `${state} (to page ${target})` : state);
+  if (isDuplicate) return withTarget("Yes");
+  if (labels.isContent) return withTarget("Partial");
   return "No";
 }
 
@@ -92,7 +93,7 @@ export function duplicateTargetNote(fileName: string | null | undefined): string
   return ref ? `Duplicate to ${ref}` : "";
 }
 
-/** Download cell: the same as on screen — ``Duplicate of 4``, ``Copy of 4``, ``No``. */
+/** Download cell: the same as on screen — ``Yes (to page 4)``, ``Partial (to page 4)``, ``No``. */
 export function formatDuplicateDownload(
   isDuplicate: boolean | null | undefined,
   confidence: number | null | undefined,
@@ -108,7 +109,7 @@ export function duplicatePageNumber(fileName: string | null | undefined): string
   return (fileName ?? "").replace(/\.[^.]+$/, "").trim();
 }
 
-/** The table row id of a page, so "Duplicate of 4" can link to page 4's row. */
+/** The table row id of a page, so "Yes (to page 4)" can link to page 4's row. */
 export function pageRowId(fileName: string | null | undefined): string {
   return `imaging-page-${duplicatePageNumber(fileName)}`;
 }

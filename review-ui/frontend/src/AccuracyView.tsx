@@ -53,11 +53,15 @@ import {
   OVERALL_STREAMS,
   pageAccuracyCsv,
   scoreChart,
+  binaryScores,
+  DUP_STATES,
+  duplicateScores,
   sumExtras,
   sumRates,
   sumTallies,
   type ChartAccuracy,
   type ClassRates,
+  type BinaryScores,
   type ExtraCounts,
   type MetricId,
   type Tally,
@@ -421,6 +425,32 @@ function Donut({
   );
 }
 
+const EXTRA_POP_WIDTH = 460;
+const DUP_LABEL: Record<string, string> = { yes: "Yes", partial: "Partial", no: "No" };
+
+function fmtScore(value: number | null): string {
+  return value == null ? "–" : `${(value * 100).toFixed(1)}%`;
+}
+
+/** Precision · Recall · F1 · Accuracy, then the 2 x 2 counts. */
+function ScoreGrid({ scores, counts }: { scores: BinaryScores; counts: [string, number][] }) {
+  return (
+    <>
+      <dl className="accuracy-extra-scores">
+        <div><dt>Precision</dt><dd>{fmtScore(scores.precision)}</dd></div>
+        <div><dt>Recall</dt><dd>{fmtScore(scores.recall)}</dd></div>
+        <div><dt>F1 score</dt><dd>{fmtScore(scores.f1)}</dd></div>
+        <div><dt>Accuracy</dt><dd>{fmtScore(scores.accuracy)}</dd></div>
+      </dl>
+      <p className="accuracy-extra-counts">
+        {counts.map(([label, n], i) => (
+          <span key={label}>{i ? " · " : ""}{label} {n.toLocaleString()}</span>
+        ))}
+      </p>
+    </>
+  );
+}
+
 /** "Additional Metrics": a link at the top right of By metric (above Orientation) opening
  * Visibility Match % and Invoice Accuracy for the charts shown. Not part of the seven streams. */
 function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
@@ -461,7 +491,9 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
   }
 
   const { visibility, invoice } = extra;
-  const invoicePages = invoice.both + invoice.gtOnly + invoice.algoOnly;
+  const invoiceScores = binaryScores(invoice.both, invoice.algoOnly, invoice.gtOnly, invoice.neither);
+  const dup = duplicateScores(extra.duplicate);
+  const dupCell = (truth: string, algo: string) => extra.duplicate[`${truth}|${algo}`] ?? 0;
   return (
     <>
       <button
@@ -480,7 +512,7 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
               className="accuracy-info-pop accuracy-extra-pop"
               role="dialog"
               aria-label="Additional Metrics"
-              style={{ top: place.top, right: place.right, width: Math.min(POP_WIDTH, window.innerWidth - 2 * POP_MARGIN) }}
+              style={{ top: place.top, right: place.right, width: Math.min(EXTRA_POP_WIDTH, window.innerWidth - 2 * POP_MARGIN) }}
             >
               <section className="accuracy-info-section">
                 <h4>Visibility Match %</h4>
@@ -496,16 +528,45 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
                 </p>
               </section>
               <section className="accuracy-info-section">
-                <h4>Invoice Accuracy</h4>
-                <strong className="accuracy-extra-pct">{pct(invoice.both, invoicePages)}</strong>
-                <p>
-                  Both {invoice.both.toLocaleString()} · GT only {invoice.gtOnly.toLocaleString()} · Algo only{" "}
-                  {invoice.algoOnly.toLocaleString()}
-                </p>
+                <h4>Invoice</h4>
+                <ScoreGrid
+                  scores={invoiceScores}
+                  counts={[["Both", invoice.both], ["GT only", invoice.gtOnly], ["Algo only", invoice.algoOnly], ["Neither", invoice.neither]]}
+                />
                 <p className="accuracy-extra-rule">
-                  Pages both the ground truth and the pipeline call an invoice / invoice pages either calls one.
-                  Ground truth: Is Invoice = Yes, or Invoice in its page type or subtype. Pipeline: Invoice in
-                  its Final or Extracted page type or subtype.
+                  Ground truth: Is Invoice = Yes, or Invoice in its Encounter Type. Pipeline: its Final Page
+                  Type is Invoice. Precision = Both / pipeline invoices; Recall = Both / ground-truth invoices.
+                </p>
+              </section>
+              <section className="accuracy-info-section">
+                <h4>Duplicate</h4>
+                <ScoreGrid
+                  scores={dup}
+                  counts={[["TP", dup.tp], ["FP", dup.fp], ["FN", dup.fn], ["TN", dup.tn]]}
+                />
+                <table className="accuracy-extra-matrix">
+                  <thead>
+                    <tr>
+                      <th scope="col">GT \ Algo</th>
+                      {DUP_STATES.map((a) => <th key={a} scope="col">{DUP_LABEL[a]}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DUP_STATES.map((t) => (
+                      <tr key={t}>
+                        <th scope="row">{DUP_LABEL[t]}</th>
+                        {DUP_STATES.map((a) => (
+                          <td key={a} className={(t === "no") === (a === "no") ? "is-match" : undefined}>
+                            {dupCell(t, a).toLocaleString()}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="accuracy-extra-rule">
+                  Pages with a ground-truth Is Duplicate. Yes and Partial both count as a duplicate on either
+                  side (Partial = a 100% text match a rule kept a normal page); No matches No. Shaded cells match.
                 </p>
               </section>
             </div>,
