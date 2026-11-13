@@ -71,3 +71,29 @@ SELECT
     to_jsonb(f) -> 'signers'                                  AS final_signers,
     to_jsonb(f) ->> 'provider_version'                        AS final_provider_version,
     -- Provider Signature accuracy: did the pipeline find a signature ('true' / 'false';
+    -- NULL on a database whose imaging_final has no such column).
+    to_jsonb(f) ->> 'signature_present'                       AS final_signature_present,
+    -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
+    q.is_visible                                              AS algo_is_visible,
+    -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy.
+    g.is_duplicate                                            AS gt_is_duplicate
+FROM page_ground_truth g
+LEFT JOIN chart_list c
+       ON c.chart_name = g.chart_name
+LEFT JOIN LATERAL (
+    SELECT p.id, p.page_name
+      FROM page_list p
+     WHERE p.chart_id = c.id
+       AND (
+            p.page_name = g.source_page_id
+         OR split_part(p.page_name, '.', 1) = g.page_number::text
+       )
+     ORDER BY (p.page_name IS NOT DISTINCT FROM g.source_page_id) DESC, p.id
+     LIMIT 1
+) pl ON TRUE
+LEFT JOIN member_extraction_results m ON m.page_id = pl.id
+LEFT JOIN dos_extraction_results d ON d.page_id = pl.id
+LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
+LEFT JOIN page_classification pc ON pc.page_id = pl.id
+LEFT JOIN ocr_quality_results q ON q.page_id = pl.id
+LEFT JOIN imaging_final f ON f.page_id = pl.id;
