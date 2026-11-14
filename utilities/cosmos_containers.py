@@ -9,8 +9,9 @@
     python utilities\\cosmos_containers.py check                    # Windows (Command Prompt)
 
 Settings come from core-pipeline/.env (``--env`` for another file; the environment wins):
-COSMOS_ENDPOINT, COSMOS_DATABASE, COSMOS_AUTH (key | managed_identity), COSMOS_KEY,
-COSMOS_CLIENT_ID (else AZURE_CLIENT_ID). No value is ever printed.
+COSMOS_ENDPOINT, COSMOS_DATABASE, COSMOS_AUTH (key | managed_identity | service_principal | entra),
+COSMOS_KEY, COSMOS_CLIENT_ID / COSMOS_TENANT_ID / COSMOS_CLIENT_SECRET (each else its AZURE_*
+setting). No value is ever printed.
 
 ``create`` makes database ``imaging`` (1,000 RU/s shared, or ``--throughput``) and the seven
 containers of infra/main.bicep; it changes nothing that already exists. With a key it uses the
@@ -69,21 +70,53 @@ def setting(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
+SERVICE_PRINCIPAL = frozenset({"service_principal", "service-principal", "sp", "client_secret", "app"})
+ENTRA = frozenset({"entra", "entra_id", "entra-id", "aad", "azure_ad", "default"})
+
+
+def auth_mode() -> str:
+    auth = setting("COSMOS_AUTH", "key").lower()
+    if auth in MANAGED_IDENTITY:
+        return "managed_identity"
+    if auth in SERVICE_PRINCIPAL:
+        return "service_principal"
+    return "entra" if auth in ENTRA else "key"
+
+
 def managed_identity() -> bool:
-    return setting("COSMOS_AUTH", "key").lower() in MANAGED_IDENTITY
+    """Any Entra ID sign-in (not the key): the data-plane role cannot create, use --arm."""
+    return auth_mode() != "key"
 
 
 def credential() -> Any:
     """What the services sign in with (core-pipeline common/db/cosmos_store.cosmos_credential)."""
-    if managed_identity():
+    mode = auth_mode()
+    client_id = setting("COSMOS_CLIENT_ID") or setting("AZURE_CLIENT_ID")
+    if mode == "managed_identity":
         from azure.identity import ManagedIdentityCredential
 
-        client_id = setting("COSMOS_CLIENT_ID") or setting("AZURE_CLIENT_ID")
         print(f"sign-in: managed identity ({'user-assigned' if client_id else 'system-assigned'})")
         return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    if mode == "service_principal":
+        from azure.identity import ClientSecretCredential
+
+        tenant = setting("COSMOS_TENANT_ID") or setting("AZURE_TENANT_ID")
+        secret = setting("COSMOS_CLIENT_SECRET") or setting("AZURE_CLIENT_SECRET")
+        if not (tenant and client_id and secret):
+            sys.exit("COSMOS_AUTH=service_principal needs COSMOS_TENANT_ID, COSMOS_CLIENT_ID, COSMOS_CLIENT_SECRET")
+        print("sign-in: Entra ID app registration (service principal)")
+        return ClientSecretCredential(tenant_id=tenant, client_id=client_id, client_secret=secret)
+    if mode == "entra":
+        from azure.identity import DefaultAzureCredential
+
+        print("sign-in: Entra ID (DefaultAzureCredential: environment, managed identity, az login)")
+        kwargs: dict[str, Any] = {"exclude_interactive_browser_credential": True}
+        if client_id:
+            kwargs["managed_identity_client_id"] = client_id
+        return DefaultAzureCredential(**kwargs)
     key = setting("COSMOS_KEY")
     if not key:
-        sys.exit("COSMOS_KEY is empty and COSMOS_AUTH is not managed_identity")
+        sys.exit("COSMOS_KEY is empty and COSMOS_AUTH is key")
     print("sign-in: account key")
     return key
 

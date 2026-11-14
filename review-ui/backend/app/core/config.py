@@ -28,10 +28,13 @@ class Settings(BaseSettings):
     # Azure Cosmos DB for NoSQL (DB_BACKEND=cosmos): the database core-pipeline writes.
     cosmos_endpoint: str = ""
     cosmos_key: str = ""
-    # key (default) | managed_identity: sign in with the host's managed identity, no key
-    # (2026-11-11, user). COSMOS_CLIENT_ID (else AZURE_CLIENT_ID) picks a user-assigned one.
+    # key (default) | managed_identity (2026-11-11) | service_principal | entra (2026-11-14,
+    # user): see app/store/cosmos/credential.py. COSMOS_CLIENT_ID / COSMOS_TENANT_ID /
+    # COSMOS_CLIENT_SECRET, each else its AZURE_* setting.
     cosmos_auth: str = "key"
     cosmos_client_id: str = ""
+    cosmos_tenant_id: str = ""
+    cosmos_client_secret: str = ""
     cosmos_database: str = "imaging"
     # No longer set (2026-11-07): kept so internal helpers that take a folder still construct.
     # Nothing reads the pipeline's chart folders any more.

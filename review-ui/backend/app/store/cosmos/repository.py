@@ -139,6 +139,8 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
         database: str = "imaging",
         auth: str = "key",
         client_id: str = "",
+        tenant_id: str = "",
+        client_secret: str = "",
     ):
         """``containers`` (name -> container client) for tests; otherwise built on first
         use from the endpoint, key (or managed identity: ``auth``, ``client_id``) and database."""
@@ -147,6 +149,8 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
         self._key = (key or "").strip()
         self._auth = (auth or "key").strip()
         self._client_id = (client_id or "").strip()
+        self._tenant_id = (tenant_id or "").strip()
+        self._client_secret = (client_secret or "").strip()
         self._database = (database or "imaging").strip() or "imaging"
         self._lock = threading.RLock()
         # chart name -> (fingerprint, page docs, {kind: OcrTextResponse})
@@ -158,17 +162,20 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
     def _container(self, name: str) -> Any:
         with self._lock:
             if self._containers is None:
-                if not cosmos_credential.configured(self._endpoint, self._key, self._auth):
+                if not cosmos_credential.configured(self._endpoint, self._key, self._auth,
+                                                    self._tenant_id, self._client_id, self._client_secret):
                     raise HTTPException(
                         status_code=503,
                         detail="DB_BACKEND=cosmos needs COSMOS_ENDPOINT and COSMOS_KEY (or "
-                               "COSMOS_AUTH=managed_identity) in review-ui/.env",
+                               "COSMOS_AUTH=managed_identity / entra, or service_principal with "
+                               "COSMOS_TENANT_ID, COSMOS_CLIENT_ID, COSMOS_CLIENT_SECRET) in review-ui/.env",
                     )
                 from azure.cosmos import CosmosClient
 
                 db = CosmosClient(
                     self._endpoint,
-                    credential=cosmos_credential.credential(self._key, self._auth, self._client_id),
+                    credential=cosmos_credential.credential(self._key, self._auth, self._client_id,
+                                                            self._tenant_id, self._client_secret),
                 ).get_database_client(self._database)
                 self._containers = {n: db.get_container_client(n) for n in CONTAINERS}
             return self._containers[name]

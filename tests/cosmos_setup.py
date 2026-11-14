@@ -5,13 +5,15 @@
     python3 cosmos_setup.py
 """
 # ============================ PARAMETERS ============================
-ACTION = "check"            # "check" | "create" (with KEY) | "create_arm" (managed identity)
+ACTION = "check"            # "check" | "create" (with KEY) | "create_arm" (any Entra ID sign-in)
 ENDPOINT = "https://<account>.documents.azure.com:443/"
 DATABASE = "imaging"
 THROUGHPUT = 1000           # shared RU/s, used only when the database is created
 
-AUTH = "managed_identity"   # "managed_identity" | "key"
-CLIENT_ID = ""              # user-assigned identity's client id; "" = system-assigned
+AUTH = "managed_identity"   # "managed_identity" | "service_principal" | "entra" | "key"
+CLIENT_ID = ""              # managed_identity: user-assigned id ("" = system-assigned); service_principal: app id
+TENANT_ID = ""              # service_principal only: the Entra ID tenant
+CLIENT_SECRET = ""          # service_principal only: the secret's VALUE (not its ID). Never commit it.
 KEY = ""                    # read-write primary key, only when AUTH = "key"
 
 READ_ONLY = False           # check: True = read only; False = also write + delete a probe doc
@@ -46,9 +48,31 @@ def short(exc):
 
 
 def identity():
+    """The Entra ID credential for AUTH: managed identity, app registration, or DefaultAzureCredential."""
+    if AUTH == "service_principal":
+        if not (TENANT_ID and CLIENT_ID and CLIENT_SECRET):
+            sys.exit("AUTH 'service_principal' needs TENANT_ID, CLIENT_ID and CLIENT_SECRET")
+        from azure.identity import ClientSecretCredential
+
+        return ClientSecretCredential(tenant_id=TENANT_ID, client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+    if AUTH == "entra":
+        from azure.identity import DefaultAzureCredential
+
+        kwargs = {"exclude_interactive_browser_credential": True}
+        if CLIENT_ID:
+            kwargs["managed_identity_client_id"] = CLIENT_ID
+        return DefaultAzureCredential(**kwargs)
     from azure.identity import ManagedIdentityCredential
 
     return ManagedIdentityCredential(client_id=CLIENT_ID) if CLIENT_ID else ManagedIdentityCredential()
+
+
+def who():
+    if AUTH == "service_principal":
+        return "Entra ID app registration (service principal)"
+    if AUTH == "entra":
+        return "Entra ID (DefaultAzureCredential: environment, managed identity, az login)"
+    return f"managed identity ({'user-assigned' if CLIENT_ID else 'system-assigned'})"
 
 
 def credential():
@@ -57,14 +81,15 @@ def credential():
             sys.exit("AUTH is 'key' but KEY is empty")
         print("sign-in: account key")
         return KEY
-    print(f"sign-in: managed identity ({'user-assigned' if CLIENT_ID else 'system-assigned'})")
+    print(f"sign-in: {who()}")
     cred = identity()
     try:
         cred.get_token("https://cosmos.azure.com/.default")
         print("  token: OK")
     except Exception as exc:  # noqa: BLE001
         sys.exit(f"  token: FAILED -- {short(exc)}\n"
-                 "  (no managed identity here, or CLIENT_ID is wrong: run this on the Azure VM)")
+                 "  (managed identity: run on the Azure VM / check CLIENT_ID; service principal: check the "
+                 "tenant, app id and secret value; entra: az login or a managed identity)")
     return cred
 
 
@@ -101,7 +126,7 @@ def check():
 
 def create():
     if AUTH != "key":
-        sys.exit("ACTION 'create' needs AUTH = 'key' (read-write key). With a managed identity use 'create_arm'.")
+        sys.exit("ACTION 'create' needs AUTH = 'key' (read-write key). With an Entra ID sign-in use 'create_arm'.")
     from azure.cosmos import CosmosClient, PartitionKey
 
     try:
@@ -127,7 +152,7 @@ def create_arm():
         from azure.mgmt.cosmosdb import CosmosDBManagementClient
     except ImportError:
         sys.exit("pip install azure-mgmt-cosmosdb")
-    print(f"sign-in: managed identity ({'user-assigned' if CLIENT_ID else 'system-assigned'}), management plane")
+    print(f"sign-in: {who()}, management plane")
     try:
         mgmt = CosmosDBManagementClient(identity(), SUBSCRIPTION_ID)
         mgmt.sql_resources.begin_create_update_sql_database(

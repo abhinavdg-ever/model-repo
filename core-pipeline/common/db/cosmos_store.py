@@ -534,26 +534,65 @@ def _containers() -> dict[str, Any]:
     return {name: database.get_container_client(name) for name in ("charts", "pages", "runs", "manifest")}
 
 
-# How to sign in to Cosmos (2026-11-11, user): the account key (COSMOS_AUTH=key, the default) or
-# the host's managed identity (COSMOS_AUTH=managed_identity: no key; COSMOS_CLIENT_ID, else
-# AZURE_CLIENT_ID, names a user-assigned identity, blank = system-assigned). The identity needs
-# the data-plane role "Cosmos DB Built-in Data Contributor" on the account (infra/main.bicep).
+# How to sign in to Cosmos. COSMOS_AUTH:
+#   key (default)          the account key, COSMOS_KEY
+#   managed_identity       the host's managed identity (2026-11-11, user); COSMOS_CLIENT_ID, else
+#                          AZURE_CLIENT_ID, names a user-assigned one, blank = system-assigned
+#   service_principal      an Entra ID app registration (2026-11-14, user): COSMOS_TENANT_ID,
+#                          COSMOS_CLIENT_ID, COSMOS_CLIENT_SECRET (else the AZURE_* ones)
+#   entra                  Entra ID through DefaultAzureCredential (2026-11-14, user): environment
+#                          variables, the managed identity, or `az login` on a laptop
+# Every Entra ID sign-in needs the data-plane role "Cosmos DB Built-in Data Contributor".
 COSMOS_MANAGED_IDENTITY = frozenset({"managed_identity", "managed-identity", "managed_entity", "mi", "msi"})
+COSMOS_SERVICE_PRINCIPAL = frozenset({"service_principal", "service-principal", "sp", "client_secret", "app"})
+COSMOS_ENTRA = frozenset({"entra", "entra_id", "entra-id", "aad", "azure_ad", "default"})
+
+
+def _env(*names: str) -> str:
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 def cosmos_auth() -> str:
     auth = (os.environ.get("COSMOS_AUTH") or "key").strip().lower()
-    return "managed_identity" if auth in COSMOS_MANAGED_IDENTITY else "key"
+    if auth in COSMOS_MANAGED_IDENTITY:
+        return "managed_identity"
+    if auth in COSMOS_SERVICE_PRINCIPAL:
+        return "service_principal"
+    if auth in COSMOS_ENTRA:
+        return "entra"
+    return "key"
 
 
 def cosmos_credential(where: str = ".env") -> Any:
-    """The credential CosmosClient takes: the key, or a ManagedIdentityCredential."""
-    if cosmos_auth() == "managed_identity":
+    """The credential CosmosClient takes: the key, or an Entra ID token credential."""
+    auth = cosmos_auth()
+    client_id = _env("COSMOS_CLIENT_ID", "AZURE_CLIENT_ID")
+    if auth == "managed_identity":
         from azure.identity import ManagedIdentityCredential
 
-        client_id = (os.environ.get("COSMOS_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID") or "").strip()
         return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    if auth == "service_principal":
+        tenant = _env("COSMOS_TENANT_ID", "AZURE_TENANT_ID")
+        secret = _env("COSMOS_CLIENT_SECRET", "AZURE_CLIENT_SECRET")
+        missing = [n for n, v in (("COSMOS_TENANT_ID", tenant), ("COSMOS_CLIENT_ID", client_id),
+                                  ("COSMOS_CLIENT_SECRET", secret)) if not v]
+        if missing:
+            raise RuntimeError(f"COSMOS_AUTH=service_principal needs {', '.join(missing)} in {where}")
+        from azure.identity import ClientSecretCredential
+
+        return ClientSecretCredential(tenant_id=tenant, client_id=client_id, client_secret=secret)
+    if auth == "entra":
+        from azure.identity import DefaultAzureCredential
+
+        kwargs: dict[str, Any] = {"exclude_interactive_browser_credential": True}
+        if client_id:
+            kwargs["managed_identity_client_id"] = client_id
+        return DefaultAzureCredential(**kwargs)
     key = (os.environ.get("COSMOS_KEY") or "").strip()
     if not key:
-        raise RuntimeError(f"Cosmos needs COSMOS_KEY (or COSMOS_AUTH=managed_identity) in {where}")
+        raise RuntimeError(f"Cosmos needs COSMOS_KEY (or COSMOS_AUTH=managed_identity / service_principal / entra) in {where}")
     return key

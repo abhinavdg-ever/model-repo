@@ -465,6 +465,7 @@ connection string and queue; the API key; the Blob account. Still open:
 **Blob**
 - Permission to create the `imaging-models` container, or who creates it?
 - On the VM: a managed identity (preferred) or a key? **Both built 2026-11-11:** `COSMOS_AUTH=key | managed_identity` (+ `COSMOS_CLIENT_ID`) in the three `.env` files; the identity needs "Cosmos DB Built-in Data Contributor" (`infra/main.bicep` `cosmosDataPrincipalIds`); `utilities/cosmos_containers.py create | check`.
+- **Entra ID added 2026-11-14 (user):** `COSMOS_AUTH=service_principal` (an Entra ID app registration: `COSMOS_TENANT_ID`, `COSMOS_CLIENT_ID`, `COSMOS_CLIENT_SECRET`, each else its `AZURE_*` setting) and `COSMOS_AUTH=entra` (`DefaultAzureCredential`: environment variables, the managed identity, or `az login`). Same data-plane role ("Cosmos DB Built-in Data Contributor") on the app registration's / user's object ID; creating the database still needs the key or `--arm` / `create_arm` with "DocumentDB Account Contributor". In core-pipeline, review-ui, `utilities/cosmos_containers.py` and `tests/cosmos_setup.py`.
 
 ## 11. Risks
 

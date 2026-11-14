@@ -49,7 +49,12 @@ def store_usable(settings: Settings, url_check: Callable[[str | None], bool] = d
     if getattr(settings, "db_backend", "postgres") == "cosmos":
         from app.store.cosmos.credential import configured
 
-        return configured(settings.cosmos_endpoint, settings.cosmos_key, getattr(settings, "cosmos_auth", "key"))
+        return configured(
+            settings.cosmos_endpoint, settings.cosmos_key, getattr(settings, "cosmos_auth", "key"),
+            getattr(settings, "cosmos_tenant_id", "") or getattr(settings, "azure_tenant_id", ""),
+            getattr(settings, "cosmos_client_id", "") or getattr(settings, "azure_client_id", ""),
+            getattr(settings, "cosmos_client_secret", "") or getattr(settings, "azure_client_secret", ""),
+        )
     return url_check(settings.database_url)
 
 
@@ -75,6 +80,8 @@ def cosmos():
                     endpoint=settings.cosmos_endpoint, key=settings.cosmos_key,
                     database=settings.cosmos_database, auth=settings.cosmos_auth,
                     client_id=settings.cosmos_client_id or settings.azure_client_id,
+                    tenant_id=settings.cosmos_tenant_id or settings.azure_tenant_id,
+                    client_secret=settings.cosmos_client_secret or settings.azure_client_secret,
                 )
             _store = repo.review
     return _store
