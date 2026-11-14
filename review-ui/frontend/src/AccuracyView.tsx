@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ChevronLeft,
+  Check,
   ChevronRight,
   Copy,
   Download,
@@ -186,7 +187,8 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Copy a table (or all of them) for Excel (2026-11-14, user). */
+/** Copy a table (or all of them) for Excel (2026-11-14, user): just an icon, top right of
+ * the table; a tick once copied. */
 function CopyButton({ label, text }: { label: string; text: () => string }) {
   const [state, setState] = useState<"idle" | "done" | "failed">("idle");
   return (
@@ -198,10 +200,10 @@ function CopyButton({ label, text }: { label: string; text: () => string }) {
         setState((await copyText(text())) ? "done" : "failed");
         window.setTimeout(() => setState("idle"), 1500);
       }}
-      title="Copy as tab-separated text: paste into Excel"
+      title={state === "done" ? "Copied" : state === "failed" ? "Copy failed" : `${label}: paste into Excel`}
+      aria-label={label}
     >
-      <Copy size={11} aria-hidden="true" />
-      {state === "done" ? "Copied" : state === "failed" ? "Copy failed" : label}
+      {state === "done" ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
     </button>
   );
 }
@@ -300,8 +302,8 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                 <p>{block.lines[0]}</p>
               ) : null}
               {(block.tables ?? []).map((table) => (
-                <Fragment key={table.caption}>
-                <CopyButton label="Copy" text={() => tableTsv(table)} />
+                <div key={table.caption} className="accuracy-info-table">
+                <CopyButton label="Copy table" text={() => tableTsv(table)} />
                 <table
                   key={table.caption}
                   className={`accuracy-info-matrix${table.match ? " has-match" : table.head[0].startsWith("GT") ? " is-cross" : ""}`}
@@ -330,7 +332,7 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                     ))}
                   </tbody>
                 </table>
-                </Fragment>
+                </div>
               ))}
             </section>
           ))}
