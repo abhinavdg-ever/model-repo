@@ -6865,3 +6865,26 @@ input {
   background: #e6f4f1;
   font-weight: 600;
 }
+
+/* Provider Name / Credentials: one box per value, + for another (2026-11-14). */
+.imaging-gt-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.imaging-gt-multi .imaging-gt-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.imaging-gt-multi-no {
+  min-width: 1.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+.imaging-gt-multi-actions {
+  display: flex;
+  gap: 0.3rem;
+  padding-left: 1.45rem;
+}

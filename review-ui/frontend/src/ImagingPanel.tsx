@@ -1,7 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { frozenNote, useChartFrozen } from "./chartFrozen";
 import GroundTruthBanner, { pageUpdate } from "./GroundTruthBanner";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Plus, Save, X } from "lucide-react";
 import {
   getChartGroundTruth,
   saveChartGroundTruth,
@@ -1218,7 +1218,9 @@ function GroundTruthCell({
     </button>
   );
   if (!editing) {
-    const shown = stored || (offer ? copied : "") || emptyLabel(row.id);
+    const raw = stored || (offer ? copied : "") || emptyLabel(row.id);
+    // Provider Name / Credentials: several values show 1. / 2. / 3., also right after an edit.
+    const shown = MULTI_ENTRY_FIELDS.has(row.id) ? numberedList(signerList(raw) || raw) : raw;
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
@@ -1253,6 +1255,22 @@ function GroundTruthCell({
     values.length + extras.length < INLINE_OPTIONS_BELOW ? [...values, ...extras] : [...extras, ...values];
   const known = stored && !options.includes(stored) ? [stored, ...options] : options;
   const draft = row.presence || row.choices ? spellCodeable(stored) : stored || (offer ? copied : "");
+  if (MULTI_ENTRY_FIELDS.has(row.id)) {
+    // Several providers / credentials: one box each, + for another (2026-11-14, user).
+    return (
+      <span className="imaging-gt-slot is-editing">
+        <MultiEntry
+          fieldId={row.id}
+          label={row.label}
+          value={draft}
+          options={row.id === "provider_credentials" ? values : []}
+          onCommit={onCommit}
+          onCancel={onCancel}
+          onDraft={onDraft}
+        />
+      </span>
+    );
+  }
   return (
     <span className="imaging-gt-slot is-editing">
       <ChoiceMenu
@@ -1265,6 +1283,105 @@ function GroundTruthCell({
         onDraft={onDraft}
       />
     </span>
+  );
+}
+
+/** Provider Name and Credentials take several values (2026-11-14, user). */
+const MULTI_ENTRY_FIELDS = new Set(["provider_name", "provider_credentials"]);
+
+/** One box per value, a + button for another and an x to drop one. The boxes join as
+ * "A, B" (stored comma separated, shown 1. / 2.). Enter or Save commits; Esc cancels. */
+function MultiEntry({
+  fieldId,
+  label,
+  value,
+  options,
+  onCommit,
+  onCancel,
+  onDraft,
+}: {
+  fieldId: string;
+  label: string;
+  value: string;
+  options: readonly string[];
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+  onDraft: (value: string) => void;
+}) {
+  const initial = (() => {
+    const list = signerList(value);
+    return list ? list.split(",").map((part) => part.trim()).filter(Boolean) : [""];
+  })();
+  const [entries, setEntries] = useState<string[]>(initial);
+  const joined = (list: string[]) => list.map((entry) => entry.trim()).filter(Boolean).join(", ");
+  const listId = `gt-options-${fieldId}`;
+  function update(next: string[]) {
+    setEntries(next);
+    onDraft(joined(next));
+  }
+  function commit() {
+    onCommit(joined(entries));
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    }
+  }
+  const changed = joined(entries) !== joined(initial);
+  return (
+    <div className="imaging-gt-picker imaging-gt-multi" onKeyDown={onKeyDown}>
+      {entries.map((entry, index) => (
+        <span key={index} className="imaging-gt-entry">
+          <span className="imaging-gt-multi-no">{index + 1}.</span>
+          <input
+            aria-label={`${label} ${index + 1} ground truth`}
+            type="text"
+            value={entry}
+            list={options.length ? listId : undefined}
+            placeholder={index === 0 ? emptyLabel(fieldId) : "Another"}
+            autoFocus={index === entries.length - 1}
+            onChange={(event) => update(entries.map((old, i) => (i === index ? event.target.value : old)))}
+          />
+          {entries.length > 1 ? (
+            <button
+              type="button"
+              className="imaging-gt-icon imaging-gt-cancel"
+              aria-label={`Remove ${label} ${index + 1}`}
+              title="Remove"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => update(entries.filter((_, i) => i !== index))}
+            >
+              <X size={12} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          ) : null}
+        </span>
+      ))}
+      {options.length ? (
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      ) : null}
+      <span className="imaging-gt-multi-actions">
+        <button
+          type="button"
+          className="imaging-gt-icon imaging-gt-multi-add"
+          aria-label={`Add another ${label}`}
+          title="Add another"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => update([...entries, ""])}
+        >
+          <Plus size={12} strokeWidth={2.6} aria-hidden="true" />
+        </button>
+        {changed ? <CellSaveButton label={label} onSave={commit} /> : null}
+      </span>
+    </div>
   );
 }
 
