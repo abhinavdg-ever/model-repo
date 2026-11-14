@@ -43,13 +43,13 @@ export const METRICS: {
     id: "member",
     label: "Member Verification",
     binary: true,
-    rule: "Name and DOB: the ground truth (Yes / No / Not Found; blank = Not Found) vs what the pipeline found. Match = both agree, Not Found = Not Found included. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial). Member ID is not scored.",
+    rule: "Name and DOB: the ground truth (Yes / No / Not Found; blank = Not Found) vs what the pipeline found. Match = both agree, Not Found = Not Found included. Not scored on a page either side calls Blank / Junk or a duplicate (the same pages as DOS and Provider). Member ID is not scored.",
   },
   {
     id: "dos",
     label: "DOS",
     binary: true,
-    rule: "Labelled From / To equal the Final or Extracted DOS = Match. Not Found = Not Found is a Match (no label and no pipeline date). Blank / Junk pages (either side) are not scored.",
+    rule: "Labelled From / To equal the Final or Extracted DOS = Match. Not Found = Not Found is a Match (no label and no pipeline date). Not scored on a page either side calls Blank / Junk or a duplicate (the same pages as Member and Provider).",
   },
   {
     id: "blankJunk",
@@ -67,13 +67,13 @@ export const METRICS: {
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
     binary: true,
-    rule: "Codable / Non-Codable equals the Final or Extracted value. A Blank / Junk page is Non-Codable on either side, so a page both call Blank / Junk is a Match. Discharge counts as Codable.",
+    rule: "Codable / Non-Codable equals the Final or Extracted value. A Blank / Junk page is Non-Codable on either side, so a page both call Blank / Junk is a Match. Discharge (either side) is not scored.",
   },
   {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Provider Signature Yes / No (blank = No) equals whether the pipeline found a signature. Cred. M: of the pages whose ground truth has credentials, those sharing at least one with the pipeline. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial).",
+    rule: "Provider Signature Yes / No (blank = No) equals whether the pipeline found a signature. Cred. M: of the pages whose ground truth has credentials, those sharing at least one with the pipeline. Not scored on a page either side calls Blank / Junk or a duplicate (the same pages as Member and DOS).",
   },
   {
     id: "orientation",
@@ -192,15 +192,15 @@ function emptyExtra(): ExtraCounts {
 }
 
 /** A ground-truth Is Duplicate as yes / partial / no. */
-/** 2026-11-14 (user): Member, Provider Signature and Provider Credentials are not scored on a
- * page both sides call Blank / Junk, or one either side calls a duplicate (Yes or Partial). */
+/** 2026-11-14 (user): Member, Provider Signature / Credentials and DOS are scored on the same
+ * pages: not on a page either side calls Blank / Junk, or a duplicate (Yes or Partial). */
 export function notScoredForPeople(page: ImagingPageResult): boolean {
   const gt = page.groundTruth;
   const pipelineBlankJunk = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
   const gtBlankJunk = gt ? (blankJunkTruth(gt) ?? "").toLowerCase().startsWith("yes") : false;
   const gtDup = gtDuplicate(gt?.isDuplicate);
   const duplicate = page.isDuplicate === true || page.isDuplicateContent === true || gtDup === "yes" || gtDup === "partial";
-  return (pipelineBlankJunk && gtBlankJunk) || duplicate;
+  return pipelineBlankJunk || gtBlankJunk || duplicate;
 }
 
 function gtDuplicate(value: string | null | undefined): DupState | null {
@@ -664,7 +664,8 @@ function pageScores(
       { expected: false, predicted: extractedDated && pipelineDated, verdict: extractedDated && pipelineDated ? "no" : "yes" };
   // 2026-11-14 (user): DOS is not scored on a Blank / Junk page (either side), as the page
   // view shows no mark there.
-  const dosSkipped = blankOrJunk || pipelineBlankJunk;
+  // The same pages as Member and Provider (notScoredForPeople).
+  const dosSkipped = Boolean(page.groundTruth) && notScoredForPeople(page);
   const dos = dosSkipped ? null : dosCall.verdict;
   // Duplicate (2026-11-14, user): Yes and Partial are both a duplicate.
   const dupTruth = gtDuplicate(page.groundTruth?.isDuplicate);
@@ -704,6 +705,11 @@ function pageScores(
       dosCells.push(`${field}|${cell}`);
     }
     if (counted === 2) dosCells.push(`both|${matches}`);
+    // The page as a whole for the Yes view (2026-11-14, user): Yes = a date on at least one
+    // side; both Not Found is left out. Counted once per page (a wrong date is not FP + FN).
+    const gtHas = dosCall.expected;
+    const pipeHas = dosCall.predicted;
+    dosCells.push(`page|${gtHas && pipeHas ? (dosCall.verdict === "yes" ? "match" : "wrong") : gtHas ? "gt_only" : pipeHas ? "pipe_only" : "none"}`);
   }
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
@@ -729,8 +735,13 @@ function pageScores(
       codeableKnown: input.codeableKnown || pipelineBlankJunk,
     }).codeable;
   // A ground-truth Discharge page type is a Match for now.
-  const gtDischarge = /discharge/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
-  const codeable = gtDischarge || (blankOrJunk && pipelineBlankJunk)
+  // Codability Discharge (or a page type of exactly "Discharge"); not a Discharge Summary.
+  const gtDischarge = /^discharge$/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
+  // 2026-11-14 (user): Discharge is not scored (either side); a page both call Blank / Junk matches.
+  const pipelineDischarge = !pipelineBlankJunk && /discharge/i.test(text(page.finalCodeable) || text(page.isCodeable));
+  const codeable = gtDischarge || pipelineDischarge
+    ? null
+    : blankOrJunk && pipelineBlankJunk
     ? "yes"
     : finalOrExtractedMatch(
         single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
@@ -741,15 +752,16 @@ function pageScores(
   const codableSide = (value: string | null | undefined): string => {
     const t = text(value).toLowerCase();
     if (!t) return "none";
-    return /non/.test(t) ? "non_codable" : /discharge|cod/.test(t) ? "codable" : "none";
+    if (/discharge/.test(t)) return "discharge";
+    return /non/.test(t) ? "non_codable" : /cod/.test(t) ? "codable" : "none";
   };
-  const gtCodable = gtDischarge ? "codable" : codableSide(gtForCodable?.codeable);
+  const gtCodable = gtDischarge ? "discharge" : codableSide(gtForCodable?.codeable);
   const pipeCodable = pipelineBlankJunk
     ? "non_codable"
     : codeable === "yes" && gtCodable !== "none"
       ? gtCodable
       : codableSide(text(page.finalCodeable) || page.isCodeable);
-  const codableCell = codeable != null && gtCodable !== "none" ? `cod|${gtCodable}|${pipeCodable}` : null;
+  const codableCell = gtCodable !== "none" ? `cod|${gtCodable}|${pipeCodable}` : null;
 
   // 2026-11-06 (user): a page the pipeline calls blank / junk is not scored for Provider
   // Signature: its provider may still be extracted, but it is not shown or matched.

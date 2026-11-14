@@ -529,7 +529,7 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
     setPlace({ top: rect.bottom + 6, right: Math.max(POP_MARGIN, window.innerWidth - rect.right) });
   }
 
-  const { visibility, invoice } = extra;
+  const { invoice } = extra;
   const dup = duplicateScores(extra.duplicate);
   return (
     <>
@@ -551,19 +551,6 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
               aria-label="Additional Metrics"
               style={{ top: place.top, right: place.right, width: Math.min(EXTRA_POP_WIDTH, window.innerWidth - 2 * POP_MARGIN) }}
             >
-              <section className="accuracy-info-section">
-                <h4>Visibility Match %</h4>
-                <strong className="accuracy-extra-pct">{pct(visibility.match, visibility.scored)}</strong>
-                <p>
-                  Match {visibility.match.toLocaleString()} of {visibility.scored.toLocaleString()}{" "}
-                  {visibility.scored === 1 ? "page" : "pages"}
-                  {visibility.na > 0 ? ` · Not measured ${visibility.na.toLocaleString()}` : ""}
-                </p>
-                <p className="accuracy-extra-rule">
-                  Pages the ground truth labels Visible Yes / No: the pipeline&apos;s Is Visible equals the label.
-                  A page the pipeline did not measure is Not measured, not scored.
-                </p>
-              </section>
               <section className="accuracy-info-section">
                 <h4>Invoice</h4>
                 <PrecisionRecallTable tp={invoice.both} fn={invoice.gtOnly} fp={invoice.algoOnly} />
@@ -697,12 +684,40 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
 /** Codability Stats (2026-11-14, user): ground truth Codable / Non-Codable x pipeline. */
 function codableTables(matrix: MemberMatrix) {
   const at = (gt: string, pipe: string) => matrix.cells[`cod|${gt}|${pipe}`] ?? 0;
-  const sides = [["codable", "Codable"], ["non_codable", "Non-Codable"]] as const;
+  const sides = [["codable", "Codable"], ["non_codable", "Non-Codable"], ["discharge", "Discharge"]] as const;
   return [{
-    caption: "Codability (a Blank / Junk page is Non-Codable)",
-    head: ["GT \\ Pipeline", "Codable", "Non-Codable", "None", "Total"],
-    rows: withTotals(sides.map(([gt, label]) => [label, at(gt, "codable"), at(gt, "non_codable"), at(gt, "none")])),
+    caption: "Codability (Blank / Junk = Non-Codable; Discharge shown, not scored)",
+    head: ["GT \\ Pipeline", "Codable", "Non-Codable", "Discharge", "None", "Total"],
+    rows: withTotals(sides.map(([gt, label]) => [
+      label, at(gt, "codable"), at(gt, "non_codable"), at(gt, "discharge"), at(gt, "none"),
+    ])),
   }];
+}
+
+/** DOS Yes (2026-11-14, user): Yes = a date on at least one side (both Not Found left out),
+ * counted once per page. */
+function dosYesSection(matrix: MemberMatrix): InfoSection {
+  const n = (k: string) => matrix.cells[`page|${k}`] ?? 0;
+  const match = n("match"), wrong = n("wrong"), gtOnly = n("gt_only"), pipeOnly = n("pipe_only");
+  const universe = match + wrong + gtOnly + pipeOnly;
+  return {
+    title: `Yes cases only (a date on either side; denominator ${universe} pages)`,
+    lines: [
+      `Yes accuracy = right date / dated on either side = ${share(match, universe)}`,
+      `Yes precision = right date / pipeline dated = ${share(match, match + wrong + pipeOnly)}`,
+      `Yes recall = right date / ground truth dated = ${share(match, match + wrong + gtOnly)}`,
+    ],
+    tables: [{
+      caption: "GT x Pipeline, a date on either side (both Not Found left out)",
+      head: ["GT \\ Pipeline", "Same date", "Other date", "Not Found", "Total"],
+      rows: [
+        ["Date", match, wrong, gtOnly, match + wrong + gtOnly],
+        ["Not Found", "—", pipeOnly, "—", pipeOnly],
+        ["Total", match, wrong + pipeOnly, gtOnly, universe],
+      ],
+      match: [[0, 1]],
+    }],
+  };
 }
 
 /** DOS Stats (2026-11-14, user): From / To as Match, No Match, Not Found; then Both. */
@@ -1597,17 +1612,16 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   info={metric.id === "member"
                     ? memberInfo(metric.rule, overallByMetric.member, memberRates, memberMatrix)
-                    : metricInfo(
+                    : metric.id === "dos"
+                      ? [...metricInfo(metric.rule, overallByMetric.dos, true, undefined, "", dosTables(dosMatrix)), dosYesSection(dosMatrix)]
+                      : metricInfo(
                         metric.rule,
                         overallByMetric[metric.id],
                         Boolean(metric.binary),
-                        ["blankJunk", "orientation", "signature", "dos"].includes(metric.id) ? ratesFor(metric.id) : undefined,
+                        // DOS has its own Yes view (page counts), above.
+                        ["blankJunk", "orientation", "signature"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
-                        metric.id === "dos"
-                          ? dosTables(dosMatrix)
-                          : metric.id === "codeable"
-                            ? codableTables(codableMatrix)
-                            : [],
+                        metric.id === "codeable" ? codableTables(codableMatrix) : [],
                       )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
