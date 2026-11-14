@@ -24,9 +24,7 @@ export type MetricId =
   | "pageType"
   | "codeable"
   | "signature"
-  | "orientation"
-  | "invoice"
-  | "duplicate";
+  | "orientation";
 
 /** ``inOverall: false`` = scored, but not part of the page's overall match.
  * ``binary`` = Match or No Match only, never Partial (only Page Type has a Partial).
@@ -82,21 +80,6 @@ export const METRICS: {
     label: "Orientation",
     binary: true,
     rule: "Text angle (0 / 90 / 180 / 270) equals the ground truth; NA = 0°.",
-  },
-  // 2026-11-14 (user): Invoice and Duplicate, scored on every labelled page; not in Overall.
-  {
-    id: "invoice",
-    label: "Invoice",
-    binary: true,
-    inOverall: false,
-    rule: "Ground truth Invoice (Is Invoice = Yes, or Invoice in the Encounter Type) vs the pipeline's Final Page Type = Invoice. Match = both Yes or both No.",
-  },
-  {
-    id: "duplicate",
-    label: "Duplicate",
-    binary: true,
-    inOverall: false,
-    rule: "Ground truth Is Duplicate vs the pipeline. Yes and Partial both count as a duplicate on either side. Match = both a duplicate, or both No. Pages with no Is Duplicate label are not scored.",
   },
 ];
 
@@ -795,8 +778,6 @@ function pageScores(
       // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
       // stage left alone. Equal angles = Match, else No Match.
       orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
-      invoice: page.groundTruth ? (gtInvoice(page) === algoInvoice(page) ? "yes" : "no") : null,
-      duplicate: dupTruth ? ((dupTruth !== "no") === (dupAlgo !== "no") ? "yes" : "no") : null,
     },
     invoiceCall: page.groundTruth ? { expected: gtInvoice(page), predicted: algoInvoice(page) } : null,
     dupCell: dupTruth ? `dup|${dupTruth === "no" ? "no" : "yes"}|${dupAlgo}` : null,

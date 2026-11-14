@@ -53,8 +53,6 @@ import {
   OVERALL_STREAMS,
   pageAccuracyCsv,
   scoreChart,
-  binaryScores,
-  DUP_STATES,
   duplicateScores,
   sumExtras,
   sumMemberMatrix,
@@ -63,7 +61,6 @@ import {
   sumTallies,
   type ChartAccuracy,
   type ClassRates,
-  type BinaryScores,
   type ExtraCounts,
   type MetricId,
   type Tally,
@@ -464,28 +461,32 @@ function Donut({
 }
 
 const EXTRA_POP_WIDTH = 460;
-const DUP_LABEL: Record<string, string> = { yes: "Yes", partial: "Partial", no: "No" };
 
-function fmtScore(value: number | null): string {
-  return value == null ? "–" : `${(value * 100).toFixed(1)}%`;
-}
 
 /** Precision · Recall · F1 · Accuracy, then the 2 x 2 counts. */
-function ScoreGrid({ scores, counts }: { scores: BinaryScores; counts: [string, number][] }) {
+/** Invoice / Duplicate (2026-11-14, user): only the pages either side calls Yes, so only
+ * Precision and Recall (no Accuracy: the pages both call No are left out). */
+function PrecisionRecallTable({ tp, fp, fn }: { tp: number; fp: number; fn: number }) {
+  const ratio = (num: number, den: number) => (den > 0 ? `${Math.round((100 * num) / den)}%` : "—");
+  const rows: [string, string | number][] = [
+    ["Pages (Yes on either side)", tp + fp + fn],
+    ["Both Yes", tp],
+    ["Ground truth only", fn],
+    ["Pipeline only", fp],
+    [`Precision = Both / pipeline Yes (${tp} / ${tp + fp})`, ratio(tp, tp + fp)],
+    [`Recall = Both / ground truth Yes (${tp} / ${tp + fn})`, ratio(tp, tp + fn)],
+  ];
   return (
-    <>
-      <dl className="accuracy-extra-scores">
-        <div><dt>Precision</dt><dd>{fmtScore(scores.precision)}</dd></div>
-        <div><dt>Recall</dt><dd>{fmtScore(scores.recall)}</dd></div>
-        <div><dt>F1 score</dt><dd>{fmtScore(scores.f1)}</dd></div>
-        <div><dt>Accuracy</dt><dd>{fmtScore(scores.accuracy)}</dd></div>
-      </dl>
-      <p className="accuracy-extra-counts">
-        {counts.map(([label, n], i) => (
-          <span key={label}>{i ? " · " : ""}{label} {n.toLocaleString()}</span>
+    <table className="accuracy-extra-matrix accuracy-extra-pr">
+      <tbody>
+        {rows.map(([label, value]) => (
+          <tr key={label}>
+            <th scope="row">{label}</th>
+            <td>{typeof value === "number" ? value.toLocaleString() : value}</td>
+          </tr>
         ))}
-      </p>
-    </>
+      </tbody>
+    </table>
   );
 }
 
@@ -529,9 +530,7 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
   }
 
   const { visibility, invoice } = extra;
-  const invoiceScores = binaryScores(invoice.both, invoice.algoOnly, invoice.gtOnly, invoice.neither);
   const dup = duplicateScores(extra.duplicate);
-  const dupCell = (truth: string, algo: string) => extra.duplicate[`${truth}|${algo}`] ?? 0;
   return (
     <>
       <button
@@ -567,44 +566,18 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
               </section>
               <section className="accuracy-info-section">
                 <h4>Invoice</h4>
-                <ScoreGrid
-                  scores={invoiceScores}
-                  counts={[["Both", invoice.both], ["GT only", invoice.gtOnly], ["Algo only", invoice.algoOnly], ["Neither", invoice.neither]]}
-                />
+                <PrecisionRecallTable tp={invoice.both} fn={invoice.gtOnly} fp={invoice.algoOnly} />
                 <p className="accuracy-extra-rule">
-                  Ground truth: Is Invoice = Yes, or Invoice in its Encounter Type. Pipeline: its Final Page
-                  Type is Invoice. Precision = Both / pipeline invoices; Recall = Both / ground-truth invoices.
+                  Pages where the ground truth or the pipeline says Invoice. Ground truth: Is Invoice = Yes, or
+                  Invoice in its Encounter Type. Pipeline: its Final Page Type is Invoice.
                 </p>
               </section>
               <section className="accuracy-info-section">
                 <h4>Duplicate</h4>
-                <ScoreGrid
-                  scores={dup}
-                  counts={[["TP", dup.tp], ["FP", dup.fp], ["FN", dup.fn], ["TN", dup.tn]]}
-                />
-                <table className="accuracy-extra-matrix">
-                  <thead>
-                    <tr>
-                      <th scope="col">GT \ Algo</th>
-                      {DUP_STATES.map((a) => <th key={a} scope="col">{DUP_LABEL[a]}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DUP_STATES.map((t) => (
-                      <tr key={t}>
-                        <th scope="row">{DUP_LABEL[t]}</th>
-                        {DUP_STATES.map((a) => (
-                          <td key={a} className={(t === "no") === (a === "no") ? "is-match" : undefined}>
-                            {dupCell(t, a).toLocaleString()}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <PrecisionRecallTable tp={dup.tp} fn={dup.fn} fp={dup.fp} />
                 <p className="accuracy-extra-rule">
-                  Pages with a ground-truth Is Duplicate. Yes and Partial both count as a duplicate on either
-                  side (Partial = a 100% text match a rule kept a normal page); No matches No. Shaded cells match.
+                  Pages where the ground truth or the pipeline says Duplicate (Yes or Partial, both count as
+                  a duplicate), on pages with a ground-truth Is Duplicate.
                 </p>
               </section>
             </div>,
@@ -692,27 +665,6 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
         }]
       : []),
   ];
-}
-
-function emptyClassRates(): ClassRates {
-  return { tp: 0, fp: 0, fn: 0, tn: 0 };
-}
-
-/** Duplicate Stats (2026-11-14, user): ground truth Yes (Yes or Partial) / No x the pipeline's
- * Yes / Partial / No. */
-function duplicateTables(matrix: MemberMatrix): InfoTable[] {
-  const at = (gt: string, algo: string) => matrix.cells[`dup|${gt}|${algo}`] ?? 0;
-  const algos = ["yes", "partial", "no"];
-  return [{
-    caption: "Duplicate (ground truth Yes = Yes or Partial)",
-    head: ["Ground truth / Pipeline", "Yes", "Partial", "No", "Total"],
-    rows: withTotals([
-      ["Yes", ...algos.map((a) => at("yes", a))],
-      ["No", ...algos.map((a) => at("no", a))],
-    ]),
-    // Ground truth Yes matches the pipeline's Yes and Partial; No matches No.
-    match: [[0, 1], [0, 2], [1, 3]],
-  }];
 }
 
 /** Codability Stats (2026-11-14, user): ground truth Codable / Non-Codable x pipeline. */
@@ -1206,8 +1158,6 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   if (id === "orientation") return row.orientationRates;
   if (id === "signature") return row.signatureRates;
   if (id === "dos") return row.dosRates;
-  if (id === "invoice") return row.invoiceRates;
-  if (id === "duplicate") return row.duplicateRates;
   return undefined;
 }
 
@@ -1496,9 +1446,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [filtered],
   );
   const extra = useMemo(() => sumExtras(filtered.map((row) => row.extra)), [filtered]);
-  const invoiceRates = useMemo(() => sumRates(filtered.map((row) => row.invoiceRates ?? emptyClassRates())), [filtered]);
-  const duplicateRates = useMemo(() => sumRates(filtered.map((row) => row.duplicateRates ?? emptyClassRates())), [filtered]);
-  const dupMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.dupMatrix)), [filtered]);
   /** Class 1 counts across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk"
@@ -1511,11 +1458,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             ? signatureRates
             : id === "dos"
               ? dosRates
-              : id === "invoice"
-                ? invoiceRates
-                : id === "duplicate"
-                  ? duplicateRates
-                  : undefined;
+              : undefined;
   const ratesLabelFor = (id: MetricId) =>
     id === "member"
       ? "Name & DOB = Yes"
@@ -1525,11 +1468,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           ? "Signature = Yes"
           : id === "dos"
             ? "Date = Yes"
-            : id === "invoice"
-              ? "Invoice = Yes"
-              : id === "duplicate"
-                ? "Duplicate = Yes (Yes or Partial)"
-                : "Blank/Junk = Yes";
+            : "Blank/Junk = Yes";
 
   function downloadPageAccuracy() {
     const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered)], { type: "text/csv;charset=utf-8" });
@@ -1633,15 +1572,13 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         metric.rule,
                         overallByMetric[metric.id],
                         Boolean(metric.binary),
-                        ["blankJunk", "orientation", "signature", "dos", "invoice", "duplicate"].includes(metric.id) ? ratesFor(metric.id) : undefined,
+                        ["blankJunk", "orientation", "signature", "dos"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
                         metric.id === "dos"
                           ? dosTables(dosMatrix)
                           : metric.id === "codeable"
                             ? codableTables(codableMatrix)
-                            : metric.id === "duplicate"
-                              ? duplicateTables(dupMatrix)
-                              : [],
+                            : [],
                       )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
