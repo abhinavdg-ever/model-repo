@@ -16,9 +16,10 @@ from modules.image_preprocess.quality_label_postprocess import (  # noqa: E402
 
 
 def test_base_quality_label():
-    assert base_quality_label(0.80) == "high"
-    assert base_quality_label(0.50) == "medium"
-    assert base_quality_label(0.20) == "low"
+    assert base_quality_label(0.70) == "high"
+    assert base_quality_label(0.69) == "medium"
+    assert base_quality_label(0.40) == "medium"
+    assert base_quality_label(0.39) == "low"
     assert base_quality_label(None) is None
 
 
@@ -72,75 +73,99 @@ def test_downgrade_by_ocr_overlap():
     assert downgrade_by_ocr_overlap(None, 0.0) is None
 
 
-def test_regrade_runs_before_the_azure_skip_and_never_twice():
+def _row(doc="printed", hw=None, tag="high", legacy=None, hw_method=None):
+    return {"document_type": doc, "handwritten_area_pct": hw, "quality_tag": tag,
+            "printed_or_handwritten": legacy or doc, "hw_method": hw_method}
+
+
+SAME = "alpha beta gamma delta epsilon zeta eta theta iota kappa"
+
+
+def test_routing_table_rows():
+    """2026-11-14 (user): the Doc Intel routing table, row by row (modules/ocr/routing.py)."""
+    from modules.ocr.routing import route
+
+    def r(row, q, docling=SAME, tess=SAME, settled=False):
+        d = route(row, quality=q, settled=settled, docling=docling, tesseract=tess)
+        return d["row"], d["final_quality"], d["docintel"]
+
+    half = "alpha beta gamma delta epsilon zeta eta theta iota other"  # 90% overlap
+    assert r(_row(hw=2), "high") == (1, "high", False)
+    assert r(_row(hw=2), "high", tess=half) == (1, "high", False)
+    assert r(_row(hw=2), "high", tess="alpha beta gamma") == (2, "medium", True)
+    assert r(_row(hw=2), "medium") == (3, "high", False)
+    assert r(_row(hw=2), "medium", tess=half) == (4, "medium", True)
+    assert r(_row(hw=2), "low") == (5, "low", True)
+    assert r(_row(hw=25), "high") == (6, "high", True)
+    assert r(_row(doc="handwritten", hw=60), "medium") == (7, "medium", True)
+    assert r(_row(doc="form", hw=1), "high") == (8, "high", True)
+    assert r(_row(doc="visual", hw=1), "medium") == (9, "high", False)
+    assert r(_row(doc="visual", hw=1), "high", docling="few words", tess="other text") == (9, "high", False)
+    assert r(_row(doc="visual", hw=1), "low") == (10, "medium", True)
+    assert r(_row(doc="visual", hw=1), "high", docling=SAME + " " + SAME * 3, tess="zzz") == (10, "medium", True)
+    assert r(_row(doc="uncertain"), "high") == (11, "high", True)
+    assert r(_row(hw=2), "high", docling="") == (11, "high", True)  # no Docling text: always Doc Intel
+    assert r(_row(hw=2), "high", settled=True) == (12, "high", False)
+    assert r(_row(hw=2), None, settled=True) == (12, "low", False)
+
+
+def test_handwritten_share_decides_printed_or_handwritten():
+    """2026-11-14 (user): over 10% handwriting is never Printed, under 10% never Handwritten."""
+    from modules.ocr.routing import page_kind
+
+    assert page_kind(_row(hw=12)) == "mixed"
+    assert page_kind(_row(hw=45)) == "handwritten"
+    assert page_kind(_row(doc="handwritten", hw=5)) == "printed"
+    assert page_kind(_row(doc="handwritten")) == "handwritten"
+    assert page_kind(_row(doc="form", hw=80)) == "form"
+    assert page_kind({"document_type": None, "printed_or_handwritten": "mixed"}) == "mixed"
+    from modules.image_preprocess.hw_printed import label_for_document_type
+
+    assert label_for_document_type("PRINTED", 12.0) == "Mixed"
+    assert label_for_document_type("HANDWRITTEN", 5.0) == "Printed"
+    assert label_for_document_type("PRINTED", 50.0) == "Handwritten"
+    assert label_for_document_type("PRINTED", None) == "Printed"
+
+
+def test_three_engine_regrade_after_doc_intel():
+    """Rows 6, 7, 8, 11: < 50% average overlap one level down, < 10% Low; other rows unchanged."""
+    from modules.ocr.routing import after_docintel
+
+    d = {"row": 7, "quality_before": "high", "final_quality": "high"}
+    assert after_docintel(d, [SAME, SAME, SAME])["final_quality"] == "high"
+    assert after_docintel(d, [SAME, SAME, "zzz"])["final_quality"] == "medium"
+    assert after_docintel(d, ["aaa", "bbb", "ccc"])["final_quality"] == "low"
+    assert after_docintel({"row": 2, "final_quality": "medium"}, ["a", "b", "c"])["final_quality"] == "medium"
+
+
+def test_pass_1_skips_rows_5_to_10():
+    from modules.ocr.routing import judged_in_pass2
+
+    assert not judged_in_pass2(_row(hw=2, tag="high"))
+    assert judged_in_pass2(_row(hw=2, tag="low"))
+    assert judged_in_pass2(_row(hw=20))
+    assert judged_in_pass2(_row(doc="visual"))
+    assert judged_in_pass2(_row(doc="form"))
+    assert judged_in_pass2(_row(doc="uncertain"))
+    assert not judged_in_pass2(_row(doc="blank"))
+    assert not judged_in_pass2(_row(doc="handwritten", hw_method="blank_page"))
+
+
+def test_route_pages_stores_the_row_and_never_regrades_twice():
     import json
 
     from common.db.memory_store import MemoryStore
-    from modules.ocr.stage_final2 import regrade_by_ocr_overlap
+    from modules.ocr.stage_final2 import route_pages
 
     store = MemoryStore()
-    docling = {1: "one two three four", 2: "one two three four", 3: "one two"}
-    tesseract = {1: "one two three four", 2: "one two five six seven eight", 3: "zzz"}
-    for page_id in (1, 2, 3, 4):
-        store.upsert_quality(
-            chart_id=1, page_id=page_id, printed_or_handwritten="printed",
-            quality_tag="high", document_type="printed", review_required=False,
-        )
-        if page_id in docling:
-            store.upsert_ocr_result(
-                chart_id=1, page_id=page_id, ocr_type="docling",
-                raw_text=json.dumps({"content": docling[page_id]}),
-            )
-            store.upsert_ocr_result(
-                chart_id=1, page_id=page_id, ocr_type="tesseract",
-                raw_text=tesseract[page_id],
-            )
-
-    assert regrade_by_ocr_overlap(store, 1) == 2
-    assert regrade_by_ocr_overlap(store, 1) == 0
+    for page_id, tess in ((1, SAME), (2, "alpha beta")):
+        store.upsert_quality(chart_id=1, page_id=page_id, printed_or_handwritten="printed",
+                             quality_tag="high", document_type="printed", review_required=False)
+        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="docling", raw_text=json.dumps({"content": SAME}))
+        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="tesseract", raw_text=tess)
+    for _ in range(2):
+        decisions = route_pages(store, 1, settled=set())
+        assert {pid: d["row"] for pid, d in decisions.items()} == {1: 1, 2: 2}
     quality = store.get_quality_map(1)
-    assert {pid: row["quality_tag"] for pid, row in quality.items()} == {
-        1: "high", 2: "medium", 3: "low", 4: "high",
-    }
-    assert quality[3]["review_required"] is True
-    assert quality[2]["quality_detail"]["ocr_overlap"]["tag_before"] == "high"
-    assert store.high_quality_printed_page_ids(1) == {1, 4}
-
-
-def test_a_page_with_no_docling_text_always_goes_to_azure():
-    """2026-11-08 (user): no Docling text (no row, or empty) -> never skipped as high-quality printed."""
-    import json
-
-    from common.db.memory_store import MemoryStore
-    from modules.ocr.stage_final2 import no_docling_text
-
-    store = MemoryStore()
-    store.upsert_ocr_result(chart_id=1, page_id=1, ocr_type="docling", raw_text=json.dumps({"content": "text here"}))
-    store.upsert_ocr_result(chart_id=1, page_id=2, ocr_type="docling", raw_text=json.dumps({"content": "  "}))
-    assert no_docling_text(store, 1, {1, 2, 3}) == {2, 3}
-    assert no_docling_text(store, 1, set()) == set()
-
-
-def test_regrade_leaves_pages_pass_1_settled_alone():
-    """2026-10-22 (user): Final OCR 1 runs on pages pass 1 settled as blank / junk /
-    duplicate, but their quality is not updated from it."""
-    import json
-
-    from common.db.memory_store import MemoryStore
-    from modules.ocr.stage_final2 import regrade_by_ocr_overlap
-
-    store = MemoryStore()
-    for page_id in (1, 2):
-        store.upsert_quality(
-            chart_id=1, page_id=page_id, printed_or_handwritten="printed",
-            quality_tag="high", document_type="printed", review_required=False,
-        )
-        # Docling and Tesseract disagree: a page that would fall from High.
-        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="docling",
-                                raw_text=json.dumps({"content": "one two"}))
-        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="tesseract", raw_text="zzz")
-
-    assert regrade_by_ocr_overlap(store, 1, skip={2}) == 1
-    quality = store.get_quality_map(1)
-    assert quality[2]["quality_tag"] == "high"
-    assert "ocr_overlap" not in (quality[2].get("quality_detail") or {})
+    assert quality[2]["quality_tag"] == "medium"
+    assert quality[2]["quality_detail"]["routing"]["quality_before"] == "high"

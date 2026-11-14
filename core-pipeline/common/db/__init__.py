@@ -941,23 +941,19 @@ def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
 
 @_dispatch
 def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
-    """Handwritten / form / uncertain — prelim blank/junk pass 1 is skipped, and they go to
-    final OCR whatever pass 1 says.
+    """Pages blank / junk pass 1 does not decide: the routing table's rows 5-10 (Printed Low,
+    Mixed, Handwritten, Form, Visual; 2026-11-14, user) and Uncertain pages. They go to final
+    OCR whatever pass 1 says. The Type follows modules/ocr/routing.page_kind (the handwritten
+    share decides Printed / Mixed / Handwritten).
 
     Not a page the HW stage found no ink on (``NO_INK_HW_METHODS``), nor one typed Blank
-    (2026-10-27, user): pass 1 judges it (R1: no text -> Blank) and final OCR then skips it.
-    Before, such a page was skipped by pass 1, sent to final OCR (billed), and skipped again
-    by pass 2 for having no text: never Blank."""
+    (2026-10-27, user): pass 1 judges it (R1: no text -> Blank) and final OCR then skips it."""
+    from modules.ocr.routing import judged_in_pass2
+
     rows = conn.execute(
-        f"""
-        SELECT page_id FROM ocr_quality_results
-         WHERE chart_id = %s
-           AND {_PAGE_TYPE_SQL} NOT IN ('', 'printed', 'visual', 'blank')
-           AND lower(coalesce(hw_method, '')) <> ALL(%s)
-        """,
-        (chart_id, sorted(NO_INK_HW_METHODS)),
+        "SELECT * FROM ocr_quality_results WHERE chart_id = %s", (chart_id,)
     ).fetchall()
-    return {r["page_id"] for r in rows}
+    return {r["page_id"] for r in rows if judged_in_pass2(r)}
 
 
 @_dispatch

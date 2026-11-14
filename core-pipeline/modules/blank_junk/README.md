@@ -15,7 +15,7 @@ the short page and duplicates in `stage._classify`.
 | R3 | 2 | card → Junk / Cards |
 | FAX, INDEX | 2 | fax header unsigned → Junk / Letter/Fax; contents page → Junk / Others |
 | `short_page:` | 2 | content in the top 20%: signature carried on → Main; < 5 words not on the previous / next page → Junk / Others |
-| R5, INVOICE | 2 | the classifier; an invoice is Main only with an amount and an Invoice / Due Date |
+| R5, INVOICE | 2 | the classifier; an invoice is Main, a terms page (T&C, Terms and Conditions, Payment Terms) Junk / Others |
 
 Duplicates: `dup_rules.py` (2026-11-11, docs/specials/BLANK_JUNK_LOGIC.md): Duplicate of N, Copy of N, or nothing.
 Continuity's unjunk inside a Progress Note is off (`continuity/stage.UNJUNK_IN_NOTES`).

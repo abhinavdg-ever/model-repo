@@ -50,8 +50,8 @@ The first rule that matches decides.
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
 | 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
 |    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
-|    |  | Otherwise Invoice, with a money amount **and** an **Invoice Date** or **Due Date** with a date | Main (page type Invoice / Invoice Page) |
-|    |  | Otherwise Invoice | Junk / Others |
+|    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, Terms of Payment / Sale / Service, General / Standard Terms (Final OCR or Tesseract text) | Junk / Others |
+|    |  | Otherwise Invoice | Main (page type Invoice / Invoice Page) |
 |    |  | The model says JUNK of another kind | Junk / its subtype |
 |    |  | The model says BLANK | Junk / Others |
 |    |  | Otherwise | Main |

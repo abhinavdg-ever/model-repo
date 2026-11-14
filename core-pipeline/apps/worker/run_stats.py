@@ -86,19 +86,26 @@ def stats_dir() -> Path:
     return resolve_log_dir()
 
 
+def _stage_skipped(result: Any) -> bool:
+    """The runner skipped the whole stage ({"skipped": True}, skip_ocr). A stage's own result
+    also has "skipped" = the NUMBER of pages it skipped: that is not a skipped stage
+    (2026-11-14: read as one, every chart with a skipped page logged 0 Doc Intel pages)."""
+    return isinstance(result, dict) and result.get("skipped") is True
+
+
 def ocr_ran(results: dict[str, Any]) -> bool:
     """True when an OCR engine actually ran (not every OCR stage skipped by skip_ocr)."""
     stages = results.get("stages") or {}
-    return any(
-        key in stages and not (isinstance(stages[key], dict) and stages[key].get("skipped"))
-        for key in OCR_STAGES
-    )
+    return any(key in stages and not _stage_skipped(stages[key]) for key in OCR_STAGES)
 
 
 def docintel_pages(results: dict[str, Any]) -> int:
+    """Pages Azure Document Intelligence actually analysed (billed) in this run."""
     final2 = (results.get("stages") or {}).get("ocr_final2:1")
-    if not isinstance(final2, dict) or final2.get("skipped") or not final2.get("used_azure"):
+    if not isinstance(final2, dict) or _stage_skipped(final2) or not final2.get("used_azure"):
         return 0
+    if "azure_pages" in final2:
+        return int(final2.get("azure_pages") or 0)
     return int(final2.get("pages_done") or 0)
 
 

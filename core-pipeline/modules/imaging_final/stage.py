@@ -301,10 +301,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # 2026-11-02 (user): a page junked after page type / DOS / member ran on it (continuity's
         # short page contained in a nearby page) shows what any blank / junk page shows:
         # none of those stages' values.
-        # 2026-11-06 (user): the provider too -- kv_extract still extracts it from a junk page
-        # (provider_signature_results keeps it), but it is not a Final value: not shown, not matched.
+        # 2026-11-14 (user, "for now"): the member and provider extraction stay on blank / junk
+        # pages (pass 1 and 2) -- kv_extract reads them -- so they are shown (was cleared
+        # 2026-11-02 / 2026-11-06). Page type, DOS and encounter type are still cleared.
         for pid in [pid for pid, row in blank_junk.items() if (row or {}).get("blank_junk_flag") in ("blank", "junk")]:
-            for values in (classification, dos, members, encounters, signatures):
+            for values in (classification, dos, encounters):
                 values.pop(pid, None)
 
         # Each page's own DOS, Extracted page type and encounter type come

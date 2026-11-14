@@ -69,7 +69,7 @@ Final OCR 2, else Final OCR 1, else the preliminary text (only on printed pages)
 | 2 | `ocr_prelim` | every page | corrected page if any, else the image | `ocr_results` (tesseract) | `ocr/<chart>_prelim.txt` |
 | 3 | `blank_junk` pass 1 | printed pages | prelim text | `blank_junk_classification` | `imaging/_junk.csv` |
 | 4 | `ocr_final1` | every page (pass-1 blank / junk / duplicate stored only) | corrected page or image | `ocr_results` (RapidOCR) | `ocr/<chart>_final1.json` |
-| 5 | `ocr_final2` | survivors + handwritten | corrected page or image | `ocr_results` (Azure) | `ocr/<chart>_final2.json` |
+| 5 | `ocr_final2` | routing table (§4) | corrected page or image | `ocr_results` (Azure) | `ocr/<chart>_final2.json` |
 | 6 | `section_headers` | pages with Final 1 / 2 JSON | those JSON files | headers inside `ocr_results` | rewrites the JSON files |
 | 7 | `kv_extract` | pages with word boxes | Final 2 JSON, else Final 1, + image | provider signature, page details | `staging/extraction.json`, `imaging/_provider_signature.csv` |
 | 8 | `blank_junk` pass 2 | handwritten + survivors | best text | final verdict (`is_final`) | rewrites `_junk.csv` |
@@ -90,13 +90,13 @@ the stage carries on.
 ## 4. Why a page drops out
 
 ```
-page ──► printed? ── no (handwritten / form / blank / low quality) ──► skips pass 1
+page ──► routing rows 5-10? ── yes (printed Low, mixed, handwritten, form, visual; uncertain) ──► skips pass 1
            │ yes
            ▼
       blank / junk pass 1 on the prelim text
-           │ blank, junk or exact duplicate ──► stored only: no Azure, no member, no DOS
+           │ blank, junk or exact duplicate ──► no Azure, no DOS; section headers, member + provider still read
            ▼
-      Final OCR 1 ──► Final OCR 2 (Azure; high-quality printed pages skip it)
+      Final OCR 1 ──► Final OCR 2 (Azure; the routing table decides, rows 1, 3, 9 skip it)
            ▼
       blank / junk pass 2 on the best text
            │ blank, junk or duplicate ──► no member, no DOS, no encounter
@@ -107,10 +107,27 @@ page ──► printed? ── no (handwritten / form / blank / low quality) ─
 A skip is recorded as `page_stage_status.status = 'skipped'` with a `skip_reason`.
 A skipped page counts as done, so a chart of blank pages still completes.
 
-**Who skips Azure (Final OCR 2).** Only a High-quality printed page, and only when its Final
-OCR 1 (Docling) text agrees with Tesseract: under 50% shared words drops the grade (under 10%
-to Low), so the page goes to Azure. A page with **no Docling text** always goes to Azure
-(2026-11-08). Pages pass 1 settled as blank / junk / duplicate never do.
+**Who goes to Azure (Final OCR 2): the routing table** (2026-11-14, user;
+`core-pipeline/modules/ocr/routing.py`). Type: the model's Form / Visual, else the handwritten
+share (< 10% Printed, 10-40% Mixed, > 40% Handwritten). Quality: High >= 0.70, Medium >= 0.40.
+Overlap: Docling (Final OCR 1) vs Tesseract shared words.
+
+| # | Type | Quality | Overlap | Final Quality | Azure |
+|---|---|---|---|---|---|
+| 1 | Printed | High | >= 90% | High | No |
+| 2 | Printed | High | < 90% | Medium | Yes |
+| 3 | Printed | Medium | >= 95% | High | No |
+| 4 | Printed | Medium | < 95% | Medium | Yes |
+| 5 | Printed | Low | | Low | Yes |
+| 6 / 7 / 8 | Mixed / Handwritten / Form | any | | 3-engine re-grade | Yes |
+| 9 | Visual (< 10% handwriting) | High / Medium | >= 90%, or < 25 Docling words | High | No |
+| 10 | Visual, any other case | | | Medium | Yes |
+| 11 | anything else (uncertain, no grade, no Docling / Tesseract text) | | | 3-engine re-grade | Yes |
+| 12 | blank / junk / duplicate in pass 1 | | | stage-1 grade, else Low | No |
+
+The 3-engine re-grade runs after Azure: the average overlap of Tesseract, Docling and Azure;
+under 50% one level down, under 10% Low. Rows 5-10 are never decided in pass 1. Each run
+writes `imaging/<chart>_ocr_routing.csv` and logs the count per row and the pages sent.
 
 **Blank / junk pass 2, in order** (full logic: [`specials/BLANK_JUNK_LOGIC.md`](specials/BLANK_JUNK_LOGIC.md)):
 
@@ -125,7 +142,7 @@ blank / tiny / placeholder / cover mark / End of Report (< 10 words)
         a. the page before ends in its Electronic Signature, carried on here
            (provider name / credentials or a date on this page) ...... Main
         b. < 5 distinct words not on the previous / next page ........ Junk / Others
-  ─► the classifier (an invoice is Main only with an amount and an Invoice / Due Date)
+  ─► the classifier (an invoice is Main; a terms page, T&C / Terms and Conditions, is Junk / Others)
 ```
 
 ---

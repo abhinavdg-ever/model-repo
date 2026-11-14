@@ -43,7 +43,7 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
 Pass 2 also has, right after the signature rule (2026-11-08, user: part of the ladder, not
 after it): LAB (Lab, Reference Range and Value on the page) -> Main and CLINICAL_CONTENT
 (2+ ICD-10 codes or a Social History header) -> Main; the classifier's Invoice is Main (Invoice
-page) with a money amount and an Invoice Date / Due Date, else Junk / Others. The full logic
+page), except a terms page (T&C, Terms and Conditions, Payment Terms) -> Junk / Others. The full logic
 for people: docs/specials/BLANK_JUNK_LOGIC.md.
 
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
@@ -779,7 +779,7 @@ def decide(inputs: PageInputs) -> Verdict:
             subtype = "Cards"
         verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
                         conf.score(float(service["confidence"])))
-        # An invoice: Main (Invoice page) with an amount and an Invoice / Due Date, else Others.
+        # An invoice: Main (Invoice page), except a terms page (T&C ...) -> Others.
         return _keep_invoice(verdict, inputs)
     if service["flag"] == "BLANK":
         # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
@@ -930,38 +930,44 @@ def provider_or_date(text: str, provider: bool, signer: str = "") -> Optional[st
     return None
 
 
-# 2026-11-07 (user): an invoice is kept only when it shows a money amount and a date.
-MONEY = re.compile(r"\$\s*\d[\d,]*(?:\.\d{2})?|(?<![\d.])\d{1,3}(?:,\d{3})*\.\d{2}(?![\d])")
 ANY_DATE = re.compile(
     r"(?<!\d)(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})(?!\d)"
     r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b",
     re.IGNORECASE)
 
 
-# 2026-11-08 (user): the invoice's date is an Invoice Date or a Due Date.
-INVOICE_DATE_LABEL = re.compile(r"(?<![A-Za-z])(?:invoice|due)\s+date(?![A-Za-z])", re.IGNORECASE)
+# 2026-11-14 (user): every Junk / Invoice page is Main (Invoice / Invoice Page) -- the money
+# amount + Invoice / Due Date check is gone -- except a terms page: T&C, Terms and Conditions,
+# Payment Terms and the like anywhere on it -> Junk / Others.
+TERMS_PAGE = re.compile(
+    r"(?<![A-Za-z])(?:"
+    r"T\s*&\s*Cs?|T\s+and\s+Cs?"
+    r"|terms\s*(?:and|&)\s*conditions?"
+    r"|conditions\s*(?:and|&)\s*terms"
+    r"|(?:standard|general)\s+terms"
+    r"|payment\s+terms|terms\s+of\s+(?:payment|sale|service|use|business)"
+    r")(?![A-Za-z])",
+    re.IGNORECASE)
 
 
-def invoice_evidence(inputs: PageInputs) -> Optional[str]:
-    """Why a Junk / Invoice page is a real invoice -- a money amount, and an Invoice Date or
-    Due Date with a date on the page -- or None."""
-    text = f"{inputs.text or ''}\n{inputs.prelim_text or ''}"
-    money, label, date = MONEY.search(text), INVOICE_DATE_LABEL.search(text), ANY_DATE.search(text)
-    if money and label and date:
-        return f"an amount and {label.group(0)} on the page"
-    return None
+def terms_page(inputs: PageInputs) -> Optional[str]:
+    """The terms wording on a Junk / Invoice page (Final OCR or Tesseract text), or None."""
+    hit = TERMS_PAGE.search(f"{inputs.text or ''}\n{inputs.prelim_text or ''}")
+    return " ".join(hit.group(0).split()) if hit else None
 
 
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """There is no Junk / Invoice (2026-11-07, user). An invoice page with a money amount and a
-    date on it is Main (page_classify: Invoice / Invoice Page); without both it is Junk / Others.
-    A card the model called an invoice is already Junk / Cards (decide)."""
+    """There is no Junk / Invoice (2026-11-07, user). An invoice page is Main (page_classify:
+    Invoice / Invoice Page), unless it is a terms page (T&C, Terms and Conditions, Payment Terms:
+    2026-11-14, user) -> Junk / Others. A card the model called an invoice is already Junk / Cards
+    (decide)."""
     if verdict.code != CODE_INVOICE:
         return verdict
-    if invoice_evidence(inputs) is None:
-        verdict.votes["invoice_not_kept"] = "no money amount with an Invoice / Due Date on the page"
+    terms = terms_page(inputs)
+    if terms is not None:
+        verdict.votes["invoice_not_kept"] = f"terms page ('{terms}')"
         return Verdict(CODE_OTHERS, verdict.confidence, verdict.rule,
-                       f"{verdict.reason}; no money amount with an Invoice / Due Date on the page -> Junk / Others", verdict.votes)
+                       f"{verdict.reason}; terms page ('{terms}') -> Junk / Others", verdict.votes)
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE
     bert = inputs.bert or {}

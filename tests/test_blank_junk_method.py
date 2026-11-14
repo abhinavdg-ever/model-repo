@@ -193,19 +193,19 @@ class TestDistilBertLadder:
         assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "R5") and "review" not in sure.reason
         # 2026-11-03 (user): p(junk) >= 0.70 is junk, below is Main; no review band.
         at = run(FILLER, bert=bert(0.70))
-        # the model's Invoice without an amount and an Invoice / Due Date is Junk / Others (2026-11-08).
-        assert at.code == classify.CODE_OTHERS and not at.votes.get("review_required")
+        # the model's Invoice is Main / Invoice page (2026-11-14: no amount / date check).
+        assert at.code == method.CODE_MAIN and method.is_invoice_page(at.reason) and not at.votes.get("review_required")
         assert run(FILLER, bert=bert(0.69)).code == classify.CODE_MAIN
 
     def test_keywords_no_longer_decide(self):
         # Invoice wording, DistilBERT keeps: Main. Clinical wording, DistilBERT junks: Junk.
         assert run(INVOICE_TEXT, bert=bert(0.10)).code == classify.CODE_MAIN
-        assert run(CLINICAL_TEXT, bert=bert(0.95)).code != classify.CODE_MAIN
+        assert run(CLINICAL_TEXT, bert=bert(0.95, "JUNK_LETTER_FAX")).code != classify.CODE_MAIN
 
     def test_a_signature_keeps_the_page_unless_distilbert_is_over_95(self):
         held = run(FILLER, signed=True, bert=bert(0.94))
         assert (held.code, held.rule) == (classify.CODE_MAIN, "R4")
-        over = run(FILLER, signed=True, bert=bert(0.97))
+        over = run(FILLER, signed=True, bert=bert(0.97, "JUNK_LETTER_FAX"))
         assert over.rule == "R5" and over.code != classify.CODE_MAIN and "r4_overruled" in over.votes
 
 
@@ -357,9 +357,9 @@ class TestSimplifiedLadder:
         """2026-11-07 (user): only kv_extract's Electronic Signature keeps a page; signature
         words in the text do not."""
         assert run(FILLER, bert=bert(0.80), signed=True).rule == "R4"
-        assert run(FILLER, bert=bert(0.99), signed=True).code != method.CODE_MAIN
-        assert run("Electronically signed by Dr X. " + FILLER, bert=bert(0.80)).rule == "R5"
-        assert run("Signature: ____ " + FILLER, bert=bert(0.80)).rule == "R5"
+        assert run(FILLER, bert=bert(0.99, "JUNK_LETTER_FAX"), signed=True).code != method.CODE_MAIN
+        assert run("Electronically signed by Dr X. " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "R5"
+        assert run("Signature: ____ " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "R5"
 
     def test_the_service_decides_junk_unless_raw_p_keep_is_99(self):
         assert run(FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).code == classify.CODE_LETTER_FAX
@@ -393,24 +393,26 @@ class TestInvoiceKept:
     Invoice Page."""
 
     def test_a_junk_invoice_page_is_main_by_the_invoice_rule(self):
-        """Only with a money amount and an Invoice Date / Due Date on it (2026-11-08, user; was any
-        date, 2026-11-07)."""
-        for label in ("Invoice Date", "Due Date"):
-            text = INVOICE_TEXT + f" {label} 03/10/2026, total $120.00"
-            inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
-            v = decide(inputs)
-            assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
-            assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
-        # any other date is not enough.
-        v = decide(PageInputs(text=INVOICE_TEXT + " Statement date 03/10/2026, total $120.00", pass_no=2, bert=bert(0.99)))
-        assert v.code == classify.CODE_OTHERS
-
-    def test_an_invoice_without_an_amount_and_a_date_is_junk_others(self):
-        """2026-11-07 (user): there is no Junk / Invoice -- Main / Invoice, Junk / Cards or Junk / Others."""
-        for text in (INVOICE_TEXT, INVOICE_TEXT + " total $120.00", INVOICE_TEXT + " dated 03/10/2026"):
+        """Any Junk / Invoice page (2026-11-14, user: the amount + Invoice / Due Date check is gone)."""
+        for text in (INVOICE_TEXT, INVOICE_TEXT + " Statement date 03/10/2026, total $120.00"):
             inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
             v = method.post_process(decide(inputs), inputs)
-            assert v.code == classify.CODE_OTHERS and v.votes.get("invoice_not_kept")
+            assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+            assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
+
+    def test_a_terms_page_is_junk_others(self):
+        """2026-11-14 (user): T&C, Terms and Conditions, Payment Terms ... -> Junk / Others."""
+        for words in ("T&C apply", "T & C", "Terms and Conditions", "TERMS & CONDITIONS", "Payment Terms: Net 30",
+                      "Terms of Payment", "Terms of Sale", "General Terms", "Standard terms"):
+            inputs = PageInputs(text=INVOICE_TEXT + " " + words, pass_no=2, bert=bert(0.99))
+            v = method.post_process(decide(inputs), inputs)
+            assert v.code == classify.CODE_OTHERS and v.votes.get("invoice_not_kept"), words
+        # found in the Tesseract text too.
+        inputs = PageInputs(text=INVOICE_TEXT, prelim_text="terms and conditions", pass_no=2, bert=bert(0.99))
+        assert decide(inputs).code == classify.CODE_OTHERS
+        # "terms" alone is not a terms page.
+        inputs = PageInputs(text=INVOICE_TEXT + " short term care", pass_no=2, bert=bert(0.99))
+        assert decide(inputs).code == method.CODE_MAIN
 
     def test_a_card_the_model_calls_invoice_is_junk_cards(self):
         """2026-11-07 (user): an insurance card (card rule near miss, or the model's insurance-ID

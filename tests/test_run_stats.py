@@ -45,6 +45,17 @@ def test_a_run_writes_its_line_and_both_csvs(tmp_path, monkeypatch):
     assert (total["charts_started"], total["charts_ended"], total["pages"]) == ("3", "3", "30")
 
 
+def test_docintel_pages_counts_azure_calls_not_skips():
+    """2026-11-14 (user): the log's Doc Intel count was wrong. A stage result's "skipped" is a
+    page count, not a skipped stage; pages with no Azure call are not counted."""
+    final2 = {"used_azure": True, "pages_done": 12, "azure_pages": 9, "skipped": 30}
+    assert run_stats.docintel_pages({"stages": {"ocr_final2:1": final2}}) == 9
+    assert run_stats.docintel_pages({"stages": {"ocr_final2:1": {"skipped": True}}}) == 0
+    assert run_stats.docintel_pages({"stages": {"ocr_final2:1": {**final2, "used_azure": False}}}) == 0
+    assert run_stats.ocr_ran({"stages": {"ocr_prelim:1": {"skipped": 4}}})
+    assert not run_stats.ocr_ran({"stages": {"ocr_prelim:1": {"skipped": True}}})
+
+
 def test_stats_never_raise(monkeypatch):
     monkeypatch.setattr(run_stats, "stats_dir", lambda: (_ for _ in ()).throw(OSError("read-only")))
     run_stats.record({"chart_name": "c"}, {}, started=T0, ended=T0, status="completed")

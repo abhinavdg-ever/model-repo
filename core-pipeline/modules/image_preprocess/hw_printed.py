@@ -179,13 +179,20 @@ class PageType:
 
 
 def label_for_document_type(document_type: str, handwritten_area_pct: float | None) -> str:
-    if document_type == "HANDWRITTEN":
-        return "Handwritten"
+    """printed_or_handwritten. 2026-11-14 (user): with the handwritten share measured, over 10%
+    is never Printed and under 10% never Handwritten: < 10% Printed, 10-40% Mixed, > 40%
+    Handwritten (modules/ocr/routing.py). A form is Mixed from FILLED_FORM_AREA_PCT."""
+    from modules.ocr.routing import HW_HANDWRITTEN_ABOVE, HW_PRINTED_BELOW
+
     if document_type == "FORM":
         filled = (handwritten_area_pct or 0.0) >= FILLED_FORM_AREA_PCT
         return "Mixed" if filled else "Printed"
-    if document_type in {"PRINTED", "VISUAL"}:
-        return "Printed"
+    if document_type in {"PRINTED", "VISUAL", "HANDWRITTEN"}:
+        if handwritten_area_pct is None:
+            return "Handwritten" if document_type == "HANDWRITTEN" else "Printed"
+        if handwritten_area_pct < HW_PRINTED_BELOW:
+            return "Printed"
+        return "Handwritten" if handwritten_area_pct > HW_HANDWRITTEN_ABOVE else "Mixed"
     return "Uncertain"
 
 

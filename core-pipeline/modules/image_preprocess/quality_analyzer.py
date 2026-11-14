@@ -55,12 +55,9 @@ class QualityResult:
 
     @property
     def quality_tag(self) -> str:
-        s = self.score_01
-        if s >= 0.70:
-            return "high"
-        if s >= 0.40:
-            return "medium"
-        return "low"
+        from modules.image_preprocess.quality_label_postprocess import base_quality_label
+
+        return base_quality_label(self.score_01)
 
     def detail_dict(self) -> dict:
         return {

@@ -779,14 +779,9 @@ class MemoryStore(StoreBackend):
         }
 
     def non_printed_page_ids(self, chart_id: int) -> set[int]:
-        from common.db import NO_INK_HW_METHODS, is_printed_type, page_type
+        from modules.ocr.routing import judged_in_pass2
 
-        return {
-            pid
-            for pid, row in self.get_quality_map(chart_id).items()
-            if page_type(row) and not is_printed_type(page_type(row)) and page_type(row) != "blank"
-            and str(row.get("hw_method") or "").lower() not in NO_INK_HW_METHODS
-        }
+        return {pid for pid, row in self.get_quality_map(chart_id).items() if judged_in_pass2(row)}
 
     def low_quality_page_ids(self, chart_id: int) -> set[int]:
         return {

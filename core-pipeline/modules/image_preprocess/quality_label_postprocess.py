@@ -8,14 +8,20 @@ import re
 from collections import Counter
 
 
+# High >= 0.70, Medium 0.40-0.70, Low < 0.40 (2026-11-14, user: kept after pricing 0.80 / 0.50
+# and 0.75 / 0.50 against Doc Intel volume).
+QUALITY_HIGH_AT = 0.70
+QUALITY_MEDIUM_AT = 0.40
+
+
 def base_quality_label(score_01: float | None) -> str | None:
     """Map normalized score in [0, 1] to high / medium / low."""
     if score_01 is None:
         return None
     s = float(score_01)
-    if s >= 0.70:
+    if s >= QUALITY_HIGH_AT:
         return "high"
-    if s >= 0.40:
+    if s >= QUALITY_MEDIUM_AT:
         return "medium"
     return "low"
 

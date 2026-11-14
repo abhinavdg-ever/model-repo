@@ -150,8 +150,9 @@ def test_page_sets_follow_the_type():
             chart_id=1, page_id=page_id, printed_or_handwritten=legacy,
             quality_tag=tag, document_type=doc,
         )
-    # A page typed Blank is judged in pass 1 like a printed one (2026-10-27, user).
-    assert store.non_printed_page_ids(1) == {3, 4}
+    # A page typed Blank is judged in pass 1 like a printed one (2026-10-27, user); Visual is
+    # not (routing rows 5-10, 2026-11-14).
+    assert store.non_printed_page_ids(1) == {2, 3, 4}
     assert store.handwritten_page_ids(1) == {4}
     assert store.high_quality_printed_page_ids(1) == {1}  # visual + high still goes to Azure
 

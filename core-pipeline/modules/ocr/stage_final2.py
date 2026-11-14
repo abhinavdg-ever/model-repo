@@ -33,7 +33,6 @@ from common.db import (
     connect,
     get_ocr_texts,
     get_quality_map,
-    high_quality_printed_page_ids,
     page_type,
     set_quality_tag,
     upsert_ocr_result,
@@ -404,6 +403,8 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         "features": [],
         "error": "",
         "engine": "azure" if use_azure else "fallback",
+        # True only when Azure analysed the page (a billed call): the run's Doc Intel count.
+        "sent": False,
     }
     try:
         if use_azure and image_path.is_file():
@@ -416,9 +417,11 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
             out["section_headers"] = extracted.get("section_headers") or []
             out["languages"] = extracted.get("languages") or []
             out["features"] = extracted.get("features") or []
+            out["sent"] = True
             return out
-        else:
-            out["content"] = ""
+        if use_azure:
+            logger.warning("Final2: no page image for %s, not sent to Azure", page["page_name"])
+        out["content"] = ""
     except Exception as exc:
         logger.exception("Final2 OCR failed for %s", page["page_name"])
         out["error"] = str(exc)
@@ -433,66 +436,91 @@ def _docling_content(raw: str) -> str:
     return str(parsed.get("content") or "") if isinstance(parsed, dict) else str(parsed)
 
 
-def regrade_by_ocr_overlap(conn: Any, chart_id: int, skip: frozenset[int] | set[int] = frozenset()) -> int:
-    """Downgrade quality_tag where Docling (Final OCR 1) and Tesseract disagree.
+ROUTING_CSV_COLUMNS = [
+    "chart_name", "page_name", "row", "type", "hw_pct", "quality", "tesseract", "docling",
+    "overlap_ocr", "overlap_3", "final_quality", "doc_intel", "final_ocr",
+]
 
-    Runs before the Azure skip is decided, so a page that falls from High is
-    sent to Azure. Re-running starts from the tag stage 1 measured (kept in
-    ``quality_detail.ocr_overlap``), so it never downgrades twice. Pages
-    without Docling text, and ``skip`` (pages pass 1 settled as blank / junk /
-    duplicate: their Final OCR 1 text changes nothing), are left alone.
-    Returns the number of pages changed.
-    """
-    from modules.image_preprocess.quality_label_postprocess import (
-        downgrade_by_ocr_overlap,
-        ocr_overlap,
-    )
+
+def _detail(row: dict[str, Any]) -> dict[str, Any]:
+    detail = row.get("quality_detail") or {}
+    if isinstance(detail, str):
+        detail = json.loads(detail or "{}")
+    return dict(detail)
+
+
+def _stage1_grade(row: dict[str, Any], detail: dict[str, Any]) -> Optional[str]:
+    """The grade stage 1 measured: a re-run starts from it, so a page is never re-graded twice."""
+    for key in ("routing", "ocr_overlap"):
+        before = detail.get(key) or {}
+        if "quality_before" in before:
+            return before["quality_before"]
+        if "tag_before" in before:
+            return before["tag_before"]
+    return row.get("quality_tag")
+
+
+def route_pages(conn: Any, chart_id: int, settled: set[int]) -> dict[int, dict[str, Any]]:
+    """Every page's routing-table row (modules/ocr/routing.py), before Doc Intel. Stores the
+    Final Quality (provisional for the 3-engine rows) and quality_detail.routing."""
+    from modules.ocr.routing import route
 
     docling = get_ocr_texts(conn, chart_id, "docling")
     tesseract = get_ocr_texts(conn, chart_id, "tesseract")
-    changed = 0
+    decisions: dict[int, dict[str, Any]] = {}
     for page_id, row in get_quality_map(conn, chart_id).items():
-        if page_id not in docling or page_id in skip:
-            continue
-        detail = row.get("quality_detail") or {}
-        if isinstance(detail, str):
-            detail = json.loads(detail or "{}")
-        before = detail.get("ocr_overlap") or {}
-        tag = before.get("tag_before", row.get("quality_tag"))
-        review = before.get("review_required_before", row.get("review_required"))
-        overlap = ocr_overlap(_docling_content(docling[page_id]), tesseract.get(page_id))
-        new_tag = downgrade_by_ocr_overlap(tag, overlap)
-        if new_tag == "low" and page_type(row) != "blank":
-            new_review = True
-        else:
-            new_review = review
-        detail = {
-            **detail,
-            "ocr_overlap": {
-                "overlap": overlap,
-                "tag_before": tag,
-                "tag_after": new_tag,
-                "review_required_before": review,
-            },
-        }
-        if new_tag != row.get("quality_tag"):
-            changed += 1
-        set_quality_tag(
-            conn,
-            page_id=page_id,
-            quality_tag=new_tag,
-            quality_detail=detail,
-            review_required=new_review,
+        detail = _detail(row)
+        grade = _stage1_grade(row, detail)
+        decision = route(
+            row, quality=grade, settled=page_id in settled,
+            docling=_docling_content(docling.get(page_id) or ""), tesseract=tesseract.get(page_id),
         )
-    return changed
+        decisions[page_id] = decision
+        _store_route(conn, page_id, row, detail, decision)
+    return decisions
 
 
-def no_docling_text(conn: Any, chart_id: int, page_ids: set[int]) -> set[int]:
-    """Of ``page_ids``, those with no Docling (Final OCR 1) text: no row, or an empty one."""
-    if not page_ids:
-        return set()
-    docling = get_ocr_texts(conn, chart_id, "docling")
-    return {pid for pid in page_ids if not _docling_content(docling.get(pid) or "").strip()}
+def _store_route(conn: Any, page_id: int, row: dict[str, Any], detail: dict[str, Any],
+                 decision: dict[str, Any]) -> None:
+    review = row.get("review_required")
+    before = (detail.get("routing") or {}).get("review_required_before", review)
+    final = decision.get("final_quality")
+    new_review = True if final == "low" and page_type(row) != "blank" and decision["row"] != 12 else before
+    detail.pop("ocr_overlap", None)
+    detail["routing"] = {**{k: v for k, v in decision.items()}, "review_required_before": before}
+    set_quality_tag(conn, page_id=page_id, quality_tag=final, quality_detail=detail,
+                    review_required=new_review)
+
+
+def _routing_csv(chart_name: str, pages: list[dict[str, Any]], decisions: dict[int, dict[str, Any]],
+                 texts: dict[str, dict[int, str]]) -> Path:
+    """<chart>_ocr_routing.csv: one row per page, rebuilt from this run's decisions."""
+    import csv
+
+    from common.config import imaging_dir
+
+    out = imaging_dir(chart_name) / f"{chart_name}_ocr_routing.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    yes = lambda v: "Yes" if v else "No"  # noqa: E731
+    pct = lambda v: "" if v is None else f"{float(v) * 100:.0f}%"  # noqa: E731
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=ROUTING_CSV_COLUMNS)
+        writer.writeheader()
+        for page in pages:
+            d = decisions.get(page["id"])
+            if d is None:
+                continue
+            writer.writerow({
+                "chart_name": chart_name, "page_name": page["page_name"], "row": d["row"],
+                "type": d["type"], "hw_pct": "" if d.get("hw_pct") is None else f"{d['hw_pct']:.0f}%",
+                "quality": (d.get("quality_before") or "").capitalize(),
+                "tesseract": yes((texts["tesseract"].get(page["id"]) or "").strip()),
+                "docling": yes(_docling_content(texts["docling"].get(page["id"]) or "").strip()),
+                "overlap_ocr": pct(d.get("overlap")), "overlap_3": pct(d.get("overlap_3")),
+                "final_quality": (d.get("final_quality") or "").capitalize(),
+                "doc_intel": yes(d.get("docintel")), "final_ocr": d.get("final_ocr", ""),
+            })
+    return out
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -505,33 +533,18 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
 
     with stage_run(chart_id, STAGE, force=force) as ctx:
-        hq_printed: set[int] = set()
         with connect() as conn:
-            # Pages pass 1 settled: not re-graded, not sent to Azure (worked out before
-            # the re-grade, which must not move them).
+            # Pages pass 1 settled (row 12): not re-graded, not sent to Azure.
             settled = pass1_ruled_out(conn, chart_id)
-            regraded = regrade_by_ocr_overlap(conn, chart_id, skip=settled)
-            if regraded:
-                logger.info(
-                    "Final2: %d page(s) re-graded by Docling/Tesseract overlap", regraded
-                )
-            hq_printed = high_quality_printed_page_ids(conn, chart_id)
-            # 2026-11-08 (user): a page with no Docling (Final OCR 1) text was never compared
-            # with Tesseract, so its High grade proves nothing: it always goes to Doc Intel.
-            no_docling = no_docling_text(conn, chart_id, hq_printed)
-            if no_docling:
-                logger.info("Final2: %d high-quality printed page(s) have no Docling text: sent to Azure",
-                            len(no_docling))
-                hq_printed -= no_docling
-
+            decisions = route_pages(conn, chart_id, settled)
+            no_azure = {pid for pid, d in decisions.items() if not d["docintel"]}
             drop = sorted(settled & ctx.todo)
             bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
-            # High-quality printed pages already have usable final1 text —
-            # skip the billed Azure call.
-            mark_skipped(
-                conn, ctx, sorted(hq_printed & ctx.todo), "high_quality_printed"
-            )
+            # Rows 1, 3, 9: the Docling (Final OCR 1) text is kept -- skip the billed Azure call.
+            routed_skip = (no_azure - settled) & ctx.todo
+            mark_skipped(conn, ctx, sorted(routed_skip), "high_quality_printed")
+            hq_printed = no_azure - settled
 
             todo = [p for p in ctx.pages if p["id"] in ctx.todo]
             for page in todo:
@@ -625,11 +638,51 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             out_pages.append(entry)
         out = write_final2_json(ctx.chart_name, out_pages)
 
+        azure_pages = sum(1 for item in results if item.get("sent"))
+        azure_failed = sum(1 for item in results if item.get("error"))
+
+        # Rows 6, 7, 8, 11: Final Quality from the three engines' overlap, now that Doc Intel ran.
+        from collections import Counter
+
+        from modules.ocr.routing import after_docintel, final_ocr
+
+        with connect() as conn:
+            texts = {"docling": get_ocr_texts(conn, chart_id, "docling"),
+                     "tesseract": get_ocr_texts(conn, chart_id, "tesseract")}
+            quality = get_quality_map(conn, chart_id)
+            for page_id, decision in list(decisions.items()):
+                azure = _docling_content(stored.get(page_id) or "")
+                docling = _docling_content(texts["docling"].get(page_id) or "")
+                decision = after_docintel(decision, [texts["tesseract"].get(page_id), docling, azure])
+                decision["final_ocr"] = final_ocr(decision, bool(azure.strip()), bool(docling.strip()))
+                decisions[page_id] = decision
+                row = quality.get(page_id)
+                if row is not None:
+                    _store_route(conn, page_id, row, _detail(row), decision)
+        by_row = Counter(d["row"] for d in decisions.values())
+        logger.info(
+            "Final2: Doc Intel %d page(s) sent (%d failed); %d page(s) routed to Doc Intel, "
+            "%d not (rows 1/3/9), %d blank/junk pass 1; %d page(s) in the chart",
+            azure_pages, azure_failed, sum(1 for d in decisions.values() if d["docintel"]),
+            len(hq_printed), len(settled & {p["id"] for p in ctx.pages}), len(ctx.pages),
+        )
+        logger.info("Final2 routing rows: %s",
+                    ", ".join(f"row {r}={n}" for r, n in sorted(by_row.items())) or "none")
+        try:
+            routing_csv = str(_routing_csv(ctx.chart_name, ctx.pages, decisions, texts))
+        except OSError as exc:
+            logger.warning("Final2: routing CSV not written: %s", exc)
+            routing_csv = ""
         return {
             "chart_id": chart_id,
             "ocr_path": str(out),
             "used_azure": use_azure,
             "pages_done": ctx.done,
+            # Pages Azure analysed (billed): what run_stats / run_usage count.
+            "azure_pages": azure_pages,
+            "azure_failed": azure_failed,
+            "routing_rows": {str(r): n for r, n in sorted(by_row.items())},
+            "routing_csv": routing_csv,
             "skipped": ctx.skipped,
             "errors": ctx.errors,
         }
