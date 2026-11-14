@@ -109,3 +109,51 @@ def test_since_last_needs_an_earlier_sync(tmp_path, migrate, monkeypatch, capsys
     monkeypatch.setattr(common.db, "connect", lambda: _Fake())
     assert migrate.main(["--since-last", "--dry-run"]) == 2
     assert "Run --all once" in capsys.readouterr().out
+
+
+class _Container:
+    def __init__(self, ids):
+        self.ids, self.deleted = list(ids), []
+
+    def query_items(self, sql, partition_key):
+        return [{"id": i} for i in self.ids]
+
+    def delete_item(self, doc_id, partition_key):
+        self.deleted.append((partition_key, doc_id))
+
+
+def test_prune_removes_only_what_postgres_no_longer_has(migrate):
+    """2026-11-14 (user): upsert first, then drop the partition's leftover documents."""
+    container = _Container(["page-1", "page-2", "page-9"])
+    assert migrate.prune(container, "chart_a", {"page-1", "page-2"}) == 1
+    assert container.deleted == [("chart_a", "page-9")]
+
+
+def test_chart_review_doc_from_postgres(migrate):
+    class _Conn:
+        def __init__(self):
+            self.answers = {
+                "chart_review": [{"user_id": 3, "created_at": "t", "updated_at": "t"}],
+                "chart_ground_truth": [],
+                "encounter_review": [{"seq": 1, "start_page": 1, "end_page": 4}],
+                "chart_review_entry": [],
+            }
+
+        def execute(self, sql, params):
+            table = next(t for t in ("chart_review_entry", "chart_review", "chart_ground_truth", "encounter_review")
+                         if f"FROM {t} " in sql)
+
+            class _R:
+                def __init__(self, rows):
+                    self.rows = rows
+
+                def fetchall(self):
+                    return self.rows
+
+            return _R(self.answers[table])
+
+    migrate._TABLES = {"chart_review", "chart_ground_truth", "encounter_review", "chart_review_entry"}
+    doc = migrate.chart_review_doc(_Conn(), "chart_a")
+    assert doc["id"] == "chart" and doc["chart_name"] == "chart_a"
+    assert doc["chart_review"]["user_id"] == 3 and doc["chart_ground_truth"] is None
+    assert doc["encounter_review"] == [{"seq": 1, "start_page": 1, "end_page": 4}] and doc["review_entries"] == []

@@ -23,8 +23,12 @@ copied when a user or a sign-in changed. --since-last remembers when the last su
 started (utilities/output/cosmos_sync_state.json); a sync with a count mismatch does not move
 it, and synced charts leave the failed list. A changed chart is replaced in Cosmos whole.
 
-Reads DATABASE_URL and COSMOS_* from core-pipeline/.env. Re-running is safe: documents are
-upserted. Users go to the `users` container in review-ui's shape (store/cosmos/review.py),
+Reads DATABASE_URL and COSMOS_* from core-pipeline/.env. Upsert (2026-11-14, user): every
+document is upserted, then a chart's documents that Postgres no longer has are removed, so
+re-running is always safe and a chart never disappears from Cosmos mid-copy. Besides charts,
+pages, jobs, manifest and page ground truth it copies run_usage (runs, type usage), the
+chart-level review tables (chart_review + entries, chart_ground_truth, encounter_review: the
+ground_truth container's "chart" doc) and chart_deletion (runs, partition "_service"). Users go to the `users` container in review-ui's shape (store/cosmos/review.py),
 with the last 50 sign-ins from user_login.
 """
 from __future__ import annotations
@@ -33,7 +37,7 @@ import argparse
 import sys
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 sys.path.insert(0, str(CORE))
@@ -109,11 +113,9 @@ def migrate_chart(conn: Any, store: Any, chart: dict[str, Any], *, dry_run: bool
     expected = postgres_counts(conn, chart_id)
     if dry_run:
         return True, expected, {}
-    # A chart Cosmos already holds (e.g. one run with DB_BACKEND=cosmos) is replaced, not merged:
-    # its page and job documents carry other ids.
-    for container in ("charts", "pages", "runs"):
-        for doc in list(store._c[container].query_items("SELECT c.id FROM c", partition_key=name)):
-            store._c[container].delete_item(doc["id"], partition_key=name)
+    # Upsert (2026-11-14, user): every document is upserted first, then the chart's documents
+    # Postgres no longer has (pages gone, jobs or usage rows with other ids, e.g. from a run with
+    # DB_BACKEND=cosmos) are removed. The chart is never missing from Cosmos while it is copied.
     mirror = MirrorStore(store._c)
     mirror._adopt_chart(plain(dict(chart)))
     mirror._adopt_pages(rows(conn, "SELECT * FROM page_list WHERE chart_id = %s ORDER BY id", (chart_id,)))
@@ -125,11 +127,102 @@ def migrate_chart(conn: Any, store: Any, chart: dict[str, Any], *, dry_run: bool
     if summary:
         mirror.member_summaries[chart_id] = plain(dict(summary))
     mirror.flush_chart(name)
+    keep_pages = {f"page-{int(pid)}" for pid in mirror.pages_by_chart.get(chart_id, [])}
+    keep_runs: set[str] = set()
     for job in rows(conn, "SELECT * FROM pipeline_jobs WHERE chart_id = %s", (chart_id,)):
         mirror.jobs[int(job["id"])] = job
         mirror._flush_job(int(job["id"]))
+        keep_runs.add(f"job-{int(job['id'])}")
+    keep_runs |= migrate_usage(conn, store, chart_id, name)
+    prune(store._c["charts"], name, {"chart"})
+    prune(store._c["pages"], name, keep_pages)
+    prune(store._c["runs"], name, keep_runs)
     got = cosmos_counts(store, name)
     return got == expected, expected, got
+
+
+_TABLES: Optional[set[str]] = None
+
+
+def has_table(conn: Any, table: str) -> bool:
+    """Whether the database has this table (review-ui creates its review tables on first use,
+    so an older database may lack chart_ground_truth, encounter_review, chart_review ...)."""
+    global _TABLES
+    if _TABLES is None:
+        _TABLES = {r["table_name"] for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()").fetchall()}
+    return table in _TABLES
+
+
+def prune(container: Any, partition: str, keep: set[str]) -> int:
+    """Delete the documents in one partition whose ids are not in ``keep`` (after the upserts)."""
+    gone = 0
+    for doc in list(container.query_items("SELECT c.id FROM c", partition_key=partition)):
+        if doc["id"] not in keep:
+            try:
+                container.delete_item(doc["id"], partition_key=partition)
+                gone += 1
+            except Exception as exc:  # noqa: BLE001
+                if getattr(exc, "status_code", None) != 404:
+                    raise
+    return gone
+
+
+def migrate_usage(conn: Any, store: Any, chart_id: int, name: str) -> set[str]:
+    """run_usage rows of one chart -> runs {id: "usage-pg-<id>", type: "usage", usage}. Returns the ids."""
+    from common.db.cosmos_store import _json
+
+    ids: set[str] = set()
+    if not has_table(conn, "run_usage"):
+        return ids
+    usage = rows(conn, "SELECT * FROM run_usage WHERE chart_id = %s OR chart_name = %s", (chart_id, name))
+    for u in usage:
+        doc_id = f"usage-pg-{int(u['id'])}"
+        store._c["runs"].upsert_item(_json({"id": doc_id, "chart_name": name, "type": "usage", "usage": u}))
+        ids.add(doc_id)
+    return ids
+
+
+def chart_review_doc(conn: Any, name: str) -> Optional[dict[str, Any]]:
+    """The ground_truth container's chart doc (review-ui store/cosmos/review.py) from Postgres:
+    chart_review (Reviewed mark), chart_ground_truth (member decision), encounter_review rows,
+    review_entries (chart_review_entry). None when the chart has none of them."""
+    def many(table: str, sql: str) -> list[dict[str, Any]]:
+        return rows(conn, sql, (name,)) if has_table(conn, table) else []
+
+    def one(table: str, sql: str) -> Optional[dict[str, Any]]:
+        found = many(table, sql)
+        return found[0] if found else None
+
+    review = one("chart_review", "SELECT user_id, created_at, updated_at FROM chart_review WHERE chart_name = %s")
+    member = one("chart_ground_truth", "SELECT member_decision, member_decision_reason, user_id, created_at, "
+                 "updated_at FROM chart_ground_truth WHERE chart_name = %s")
+    encounters = many("encounter_review", "SELECT seq, start_page, end_page, page_type, encounter_type, dos_from, "
+                      "dos_to, user_id, created_at, updated_at FROM encounter_review WHERE chart_name = %s ORDER BY seq")
+    entries = many("chart_review_entry", "SELECT action, fields, user_id, created_at FROM chart_review_entry "
+                   "WHERE chart_name = %s ORDER BY id")
+    if not (review or member or encounters or entries):
+        return None
+    return {"id": "chart", "chart_name": name, "chart_review": review, "chart_ground_truth": member,
+            "encounter_review": encounters, "review_entries": entries}
+
+
+def migrate_deletions(conn: Any, *, dry_run: bool, since: Any = None) -> int:
+    """chart_deletion rows -> runs (partition "_service") {id: "deletion-pg-<id>", type: "chart_deletion"}."""
+    from common.db.cosmos_store import SERVICE, _json
+
+    sql, params = "SELECT * FROM chart_deletion", ()
+    if since is not None:
+        sql, params = sql + " WHERE updated_at > %s", (since,)
+    if not has_table(conn, "chart_deletion"):
+        return 0
+    deletions = rows(conn, sql + " ORDER BY id", params)
+    if not dry_run:
+        container = _container("runs")
+        for d in deletions:
+            container.upsert_item(_json({"id": f"deletion-pg-{int(d['id'])}", "chart_name": SERVICE,
+                                         "type": "chart_deletion", "deletion": d}))
+    return len(deletions)
 
 
 def raise_id_counter(conn: Any, store: Any) -> int:
@@ -169,15 +262,30 @@ def migrate_manifest_and_ground_truth(conn: Any, store: Any, names: list[str], *
                       ([g["id"] for g in gt],)):
             entries.setdefault(int(e["page_ground_truth_id"]), []).append(
                 {k: e.get(k) for k in ("entry_mode", "labels", "source_path", "user_id", "created_at")})
+    reviews = {n: chart_review_doc(conn, n) for n in names}
     if not dry_run:
+        keep_manifest: dict[str, set[str]] = {n: set() for n in names}
         for m in manifest:
-            store._c["manifest"].upsert_item(_json({"id": f"m-{m['id']}", "chart_name": m["record_id"], "member": m}))
+            doc_id = f"m-{m['id']}"
+            store._c["manifest"].upsert_item(_json({"id": doc_id, "chart_name": m["record_id"], "member": m}))
+            keep_manifest.setdefault(m["record_id"], set()).add(doc_id)
         gt_container = _ground_truth_container()
+        keep_gt: dict[str, set[str]] = {n: set() for n in names}
         for g in gt:
             doc = {k: v for k, v in g.items() if k != "id"}
             doc.update({"id": f"page-{int(g['page_number'])}", "entries": entries.get(int(g["id"]), [])})
             gt_container.upsert_item(_json(doc))
-    return {"manifest_rows": len(manifest), "ground_truth_pages": len(gt)}
+            keep_gt.setdefault(g["chart_name"], set()).add(doc["id"])
+        for n, review in reviews.items():
+            if review is not None:
+                gt_container.upsert_item(_json(review))
+                keep_gt.setdefault(n, set()).add("chart")
+        # Upsert first, then drop what Postgres no longer has, chart by chart.
+        for n in names:
+            prune(store._c["manifest"], n, keep_manifest.get(n, set()))
+            prune(gt_container, n, keep_gt.get(n, set()))
+    return {"manifest_rows": len(manifest), "ground_truth_pages": len(gt),
+            "chart_reviews": sum(1 for r in reviews.values() if r is not None)}
 
 
 STATE_FILE = Path(__file__).resolve().parent / "output" / "cosmos_sync_state.json"
@@ -193,13 +301,15 @@ def changed_charts(conn: Any, since: Any) -> tuple[set[int], set[str]]:
     for table in (*_CHART_ID_TABLES, *PAGE_TABLES):
         parts.append(f"SELECT DISTINCT chart_id FROM {table} WHERE updated_at > %(since)s AND chart_id IS NOT NULL")
     ids = {int(r["chart_id"]) for r in conn.execute(" UNION ".join(parts), {"since": since}).fetchall()}
-    names = {r["n"] for r in conn.execute(
-        """SELECT chart_name AS n FROM page_ground_truth WHERE updated_at > %(since)s
-           UNION SELECT g.chart_name FROM page_ground_truth_entry e
-                   JOIN page_ground_truth g ON g.id = e.page_ground_truth_id
-                  WHERE e.updated_at > %(since)s
-           UNION SELECT record_id FROM manifest_member_list WHERE updated_at > %(since)s""",
-        {"since": since}).fetchall()}
+    named = ["SELECT chart_name AS n FROM page_ground_truth WHERE updated_at > %(since)s",
+             "SELECT record_id FROM manifest_member_list WHERE updated_at > %(since)s"]
+    if has_table(conn, "page_ground_truth_entry"):
+        named.append("SELECT g.chart_name FROM page_ground_truth_entry e JOIN page_ground_truth g "
+                     "ON g.id = e.page_ground_truth_id WHERE e.updated_at > %(since)s")
+    for table in ("chart_review", "chart_review_entry", "chart_ground_truth", "encounter_review", "run_usage"):
+        if has_table(conn, table):
+            named.append(f"SELECT chart_name FROM {table} WHERE updated_at > %(since)s")
+    names = {r["n"] for r in conn.execute(" UNION ".join(named), {"since": since}).fetchall()}
     return ids, names
 
 
@@ -342,6 +452,7 @@ def main(argv: list[str] | None = None) -> int:
         # UTC, as the failed list writes its times (compared as text).
         started = conn.execute("SELECT now() AS t").fetchone()["t"].astimezone(timezone.utc).isoformat(timespec="seconds")
         gt_only: set[str] = set()
+        since = None
         sync_users = bool(args.all)
         if incremental:
             if args.since_last:
@@ -393,6 +504,8 @@ def main(argv: list[str] | None = None) -> int:
         extra = migrate_manifest_and_ground_truth(
             conn, store, sorted({c["chart_name"] for c in charts} | gt_only), dry_run=args.dry_run)
         users = migrate_users(conn, dry_run=args.dry_run) if sync_users else 0
+        deletions = (migrate_deletions(conn, dry_run=args.dry_run, since=since if incremental else None)
+                     if (args.all or incremental) else 0)
     if not args.dry_run and not bad:
         synced = {c["chart_name"] for c in charts} | gt_only
         dropped = clear_failed(failed_file, synced, started)
@@ -403,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next --since-last starts from {started}")
     print(f"charts: {len(charts)} | copied {ok}, mismatched {bad}, skipped {skipped}"
           f"{f', ground-truth-only {len(gt_only)}' if gt_only else ''} | "
-          f"manifest rows {extra['manifest_rows']}, ground-truth pages {extra['ground_truth_pages']}, users {users}"
+          f"manifest rows {extra['manifest_rows']}, ground-truth pages {extra['ground_truth_pages']}, "
+          f"chart reviews {extra['chart_reviews']}, chart deletions {deletions}, users {users}"
           f"{' (dry run: nothing written)' if args.dry_run else ''}")
     return 1 if bad else 0
 
