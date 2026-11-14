@@ -13,6 +13,37 @@ docker compose run --rm db-utilities manifest --local /input/metadata_R1_B1.csv
 docker compose run --rm db-utilities ground-truth --local /input/ground_truth.xlsx
 ```
 
+## Postgres -> Cosmos: full or incremental sync
+
+`migrate_postgres_to_cosmos.py`: `--all` / `--chart X` copy charts whole (upserts; safe to re-run).
+Incremental (2026-11-14): `--changed-since 2026-11-10` or `--since-last` copy only charts changed in
+Postgres since then, plus the charts whose live `DB_BACKEND=both` copy failed
+(`core-pipeline/logs/cosmos_mirror_failed.tsv`), and users when they changed. `--dry-run` first.
+
+```
+cd core-pipeline && source .venv/bin/activate                        (Ubuntu VM)
+python ../utilities/migrate_postgres_to_cosmos.py --all              (first time: sets the watermark)
+python ../utilities/migrate_postgres_to_cosmos.py --since-last       (then, e.g. nightly)
+
+cd core-pipeline && .venv\Scripts\activate.bat                       (Windows Command Prompt)
+python ..\utilities\migrate_postgres_to_cosmos.py --since-last
+```
+
+## Change one ground-truth value to another
+
+`gt_replace_value.py` (2026-11-14): in `page_ground_truth`, set one column's value X to value Y,
+e.g. every blank / NULL / "NA" in `is_invoice` -> "No". Parameters at the top: `COLUMN`,
+`FROM_VALUES` (`"BLANK"` = NULL / empty; text matched trimmed, case ignored), `TO_VALUE`,
+`CHARTS` (empty = all), `DRY_RUN` (default True: counts only). Each changed page also gets a
+`page_ground_truth_entry` row as a bulk upload writes one (`bulk_upload`, the page's latest bulk
+labels, else all its current labels, with the new value on top), in the same transaction.
+Touches only those two tables; prints counts, chart names and page numbers, never page text.
+
+```
+python3 utilities/gt_replace_value.py           (Ubuntu VM / Mac)
+python utilities\gt_replace_value.py            (Windows Command Prompt)
+```
+
 ## Pull the client's ground truth into ours
 
 `pull_client_ground_truth.py` (2026-11-08) copies the ground truth the client entered in their
