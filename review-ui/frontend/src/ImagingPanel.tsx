@@ -267,7 +267,7 @@ function fmtConfidence(
   return `${pct.toFixed(1)}%`;
 }
 
-/** The image quality score (2026-11-14, user: a measurement, not a confidence): "score 85/100",
+/** The image quality score (2026-11-14, user: a measurement, not a confidence): "Score: 85/100",
  * never in the confidence colours (ConfidenceCell only colours "NN.N%"). */
 function fmtMeasurement(
   value: number | null | undefined,
@@ -276,7 +276,7 @@ function fmtMeasurement(
 ): string {
   if (opts?.skipped || !processed || value === null || value === undefined) return "NA";
   const score = value <= 1 ? value * 100 : value;
-  return `score ${score.toFixed(0)}/100`;
+  return `Score: ${score.toFixed(0)}/100`;
 }
 
 /** One scale for every confidence (core-pipeline/modules/confidence.py). */
