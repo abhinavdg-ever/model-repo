@@ -454,6 +454,9 @@ function Donut({
             </div>
           ) : null}
           <RatesGrid rates={rates} />
+          <p className="accuracy-yes-acc" title="Only the cases where the ground truth or the pipeline says Yes: Both Yes / (Both Yes + GT only + Pipeline only)">
+            Yes accuracy {yesAccuracyText(rates)}
+          </p>
         </div>
       ) : null}
     </figure>
@@ -461,6 +464,15 @@ function Donut({
 }
 
 const EXTRA_POP_WIDTH = 460;
+
+/** Yes accuracy (2026-11-14, user): the universe is the cases either side calls Yes, so the
+ * count shrinks: TP / (TP + FP + FN). */
+function yesAccuracyText(rates: ClassRates): string {
+  const universe = rates.tp + rates.fp + rates.fn;
+  return universe > 0
+    ? `${Math.round((100 * rates.tp) / universe)}% (${rates.tp} of ${universe} Yes cases)`
+    : "— (no Yes cases)";
+}
 
 
 /** Precision · Recall · F1 · Accuracy, then the 2 x 2 counts. */
@@ -636,6 +648,7 @@ function rateLines(rates: ClassRates, classLabel: string): string[] {
   const f1 = precision != null && recall != null && precision + recall > 0
     ? `${Math.round((200 * precision * recall) / (precision + recall))}%` : "—";
   const lines = [
+    `Yes accuracy = TP / (TP + FP + FN), only the cases either side calls Yes = ${share(tp, tp + fp + fn)}`,
     `Precision = TP / (TP + FP) = ${share(tp, tp + fp)}`,
     `Recall = TP / (TP + FN) = ${share(tp, tp + fn)}`,
     `F1 = ${f1} (${classLabel}: TP ${tp} · FP ${fp} · FN ${fn} · TN ${tn})`,
@@ -734,6 +747,7 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
       title: "Accuracy & precision calculation",
       lines: [
         `Accuracy = Match / Scored = ${share(tally.yes, tally.scored)}`,
+        `Yes accuracy = TP / (TP + FP + FN), only the cases either side calls Yes = ${share(tp, tp + fp + fn)}`,
         `Precision = TP / (TP + FP) = ${share(tp, tp + fp)}`,
         `Recall = TP / (TP + FN) = ${share(tp, tp + fn)}`,
         `F1 = ${f1} (Yes = both Name and DOB found; TP ${tp} · FP ${fp} · FN ${fn} · TN ${tn})`,

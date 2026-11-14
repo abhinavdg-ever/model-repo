@@ -6888,3 +6888,11 @@ input {
   gap: 0.3rem;
   padding-left: 1.45rem;
 }
+
+/* Yes accuracy under a card's Precision / Recall (2026-11-14). */
+.accuracy-yes-acc {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+}
