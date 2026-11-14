@@ -49,7 +49,7 @@ class _PipelineCharts:
         self._order = list(pdf_ids)
         self._use_db = database_url_usable(settings.database_url)
         # DB_BACKEND=cosmos: each chart through the repository (its page docs, cached).
-        self._cosmos = getattr(settings, "db_backend", "postgres") == "cosmos"
+        self._cosmos = backend.reads_cosmos() if settings is get_settings() else getattr(settings, "db_backend", "postgres") == "cosmos"
         self._docs: dict[str, ImagingDocumentResponse | None] = {}
         self._runs: dict[str, datetime | None] | None = {} if self._use_db else None
 

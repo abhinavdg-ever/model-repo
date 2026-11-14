@@ -402,7 +402,11 @@ def load_report(
     """The report, from the cache when it is under REPORT_TTL_SEC old and
     ``fresh`` is not asked for. On Cosmos (2026-11-08) it is built chart by chart from the
     same imaging document the chart view reads (_build_report_cosmos)."""
-    on_cosmos = getattr(settings, "db_backend", "postgres") == "cosmos"
+    from app.core.config import get_settings
+    from app.services import backend
+
+    # The deployment's DB_BACKEND, or the admin's Postgres / Cosmos switch (2026-11-15).
+    on_cosmos = backend.reads_cosmos() if settings is get_settings() else getattr(settings, "db_backend", "postgres") == "cosmos"
     key = ("cosmos" if on_cosmos else settings.database_url, settings.db_schema, source)
     asked = time.monotonic()
     if not fresh:
