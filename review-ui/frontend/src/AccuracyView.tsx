@@ -1008,13 +1008,28 @@ type Range = { min: number; max: number };
 
 /** What a column can be filtered on: its Accuracy, and Precision / Recall / F1 of Class Yes
  * (Cred. Match in place of F1 for Provider Signature). */
-type Measure = "accuracy" | "precision" | "recall" | "f1" | "credMatch";
+type Measure = "accuracy" | "precision" | "recall" | "f1" | "credMatch" | "invoiceMatch" | "duplicateMatch";
 type ColumnRanges = Partial<Record<Measure, Range>>;
 const RATE_MEASURES = [
   { key: "precision", label: "Precision", percent: precisionPercent },
   { key: "recall", label: "Recall", percent: recallPercent },
   { key: "f1", label: "F1", percent: f1Percent },
   { key: "credMatch", label: "Cred. M", percent: credMatchPercent },
+] as const;
+
+/** Match % on the pages either side calls Yes: both Yes over Yes on either side (No / No
+ * left out, as the Additional Metrics tables). Null when neither side calls any page Yes. */
+function yesMatchPercent(rates: ClassRates | undefined): number | null {
+  if (!rates) return null;
+  const total = rates.tp + rates.fp + rates.fn;
+  return total === 0 ? null : Math.round((100 * rates.tp) / total);
+}
+
+/** Beside B/J (2026-11-14, user): sliders for Invoice and Duplicate Match, e.g. to list the
+ * files under 100%. Duplicate = Yes or Partial. */
+const BJ_EXTRA_MEASURES = [
+  { key: "invoiceMatch", label: "Invoice Match", percent: (row: ChartAccuracy) => yesMatchPercent(row.invoiceRates) },
+  { key: "duplicateMatch", label: "Duplicate Match", percent: (row: ChartAccuracy) => yesMatchPercent(row.duplicateRates) },
 ] as const;
 
 /** The rate measures a column offers: F1, or Cred. Match on Provider Signature. */
@@ -1043,6 +1058,9 @@ function passesFilters(row: ChartAccuracy, filters: Filters): boolean {
     const rates = column === "overall" ? undefined : rowRatesFor(row, column);
     for (const measure of RATE_MEASURES) {
       if (f[measure.key] && !inRange(rates ? measure.percent(rates) : null, f[measure.key])) return false;
+    }
+    for (const measure of BJ_EXTRA_MEASURES) {
+      if (f[measure.key] && !inRange(measure.percent(row), f[measure.key])) return false;
     }
   }
   return true;
@@ -1195,6 +1213,16 @@ function ColumnFilter({
                 <RangeSliders
                   key={measure.key}
                   label={`${measure.label} (${classLabel})`}
+                  range={value?.[measure.key] ?? FULL_RANGE}
+                  onChange={(r) => set(measure.key, r)}
+                />
+              ))
+            : null}
+          {column === "blankJunk"
+            ? BJ_EXTRA_MEASURES.map((measure) => (
+                <RangeSliders
+                  key={measure.key}
+                  label={`${measure.label} (Yes on either side)`}
                   range={value?.[measure.key] ?? FULL_RANGE}
                   onChange={(r) => set(measure.key, r)}
                 />
