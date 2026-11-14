@@ -41,6 +41,28 @@ INVOICE_PAGE_SUBTYPE = "Invoice Page"
 INVOICE_DECIDED_BY = "invoice_page"
 
 
+def blank_junk_weights(chart_name: str) -> dict[str, float]:
+    """Page name -> its blank / junk verdict's weight: ``final.decision_confidence`` in
+    ``staging/blank_junk.json``, the pre-2026-11-14 confidence (rule strengths). Continuity's
+    junk runs and an Invoice page's page-type weight read it, so the new confidences
+    (CONFIDENCE_LOGIC.md section 12) change no decision. Empty without the file."""
+    import json
+
+    from common.config import staging_dir
+
+    try:
+        path = staging_dir(chart_name) / "blank_junk.json"  # modules/blank_junk/stage.py VOTES_FILE
+        pages = json.loads(path.read_text(encoding="utf-8")).get("pages") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out: dict[str, float] = {}
+    for name, page in pages.items():
+        value = ((page or {}).get("final") or {}).get("decision_confidence") if isinstance(page, dict) else None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[str(name)] = float(value)
+    return out
+
+
 def is_invoice_page(reason: Optional[str]) -> bool:
     """True when the blank / junk reason says the INVOICE rule kept the page."""
     return INVOICE_MARK in (reason or "")

@@ -15,7 +15,11 @@ vote (``axes.gate``) when ``PAGE_CLASSIFIER=leaf`` (the default).
 5. **Rank points**: each side gives its ranked leaves 6 - rank points (ties share a rank);
    the leaf with the most points wins (then the model's points, the keyword score, the
    model's probability). An ``Others`` leaf wins only when no other leaf has points.
-6. **Confidence** (``leaf_confidence``, settings ``confidence`` in leaf_keywords.json):
+6. **Confidence** (2026-11-14, ``chosen_confidence``, CONFIDENCE_LOGIC.md section 12): the
+   leaf model's probability for the chosen leaf; keywords only, Others, no model -> backup
+   (0.40); a Deciding word against the model's top (either way) -> flipped (0.30).
+   The older value below is kept as ``strength``, the weight later stages decide with.
+   **Strength** (``leaf_confidence``, settings ``confidence`` in leaf_keywords.json):
    the model's probability for the winner lifted by the keywords' support for it (a
    Deciding word 1.0 in a header / 0.85 on the page, else 0.7 / 0.45 / 0.25 by the
    keywords' rank); the model alone -> its probability (x keywords_disagree, x close_call
@@ -246,6 +250,9 @@ class Decision:
     deciding_overruled: Optional[str]
     excluded: dict[str, str]
     confidence_why: dict[str, Any] = field(default_factory=dict)
+    # The pre-2026-11-14 confidence (leaf_confidence: model p backed by keywords, penalties):
+    # kept as the weight continuity and the Final vote read, so no decision changes.
+    strength: Optional[float] = None
 
 
 def tie_order(leaves: dict[str, Any], settings: dict[str, Any]) -> dict[str, int]:
@@ -338,16 +345,44 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     else:
         how = "nothing"
     support = keyword_support(winner, kw, keyword_rank, deciding, settings)
-    confidence, why = leaf_confidence(
+    strength, why = leaf_confidence(
         p=_prob(model, winner), support=support, model_ranked=model_has,
         model_ranked_other=bool(model_rank_raw) and not model_has,
         keywords_ranked_other=bool(keyword_rank) and support == 0.0,
         has_model=model.source != NO_MODEL, margin=_margin(model, winner, model_first),
         overruled=bool(overruled), others=is_others(winner), settings=settings,
     )
+    confidence, rule = chosen_confidence(
+        how=how, p=_prob(model, winner), has_model=model.source != NO_MODEL and bool(model_first),
+        model_agrees=bool(model_first) and stands_for(model, winner, model_first),
+        overruled=bool(overruled), others=is_others(winner),
+    )
+    why = {**why, "strength": strength, "rule_2026_11_14": rule}
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
-                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why)
+                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength)
+
+
+def chosen_confidence(*, how: str, p: float, has_model: bool, model_agrees: bool, overruled: bool,
+                      others: bool) -> tuple[Optional[float], str]:
+    """The page type's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the leaf
+    model's probability for the chosen leaf when the model decided it (or a Deciding word
+    chose what the model's top also says); ``confidence.flipped`` when a Deciding word
+    overruled the model's top or the model overruled a Deciding word; ``confidence.backup``
+    for keywords only, an Others leaf, or no model. No keyword lift, no penalties."""
+    if others:
+        return conf.backup(), "Others leaf: backup"
+    if overruled:
+        return conf.flipped(), "the model overruled a Deciding keyword: flipped"
+    if how in ("agree", "model"):
+        return conf.chosen(p, module="page_type"), "model probability"
+    if how == "deciding":
+        if not has_model:
+            return conf.backup(), "Deciding keyword, no model: backup"
+        if model_agrees:
+            return conf.chosen(p, module="page_type"), "Deciding keyword and the model's top agree: model probability"
+        return conf.flipped(), "a Deciding keyword overruled the model's top: flipped"
+    return conf.backup(), "keywords only: backup" if how == "keywords" else "neither: backup"
 
 
 CONFIDENCE = leaf_canon.DEFAULT_SETTINGS["confidence"]
@@ -377,8 +412,9 @@ def _margin(model: ModelSide, winner: str, model_first: Optional[str]) -> Option
 def leaf_confidence(*, p: float, support: float, model_ranked: bool, model_ranked_other: bool,
                     keywords_ranked_other: bool, has_model: bool, margin: Optional[float], overruled: bool,
                     others: bool, settings: dict[str, Any]) -> tuple[Optional[float], dict[str, Any]]:
-    """The page type's confidence (module page_type, the one 0-1 scale: >= 0.8 good,
-    < 0.5 review) and how it was reached.
+    """The page type's pre-2026-11-14 confidence, kept as ``Decision.strength`` (the weight
+    continuity and the Final vote read; the stored confidence is ``chosen_confidence``) and
+    how it was reached.
 
     * the model ranked the winner and the keywords back it: the model's probability
       lifted by the support (``confidence.backed``: support 1.0 closes half the gap to 1);
@@ -485,6 +521,7 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[axes.AxesResu
                     for i, (leaf, total) in enumerate(decision.totals.items(), start=1)),
         leaf={
             "leaf": decision.path, "how": decision.how, "confidence": decision.confidence,
+            "strength": decision.strength,
             "confidence_why": decision.confidence_why,
             "model_source": model.source,
             "model_top": [{"path": p, "rank": r, "score": round(_prob(model, p), 4)}

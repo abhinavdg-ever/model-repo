@@ -107,7 +107,9 @@ class TestDecide:
         canon({"Progress Note > CC/HPI": {"good_to_have": ["hpi"]}})
         kw = leaf_canon.score_leaves(LEAVES, "hpi: cough")
         d = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.7), ("Progress Note > Others", 0.2)), kw, SETTINGS)
-        assert (d.path, d.how) == ("Progress Note > CC/HPI", "agree") and d.confidence > 0.7
+        assert (d.path, d.how) == ("Progress Note > CC/HPI", "agree") and d.strength > 0.7
+        # 2026-11-14 (section 12): the stored confidence is the model's own p, no keyword lift.
+        assert d.confidence == 0.7
 
     def test_a_deciding_word_decides_unless_the_model_is_sure_of_another_l1(self, canon):
         canon({"Administrative > Superbill": {"deciding": ["superbill"]}})
@@ -116,6 +118,9 @@ class TestDecide:
         assert (d.path, d.how) == ("Administrative > Superbill", "deciding")
         sure = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.95)), kw, SETTINGS)
         assert sure.path == "Progress Note > CC/HPI" and sure.deciding_overruled
+        # 2026-11-14 (section 12): a Deciding word against the model's top, or the model
+        # overruling a Deciding word, is flipped (0.30).
+        assert d.confidence == 0.3 and sure.confidence == 0.3
 
     def test_others_only_when_nothing_else(self, canon):
         canon({"Progress Note > Assessment and Plan": {"good_to_have": ["plan"]}})
@@ -231,3 +236,18 @@ class TestFoldedLeaves:
         model.trained_as = {"Administrative > Superbill": "Administrative > Others"}
         d = leaf.decide(LEAVES, model, leaf_canon.score_leaves(LEAVES, "nothing here"), SETTINGS)
         assert d.path == "Administrative > Others"
+
+
+def test_chosen_confidence_2026_11_14():
+    """CONFIDENCE_LOGIC.md 12.2: the leaf model's p; keywords only / Others / no model: backup;
+    a Deciding word against the model (either way): flipped."""
+    def c(**kw):
+        args = dict(how="model", p=0.83, has_model=True, model_agrees=True, overruled=False, others=False)
+        return leaf.chosen_confidence(**{**args, **kw})[0]
+
+    assert c() == 0.83 and c(how="agree") == 0.83
+    assert c(how="keywords") == 0.4 and c(how="nothing") == 0.4 and c(others=True) == 0.4
+    assert c(how="deciding", has_model=False) == 0.4
+    assert c(how="deciding") == 0.83  # the Deciding word and the model's top agree
+    assert c(how="deciding", model_agrees=False) == 0.3
+    assert c(overruled=True) == 0.3

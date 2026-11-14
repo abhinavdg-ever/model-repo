@@ -10,10 +10,13 @@ Per page, two states:
      header / footer dates. Lab pages rank Report Date after Received; lab and other
      pages end with the Admit / Discharge pair (a misclassified discharge page). A tier not listed
      for the kind is not a candidate.
-     Within a group the model's highest score wins. Its confidence
-     (modules/confidence.py): the model's score lifted by the rules' score when both
-     read the date, the rules' alone times no_model, times conflict when another date of
-     the same group scores within 80% of it (``kv_confidence``).
+     Within a group the model's highest score wins. Its confidence (2026-11-14, user;
+     CONFIDENCE_LOGIC.md section 12, ``PageDate.reported``): the KV model's score for the
+     chosen pair (``kv_reported``); a rule that picked another date than the model's best ->
+     flipped (0.30); every other source (edge, keyword pass, dictation, signature date,
+     neighbours, a rules-only pair) -> backup (0.40); no DOS / the default date -> none.
+     The older value (``kv_confidence``, ``PageDate.confidence``) still drives the
+     signature fallback and the neighbour check, so no date changes.
   2. Edge keyword, only when key/value has no date — a DOS label (Encounter Date, Visit
      Date, Date of Service, Admission Date, Discharge Date, ...) that starts within the
      first or last ``edge_words`` (20) words of the page, with a date right after it. An
@@ -358,6 +361,13 @@ class PageDate:
     is_pair: bool = False
     # A key/value date gave it (extraction_method kv).
     kv_backed: bool = False
+    # The stored confidence (2026-11-14, section 12); None -> confidence.backup(). ``confidence``
+    # above is the older value the fallbacks decide with.
+    reported: Optional[float] = None
+
+    @property
+    def stored_confidence(self) -> float:
+        return self.reported if self.reported is not None else conf.backup()
 
 
 def edge_page_date(
@@ -524,7 +534,24 @@ def kv_page_date(
     rivals = [it for it in dated if _group(it, prof, rank) == group and str(it["iso"]) != iso
               and score(it) >= 0.8 * score(item)]
     return PageDate(iso, iso_to if is_pair else iso, kv_confidence(item, prof, conflict=bool(rivals)),
-                    str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+                    str(item.get("keyword") or ""), "kv", is_pair=is_pair, reported=kv_reported(item, dated))
+
+
+def kv_reported(item: dict[str, Any], dated: Optional[list[dict[str, Any]]] = None) -> float:
+    """A key/value date's stored confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the
+    KV model's score for it (``kv_confidence`` from staging: model_score, flipped when the
+    model and the rules disagree about the row); ``confidence.flipped`` when the rules'
+    priority picked another date than the model's best of ``dated``;
+    ``confidence.backup`` when no model scored it."""
+    if item.get("confidence") is None or not item.get("model_scored", True):
+        return conf.backup()
+    scored = [it for it in dated or [] if it.get("confidence") is not None and it.get("model_scored", True)]
+    if scored:
+        best = max(scored, key=lambda it: float(it["confidence"]))
+        if str(best.get("iso")) != str(item.get("iso")):
+            return conf.flipped()
+    value = item.get("kv_confidence")
+    return float(value) if value is not None else conf.chosen(float(item["confidence"]), module="dos")
 
 
 def kv_confidence(item: dict[str, Any], prof: Optional[DosProfile] = None, *, conflict: bool = False) -> float:
@@ -591,11 +618,16 @@ def admit_discharge_date(
     prof = prof or profile()
     edge_side = {cls: next((h for h in hits if h.label_class == cls), None) for cls in ("admit", "discharge")}
 
+    reported: dict[str, float] = {}
+
     def side(cls: str) -> tuple[str, float | None, str] | None:
         item = kv_stay.get(cls)
         if item and len(str(item.get("iso") or "")) == 10:
+            reported[cls] = kv_reported(item)
             return str(item["iso"]), kv_confidence(item, prof), str(item.get("keyword") or cls)
         hit = edge_side[cls]
+        if hit:
+            reported[cls] = conf.backup()  # an edge label: rules only
         return (hit.iso, None, hit.label) if hit else None
 
     admit, discharge = side("admit"), side("discharge")
@@ -608,6 +640,7 @@ def admit_discharge_date(
             best = max(later, key=lambda it: float(it.get("confidence") or 0))
             discharge = (str(best["iso"]), conf.score(kv_confidence(best, prof), "fallback", module="dos"),
                          str(best.get("keyword") or "report date"))
+            reported["discharge"] = conf.backup()  # a rule stood the Report Date in
     used = [s for s in (admit, discharge) if s]
     if not used:
         return None
@@ -617,8 +650,10 @@ def admit_discharge_date(
     kv_scores = [s[1] for s in used if s[1] is not None]
     edge = conf.score(prof.confidence["edge"], "no_model", module="dos")
     confidence = min(kv_scores + ([edge] if len(kv_scores) < len(used) else [])) if kv_scores else edge
+    # Stored: the weaker side's (2026-11-14): its KV model score, a rules-only side a backup.
     return PageDate(start, end, confidence, "+".join(s[2] for s in used), "admit_discharge",
-                    is_pair=end != start, kv_backed=bool(kv_scores))
+                    is_pair=end != start, kv_backed=bool(kv_scores),
+                    reported=min(reported.values()) if reported else conf.backup())
 
 
 def keyword_pass_date(
@@ -644,6 +679,7 @@ def keyword_pass_date(
         return None
     found.confidence = conf.score(prof.confidence.get("keyword_pass", 0.7), "no_model", module="dos")
     found.source = "keyword_pass"
+    found.reported = conf.backup()
     return found
 
 
@@ -696,7 +732,8 @@ def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str]
         if len(sides) == 2 and (sides[0].dos_from, sides[0].dos_to) == (sides[1].dos_from, sides[1].dos_to):
             a = sides[0]
             out[i] = PageDate(a.dos_from, a.dos_to, round(min(s.confidence for s in sides) * factor, 4),
-                              f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair)
+                              f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair,
+                              reported=conf.backup())
             continue
         if page is not None:
             lo = min(s.dos_from for s in sides)
@@ -743,7 +780,7 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
         "dos_from": iso_to_mdy(best.dos_from),
         "dos_to": iso_to_mdy(best.dos_to),
         "keyword": best.keyword,
-        "confidence": round(best.confidence, 4),
+        "confidence": round(best.stored_confidence, 4),
         "match_type": "admit_discharge_pair" if best.is_pair else "page_date",
     }
 
@@ -790,7 +827,8 @@ def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
         "match_type": match_type,
         "final_dos": page_date.dos_from if page_date else "",
         "keyword": page_date.keyword if page_date else None,
-        "confidence": round(page_date.confidence, 4) if page_date else None,
+        # 2026-11-14 (section 12): the stored confidence; no DOS -> none.
+        "confidence": round(page_date.stored_confidence, 4) if page_date else None,
         "page_source": page_date.source if page_date else "",
         "kv_backed": bool(page_date and (page_date.source == "kv" or page_date.kv_backed)),
         "is_default": page_date is None,

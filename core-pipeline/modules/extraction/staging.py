@@ -80,13 +80,12 @@ def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict
     pages: dict[str, Any] = {}
     for page in result.pages:
         fields = {field_id: [hit_record(hit) for hit in hits] for field_id, hits in page.rows.items()}
-        text = " ".join(word.content or "" for word in page.words)
         pages[str(page.page.get("fileName") or "")] = {
             "page_number": page.page.get("pageNumber"),
             "width": page.page_w,
             "height": page.page_h,
             "fields": fields,
-            "absent": absent_confidences(fields, conf.page_reasons(text) if page.words else ()),
+            "absent": absent_confidences(fields),
         }
     return {
         "version": SCHEMA_VERSION,
@@ -99,14 +98,14 @@ def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict
 
 def absent_confidences(fields: dict[str, list[dict[str, Any]]], reasons: tuple[str, ...] = ()) -> dict[str, float]:
     """Each field the page has no accepted row for: how sure "not found" is
-    (``confidence.absent``) from the candidates it turned down (their model probability,
-    else their rule score)."""
+    (``confidence.absent``, 2026-11-14): 1 - the best turned-down candidate's model
+    probability; no candidate the model scored -> backup. ``reasons`` is ignored."""
     out: dict[str, float] = {}
     for field_id, rows in fields.items():
         if any(row.get("accepted") for row in rows):
             continue
-        scores = [_number(row.get("model_score", row.get("score"))) for row in rows]
-        value = conf.absent(scores, *reasons, module="extraction")
+        scores = [_number(row.get("model_score")) for row in rows]
+        value = conf.absent(scores, module="extraction")
         if value is not None:
             out[field_id] = value
     return out
@@ -164,10 +163,9 @@ class StagedPage:
         self.height = data.get("height")
         self.fields: dict[str, list[dict[str, Any]]] = data.get("fields") or {}
         # How sure "not found" is, per field with no accepted row (absent_confidences).
-        # Staging written before it existed: from the candidates alone.
-        self.absent: dict[str, float] = (
-            data["absent"] if isinstance(data.get("absent"), dict) else absent_confidences(self.fields)
-        )
+        # Always worked out from the candidates (2026-11-14), so staging written under the
+        # older rule reads the same as new staging.
+        self.absent: dict[str, float] = absent_confidences(self.fields)
 
     def rows(self, field_id: str) -> list[dict[str, Any]]:
         return self.fields.get(field_id) or []

@@ -17,7 +17,7 @@ its family's default. Without the model the rules decide alone.
 
 Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
 pages, including visits with no evidence or no date, which default to
-Outpatient (F2F) at confidence 0.3 (canon ``default``); it removes rows for
+Outpatient (F2F) (canon ``default``; a backup confidence, 0.40); it removes rows for
 pages left unresolved (only when that default is emptied), and
 ``imaging/<chart>_encounter.csv`` for every page. With ENCOUNTER_DEBUG on, one
 evidence record per visit goes to ``<chart>/debug/<chart>_encounter_evidence.csv``.

@@ -261,13 +261,20 @@ def _invoice_row(confidence: Any) -> dict[str, Any]:
 
 
 def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
-    """The page's row: names, category and decided_by from its axes. The confidence is
-    the page type's (the whole path), times the page's own doubts (``reasons``:
-    handwritten, thin text); below the review band the page needs review."""
+    """The page's row: names, category and decided_by from its axes. The confidence
+    (2026-11-14, user; CONFIDENCE_LOGIC.md section 12) is the page type's own (the leaf
+    model's probability, backup or flipped: leaf.chosen_confidence), with no handwritten /
+    thin-text multipliers; below the review band the page needs review. The older value
+    (the leaf's strength x the page's doubts, ``reasons``) is kept as
+    ``axes.decision_confidence``, the weight continuity and the Final vote read."""
     page_type, page_subtype = axes.page_names(page_axes)
     codeability = page_axes.codeability if page_axes else axes.NEEDS_REVIEW
     path = [x for x in (page_axes.l1, page_axes.l2, page_axes.l3) if x] if page_axes else []
-    confidence = conf.score(page_axes.page_type_confidence, *reasons, module="page_type") if page_axes else None
+    confidence = conf.chosen(page_axes.page_type_confidence) if page_axes else None
+    stored_axes = page_axes.as_json() if page_axes else None
+    if stored_axes is not None:
+        strength = (page_axes.leaf or {}).get("strength", page_axes.page_type_confidence)
+        stored_axes["decision_confidence"] = conf.score(strength, *reasons, module="page_type")
     return {
         "page_type": page_type or UNKNOWN,
         "page_subtype": page_subtype or UNKNOWN,
@@ -278,7 +285,7 @@ def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = (
         "decided_by": page_axes.decided_by if page_axes else "no_text",
         "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW or conf.needs_review(confidence) or (
             page_axes is not None and page_axes.decided_by == axes.BY_OTHERS),
-        "axes": page_axes.as_json() if page_axes else None,
+        "axes": stored_axes,
     }
 
 

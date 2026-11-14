@@ -225,13 +225,13 @@ class TestSpecialty:
     def test_unknown_is_never_asserted_it_is_general(self):
         result = gate(raw())
         assert (result.specialty, result.sources[3]) == ("General", "others")
-        # A fallback: the model's doubt about every named specialty (1 - 0.05) x 0.6.
-        assert result.specialty_confidence == 0.57
+        # The General fallback: a backup (2026-11-14, section 12).
+        assert result.specialty_confidence == 0.4
 
     def test_with_no_model_specialty_the_keywords_decide(self):
         result = gate(raw(), text=CARDIO_PAGE)
         assert (result.specialty, result.sources[3]) == ("Cardiology", "canon")
-        assert 0.5 <= result.specialty_confidence <= 1.0
+        assert result.specialty_confidence == 0.4  # keywords only: a backup
 
     def test_keywords_need_a_lead(self):
         from modules.page_classify import specialty_keywords

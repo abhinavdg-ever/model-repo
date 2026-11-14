@@ -43,7 +43,9 @@ from common.db import (
 )
 from common.config import staging_dir
 from common.db.paths import imaging_csv, write_csv
-from apps.worker.stages._support import best_page_text, mark_completed, pass1_ruled_out, stage_run
+from apps.worker.stages._support import (
+    INVOICE_DECIDED_BY, best_page_text, blank_junk_weights, mark_completed, pass1_ruled_out, stage_run,
+)
 from modules.blank_junk.method import text_is_visual
 from modules.continuity.engine import (
     PageInput,
@@ -533,6 +535,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         json1 = load_pages(ctx.chart_name, "final1")
 
         rules = load_rules()
+        # 2026-11-14: the weights continuity has always read (the page type's and the junk
+        # verdict's pre-2026-11-14 confidences), so the new confidences change no break.
+        junk_weights = blank_junk_weights(ctx.chart_name)
         # Continuity is chart-global: every page is an input even on a resume.
         inputs: list[PageInput] = []
         sources: dict[Any, str] = {}
@@ -574,7 +579,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     page_subtype=kind_row.get("page_subtype") or "",
                     names=axes.names_of(kind_row),
                     page_confidence=(
-                        float(kind_row["confidence"]) if kind_row.get("confidence") is not None else None
+                        junk_weights[name] if kind_row.get("decided_by") == INVOICE_DECIDED_BY and name in junk_weights
+                        else axes.decision_confidence(kind_row)
                     ),
                     title_hit=bool(axes.title_of(kind_row)) if axes.stored(kind_row) else bool(kind_row.get("keyword_title_hit")),
                     dos_from=dos_from if kind == "main" else "",
@@ -587,7 +593,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     kind=kind,
                     junk_subtype=str((final or {}).get("junk_subtype") or "") if kind == "junk" else "",
                     junk_confidence=(
-                        float(final["confidence"]) if kind == "junk" and (final or {}).get("confidence") is not None else None
+                        junk_weights[name] if kind == "junk" and junk_weights.get(name) is not None
+                        else float(final["confidence"]) if kind == "junk" and (final or {}).get("confidence") is not None
+                        else None
                     ),
                     duplicate_of=(
                         (final or {}).get("duplicate_of_page_id") or _carried_original(final)
@@ -676,3 +684,4 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
         }
+

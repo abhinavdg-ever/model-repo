@@ -209,6 +209,20 @@ def stored(kind: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def decision_confidence(kind: dict[str, Any]) -> Optional[float]:
+    """The page type's weight for later decisions (continuity's page-type change, the Final
+    vote): ``axes.decision_confidence``, the pre-2026-11-14 confidence (keyword lift and the
+    page's doubts), so the new stored confidence (CONFIDENCE_LOGIC.md section 12) changes no
+    decision; rows written before it: their ``confidence``. None without either."""
+    value = stored(kind).get("decision_confidence")
+    if value is None:
+        value = (kind or {}).get("confidence")
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def names_of(kind: dict[str, Any]) -> tuple[str, ...]:
     """Every name of a classified page, most specific first: its canon page
     type, L3, L2, L1. Lists downstream (encounter tier 1, default-DOS types,
@@ -559,30 +573,24 @@ def subtype_confidence(l2: Optional[str], l2_conf: Optional[float], l3: Optional
 
 def specialty_confidence(raw: dict[str, Any], specialty: Optional[str], keyword: Optional[tuple[str, float]], *,
                          fallback: bool, not_asserted: Any = ()) -> Optional[float]:
-    """How sure the page is of its specialty (modules/confidence.py): the model's
-    probability for it, lifted when the specialty keywords (or the canon entry) back it,
-    times ``keywords_disagree`` when they name another. When the model names no
-    specialty (its best is Unknown) or there is no model, the keywords' own confidence
-    (times ``no_model`` without a model). The fallback (General): the model's doubt
-    about every named specialty (1 - its best named one) times ``fallback``."""
+    """How sure the page is of its specialty (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2):
+    the specialty model's own probability for it. The fallback (General), or no model / a
+    model that names no specialty (keywords only): ``confidence.backup``. Keywords that
+    name another specialty than the model's: ``confidence.flipped``. No keyword lift, no
+    penalties."""
     if not specialty:
         return None
     probs = {str(n): float(p) for n, p in raw.get("specialty_top") or []}
     if not probs and raw.get("specialty"):
         probs = {str(raw["specialty"]): float(raw.get("specialty_confidence") or 0.0)}
-    named = {n: p for n, p in probs.items() if n not in not_asserted}
     if fallback:
-        base = probs.get(specialty, 1.0 - max(named.values(), default=0.0)) if probs else 0.5
-        return conf.score(base, "fallback", module="specialty")
+        return conf.backup()
     if not probs or max(probs, key=probs.get) in not_asserted:
-        own = keyword[1] if keyword and keyword[0] == specialty else 0.5
-        return conf.score(own, *(() if probs else ("no_model",)), module="specialty")
-    base, reasons = probs.get(specialty, 0.0), []
-    if keyword and keyword[0] == specialty:
-        base = conf.backed(base, keyword[1])
-    elif keyword:
-        reasons.append("keywords_disagree")
-    return conf.score(base, *reasons, module="specialty")
+        return conf.backup()
+    model_top = max(probs, key=probs.get)
+    if (keyword and keyword[0] != model_top) or specialty != model_top:
+        return conf.flipped()
+    return conf.chosen(probs.get(specialty, 0.0), module="specialty")
 
 
 def gate(

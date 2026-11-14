@@ -24,6 +24,10 @@ content values of the page it duplicates (``COPIED_FROM_REFERENCE``):
 ``page_type_source`` / ``dos_source`` = duplicate and ``duplicate_of_page_id``
 names that page. A copied page continuity's duplicate check made a Main page again
 ("duplicate content") fills the values it has none of from that page.
+
+Confidences (2026-11-14, docs/specials/CONFIDENCE_LOGIC.md section 12, ``final_confidences``):
+the anchor page keeps its own; a value carried from it reads anchor x 0.90; a page rules 7 / 8
+re-placed reads flipped; member name / DOB / ID are three keys.
 """
 from __future__ import annotations
 
@@ -48,7 +52,9 @@ from common.db import (
     upsert_imaging_final,
 )
 from common.db.paths import imaging_csv, write_csv
-from apps.worker.stages._support import INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, mark_completed, stage_run
+from apps.worker.stages._support import (
+    INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, blank_junk_weights, mark_completed, stage_run,
+)
 from modules import confidence as conf
 from modules.continuity.engine import document_finals
 from modules.page_classify import axes
@@ -183,6 +189,17 @@ def encounter_specialties(
     return out
 
 
+MEMBER_CONFIDENCE_KEYS = {"name": "member_name", "dob": "member_dob", "member_id": "member_id"}
+
+
+def _own_or_carried(page_id: int, anchor: Optional[int], value: Optional[float]) -> Optional[float]:
+    """The anchor page keeps its own confidence; a page that took the value from it carries
+    anchor x ``carried_factor`` (2026-11-14, user: CONFIDENCE_LOGIC.md 12.1 rule 6)."""
+    if value is None:
+        return None
+    return value if anchor is None or anchor == page_id else conf.carried(value)
+
+
 def final_confidences(
     page_id: int,
     *,
@@ -199,46 +216,64 @@ def final_confidences(
     provider_confidence: Optional[float],
     blank_junk: dict[int, dict[str, Any]],
     quality: dict[int, dict[str, Any]],
+    replaced: bool = False,
+    member_fields: Optional[dict[str, Optional[float]]] = None,
 ) -> dict[str, float]:
-    """Each Final value's confidence (modules/confidence.py), from the page that
-    decided it: the page type and codability from the page whose type the document took
-    (``decider``), x conflict when another page of that document is sure (>= good) of
-    another L1; specialty from the encounter's first page; DOS from the document's dated
-    page (none for a default date: a business rule, nothing to doubt); encounter type
-    from the encounter's first page; member, provider, blank/junk and handwriting from
-    the page itself (blank/junk: every page's verdict, Main too). Values with no
-    confidence are left out."""
+    """Each Final value's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md section 12),
+    from the page that decided it (the anchor): the anchor keeps its own; every other page
+    of the document carries the anchor's x ``carried_factor`` (0.90). Page type and
+    codability from the page whose type the document took (``decider``); a page rules 7 / 8
+    re-placed under the document's L1 (``replaced``: a lab page inside a Progress Note) reads
+    ``confidence.flipped``. Specialty and encounter type from the encounter's first page; DOS
+    from the document's dated page (none for a default date). Member name, DOB and member ID
+    each their own (``member_fields``; a row without them: the page's single member
+    confidence for each value it has). Provider, blank / junk and handwriting from the page
+    itself (blank / junk: every page's verdict, Main too). Values with no confidence are
+    left out."""
     out: dict[str, Optional[float]] = {}
     if page_type:
-        kind = classification.get(decider) or {}
-        family = axes.family_of(kind)
-        rivals = [
-            pid for pid in type_pages
-            if pid != decider and axes.family_of(classification.get(pid) or {}) not in ("", family)
-            and conf.band(_number((classification.get(pid) or {}).get("confidence"))) == conf.GOOD
-        ]
-        out["page_type"] = conf.score(_number(kind.get("confidence")), "conflict" if rivals else "")
-        # Codability: the axes' own (as sure as the L1), with the page's doubts (handwritten,
-        # thin text) carried over from the page type's; else the page type's.
-        stored = axes.stored(kind)
-        path, cod = _number(stored.get("page_type_confidence")), _number(stored.get("codeability_confidence"))
-        base = _number(kind.get("confidence"))
-        out["codability"] = (
-            conf.score(min(1.0, base * cod / path), "conflict" if rivals else "")
-            if base is not None and cod is not None and path else out["page_type"]
-        )
+        if replaced:
+            out["page_type"] = conf.flipped()
+        else:
+            out["page_type"] = _own_or_carried(
+                page_id, decider, _number((classification.get(decider) or {}).get("confidence")))
+        # Codability is a lookup from the page type: the same confidence.
+        out["codability"] = out["page_type"]
     if specialty_page is not None:
-        out["specialty"] = _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence"))
+        out["specialty"] = _own_or_carried(
+            page_id, specialty_page,
+            _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence")))
     if dos_page is not None:
-        out["dos"] = _number((dos.get(dos_page) or {}).get("confidence"))
+        out["dos"] = _own_or_carried(page_id, dos_page, _number((dos.get(dos_page) or {}).get("confidence")))
     encounter = encounters.get(encounter_page) or {}
-    out["encounter_type"] = _number(encounter.get("confidence")) if _visit_setting(encounter.get("encounter_type")) else None
-    out["member"] = _number((members.get(page_id) or {}).get("confidence"))
+    out["encounter_type"] = (
+        _own_or_carried(page_id, encounter_page, _number(encounter.get("confidence")))
+        if _visit_setting(encounter.get("encounter_type")) else None
+    )
+    member = members.get(page_id) or {}
+    if member_fields is None:
+        # No extraction staging to read the fields' own confidences from: the row's one value
+        # for each identifier it has.
+        single = _number(member.get("confidence"))
+        member_fields = {
+            field: single if member.get(column) not in (None, "") else None
+            for field, column in (("name", "extracted_name"), ("dob", "extracted_dob"),
+                                  ("member_id", "extracted_member_id"))
+        }
+    for field, key in MEMBER_CONFIDENCE_KEYS.items():
+        out[key] = member_fields.get(field)
     out["provider"] = provider_confidence
     # Every page's verdict, Main included: a page kept Main on a weak verdict is flagged too.
     out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
     out["handwriting"] = _number((quality.get(page_id) or {}).get("hw_confidence"))
     return {k: round(v, 4) for k, v in out.items() if v is not None}
+
+
+def _anchor(type_pages: list[int], page_type: Optional[str], page_subtype: Optional[str],
+            classification: dict[int, dict[str, Any]]) -> int:
+    """The page the document's Final page type came from: its first page of that L1."""
+    l1 = path_of(page_type, page_subtype)[0]
+    return next((pid for pid in type_pages if axes.family_of(classification.get(pid) or {}) == l1), type_pages[0])
 
 
 def review_fields(confidences: dict[str, float]) -> list[str]:
@@ -262,7 +297,7 @@ def page_texts(conn: Any, chart_id: int, pages: list[dict[str, Any]], quality: d
 
 
 def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any], *,
-                text: Optional[str] = None, signed: bool = False) -> FinalPage:
+                text: Optional[str] = None, signed: bool = False, weight: Optional[float] = None) -> FinalPage:
     return FinalPage(
         page_id=page_id,
         page_type=kind.get("page_type"),
@@ -278,7 +313,8 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any], *,
         document_seq=link.get("document_seq"),
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
-        confidence=_number(kind.get("confidence")),
+        # The pre-2026-11-14 confidence: the vote weight (no decision changes with the new one).
+        confidence=weight if weight is not None else axes.decision_confidence(kind),
         sections=note_sections(text),
         signed=signed,
     )
@@ -298,6 +334,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             continuity = get_continuity_map(conn, chart_id)
             texts = page_texts(conn, chart_id, ctx.pages, quality)
         signatures = _signatures(provider_rows)
+        from modules.extraction import staging as extraction_staging
+        from modules.member.stage import member_field_confidences
+
+        # Member name / DOB / member ID confidences from the extraction rows they came from.
+        staged = extraction_staging.read(ctx.chart_name)
         # 2026-11-02 (user): a page junked after page type / DOS / member ran on it (continuity's
         # short page contained in a nearby page) shows what any blank / junk page shows:
         # none of those stages' values.
@@ -336,10 +377,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for pid in document_pages:
                 carried[pid] = finals
         specialty_of = encounter_specialties(documents, classification)
+        # An Invoice page's vote weight is its blank / junk verdict's older number (as before).
+        junk_weights = blank_junk_weights(ctx.chart_name)
         final_pages = {
             page["id"]: _final_page(
                 page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {},
                 text=texts.get(page["id"]), signed=bool((signatures.get(page["id"]) or {}).get("signature_present")),
+                weight=junk_weights.get(page["page_name"])
+                if (classification.get(page["id"]) or {}).get("decided_by") == INVOICE_DECIDED_BY else None,
             )
             for page in ctx.pages
         }
@@ -446,7 +491,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             row["confidences"] = final_confidences(
                 page_id,
                 page_type=verdict.page_type,
-                decider=page_id if verdict.source == "page" else type_pages[0],
+                decider=page_id if verdict.continuation_rule != "agreed" else _anchor(
+                    type_pages, verdict.page_type, verdict.page_subtype, classification),
+                replaced=verdict.source in ("continuation", "embedded"),
+                member_fields=(
+                    member_field_confidences(member, staged.page(page["page_name"])) if staged is not None and member
+                    else None
+                ),
                 type_pages=type_pages,
                 specialty_page=in_document[0] if kind and with_specialty else None,
                 dos_page=dated,

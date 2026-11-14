@@ -101,13 +101,15 @@ def _classify_hw(image_path: Path) -> tuple[str, float | None, str, dict[str, An
         tags["document_type"] = tags["document_type"] or hw_label
         # Not a column: stage 1 files it with the other measured values' confidences.
         tags["_visibility_confidence"] = page.visibility_confidence
+        # The model's own type probability (before the handwritten-share rule): the area's.
+        tags["_area_confidence"] = getattr(page, "model_confidence", None)
         return hw_label, conf_out, method_s, tags
     except Exception as exc:
         logger.warning("HW classify fallback for %s: %s", image_path, exc)
-        # Nothing judged the page: a stand-in, flagged (0.5 x degraded).
+        # Nothing judged the page: a stand-in default, flagged (2026-11-14: confidence.backup).
         from modules import confidence as conf
 
-        return "printed", conf.score(0.5, "degraded"), "fallback", {"document_type": "printed"}
+        return "printed", conf.backup(), "fallback", {"document_type": "printed"}
 
 
 def _review_required(quality_tag: str | None, tags: dict[str, Any]) -> bool:
@@ -530,6 +532,7 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
         use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])
         hw_label, hw_conf, hw_method, tags = _classify_hw(scored_path)
         visibility_conf = tags.pop("_visibility_confidence", None)
+        area_conf = tags.pop("_area_confidence", None)
         quality = _apply_quality_postprocess(
             _measure_quality(scored_path), tags.get("document_type")
         )
@@ -544,7 +547,8 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
                     "mirrored": rot.get("orientation_confidence"),
                     "tilt": rot.get("tilt_confidence"),
                     "visibility": visibility_conf,
-                    "handwritten_area": hw_conf if tags.get("handwritten_area_pct") is not None else None,
+                    "handwritten_area": (area_conf if area_conf is not None else hw_conf)
+                    if tags.get("handwritten_area_pct") is not None else None,
                 }.items() if v is not None
             },
         }

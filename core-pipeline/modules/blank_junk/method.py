@@ -48,8 +48,13 @@ for people: docs/specials/BLANK_JUNK_LOGIC.md.
 
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
-Confidence: R1 1.0, R2 0.99, R3 0.95, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
-probability for its verdict. Thresholds live in ``resources/canon/blank_junk_context_canon.json``
+Confidence (2026-11-14, user; docs/specials/CONFIDENCE_LOGIC.md section 12, ``verdict_confidence``):
+the DistilBERT service's raw probability for the verdict's class (Main p(keep), Blank p(blank),
+Junk p(junk); an Invoice kept Main p(junk)) when the model's top class agrees; ``confidence.flipped``
+when a rule or the service's veto went against it; ``confidence.backup`` when no model ran. No ink /
+stage-1 Blank / no text: 1.0 (measured); the other pass-1 text-pattern rules: ``confidence.pass1_rule``
+(0.95). The older rule strengths (RULE_SUPPORT, rule_strength) are kept as ``Verdict.strength``, the
+weight continuity reads for junk runs, so no decision changes. Thresholds live in ``resources/canon/blank_junk_context_canon.json``
 (``distilbert``), which reloads on change.
 """
 from __future__ import annotations
@@ -105,7 +110,8 @@ RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 # and DOB, which must not rescue it as a face sheet. These groups are also the R3 card check.
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
-# How strongly each rule backs its verdict (modules/confidence.py). R1-R2 judge a page
+# How strongly each rule backs its verdict: the pre-2026-11-14 confidence, now only the
+# ``Verdict.strength`` weight (rule_strength), never the stored confidence. R1-R2 judge a page
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
@@ -500,6 +506,9 @@ class Verdict:
     rule: str
     reason: str
     votes: dict[str, Any] = field(default_factory=dict)
+    # The rule-strength value the confidence was before 2026-11-14 (rule_strength): kept as the
+    # weight continuity gives a junk run, so the new confidences change no decision.
+    strength: Optional[float] = None
 
     @property
     def is_junk(self) -> bool:
@@ -592,9 +601,27 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
     )
 
 
-def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optional[float]) -> float:
-    """A rule's verdict confidence (modules/confidence.py). R1-R2 (no text to read):
-    the rule's strength. R4 / R6: DistilBERT's probability for the verdict (p(keep) for
+def verdict_confidence(code: int, p_keep: Optional[float], p_junk: Optional[float],
+                       p_blank: Optional[float] = None, *, model_class: Optional[str] = None) -> float:
+    """How sure the verdict is (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the model's raw
+    probability for the verdict's class -- Main p(keep), Blank p(blank), Junk p(junk) -- when
+    that class is the model's top one; ``confidence.flipped`` when the model's top class is
+    another (a rule or a veto went against it); ``confidence.backup`` without the model.
+    ``model_class`` names the class the verdict stands for when it is not the code's own
+    (an Invoice kept Main is the model's junk call; the service's Blank filed Junk / Others
+    is its blank call)."""
+    if p_keep is None or p_junk is None:
+        return conf.backup()
+    probs = {"keep": float(p_keep), "junk": float(p_junk), "blank": float(p_blank or 0.0)}
+    mine = model_class or ("keep" if code == CODE_MAIN else "blank" if code == CODE_BLANK else "junk")
+    if max(probs, key=probs.get) != mine:
+        return conf.flipped()
+    return conf.chosen(probs[mine], module="blank_junk")
+
+
+def rule_strength(code: int, rule: str, p_keep: Optional[float], p_junk: Optional[float]) -> float:
+    """A rule's verdict confidence before 2026-11-14, kept as ``Verdict.strength`` (the
+    junk-run weight continuity reads). R1-R2 (no text to read): the rule's strength. R4 / R6: DistilBERT's probability for the verdict (p(keep) for
     Main, p(junk) otherwise) lifted by the rule's strength, times ``keywords_disagree``
     when DistilBERT itself says the other side (>= 0.5); without DistilBERT the strength
     times ``no_model``."""
@@ -607,6 +634,13 @@ def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optio
         return conf.score(strength, "no_model", module="blank_junk")
     return conf.score(conf.backed(p, strength), "keywords_disagree" if (other or 0.0) >= 0.5 else "",
                       module="blank_junk")
+
+
+def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optional[float],
+                    p_blank: Optional[float] = None) -> float:
+    """A rule's verdict confidence (2026-11-14): ``verdict_confidence``; an Invoice kept
+    Main is the model's junk call (p(junk))."""
+    return verdict_confidence(code, p_keep, p_junk, p_blank, model_class="junk" if code == CODE_INVOICE else None)
 
 
 # A cover mark on a page of fewer than COVER_MAX_WORDS words is a cover page, both passes
@@ -651,6 +685,7 @@ def decide(inputs: PageInputs) -> Verdict:
     bert = inputs.bert
     p_junk = float(bert["p_junk"]) if bert else None
     p_keep = float(bert["p_keep"]) if bert else None
+    p_blank = float(bert.get("p_blank") or 0.0) if bert else None
     service = (bert or {}).get("service")
     votes: dict[str, Any] = {
         "pass": inputs.pass_no,
@@ -667,39 +702,50 @@ def decide(inputs: PageInputs) -> Verdict:
     if inputs.document_type == "visual" and not visual:
         votes["visual"] = f"document_type visual, but {words} words >= {visual_max_words()}: not Visual"
 
-    def ruled(code: int, rule: str, reason: str, confidence: Optional[float] = None) -> Verdict:
+    def ruled(code: int, rule: str, reason: str, strength: Optional[float] = None,
+              confidence: Optional[float] = None) -> Verdict:
+        """``strength``: the pre-2026-11-14 value (rule_strength when None); ``confidence``:
+        the new one (verdict_confidence when None)."""
         votes["rule"] = rule
-        value = rule_confidence(code, rule, p_keep, p_junk) if confidence is None else confidence
-        return Verdict(code, float(value), rule, reason, votes)
+        old = rule_strength(code, rule, p_keep, p_junk) if strength is None else strength
+        value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
+        return Verdict(code, float(value), rule, reason, votes, strength=round(float(old), 4))
 
     # ---- blank, placeholder, cover marks, tiny: both passes (a handwritten page skips pass 1)
     chars = len(re.sub(r"\s", "", text))
     votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
+    # Measured facts (no ink, stage-1 Blank, no text): 1.0; the text-pattern rules: pass1_rule
+    # (0.95), in either pass (2026-11-14, user, CONFIDENCE_LOGIC.md 12.4.5).
     if inputs.no_ink:
-        return ruled(CODE_BLANK, "R1", "R1 blank: no ink")
+        return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
     if inputs.document_type == "blank":
-        return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank")
+        return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
     if not visual and chars == 0:
-        return ruled(CODE_BLANK, "R1", "R1 blank: no text")
+        return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
     if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
-        return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters")
+        return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters",
+                     confidence=conf.pass1_rule())
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
-        return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank")
+        return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank",
+                     confidence=conf.pass1_rule())
     mark = _cover_mark(text)
     if mark is not None:
         return ruled(_junk_code("Cover Page"), "R1",
-                     f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page")
+                     f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page",
+                     confidence=conf.pass1_rule())
     end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
     if end is not None:
         return ruled(_junk_code("Cover Page"), "R1E",
-                     f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0)
+                     f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
+                     confidence=conf.pass1_rule())
     if not visual and chars < MIN_TEXT_CHARS:
-        return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others")
+        return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
+                     confidence=conf.pass1_rule())
     if not pass2:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
-                     conf.score(0.5, "degraded"))
+                     conf.score(0.5, "degraded"), confidence=conf.backup())
 
     # ---- pass 2
     # 1. card (printed or visual): an ID / insurance card, junked at 5 below.
@@ -762,7 +808,8 @@ def decide(inputs: PageInputs) -> Verdict:
     # 7-9. the service's decision.
     if service is None:
         votes["review_required"] = True
-        return ruled(CODE_MAIN, "R5", "R5: page classifier unavailable -> Main (review)", conf.score(0.5, "degraded"))
+        return ruled(CODE_MAIN, "R5", "R5: page classifier unavailable -> Main (review)", conf.score(0.5, "degraded"),
+                     confidence=conf.backup())
     why = _service_why(service)
     if service.get("review_required"):
         votes["review_required"] = True
@@ -777,14 +824,21 @@ def decide(inputs: PageInputs) -> Verdict:
         near_card = subtype == "Invoice" and card is not None and bool(card.card_type)
         if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
             subtype = "Cards"
+        # The card rule's near miss turning the model's Invoice into Cards goes against the
+        # model (flipped); the service's own insurance-ID tag is the model's call.
         verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
-                        conf.score(float(service["confidence"])))
+                        conf.score(float(service["confidence"])),
+                        confidence=conf.flipped() if near_card else None)
         # An invoice: Main (Invoice page), except a terms page (T&C ...) -> Others.
         return _keep_invoice(verdict, inputs)
     if service["flag"] == "BLANK":
         # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
+        # The model's blank call, filed Junk / Others: its p(blank).
         return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
-                     conf.score(float(service["confidence"])))
+                     conf.score(float(service["confidence"])),
+                     confidence=verdict_confidence(CODE_OTHERS, p_keep, p_junk, p_blank, model_class="blank"))
+    # KEEP: p(keep) when the model's top class is keep; the service's vetoes (keep veto, weak
+    # JUNK -> KEEP, retention) turned the model round: flipped.
     return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(float(service["confidence"])))
 
 
@@ -874,11 +928,18 @@ def _keep_clinical_content(verdict: Verdict, inputs: PageInputs) -> Verdict:
         return verdict
     verdict.votes["clinical_content_kept"] = verdict.reason
     verdict.votes["rule"] = CLINICAL_CONTENT_RULE
+    p_keep, p_junk, p_blank = _model_probs(inputs)
+    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, CLINICAL_CONTENT_RULE, p_keep, p_junk, p_blank),
+                   CLINICAL_CONTENT_RULE, f"{verdict.reason}; {why} -> Main (never junk)", verdict.votes,
+                   strength=rule_strength(CODE_MAIN, CLINICAL_CONTENT_RULE, p_keep, p_junk))
+
+
+def _model_probs(inputs: PageInputs) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """The page's raw p(keep), p(junk), p(blank); None each without the model."""
     bert = inputs.bert or {}
-    p_keep = float(bert["p_keep"]) if bert else None
-    p_junk = float(bert["p_junk"]) if bert else None
-    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, CLINICAL_CONTENT_RULE, p_keep, p_junk),
-                   CLINICAL_CONTENT_RULE, f"{verdict.reason}; {why} -> Main (never junk)", verdict.votes)
+    if not bert:
+        return None, None, None
+    return float(bert["p_keep"]), float(bert["p_junk"]), float(bert.get("p_blank") or 0.0)
 
 
 # 2026-11-08 (user): a contents page -- "Index" / "Contents" as a title and page numbers -- is
@@ -966,17 +1027,18 @@ def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
     terms = terms_page(inputs)
     if terms is not None:
         verdict.votes["invoice_not_kept"] = f"terms page ('{terms}')"
-        return Verdict(CODE_OTHERS, verdict.confidence, verdict.rule,
-                       f"{verdict.reason}; terms page ('{terms}') -> Junk / Others", verdict.votes)
+        # The terms rule moved the model's Invoice to Junk / Others: flipped (2026-11-14).
+        return Verdict(CODE_OTHERS, conf.flipped(), verdict.rule,
+                       f"{verdict.reason}; terms page ('{terms}') -> Junk / Others", verdict.votes,
+                       strength=verdict.strength)
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE
-    bert = inputs.bert or {}
-    p_keep = float(bert["p_keep"]) if bert else None
-    p_junk = float(bert["p_junk"]) if bert else None
+    p_keep, p_junk, p_blank = _model_probs(inputs)
     # Scored as the invoice call it is (p(junk)), not as a keep the model disagrees with.
-    return Verdict(CODE_MAIN, rule_confidence(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk), INVOICE_RULE,
+    return Verdict(CODE_MAIN, rule_confidence(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk, p_blank), INVOICE_RULE,
                    f"{verdict.reason}; {INVOICE_MARK} -> Main (Page Type {INVOICE_PAGE_TYPE} / "
-                   f"{INVOICE_PAGE_SUBTYPE})", verdict.votes)
+                   f"{INVOICE_PAGE_SUBTYPE})", verdict.votes,
+                   strength=rule_strength(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk))
 
 
 def lab_result_words(inputs: PageInputs) -> Optional[list[str]]:
@@ -1006,10 +1068,9 @@ def _keep_lab(verdict: Verdict, inputs: PageInputs) -> Verdict:
         return verdict
     verdict.votes["lab_kept"] = verdict.reason
     verdict.votes["rule"] = "LAB"
-    bert = inputs.bert or {}
-    p_keep = float(bert["p_keep"]) if bert else None
-    p_junk = float(bert["p_junk"]) if bert else None
-    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "LAB", p_keep, p_junk), "LAB",
-                   f"{verdict.reason}; lab result ({' / '.join(found)}) -> Main (never junk)", verdict.votes)
+    p_keep, p_junk, p_blank = _model_probs(inputs)
+    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "LAB", p_keep, p_junk, p_blank), "LAB",
+                   f"{verdict.reason}; lab result ({' / '.join(found)}) -> Main (never junk)", verdict.votes,
+                   strength=rule_strength(CODE_MAIN, "LAB", p_keep, p_junk))
 
 

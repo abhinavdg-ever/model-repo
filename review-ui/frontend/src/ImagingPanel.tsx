@@ -267,6 +267,18 @@ function fmtConfidence(
   return `${pct.toFixed(1)}%`;
 }
 
+/** The image quality score (2026-11-14, user: a measurement, not a confidence): "score 85/100",
+ * never in the confidence colours (ConfidenceCell only colours "NN.N%"). */
+function fmtMeasurement(
+  value: number | null | undefined,
+  processed = true,
+  opts?: { skipped?: boolean },
+): string {
+  if (opts?.skipped || !processed || value === null || value === undefined) return "NA";
+  const score = value <= 1 ? value * 100 : value;
+  return `score ${score.toFixed(0)}/100`;
+}
+
 /** One scale for every confidence (core-pipeline/modules/confidence.py). */
 const GOOD_AT = 80;
 const REVIEW_BELOW = 50;
@@ -1513,9 +1525,9 @@ function GtMarks({ bits }: { bits: GtBit[] }) {
 }
 
 /** A score under its value in Doc Summary; nothing when there is none. */
-function ConfLine({ value }: { value: string }) {
+function ConfLine({ value, label = "Conf" }: { value: string; label?: string }) {
   if (value === "NA") return null;
-  return <span className="imaging-conf-line">Conf: {value}</span>;
+  return <span className="imaging-conf-line">{label}: {value}</span>;
 }
 
 function GtCell({ text, bits }: { text: string; bits: GtBit[] }) {
@@ -1803,7 +1815,10 @@ function PageDetails({
   const skipped = isBlankJunkPage(page);
   const skip = skipped ? { skipped: true } : undefined;
   const memberShownSkip = memberSkip(page);
-  const memberConf = fmtConfidence(page.memberConfidence, sections.member, memberShownSkip);
+  // 2026-11-14 (user): name, DOB and member ID each carry their own confidence (Final);
+  // rows written before that show the page's one member confidence on all three.
+  const memberConfOf = (key: string) =>
+    fmtConfidence(finalOr(page, key, page.memberConfidence), sections.member, memberShownSkip);
   // Scored against the manifest: a name or DOB that is not the member's counts as none
   // (2026-10-27, user). The values shown stay as read.
   const scoredPage = asManifestMember(page, manifest);
@@ -2029,7 +2044,7 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(withMemberMatch(fmt(page.memberName && memberDisplayName(page.memberName), sections.member, memberShownSkip), page.memberName, scoredPage.memberName), memberConf, {
+          sameValue(withMemberMatch(fmt(page.memberName && memberDisplayName(page.memberName), sections.member, memberShownSkip), page.memberName, scoredPage.memberName), memberConfOf("member_name"), {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
@@ -2037,7 +2052,7 @@ function PageDetails({
             key: true,
             compare: memberMark(scoredPage.memberName, page.memberName),
           }),
-          sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, memberShownSkip)), page.memberDob, scoredPage.memberDob), memberConf, {
+          sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, memberShownSkip)), page.memberDob, scoredPage.memberDob), memberConfOf("member_dob"), {
             id: "dob",
             label: "Member DOB",
             truth: bits.memberDob,
@@ -2047,7 +2062,7 @@ function PageDetails({
           }),
           // 2026-11-01 (user): every accepted, selected Member ID scored above 0.9 in
           // extraction.json, "Key: Value" one per line; else the member stage's own.
-          sameValue(fmt(memberIdShown, sections.member, memberShownSkip), memberConf, {
+          sameValue(fmt(memberIdShown, sections.member, memberShownSkip), memberConfOf("member_id"), {
             id: "member_id",
             label: "Member ID",
             presence: true,
@@ -2073,7 +2088,7 @@ function PageDetails({
             label: "Visibility",
             choices: VISIBILITY_CHOICES,
           }),
-          sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtConfidence(page.pageQualityConfidence, qualityKnown), {
+          sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtMeasurement(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
             label: "Quality",
             choices: QUALITY_CHOICES,
@@ -2127,7 +2142,7 @@ function PageDetails({
             // matches a ground truth of Yes (Junk / Blank) (2026-11-03, user).
             return { ...row, compare: blankJunkCompare(stored, stored, page.isDuplicate === true) };
           })(),
-          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence), sections.junk), {
+          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence, page.isDuplicateContent), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
@@ -2465,7 +2480,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
             <tr key={`${page.pageNumber}-${page.fileName}`}>
               <td>{page.pageNumber}</td>
               <td>{page.handwrittenOrPrinted || page.documentType || NOT_FOUND}</td>
-              <td>{quality ? `${quality} (${fmtConfidence(page.pageQualityConfidence)})` : NOT_FOUND}</td>
+              <td>{quality ? `${quality} (${fmtMeasurement(page.pageQualityConfidence)})` : NOT_FOUND}</td>
               <td>{page.isVisible == null ? NOT_FOUND : page.isVisible ? "Yes" : "No"}</td>
               <td>{reasons.join(", ")}</td>
             </tr>
@@ -2939,7 +2954,7 @@ function DocSummary({
               <td className="imaging-mono">{p.fileName}</td>
               <td>
                 <GtCell text={fmt(p.memberName && memberDisplayName(p.memberName), sections.member, mskip)} bits={bits.memberName} />
-                <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, mskip)} />
+                <ConfLine value={fmtConfidence(finalOr(p, "member_name", p.memberConfidence), sections.member, mskip)} />
               </td>
               <td>
                 <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, mskip))} bits={bits.memberDob} />
@@ -2953,7 +2968,7 @@ function DocSummary({
                   p.pageQualityTag,
                   sections.quality ?? sections.hw,
                 )}
-                <ConfLine value={fmtConfidence(p.pageQualityConfidence, sections.hw || sections.rotation)} />
+                <ConfLine value={fmtMeasurement(p.pageQualityConfidence, sections.hw || sections.rotation)} label="Score" />
               </td>
               <td>
                 <GtCell
@@ -2989,7 +3004,7 @@ function DocSummary({
                 <ConfLine
                   value={fmtConfidence(
                     p.isDuplicate
-                      ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence, p.isPartialDuplicate, p.duplicateConfidence)
+                      ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence, p.isPartialDuplicate, p.duplicateConfidence, p.isDuplicateContent)
                       : p.pageTypeConfidence,
                     sections.junk,
                   )}

@@ -22,9 +22,10 @@ evidence a visit has and decides from that alone, so twenty passing mentions of
      Discharge Summary -> Inpatient). The encounter's first page counts twice;
      Not Applicable wins only when every vote is Not Applicable; else the
      weighted majority of the settings wins (a tie: the first page's vote). No vote at
-     all: the canon default. Confidence: the encounter model's probability for the
-     setting, lifted by the keyword evidence behind it and penalised for doubt
-     (modules/confidence.py; ``page_vote``).
+     all: the canon default. Confidence (2026-11-14, CONFIDENCE_LOGIC.md section 12): the
+     encounter model's probability for the chosen setting on the deciding page; a family
+     rule, keywords only or the default -> backup (0.40); a vote against the model's top
+     -> flipped (0.30) (``vote_confidence``).
   4. Stamp every page of the visit with the answer.
 
 Every phrase, tier and number lives in ``encounter_canon.json``.
@@ -473,6 +474,9 @@ class Vote:
     # How sure this page is of its setting (``vote_confidence``). The encounter's
     # confidence is built from these (first_page_decision, tally).
     confidence: float = 0.0
+    # The encounter model's probability per setting on this page ({} without one): tally
+    # reads the deciding page's top (2026-11-14).
+    model_probs: dict[str, float] = field(default_factory=dict)
 
 
 F2F = "outpatient_f2f"
@@ -497,24 +501,29 @@ def setting_probs(model: Any, canon: Canon) -> dict[str, float]:
 
 def vote_confidence(setting: str, probs: dict[str, float], *, support: Optional[float] = None,
                     reasons: Iterable[str] = ()) -> float:
-    """How sure one page is of ``setting`` (modules/confidence.py): the model's
-    probability for it, lifted by the keyword ``support`` behind it (a tier 1 page type
-    1.0, a tier 2 phrase 0.8, a confirm word 0.5), times ``keywords_disagree`` when the
-    model's own answer (>= 0.5) is another setting. Without a model answer: the support
-    times ``no_model`` (0.5 when there is none)."""
-    reasons = list(reasons)
-    if not probs:
-        return conf.score(0.5 if support is None else support, "no_model", *reasons, module="encounter")
-    p = probs.get(setting, 0.0)
+    """How sure one page is of ``setting`` (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the
+    encounter model's own probability for it when it is the model's top setting;
+    ``confidence.flipped`` when the model's top is another setting (the keywords' vote went
+    against it); ``confidence.backup`` without a model answer (keywords only) or for a
+    family default (``fallback`` in ``reasons``). ``support`` (the keyword tier's strength)
+    no longer lifts it; kept for callers."""
+    del support
+    if "fallback" in set(reasons) or not probs:
+        return conf.backup()
     top = max(probs, key=probs.get)
-    if support is not None:
-        if top != setting and probs[top] >= 0.5:
-            reasons.append("keywords_disagree")
-        p = conf.backed(p, support)
-    return conf.score(p, *reasons, module="encounter")
+    if top != setting:
+        return conf.flipped()
+    return conf.chosen(probs.get(setting, 0.0), module="encounter")
 
 
 def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vote:
+    """The page's vote (``_page_vote``) with the encounter model's setting probabilities."""
+    vote = _page_vote(page, canon, weight=weight)
+    vote.model_probs = setting_probs(page.get("encounter_model"), canon)
+    return vote
+
+
+def _page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vote:
     """The page's own setting: Not Applicable for a family encounter type does not apply
     to (a lab report), else its strongest evidence (tier 1, then tier 2), else the
     encounter model's answer (``page["encounter_model"]``: class, confidence) when the
@@ -577,18 +586,16 @@ def family_decision(family: str, first: dict[str, Any], canon: Canon) -> Optiona
     for a family encounter type does not apply to (a lab report), whatever its pages vote.
     None when the family leaves it to the pages (Progress Note) or is unknown.
 
-    Confidence: the model's probability for the setting, fully backed by the document type."""
+    Confidence (2026-11-14): a rule decided it -- ``confidence.backup``."""
     key = family.strip().casefold()
     if not key or key == "unknown":
         return None
-    probs = setting_probs(first.get("encounter_model"), canon)
     fixed = canon.family_settings.get(key)
     if fixed:
-        return Decision(fixed, "family", vote_confidence(fixed, probs, support=1.0), False, family,
+        return Decision(fixed, "family", conf.backup(), False, family,
                         reason=f"{family}: always {canon.labels.get(fixed, fixed)}")
     if canon.applies_to and key not in canon.applies_to:
-        return Decision(canon.not_applicable, "not_applicable",
-                        vote_confidence(canon.not_applicable, probs, support=1.0), False, family,
+        return Decision(canon.not_applicable, "not_applicable", conf.backup(), False, family,
                         reason=f"{family}: encounter type does not apply")
     return None
 
@@ -598,8 +605,8 @@ def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
     type, a tier 2 phrase, or the encounter model; 2026-10-25, user). None when it does
     not (Not Applicable, its family's default, or nothing): then the pages vote.
 
-    Confidence: the first page's own (``vote_confidence``), times the ``conflict`` penalty
-    when another page with evidence of its own says a different setting."""
+    Confidence (2026-11-14): the first page's own (``vote_confidence``: its model probability,
+    backup or flipped); another page that disagrees no longer lowers it."""
     if not votes or votes[0].decided_by not in EVIDENCE or not votes[0].setting:
         return None
     first = votes[0]
@@ -608,7 +615,7 @@ def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
     return Decision(
         setting=first.setting,
         decided_by="first_page",
-        confidence=conf.score(first.confidence, "conflict" if conflict else ""),
+        confidence=first.confidence,
         conflict=conflict,
         matched_keyword=first.matched_keyword,
         reason=f"first page: {first.decided_by}",
@@ -621,9 +628,10 @@ def tally(votes: list[Vote], canon: Canon) -> Decision:
     pages with evidence of their own (tier 1, tier 2, the model) vote when any has it;
     otherwise the family defaults vote (Progress Note -> F2F). Not Applicable wins only
     when every vote is Not Applicable; otherwise those votes are set
-    aside. A tie goes to the first page's vote, then the setting priority. Confidence = the
-    winner's share of the weight counted times the weighted mean confidence of the pages
-    that voted for it. No vote at all: the canon default (low confidence)."""
+    aside. A tie goes to the first page's vote, then the setting priority. Confidence
+    (2026-11-14): the deciding page's -- the first page that voted for the winner -- own
+    vote confidence; ``confidence.flipped`` when the first page's model's top is another
+    setting (the vote went against it). No vote at all: the canon default."""
     if votes:
         votes[0].weight = canon.first_page_weight
     # Pages with evidence of their own vote; a family default (Progress Note -> F2F) is
@@ -644,14 +652,16 @@ def tally(votes: list[Vote], canon: Canon) -> Decision:
     opener = votes[0].setting
     winner = opener if opener in tied else min(tied, key=lambda s: canon.priority.get(s, 999))
     keyword = next((v.matched_keyword for v in votes if v.setting == winner and v.matched_keyword), "")
-    # Confidence: the winner's share of the weight times how sure its voters are (the
-    # weighted mean of their own confidences).
     backers = [v for v in counted if v.setting == winner]
-    strength = sum(v.weight * v.confidence for v in backers) / max(1e-9, sum(v.weight for v in backers))
+    first_probs = votes[0].model_probs if votes else {}
+    if first_probs and max(first_probs, key=first_probs.get) != winner:
+        confidence = conf.flipped()
+    else:
+        confidence = backers[0].confidence if backers else conf.backup()
     return Decision(
         setting=winner,
         decided_by="vote",
-        confidence=round(best / sum(weights.values()) * strength, 4),
+        confidence=round(confidence, 4),
         conflict=len(weights) > 1,
         matched_keyword=keyword,
         reason="; ".join(f"{s} {w:g}" for s, w in sorted(weights.items(), key=lambda kv: -kv[1])),
@@ -687,9 +697,7 @@ def classify_pages(
         if not decision.setting and canon.default_setting:
             # No page voted (no evidence, no family default): the default, a fallback.
             decision = Decision(
-                canon.default_setting, "default",
-                vote_confidence(canon.default_setting, setting_probs(first.get("encounter_model"), canon),
-                                reasons=("fallback",)),
+                canon.default_setting, "default", conf.backup(),
                 False, "", reason=decision.reason,
             )
         evidence = Evidence()

@@ -19,10 +19,15 @@ from the names NER read out of the page's patient-name sentences, so with
 ``MEMBER_NER_ENABLED=false`` no page can be classified wrong_member and no
 document can be Rejected. That is recorded on every row (``ner_enabled``) and in
 the summary's decision_reason so a rules-only run is never read as a full one.
+
+Confidence (2026-11-14, docs/specials/CONFIDENCE_LOGIC.md section 12): name, DOB and member
+ID each have their own (``member_field_confidences``: the KV row's model score, backup or
+flipped); the page column keeps the lowest; the chart value is an agreement rate.
 """
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from datetime import date, datetime
 from typing import Any, Optional
@@ -125,55 +130,104 @@ def _iso_dob(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def _page_confidence(
-    page: Any, absent: Optional[float] = None, extracted: Optional[dict[str, Optional[float]]] = None,
-) -> Optional[float]:
-    """How sure the page's member status is (modules/confidence.py). Each identifier
-    read off the page (name, DOB, member ID) is evidence: its own confidence in the
-    extraction (``extracted``: the staged row's model probability backed by the rules,
-    2026-10-25, user) when the extraction read it, else ``field_support.rule`` /
-    ``field_support.ner``. The strongest is the base and each other one backs it
-    (``confidence.backed``). Verified and wrong member: that. Not verified
-    with identifiers that match nobody: that x ``fallback``. Nothing read: ``absent``,
-    how sure the extraction is that the page names no member (the weakest of its name,
-    DOB and member ID "not found"; 2026-10-25, user), else no confidence."""
-    support = conf.settings_for("member", {"field_support": {"rule": 0.6, "ner": 0.4}})["field_support"]
-    extracted = extracted or {}
-    found = [
-        float(
-            extracted[field_id] if source == "rule based" and extracted.get(field_id) is not None
-            else support["rule"] if source == "rule based" else support["ner"]
-        )
-        for field_id, value, source in (
-            ("name", page.detected_name, page.detection_source_name),
-            ("dob", page.detected_dob, page.detection_source_dob),
-            ("member_id", page.detected_member_id, page.detection_source_member_id),
-        )
-        if _clean(value)
-    ]
-    if page.db_page_status == "wrong_member" and not found:
-        found = [float(support["ner"])]  # another person's name in a patient-name sentence
-    if not found:
-        return absent
-    found.sort(reverse=True)
-    value = found[0]
-    for other in found[1:]:
-        value = conf.backed(value, other)
-    return conf.score(value, "fallback" if page.db_page_status == "not_verified" else "", module="member")
+MEMBER_FIELDS = (
+    # (field id in the extraction staging, PageResult / DB value, source, key source)
+    ("name", "name", "detected_name", "detection_source_name", "ner_key_source_name"),
+    ("dob", "dob", "detected_dob", "detection_source_dob", "ner_key_source_dob"),
+    ("member_id", "member_id", "detected_member_id", "detection_source_member_id", "ner_key_source_member_id"),
+)
 
 
-def _summary_confidence(result: Any, status: str, pages: dict[str, Optional[float]]) -> Optional[float]:
-    """How sure the chart's member decision is: the share of checked pages that agree
-    with it (verified pages for verified, wrong-member pages for failed) times the mean
-    confidence of those pages; times ``degraded`` without NER (no page can be found
-    wrong member). None when nothing was checked."""
+def _norm(field_id: str, value: Any) -> str:
+    text = str(value or "").strip()
+    if field_id == "dob":
+        from modules.extraction.util.dates import canonical_date
+
+        return canonical_date(text) if text else ""
+    return " ".join(re.findall(r"[a-z0-9]+", text.casefold()))
+
+
+def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str, Any]]:
+    """The staged extraction row the value was taken from: same value (a name: the value
+    contains it), the selected / accepted rows first. None when no row reads it (the rules'
+    whole-page find)."""
+    if staged_page is None:
+        return None
+    want = _norm(field_id, value)
+    if not want:
+        return None
+    rows = sorted(
+        (row for row in staged_page.rows(field_id) if isinstance(row, dict) and str(row.get("value") or "").strip()),
+        key=lambda row: (not row.get("selected"), not row.get("accepted")),
+    )
+    for row in rows:
+        got = _norm(field_id, row.get("value"))
+        if got == want or (field_id == "name" and want in got):
+            return row
+    return None
+
+
+def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, staged_page: Any) -> Optional[float]:
+    """One member identifier's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2):
+    the KV model_score of the extraction row it came from (``row_confidence``: rules only
+    -> backup, model vs rules -> flipped; a row the model turned down -> flipped). Read by
+    NER, by the manifest text search ("sentence: ..."), or by the rules with no staged row:
+    backup. Nothing read: None."""
+    value = _clean(value)
+    if not value:
+        return None
+    source = str(source or "").replace("_", " ").strip()
+    if source == "ner" or str(key_source or "").startswith("sentence:"):
+        return conf.backup()
+    row = _field_row(field_id, value, staged_page)
+    if row is None:
+        return conf.backup()
+    from modules.extraction.results import row_confidence
+
+    if row.get("model_score") not in (None, "") and not row.get("accepted", True):
+        return conf.flipped()  # used although the model turned it down
+    found = row_confidence(row)
+    return conf.backup() if found is None else found
+
+
+def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Optional[float]]:
+    """``{"name", "dob", "member_id"}`` -> each identifier's own confidence
+    (``_field_confidence``). ``page`` is a PageResult or a member_extraction_results row
+    (``extracted_*`` / ``detection_source_*`` keys)."""
+    def get(obj: Any, *names: str) -> Any:
+        for name in names:
+            found = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+            if found not in (None, ""):
+                return found
+        return None
+
+    out: dict[str, Optional[float]] = {}
+    for field_id, short, detected, source, key_source in MEMBER_FIELDS:
+        value = get(page, detected, f"extracted_{short}")
+        if isinstance(value, date):
+            value = value.isoformat()
+        out[field_id] = _field_confidence(field_id, value, get(page, source), get(page, key_source), staged_page)
+    return out
+
+
+def _page_confidence(page: Any, staged_page: Any = None) -> Optional[float]:
+    """``member_extraction_results.confidence`` (2026-11-14): the lowest of the page's name,
+    DOB and member ID confidences (``member_field_confidences``), so the column keeps one
+    number; None when nothing was read. Final keeps the three apart
+    (``imaging_final.confidences.member_name`` / ``member_dob`` / ``member_id``)."""
+    return conf.weakest(member_field_confidences(page, staged_page).values())
+
+
+def _agreement_rate(result: Any, status: str) -> Optional[float]:
+    """The chart's member decision as an agreement rate (2026-11-14, user: not a
+    confidence): pages that agree with the decision (wrong-member pages for failed,
+    verified pages otherwise) / pages checked. The same number in the database
+    (``member_verification_summary.confidence``) and the CSV. None when nothing was checked."""
     if not result.pages_checked:
         return None
     agreeing = "wrong_member" if status == "failed" else "verified"
-    backers = [pages.get(p.page_name) for p in result.pages if p.db_page_status == agreeing]
-    share = len(backers) / result.pages_checked
-    strength = sum(v or 0.0 for v in backers) / len(backers) if backers else 0.0
-    return conf.score(share * strength, "" if result.ner_enabled else "degraded", module="member")
+    backers = sum(1 for p in result.pages if p.db_page_status == agreeing)
+    return round(backers / result.pages_checked, 4)
 
 
 def _ocr_text_map(conn: Any, chart_id: int) -> dict[int, str]:
@@ -271,7 +325,7 @@ def _extract_only_pages(
                     ner_key_source_dob=_clean(page.ner_key_source_dob),
                     ner_key_source_member_id=_clean(page.ner_key_source_member_id),
                     page_status="not_verified", page_verified=None,
-                    confidence=_page_confidence(page),
+                    confidence=_page_confidence(page, staged.page(page.page_name)),
                     provided_name=manifest.get("member_name"), provided_dob=provided_dob,
                     provided_external_member_id=manifest.get("external_member_id"),
                     other_names=None, matched_member_list_id=None,
@@ -295,7 +349,7 @@ def _extract_only_pages(
                 "ner_key_source_dob": page.ner_key_source_dob,
                 "ner_key_source_member_id": page.ner_key_source_member_id,
                 "page_status": "not_verified (blank / junk)", "page_verified": "",
-                "confidence": _page_confidence(page),
+                "confidence": _page_confidence(page, staged.page(page.page_name)),
                 "provided_name": manifest.get("member_name") or "", "provided_dob": provided_dob or "",
                 "provided_external_member_id": manifest.get("external_member_id") or "",
                 "matched": "", "ner_enabled": result.ner_enabled,
@@ -558,27 +612,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         by_page_no = {p["page_no"]: p["_page_id"] for p in engine_pages}
 
-        from modules.extraction.results import row_confidence
-
-        def _extracted(page_name: str) -> dict[str, Optional[float]]:
-            """The extraction's own confidence in each identifier it chose for the page."""
-            staged_page = staged.page(page_name)
-            if staged_page is None:
-                return {}
-            out: dict[str, Optional[float]] = {}
-            for field_id in ("name", "dob", "member_id"):
-                chosen = staged_page.selected(field_id)
-                out[field_id] = row_confidence(chosen[0]) if chosen else None
-            return out
-
-        def _absent(page_name: str) -> Optional[float]:
-            """The weakest "not found" of the page's name, DOB and member ID."""
-            staged_page = staged.page(page_name)
-            values = [
-                staged_page.absent.get(field_id)
-                for field_id in ("name", "dob", "member_id")
-            ] if staged_page is not None else []
-            return min((v for v in values if v is not None), default=None)
         provided_dob = manifest.get("member_dob")
         if isinstance(provided_dob, date):
             provided_dob = provided_dob.isoformat()
@@ -612,7 +645,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         ner_key_source_member_id=_clean(page.ner_key_source_member_id),
                         page_status=page.db_page_status,
                         page_verified=page.page_verified,
-                        confidence=_page_confidence(page, _absent(page.page_name), _extracted(page.page_name)),
+                        confidence=_page_confidence(page, staged.page(page.page_name)),
                         provided_name=manifest.get("member_name"),
                         provided_dob=provided_dob,
                         provided_external_member_id=manifest.get("external_member_id"),
@@ -643,7 +676,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "ner_key_source_member_id": page.ner_key_source_member_id,
                         "page_status": page.db_page_status,
                         "page_verified": page.page_verified,
-                        "confidence": _page_confidence(page, _absent(page.page_name), _extracted(page.page_name)),
+                        "confidence": _page_confidence(page, staged.page(page.page_name)),
                         "provided_name": manifest.get("member_name") or "",
                         "provided_dob": provided_dob or "",
                         "provided_external_member_id": manifest.get("external_member_id") or "",
@@ -671,8 +704,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 matched_member_list_id=manifest.get("id"),
                 matched_name=manifest.get("member_name"),
                 name_mode=result.name_mode or None,
-                confidence=_summary_confidence(
-                    result, final_status, {p.page_name: _page_confidence(p) for p in result.pages}),
+                confidence=_agreement_rate(result, final_status),
                 pages_checked=result.pages_checked,
                 pages_matched=result.pages_verified,
                 wrong_member_pages=result.pages_wrong_member,
@@ -691,11 +723,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "document_decision": result.db_document_decision,
                     "matched_name": manifest.get("member_name") or "",
                     "name_mode": result.name_mode,
-                    "confidence": (
-                        round(result.pages_verified / result.pages_checked, 4)
-                        if result.pages_checked
-                        else ""
-                    ),
+                    # An agreement rate, the database's number (2026-11-14).
+                    "confidence": _agreement_rate(result, final_status) if result.pages_checked else "",
                     "pages_checked": result.pages_checked,
                     "pages_matched": result.pages_verified,
                     "wrong_member_pages": result.pages_wrong_member,

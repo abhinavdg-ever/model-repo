@@ -501,3 +501,48 @@ def test_a_card_needs_no_name():
     inputs = PageInputs(text=UHC_CARD, pass_no=2, document_type="printed", text_area=0.3,
                         bert=bert(0.5))
     assert decide(inputs).code == classify.CODE_CARDS
+
+
+class TestVerdictConfidence2026_11_14:
+    """CONFIDENCE_LOGIC.md section 12: the model's raw p for the verdict's class; a rule or veto
+    against the model's top class -> flipped (0.30); no model -> backup (0.40); measured facts
+    1.0; pass-1 text-pattern rules 0.95. The older value stays as ``strength``."""
+
+    def test_measured_facts_and_pass1_rules(self):
+        assert run("", pass_no=1, no_ink=True).confidence == 1.0
+        assert run("", pass_no=1).confidence == 1.0  # no text
+        assert run("blank", pass_no=1).confidence == 0.95
+        tiny = run("abc 12", pass_no=1)
+        assert (tiny.code, tiny.confidence, tiny.strength) == (classify.CODE_OTHERS, 0.95, 1.0)
+        deferred = run(FILLER, pass_no=1)
+        assert (deferred.code, deferred.rule, deferred.confidence) == (method.CODE_MAIN, "P1", 0.4)
+
+    def test_the_service_verdict_is_the_models_own_probability(self):
+        keep = run(CLINICAL_TEXT, bert=bert(0.2))
+        assert (keep.code, keep.rule, keep.confidence) == (method.CODE_MAIN, "R5", 0.8)
+        junk = run(FAX_TEXT, bert=bert(0.9, "JUNK_LETTER_FAX"))
+        assert junk.code == classify.CODE_LETTER_FAX and junk.confidence == 0.9
+
+    def test_a_keep_against_the_models_top_class_is_flipped(self):
+        # The service's own keep veto: p(junk) the top class, the verdict Main.
+        vetoed = bert(0.6)
+        vetoed["service"] = {**vetoed["service"], "flag": "KEEP", "confidence": 0.4}
+        v = run(CLINICAL_TEXT, bert=vetoed)
+        assert (v.code, v.confidence) == (method.CODE_MAIN, 0.3)
+        # Signed (R4) while p(junk) is the top class.
+        signed = run(FILLER, bert=bert(0.8), signed=True, signature_known=True)
+        assert (signed.rule, signed.confidence) == ("R4", 0.3)
+        assert signed.strength is not None and signed.strength != signed.confidence
+
+    def test_no_model_is_a_backup(self):
+        assert method.verdict_confidence(method.CODE_MAIN, None, None) == 0.4
+        assert run(CLINICAL_TEXT).confidence == 0.4  # the classifier unavailable
+
+    def test_an_invoice_kept_main_is_the_models_junk_call(self):
+        inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.97))
+        v = method.post_process(decide(inputs), inputs)
+        assert (v.code, v.rule, v.confidence) == (method.CODE_MAIN, "INVOICE", 0.97)
+        terms = INVOICE_TEXT + " Terms and Conditions apply"
+        inputs = PageInputs(text=terms, pass_no=2, bert=bert(0.97))
+        moved = method.post_process(decide(inputs), inputs)
+        assert (moved.code, moved.confidence) == (classify.CODE_OTHERS, 0.3)

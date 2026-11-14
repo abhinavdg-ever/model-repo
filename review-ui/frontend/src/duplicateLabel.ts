@@ -9,44 +9,67 @@
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
 
-/** Below this similarity a page is surely not a duplicate (100% confidence). */
-export const DUPLICATE_SURE_BELOW = 0.8;
-
 /**
- * Confidence in the duplicate call a similarity makes (2026-10-22, user): from 100% at
- * 100% alike it falls exponentially to 50% at 95%, the cut between a duplicate and
- * not; below 95% the confidence that the page is NOT a duplicate rises back to 100% at
- * 80% alike. 99% → 87%, 98% → 76%, 96% → 57%, 90% → 63%.
+ * Duplicate confidence (2026-11-14, user; docs/specials/CONFIDENCE_LOGIC.md 12.2.1, the same
+ * numbers as core-pipeline/resources/canon/confidence_canon.json ``duplicate``).
  */
+export const DUPLICATE_CURVE = {
+  matchSlope: 10,
+  floor: 0.3,
+  clearBelow: 0.8,
+  goodUntil: 0.9,
+  goodSlope: 2,
+  nearSlope: 5,
+} as const;
+
+/** Below this similarity a page is surely not a duplicate (100% confidence). */
+export const DUPLICATE_SURE_BELOW = DUPLICATE_CURVE.clearBelow;
+
+/** Confidence in Yes / Partial from the match score s to the original:
+ * max(0.30, 1 - 10 x (1 - s)). 100% → 100%, 98% → 80%, 95% → 50%, floor 30%. */
+export function duplicateMatchConfidence(similarity: number): number {
+  const s = Math.min(1, Math.max(0, similarity));
+  return Math.max(DUPLICATE_CURVE.floor, 1 - DUPLICATE_CURVE.matchSlope * (1 - s));
+}
+
+/** Confidence in No from the best match score s to any compared page: under 80% → 100%;
+ * 80–90% → 1 - 2 x (s - 0.80) (90% → 80%); above → 0.80 - 5 x (s - 0.90), floor 30%
+ * (95% → 55%, 98% → 40%, 100% → 30%). */
+export function duplicateNoConfidence(similarity: number): number {
+  const s = Math.min(1, Math.max(0, similarity));
+  const { clearBelow, goodUntil, goodSlope, nearSlope, floor } = DUPLICATE_CURVE;
+  if (s < clearBelow) return 1;
+  if (s <= goodUntil) return 1 - goodSlope * (s - clearBelow);
+  return Math.max(floor, 1 - goodSlope * (goodUntil - clearBelow) - nearSlope * (s - goodUntil));
+}
+
+/** The confidence a similarity gives the call it makes: Yes at or above 95%, No below. */
 export function similarityConfidence(similarity: number): number {
-  if (similarity >= DUPLICATE_PARTIAL_MIN) {
-    return 0.5 ** ((1 - similarity) / (1 - DUPLICATE_PARTIAL_MIN));
-  }
-  if (similarity <= DUPLICATE_SURE_BELOW) return 1;
-  return 0.5 ** ((similarity - DUPLICATE_SURE_BELOW) / (DUPLICATE_PARTIAL_MIN - DUPLICATE_SURE_BELOW));
+  return similarity >= DUPLICATE_PARTIAL_MIN ? duplicateMatchConfidence(similarity) : duplicateNoConfidence(similarity);
 }
 
 /**
  * The Duplicate column's confidence. ``bestSimilarity`` is the page's highest duplicate
- * similarity (``duplicateConfidence``); without it a duplicate or partial row's own
- * ``similarity`` stands in, and a page never scored reads 100%, as before.
+ * similarity (``duplicateConfidence``); without it a duplicate row's own ``similarity``
+ * stands in. Yes: the match curve. Partial (``isContent``: a blocked 100% match): the match
+ * curve at 100%. No: the No curve; a page never compared reads 100%.
  */
 export function duplicateDisplayConfidence(
   isDuplicate: boolean | null | undefined,
   similarity: number | null | undefined,
   isPartial?: boolean | null,
   bestSimilarity?: number | null,
+  isContent?: boolean | null,
 ): number | null {
   if (isDuplicate == null) return null;
+  if (isContent && !isDuplicate) return duplicateMatchConfidence(1);
   const flagged = isDuplicate || Boolean(isPartial);
   let score = bestSimilarity ?? null;
   if (score == null && flagged) score = similarity ?? null;
   if (score == null) return flagged ? null : 1;
   const sim = Number(score);
   if (!Number.isFinite(sim)) return null;
-  // Flagged on its few differing words below the 95% cut: as unsure as the cut.
-  if (flagged && sim < DUPLICATE_PARTIAL_MIN) return 0.5;
-  return similarityConfidence(sim);
+  return flagged ? duplicateMatchConfidence(sim) : duplicateNoConfidence(sim);
 }
 
 /**

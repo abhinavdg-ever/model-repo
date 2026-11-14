@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file.",
+  "comment": "2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. modules/confidence.py applies this file. 2026-11-14 (user): Final values follow rule_2026_11_14 below instead.",
   "bands": {
     "good": 0.8,
     "review": 0.5,
@@ -22,6 +22,21 @@
   "thin_text_chars": 150,
   "calibration": {},
   "calibration_note": "Per module, optional: [[raw, calibrated], ...] knots, piecewise linear, so that a value of 0.8 means right about 8 times in 10 on labelled pages. Empty = identity. Fit from labelled pages, never by hand.",
+  "rule_2026_11_14": "Section 12 of docs/specials/CONFIDENCE_LOGIC.md (user, 2026-11-14): a Final value's confidence is the deciding model's own probability for the value it chose (no agree_lift, no penalties). backup_low: a backup technique decided (rules only, keywords only, NER, a neighbour's value, a default). flipped_low: a rule or veto went against the model's top answer. carried_factor: a value a page took from its document's anchor page = anchor x carried_factor. measured: a measured fact (no ink, no OCR text). pass1_rule: a blank / junk pass-1 text-pattern rule (DistilBERT does not run in pass 1). agree_lift and penalties stay only for rotation, continuity and sequencing (section 12.3).",
+  "backup_low": 0.4,
+  "flipped_low": 0.3,
+  "carried_factor": 0.9,
+  "measured": 1.0,
+  "pass1_rule": 0.95,
+  "duplicate": {
+    "match_slope": 10.0,
+    "floor": 0.3,
+    "clear_below": 0.8,
+    "good_until": 0.9,
+    "good_slope": 2.0,
+    "near_slope": 5.0,
+    "note": "Section 12.2.1. Yes / Partial: max(floor, 1 - match_slope x (1 - s)), s = match score to the original (0.95 -> 0.50). No, s = best match to any compared page: s < clear_below -> 1.0; clear_below..good_until -> 1.0 - good_slope x (s - clear_below); above -> 0.80 - near_slope x (s - good_until), floor; nothing compared -> 1.0."
+  },
   "modules": {
     "note": "Module-specific numbers that are not penalties: how strongly a kind of evidence backs a value.",
     "member": {
@@ -29,7 +44,7 @@
         "rule": 0.6,
         "ner": 0.4
       },
-      "note": "Each identifier read off a page (name, DOB, member ID) backs its member status by its own confidence in the extraction (the staged row's model probability backed by the rules; 2026-10-26, user: not fixed numbers); without one, the rules' reading counts field_support.rule, NER's field_support.ner. The strongest is the base, each other one backs it (confidence.backed)."
+      "note": "Unused since 2026-11-14 (section 12): member name, DOB and member ID each take their own KV model_score; rules only / NER -> backup_low."
     },
     "image_preprocess": {
       "osd_scale": 3.0,

@@ -83,9 +83,9 @@ STRONG_RATIO = 0.50  # at most 50%: dark ink (pen, print), not pencil or show-th
 BLANK_MAX_FRACTION = 1e-4  # a page number or a stray dot, not content
 BLANK_METHOD = "blank_page"
 FAINT_METHOD = "faint_marks_only"
-# The model did not score these pages (modules/confidence.py): a page with no mark at
-# all is a measurement, as sure as a rule with no model behind it (1.0 x no_model = 0.85);
-# faint marks only (pencil, show-through) are a guess on top (x fallback = 0.51).
+# The model did not score these pages (2026-11-14, CONFIDENCE_LOGIC.md section 12): a page
+# with no mark at all is a measured fact (confidence.measured, 1.0); faint marks only (pencil,
+# show-through) are a rule's guess (confidence.backup, 0.40).
 
 TAG_TASK = "page_tags"
 TAG_METHOD = "convnext_page_tags"
@@ -164,6 +164,9 @@ class PageType:
     handwritten_area_pct: float | None = None
     # The page-tag model's probability for its visibility answer (2026-10-26).
     visibility_confidence: float | None = None
+    # The page-tag model's own probability for its type, before the handwritten-share rule
+    # (2026-11-14): the handwritten area's confidence.
+    model_confidence: float | None = None
 
     def as_tuple(self) -> tuple[Any, float | None, str]:
         return self.label, self.confidence, self.method
@@ -194,6 +197,18 @@ def label_for_document_type(document_type: str, handwritten_area_pct: float | No
             return "Printed"
         return "Handwritten" if handwritten_area_pct > HW_HANDWRITTEN_ABOVE else "Mixed"
     return "Uncertain"
+
+
+def share_rule_flipped(document_type: str, label: str) -> bool:
+    """True when the handwritten-share rule (label_for_document_type) went against the
+    page-tag model's type: a Handwritten page read under 10% handwritten -> Printed, or a
+    Printed / Visual page over 10% -> Mixed / Handwritten (CONFIDENCE_LOGIC.md 12.2). A form's
+    Printed / Mixed and Handwritten -> Mixed are not a change of type."""
+    if document_type == "HANDWRITTEN":
+        return label == "Printed"
+    if document_type in {"PRINTED", "VISUAL"}:
+        return label in {"Mixed", "Handwritten"}
+    return False
 
 
 def detect_device(prefer: str | None = None):
@@ -512,7 +527,7 @@ def content_before_model(image: Image.Image) -> tuple[str, float, str] | None:
 def _premodel_confidence(method: str) -> float:
     from modules import confidence as conf
 
-    return conf.score(1.0, "no_model", "fallback" if method == FAINT_METHOD else "", module="handwriting")
+    return conf.backup() if method == FAINT_METHOD else conf.measured()
 
 
 def handwriting_ink_evidence(image_bgr) -> dict[str, float | int]:
@@ -630,13 +645,9 @@ def upgrade_printed_with_ink(
     if dispersed and (score >= INK_SCORE_THRESHOLD or tall >= INK_TALL_COMPONENT_MIN):
         from modules import confidence as conf
 
-        # The ink overrules the model's Printed: the model's p(Handwritten) backed by the
-        # ink, x keywords_disagree (modules/confidence.py).
-        return (
-            "Handwritten",
-            conf.score(conf.backed(float(p_handwritten), 1.0), "keywords_disagree", module="handwriting"),
-            INK_METHOD,
-        )
+        # The ink rule overrules the older model's Printed (2026-11-14, section 12.2: the
+        # 2-class model's rule upgrade is a backup technique).
+        return "Handwritten", conf.backup(), INK_METHOD
     return label, confidence, METHOD_NAME
 
 
@@ -731,8 +742,15 @@ def decide_tags(type_proba, vis_proba, area, bundle: ClassifierBundle) -> PageTy
         document_type = "UNCERTAIN"
         confidence = _under_bar(confidence, bundle.uncertain_min_confidence)
     area_pct = round(float(area) * 100.0, 1)
+    label = label_for_document_type(document_type, area_pct)
+    model_confidence = round(confidence, 4)
+    if share_rule_flipped(document_type, label):
+        # 2026-11-14 (user): the handwritten-share rule changed the model's type.
+        from modules import confidence as conf
+
+        confidence = conf.flipped()
     return PageType(
-        label=label_for_document_type(document_type, area_pct),
+        label=label,
         confidence=round(confidence, 4),
         method=TAG_METHOD,
         document_type=document_type,
@@ -740,6 +758,7 @@ def decide_tags(type_proba, vis_proba, area, bundle: ClassifierBundle) -> PageTy
         visibility=VISIBILITY_TAGS[int(vis_proba.argmax())],
         handwritten_area_pct=area_pct,
         visibility_confidence=round(float(vis_proba.max()), 4),
+        model_confidence=model_confidence,
     )
 
 

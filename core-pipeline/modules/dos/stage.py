@@ -154,6 +154,7 @@ def _date_rows(hit: dict[str, Any]) -> list[dict[str, Any]]:
 def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Staged DOS rows as the dates dos_logic reads; ``confidence`` is the model's score, or
     the rules' score when no model ran."""
+    from modules.extraction.results import row_confidence
     from modules.extraction.util.dates import canonical_date, is_iso_date
 
     found: list[dict[str, Any]] = []
@@ -175,6 +176,9 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "confidence": row.get("model_score") if row.get("model_score") is not None else row.get("score"),
                 "model_scored": row.get("model_score") is not None,
                 "rule_score": row.get("score"),
+                # The row's own confidence (2026-11-14: model_score, flipped when model and
+                # rules disagree, backup with rules only): what a chosen KV date stores.
+                "kv_confidence": row_confidence(row),
             }
         )
     return found

@@ -41,23 +41,28 @@ def _score(hit: Optional[dict[str, Any]]) -> Optional[float]:
         return None
 
 
-def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
-    """A row's confidence (modules/confidence.py): the model's score, lifted by the
-    rules' score when the rules accepted the row too; times ``keywords_disagree`` when
-    the rules rejected what the model accepted; the rules' score alone (no model ran)
-    times ``no_model``. None when the row has neither."""
+def _model_score(hit: Optional[dict[str, Any]]) -> Optional[float]:
     if not hit:
         return None
-    rule = _score(hit)
     try:
-        model = float(hit["model_score"]) if hit.get("model_score") not in (None, "") else None
+        return float(hit["model_score"]) if hit.get("model_score") not in (None, "") else None
     except (TypeError, ValueError):
-        model = None
+        return None
+
+
+def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
+    """A row's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md section 12): the KV
+    model's own ``model_score`` when it scored the row; ``confidence.flipped`` when the
+    model and the rules disagree about the row (``rule_accepted`` vs ``accepted``, either
+    way); ``confidence.backup`` when only the rules scored it. None when neither did."""
+    if not hit:
+        return None
+    model = _model_score(hit)
     if model is None:
-        return None if rule is None else conf.score(rule, "no_model", module="extraction")
-    if hit.get("rule_accepted") is False:
-        return conf.score(model, "keywords_disagree", module="extraction")
-    return conf.score(conf.backed(model, rule) if rule is not None else model, module="extraction")
+        return None if _score(hit) is None else conf.backup()
+    if "rule_accepted" in hit and bool(hit.get("rule_accepted")) != bool(hit.get("accepted", True)):
+        return conf.flipped()
+    return conf.chosen(model, module="extraction")
 
 
 def row_confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
@@ -70,10 +75,9 @@ def _name_key(name: Optional[str]) -> frozenset[str]:
 
 
 def _named_confidence(named: dict[str, Any], provider_hits: Optional[list[dict[str, Any]]]) -> Optional[float]:
-    """A credentials row that names its provider has only the rules' score (no model scores
-    it), the same on every page. The provider_name row for the same person carries the
-    model's probability: that, backed by the credentials row's rule score. Without one,
-    the credentials row's own."""
+    """Credentials (2026-11-14, user): the KV model never scores a credentials row. When
+    the credentials sit with a provider_name row for the same person, that row's model
+    probability (``_confidence``); otherwise ``confidence.backup``."""
     want = _name_key(split_name_credentials(_text(named, "provider_name"))[0])
     same = [
         item for item in _as_hits(provider_hits)
@@ -81,9 +85,9 @@ def _named_confidence(named: dict[str, Any], provider_hits: Optional[list[dict[s
         and len(want & _name_key(split_name_credentials(caps_credentials_only(_text(item, "value")))[0])) >= min(2, len(want))
     ]
     if not same:
-        return _confidence(named)
+        return conf.backup()
     best = max(same, key=lambda item: float(item["model_score"]))
-    return conf.score(conf.backed(float(best["model_score"]), _score(named) or 0.0), module="extraction")
+    return _confidence(best)
 
 
 def _as_hits(hit: Any) -> list[dict[str, Any]]:
@@ -213,11 +217,8 @@ def _best(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
 # its credentials, one provider. 2 (2026-10-18): bare name, provider_credentials and every
 # accepted signer in signers. review-ui reads a row by its version.
 PROVIDER_VERSION = 2
-# Confidence = the signature row's (``_confidence``), lowered when the name or credentials came from
-# outside the signature (the page's provider_name / provider_credentials rows), and when
-# the page has several signatures.
-OUTSIDE_FACTOR = 0.75
-SEVERAL_FACTOR = 0.9
+# Confidence = the signature row's (``_confidence``, 2026-11-14: its model_score); the page's
+# is the lowest of its signers'. The 0.75 / 0.9 factors were dropped (section 12).
 # A row counts (electronic signature, provider name, credentials) when the rules accepted
 # it, or its score is above this.
 COUNTS_ABOVE = 0.7
@@ -294,9 +295,9 @@ def signature_fields(
     ``signers`` lists them, the selected one first, then by score; the same person once.
     ``provider_name`` / ``provider_credentials`` are the first signer's.
 
-    Confidence is the signature's score: x0.75 when the name or credentials came from
-    outside it (OUTSIDE_FACTOR), x0.9 each when there are several signatures
-    (SEVERAL_FACTOR). Each signer carries its own; the page's is their average.
+    Confidence (2026-11-14, user) is each signature row's own (``_confidence``: the KV
+    model_score, rules only -> backup, model vs rules -> flipped). Each signer carries its
+    own; the page's is the lowest of them.
     """
     rows = [row for row in _as_hits(hit) if _counts(row)]
     # 2026-11-05 (user): a provider_credentials row reading RN or DO is never used to derive
@@ -320,7 +321,6 @@ def signature_fields(
     signers: list[dict[str, Any]] = []
     for row in ordered:
         name, creds = _signer(row)
-        outside = False
         if not several:
             counted_creds = [item for item in _as_hits(credential_hits) if _counts(item) and _text(item, "value")]
             if not name:
@@ -330,13 +330,11 @@ def signature_fields(
                 if named is not None:
                     name = split_name_credentials(_text(named, "provider_name"))[0]
                     creds = creds or _text(named, "value")
-                    outside = True
             if not name:
                 best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
                 if best is not None:
                     name, from_name = split_name_credentials(_text(best, "value"))
                     creds = creds or from_name
-                    outside = True
             if not creds:
                 accepted = counted_creds
                 same = [
@@ -347,7 +345,6 @@ def signature_fields(
                 chosen = (same or accepted)[:1]
                 if chosen:
                     creds = _text(chosen[0], "value")
-                    outside = True
         elif not (name and creds):
             continue  # several signatures: one without a name and credentials is removed
         if not name and not creds:
@@ -357,8 +354,6 @@ def signature_fields(
             twin["credentials"] = twin["credentials"] or creds
             continue
         score = _confidence(row)
-        if score is not None:
-            score = round(score * (OUTSIDE_FACTOR if outside else 1.0) * (SEVERAL_FACTOR if several else 1.0), 4)
         signers.append({
             "name": name, "credentials": creds,
             "signature_date": _iso_date(_text(row, "signature_date")), "confidence": score,
@@ -368,9 +363,8 @@ def signature_fields(
         # A signature with no name and no credentials anywhere is not a provider signature.
         return {**empty, "signature_present": False}
     lead = signers[0]
-    # One signer: its confidence. Several: the average over the listed signers.
-    scores = [s["confidence"] for s in signers if s["confidence"] is not None]
-    page_confidence = round(sum(scores) / len(scores), 4) if scores else None
+    # One signer: its confidence. Several: the lowest of the listed signers (2026-11-14).
+    page_confidence = conf.weakest(s["confidence"] for s in signers)
     return {
         **empty,
         "signature_present": True,

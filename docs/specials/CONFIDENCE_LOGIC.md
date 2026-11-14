@@ -7,10 +7,11 @@ File references are `path:line` from the repository root.
 Who this is for: a technical product owner who needs to know what each number means,
 how it is built, which cut-offs act on it, where it is stored and where it is shown.
 
-Sections 0-11 describe the code **today**. **Section 12 is the proposed new rule** (user,
+Sections 0-11 describe the code **before** the new rule. **Section 12 is the new rule** (user,
 2026-11-14): a confidence is how sure we are that the value is correct, taken from the model
 that produced it; a backup technique or a flipped decision gets a fixed low value. Section 12
-is a proposal: nothing in it is built yet.
+is **built** (2026-11-14); 12.6 says what was built, per metric, and where it deviates. Where
+sections 0-11 and 12.6 disagree about a Final value's confidence, 12.6 is the code.
 
 ---
 
@@ -708,7 +709,7 @@ Manual Review (ExcelCompare) has its own Exact Match Rate = correct / total grou
 
 ---
 
-## 12. Proposed: one confidence rule for every Final metric (2026-11-14, for decision)
+## 12. One confidence rule for every Final metric (2026-11-14, decided and built)
 
 ### 12.1 The rule
 
@@ -825,7 +826,7 @@ V-curve (section 4.3). The cut points 0.80 / 0.90 and the floor 0.30 go in
    (R1E), a page under 15 characters. No ink / no text / stage-1 Blank stay 1.0; an exact
    duplicate is its 1.0 match. `PASS1_RULE` = 0.95 in `confidence_canon.json`.)
 
-### 12.5 Changes this needs (once agreed)
+### 12.5 Changes this needs (built 2026-11-14, see 12.6)
 
 | Where | Change |
 |---|---|
@@ -845,3 +846,78 @@ V-curve (section 4.3). The cut points 0.80 / 0.90 and the floor 0.30 go in
 Expected effect: more values under 0.50 (every backup and flip is flagged), and the numbers
 that remain high are the models' own. After building, measure on the dev DB how many Final
 values move into review before switching it on for the VM.
+
+### 12.6 What was built (2026-11-14)
+
+**Engine.** `core-pipeline/modules/confidence.py` gained `chosen(p)` (the model's own p,
+calibration hook, clip), `backup()` (`backup_low` 0.40), `flipped()` (`flipped_low` 0.30),
+`carried(anchor)` (x `carried_factor` 0.90), `measured()` (1.0), `pass1_rule()` (0.95),
+`duplicate_match(s)` and `duplicate_no(s)` (12.2.1). Every number is in
+`core-pipeline/resources/canon/confidence_canon.json` (`backup_low`, `flipped_low`,
+`carried_factor`, `measured`, `pass1_rule`, `duplicate`). `absent()` now reads 1 - the best
+model-scored candidate, else `backup()`, with no penalties. `score`, `backed` and the penalty
+table stay only for rotation, continuity and sequencing (12.3), which were not changed.
+
+**Decisions unchanged.** Several later decisions read a confidence: continuity's page-type-change
+points and junk-run weight, the Final page-type vote (`agree_document_type`), the DOS signature
+fallback (< 0.5) and the neighbour check. So that no value changes, the older number is kept
+beside the new one and those decisions read it:
+
+| Older number kept as | Read by |
+|---|---|
+| `page_classification.axes.decision_confidence` (the leaf's old confidence x the handwritten / thin-text doubts) via `axes.decision_confidence(row)` | continuity (`page_confidence`), imaging_final's Final vote (`FinalPage.confidence`) |
+| `Verdict.strength` -> `blank_junk.json` `final.decision_confidence` via `_support.blank_junk_weights` | continuity's junk-run weight; an Invoice page's page-type weight in continuity |
+| `PageDate.confidence` (DOS; the stored number is `PageDate.reported`) | signature fallback, `consistent_with_neighbours` |
+
+Rows written before 2026-11-14 have no `decision_confidence`: the readers fall back to the stored
+confidence, which then was the old number. The encounter vote never decided on a confidence
+(only weights), so it needed nothing kept.
+
+| Metric | Before | Built (2026-11-14) |
+|---|---|---|
+| KV row (`extraction/results.py`) | backed(model, rule); x keywords_disagree; rule x no_model | `model_score`; model vs rules disagree on the row (`rule_accepted` != `accepted`, either way) -> 0.30; rules only -> 0.40 |
+| Credentials (`_named_confidence`) | provider_name model p backed by the credentials rule | the same person's provider_name row's confidence; else 0.40 |
+| Signature (page) | row conf x 0.75 outside / x 0.9 several, mean of signers | each signer's row confidence; several -> the lowest |
+| No signature / field not found (`absent`) | 1 - best candidate (model else rule score), x no_model, page doubts | 1 - best model-scored candidate; none scored -> 0.40 |
+| Member name / DOB / member ID (`member/stage.py member_field_confidences`) | one page value: strongest identifier backed by the others, x fallback | three values: the KV row's confidence it came from (above); a row the model turned down -> 0.30; NER, the manifest text search (`ner_key_source` "sentence: ...") or a rules find with no staged row -> 0.40; nothing read -> none |
+| `member_extraction_results.confidence` | the page value | the lowest of the three (kept so nothing reading it breaks) |
+| Member chart (`member_verification_summary.confidence`, CSV) | DB share x mean page conf; CSV verified / checked | both: agreement rate = pages agreeing with the decision / pages checked |
+| Blank / junk verdict (`blank_junk/method.py verdict_confidence`) | rule strengths, backed p, service confidence | raw p of the verdict's class when it is the model's top class; else 0.30; no model -> 0.40. No ink / stage-1 Blank / no text 1.0; "blank", R2, cover mark, R1E, tiny -> 0.95 (both passes); P1 deferred and R5 unavailable -> 0.40; Invoice kept Main -> p(junk); terms page -> 0.30; card near-miss turning the model's Invoice into Cards -> 0.30; the service's Blank filed Junk / Others -> p(blank); short page (stage) -> 0.40; a row given none -> 0.40 |
+| Duplicate Yes (pipeline row) | the match score | `duplicate_match(score)` |
+| Duplicate display (review-ui) | V-curve, minimum 0.5 | Yes: match curve on the best / own similarity; Partial (blocked 100% match): 1.0; No: `duplicate_no` on the best similarity; never compared: 1.0 |
+| Page type (leaf, `leaf.chosen_confidence`) | backed(p, support) and penalties, Others cap, x handwritten / thin text | leaf model p (model / agree, or a Deciding word the model's top agrees with); keywords only, Others, no model -> 0.40; Deciding word vs model's top, or model overruled a Deciding word -> 0.30 |
+| Specialty (`axes.specialty_confidence`) | backed p, x keywords_disagree; fallback 1 - best x fallback | model p; General fallback or keywords only -> 0.40; keywords name another specialty than the model's top (or the value is not the model's top) -> 0.30. The leaf model's own specialty (>= 0.5) stays its raw p |
+| Codable | path conf (re-scaled in Final) | the page type's confidence |
+| DOS (`dos_logic.kv_reported`) | backed(model, rule), x conflict; sources x no_model / fallback | chosen pair's KV confidence (row rule above); the rules' priority picked another date than the model's best scored date -> 0.30; edge, keyword pass, dictation, signature, neighbours, rules-only admit / discharge side, Report-Date stand-in -> 0.40 (a pair: the weaker side); no DOS / default -> none |
+| Encounter (`encounter_classify.vote_confidence`) | backed p, keyword tier, vote share x mean, x conflict | model p when the setting is the model's top; another setting -> 0.30; no model, family rule, Not Applicable rule, family default, canon default -> 0.40; first page decides: its vote's; vote: the first backer's, or 0.30 when the first page's model top is another setting |
+| Handwriting (`hw_printed`) | softmax; no ink 0.85, faint 0.51, ink upgrade backed x 0.7, crash 0.30 | softmax (as before, Uncertain still `under_bar`); handwritten-share rule changed the type (Handwritten -> Printed, Printed / Visual -> Mixed / Handwritten) -> 0.30 (`share_rule_flipped`); no ink 1.0; faint marks, 2-class ink upgrade, crash -> 0.40. The handwritten area keeps the model's own p |
+| Final (`imaging_final.final_confidences`) | decider's conf x conflict; codability re-scaled; `member` | anchor keeps its own; other pages of the document anchor x 0.90 (page type / codable from the first page of the Final L1, specialty and encounter from the document's first page, DOS from the dated page); rules 7 / 8 re-placed (`source` continuation / embedded) -> 0.30; `member` split into `member_name`, `member_dob`, `member_id` (from the extraction staging; a chart without staging: the row's single value for each value it has); `review_fields` < 0.50 as before |
+| Quality, rotation, continuity, sequencing, visibility | | unchanged (12.3) |
+
+**review-ui.** The Quality row shows the score as a measurement ("score 85/100"), outside the
+confidence colours; Member Name / DOB / ID show `member_name` / `member_dob` / `member_id` from
+`imaging_final.confidences`, else the page's single member confidence (older rows); the duplicate
+confidence uses the new curves (`duplicateLabel.ts`, `services/duplicate_label.py`).
+
+**Deviations and readings.**
+
+1. Blank / junk rules other than the short page (fax, index, lab, clinical content, HW > 30%,
+   visual < 20 words, signed R4, card): the table in 12.2 lists several as backup. Built: with
+   the model's scores the verdict reads the model's p when its top class agrees and flipped when it
+   does not; backup only with no model. A rule the model agrees with is as sure as the model.
+2. Page type "keywords only": a keyword-points win over the model's top (not a Deciding word) is
+   a backup, not flipped (12.2 names only Deciding words as flips).
+3. Specialty: the leaf model's own specialty (>= 0.5) bypasses the keyword check, as before.
+4. The Final page type's anchor is the first page of the document whose L1 is the Final L1;
+   a page whose own L1 matches but is not the anchor is "carried" (x 0.90).
+5. The legacy cascade (`PAGE_CLASSIFIER=axes`) keeps its own level confidences (only the
+   handwritten / thin-text multipliers were dropped); only the default leaf classifier follows
+   the new rule.
+6. `page_classification.needs_review` (< 0.50) now reads the new confidence, so more pages are
+   flagged; it decides no value.
+7. No schema change: the member split lives in the `imaging_final.confidences` JSONB and is
+   recomputed from `staging/extraction.json` (a chart whose staging was dropped falls back to the
+   single member column).
+
+Not done: calibration (12.3); measuring on the dev DB how many Final values move into review.
+

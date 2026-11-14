@@ -56,6 +56,7 @@ from common.db import (
     upsert_blank_junk,
 )
 from common.db.paths import imaging_csv, write_csv
+from modules import confidence as conf
 from apps.worker.stages._support import (
     BJ_EXCLUDE,
     best_page_text,
@@ -151,6 +152,12 @@ def _page_group(code: int) -> str:
 
 
 def _confidence(code: int) -> float:
+    """A row given no confidence: nothing judged it with a model (2026-11-14): backup."""
+    return conf.backup()
+
+
+def _strength(code: int) -> float:
+    """The pre-2026-11-14 stand-in (classify.classification_confidence), kept as the weight."""
     raw = classification_confidence(code)
     try:
         if raw is not None:
@@ -168,6 +175,7 @@ def _row_for(
     duplicate_of: Optional[int] = None,
     confidence: Optional[float] = None,
     votes: Optional[dict[str, Any]] = None,
+    strength: Optional[float] = None,
 ) -> dict[str, Any]:
     flag, subtype = _to_db_flag(code)
     return {
@@ -179,6 +187,10 @@ def _row_for(
         "subtype": subtype,
         "duplicate_of": duplicate_of,
         "confidence": float(confidence) if confidence is not None else _confidence(code),
+        # The pre-2026-11-14 confidence: continuity's junk-run weight (decision_confidence in
+        # blank_junk.json), so the new confidences change no document break.
+        "strength": float(strength) if strength is not None else (
+            float(confidence) if confidence is not None else _strength(code)),
         "label": CLASSIFICATION_LABELS.get(code, "Main"),
         "group": _page_group(code),
         "reason": reason,
@@ -224,6 +236,7 @@ SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
 # Two partial matches to one original (2026-11-11, user): neither a duplicate, both for review.
 REVIEW_MARK = "duplicate_review: "
 
+# The short page's pre-2026-11-14 confidence, now only its weight; its confidence is a backup.
 CONTAINED_CONFIDENCE = 0.90
 
 def _signature_key(signature: Optional[dict[str, str]]) -> tuple[str, str]:
@@ -321,7 +334,7 @@ def _classify(
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
         by_id[page_id] = _row_for(
             page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,
-            votes=verdict.votes,
+            votes=verdict.votes, strength=verdict.strength,
         )
 
     def _main(page_id: int) -> bool:
@@ -368,7 +381,8 @@ def _classify(
                           f"{out.distance} pages apart)")
                 by_id[page_id] = _row_for(
                     page_by_id[page_id], code=CODE_DUPLICATE, reason=reason, duplicate_of=out.original,
-                    confidence=out.score,
+                    # 2026-11-14 (user): Yes = max(0.30, 1 - 10 x (1 - match)); the match is the weight.
+                    confidence=conf.duplicate_match(out.score), strength=out.score,
                     votes={**earlier, "duplicate": reason, "duplicate_check": record} if earlier else None,
                 )
                 continue
@@ -389,6 +403,7 @@ def _classify(
                 reason=f"{own['reason']}; {note}" if own.get("reason") else note,
                 duplicate_of=original,
                 confidence=own.get("confidence", out.score),
+                strength=own.get("strength", own.get("confidence", out.score)),
                 votes={**earlier, "duplicate_check": record} if earlier else None,
             )
             partial.add(page_id)
@@ -425,13 +440,15 @@ def _classify(
                 own["votes"] = {**(own.get("votes") or {}), "short_page": note}
                 return
             earlier = own.get("votes")
-            by_id[pid] = _row_for(page_by_id[pid], code=CODE_MAIN, reason=note, confidence=CONTAINED_CONFIDENCE,
+            by_id[pid] = _row_for(page_by_id[pid], code=CODE_MAIN, reason=note, confidence=conf.backup(),
+                                  strength=CONTAINED_CONFIDENCE,
                                   votes={**earlier, "short_page": note} if earlier else None)
 
         def _junk(pid: int, code: int, note: str) -> None:
             own = by_id.get(pid) or {}
             earlier = own.get("votes")
-            by_id[pid] = _row_for(page_by_id[pid], code=code, reason=note, confidence=CONTAINED_CONFIDENCE,
+            by_id[pid] = _row_for(page_by_id[pid], code=code, reason=note, confidence=conf.backup(),
+                                  strength=CONTAINED_CONFIDENCE,
                                   votes={**earlier, "short_page": note} if earlier else None)
             partial.discard(pid)
             contained.add(pid)
@@ -815,6 +832,8 @@ def _simple(detail_pages: dict[str, Any], passes_run: list[int]) -> dict[str, An
                 "rule": entry.get("rule"),
                 "why": entry.get("reason"),
                 "pass": pass_no,
+                # The weight continuity gives a junk run (the pre-2026-11-14 confidence).
+                "decision_confidence": entry.get("decision_confidence"),
             }
         out[page_name] = page
     return out
@@ -862,6 +881,7 @@ def _write_votes(
             "rule": (row.get("votes") or {}).get("rule") or ("duplicate" if row["flag"] == "duplicate" else None),
             "verdict": row["label"],
             "confidence": round(float(row["confidence"]), 4),
+            "decision_confidence": round(float(row.get("strength", row["confidence"])), 4),
             "reason": row["reason"],
             "best_match": row.get("best_match"),
         }
