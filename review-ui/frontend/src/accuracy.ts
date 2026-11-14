@@ -60,7 +60,7 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. Blank / Junk is a type of its own: a page both call Blank / Junk is a Match; only one side calling it Blank / Junk is No Match. Cover / index / fax / NA labels are not scored.",
+    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. Blank / Junk is a type of its own: a page both call Blank / Junk is a Match; only one side calling it Blank / Junk is No Match.",
   },
   {
     id: "codeable",
@@ -761,7 +761,8 @@ function pageScores(
     : codeable === "yes" && gtCodable !== "none"
       ? gtCodable
       : codableSide(text(page.finalCodeable) || page.isCodeable);
-  const codableCell = gtCodable !== "none" ? `cod|${gtCodable}|${pipeCodable}` : null;
+  // No "None" column (2026-11-14, user): a page the pipeline gave no codability is left out.
+  const codableCell = gtCodable !== "none" && pipeCodable !== "none" ? `cod|${gtCodable}|${pipeCodable}` : null;
 
   // 2026-11-06 (user): a page the pipeline calls blank / junk is not scored for Provider
   // Signature: its provider may still be extracted, but it is not shown or matched.

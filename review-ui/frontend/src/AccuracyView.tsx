@@ -681,15 +681,33 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
   ];
 }
 
+/** Provider Signature (2026-11-14, user): Credentials match on the pages whose ground truth has
+ * credentials (any one shared is a match). */
+function credentialTables(rates: ClassRates): InfoTable[] {
+  const cases = rates.credCases ?? 0;
+  const match = rates.credMatch ?? 0;
+  return [{
+    caption: "Credentials match (pages where the ground truth has credentials)",
+    head: ["", "Pages"],
+    rows: [
+      ["Match (any one credential shared)", match],
+      ["No Match", cases - match],
+      ["Total", cases],
+      ["Cred. M = Match / Total", cases ? `${Math.round((100 * match) / cases)}%` : "—"],
+    ],
+    match: [[0, 1]],
+  }];
+}
+
 /** Codability Stats (2026-11-14, user): ground truth Codable / Non-Codable x pipeline. */
 function codableTables(matrix: MemberMatrix) {
   const at = (gt: string, pipe: string) => matrix.cells[`cod|${gt}|${pipe}`] ?? 0;
   const sides = [["codable", "Codable"], ["non_codable", "Non-Codable"], ["discharge", "Discharge"]] as const;
   return [{
     caption: "Codability (Blank / Junk = Non-Codable; Discharge shown, not scored)",
-    head: ["GT \\ Pipeline", "Codable", "Non-Codable", "Discharge", "None", "Total"],
+    head: ["GT \\ Pipeline", "Codable", "Non-Codable", "Discharge", "Total"],
     rows: withTotals(sides.map(([gt, label]) => [
-      label, at(gt, "codable"), at(gt, "non_codable"), at(gt, "discharge"), at(gt, "none"),
+      label, at(gt, "codable"), at(gt, "non_codable"), at(gt, "discharge"),
     ])),
   }];
 }
@@ -1621,7 +1639,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         // DOS has its own Yes view (page counts), above.
                         ["blankJunk", "orientation", "signature"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
-                        metric.id === "codeable" ? codableTables(codableMatrix) : [],
+                        metric.id === "codeable"
+                          ? codableTables(codableMatrix)
+                          : metric.id === "signature"
+                            ? credentialTables(signatureRates)
+                            : [],
                       )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
