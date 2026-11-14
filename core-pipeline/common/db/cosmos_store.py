@@ -32,6 +32,7 @@ import logging
 import os
 import threading
 import uuid
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from common.db.memory_store import MemoryStore
@@ -513,10 +514,60 @@ def mirror_write(name: str, conn: Any, args: tuple, kwargs: dict, result: Any) -
         _MIRROR_FAILURES += 1
         logger.warning("DB_BACKEND=both: Cosmos copy of %s failed (%d so far): %s",
                        name, _MIRROR_FAILURES, str(exc).splitlines()[0][:200])
+        record_mirror_failure(name, conn, args, kwargs)
 
 
 def mirror_failures() -> int:
     return _MIRROR_FAILURES
+
+
+# 2026-11-14 (user): a failed copy is remembered, so the next incremental sync
+# (utilities/migrate_postgres_to_cosmos.py --since-last) copies that chart again. One line per
+# failure in the log folder: "<UTC time>\t<chart name, or ?>\t<write>". The log purge keeps it.
+MIRROR_FAILED_FILE = "cosmos_mirror_failed.tsv"
+_FAILED_LOCK = threading.Lock()
+
+
+def mirror_failed_path() -> "Path":
+    from common.logging_setup import resolve_log_dir
+
+    return resolve_log_dir() / MIRROR_FAILED_FILE
+
+
+def _failed_chart_name(conn: Any, args: tuple, kwargs: dict) -> str:
+    """The chart a failed write belonged to, from its arguments; '?' when unknown."""
+    if kwargs.get("chart_name"):
+        return str(kwargs["chart_name"])
+    lookups = []
+    chart_id = kwargs.get("chart_id", args[0] if args and isinstance(args[0], int) and not isinstance(args[0], bool) else None)
+    if chart_id is not None:
+        lookups.append(("SELECT chart_name FROM chart_list WHERE id = %s", chart_id))
+    page_id = kwargs.get("page_id") or next(iter(kwargs.get("page_ids") or []), None)
+    if page_id is not None:
+        lookups.append(("SELECT c.chart_name FROM page_list p JOIN chart_list c ON c.id = p.chart_id WHERE p.id = %s", page_id))
+    for sql, value in lookups:
+        try:
+            row = conn.execute(sql, (value,)).fetchone()
+        except Exception:  # noqa: BLE001
+            return "?"
+        if row:
+            return str(row["chart_name"] if isinstance(row, dict) else row[0])
+    return "?"
+
+
+def record_mirror_failure(name: str, conn: Any, args: tuple, kwargs: dict) -> None:
+    """Append one failed copy to the failed list. Never raises."""
+    from datetime import datetime, timezone
+
+    try:
+        chart = _failed_chart_name(conn, args, kwargs)
+        path = mirror_failed_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}\t{chart}\t{name}\n"
+        with _FAILED_LOCK, open(path, "a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DB_BACKEND=both: could not record the failed copy of %s: %s", name, exc)
 
 
 def _containers() -> dict[str, Any]:

@@ -12,6 +12,16 @@ with Postgres; a mismatch is reported and the run exits 1.
     python ../utilities/migrate_postgres_to_cosmos.py --chart 52743839_44976074
     python ../utilities/migrate_postgres_to_cosmos.py --all                  # every chart
     python ../utilities/migrate_postgres_to_cosmos.py --all --skip-existing  # resume
+    python ../utilities/migrate_postgres_to_cosmos.py --changed-since 2026-11-10  # incremental
+    python ../utilities/migrate_postgres_to_cosmos.py --since-last           # since the last sync
+
+Incremental (2026-11-14, user): --changed-since / --since-last copy only the charts with a
+newer updated_at in Postgres (chart, pages, any result table, member summary, jobs, page
+ground truth or its entries, manifest), plus every chart in the live mirror's failed list
+(cosmos_mirror_failed.tsv in the log folder: DB_BACKEND=both copies that failed). Users are
+copied when a user or a sign-in changed. --since-last remembers when the last successful sync
+started (utilities/output/cosmos_sync_state.json); a sync with a count mismatch does not move
+it, and synced charts leave the failed list. A changed chart is replaced in Cosmos whole.
 
 Reads DATABASE_URL and COSMOS_* from core-pipeline/.env. Re-running is safe: documents are
 upserted. Users go to the `users` container in review-ui's shape (store/cosmos/review.py),
@@ -170,6 +180,98 @@ def migrate_manifest_and_ground_truth(conn: Any, store: Any, names: list[str], *
     return {"manifest_rows": len(manifest), "ground_truth_pages": len(gt)}
 
 
+STATE_FILE = Path(__file__).resolve().parent / "output" / "cosmos_sync_state.json"
+
+# Chart-keyed tables whose updated_at says the chart changed (besides PAGE_TABLES).
+_CHART_ID_TABLES = ("page_list", "member_verification_summary", "pipeline_jobs")
+
+
+def changed_charts(conn: Any, since: Any) -> tuple[set[int], set[str]]:
+    """Charts with anything newer than ``since``: (chart ids in chart_list, chart names with
+    newer ground truth / manifest, which may have no chart_list row yet)."""
+    parts = ["SELECT id AS chart_id FROM chart_list WHERE updated_at > %(since)s"]
+    for table in (*_CHART_ID_TABLES, *PAGE_TABLES):
+        parts.append(f"SELECT DISTINCT chart_id FROM {table} WHERE updated_at > %(since)s AND chart_id IS NOT NULL")
+    ids = {int(r["chart_id"]) for r in conn.execute(" UNION ".join(parts), {"since": since}).fetchall()}
+    names = {r["n"] for r in conn.execute(
+        """SELECT chart_name AS n FROM page_ground_truth WHERE updated_at > %(since)s
+           UNION SELECT g.chart_name FROM page_ground_truth_entry e
+                   JOIN page_ground_truth g ON g.id = e.page_ground_truth_id
+                  WHERE e.updated_at > %(since)s
+           UNION SELECT record_id FROM manifest_member_list WHERE updated_at > %(since)s""",
+        {"since": since}).fetchall()}
+    return ids, names
+
+
+def users_changed(conn: Any, since: Any) -> bool:
+    try:
+        row = conn.execute(
+            """SELECT EXISTS (SELECT 1 FROM users WHERE updated_at > %(since)s)
+                   OR EXISTS (SELECT 1 FROM user_login WHERE created_at > %(since)s) AS changed""",
+            {"since": since}).fetchone()
+        return bool(row["changed"])
+    except Exception:  # noqa: BLE001 - an older database without user_login
+        conn.rollback()
+        row = conn.execute("SELECT EXISTS (SELECT 1 FROM users WHERE updated_at > %(since)s) AS changed",
+                           {"since": since}).fetchone()
+        return bool(row["changed"])
+
+
+def failed_path(override: str | None = None) -> Path:
+    if override:
+        return Path(override)
+    from common.db.cosmos_store import mirror_failed_path
+
+    return mirror_failed_path()
+
+
+def read_failed(path: Path) -> tuple[set[str], int]:
+    """Chart names in the failed list, and how many lines name no chart ('?')."""
+    names, unknown = set(), 0
+    if not path.is_file():
+        return names, 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            if parts[1] == "?":
+                unknown += 1
+            elif parts[1]:
+                names.add(parts[1])
+    return names, unknown
+
+
+def clear_failed(path: Path, synced: set[str], started: str) -> int:
+    """Drop the lines for charts synced now, keeping any failure logged after the sync started."""
+    if not path.is_file():
+        return 0
+    keep, dropped = [], 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[1] in synced and parts[0] < started:
+            dropped += 1
+        elif line.strip():
+            keep.append(line)
+    path.write_text("".join(f"{line}\n" for line in keep), encoding="utf-8")
+    return dropped
+
+
+def load_state() -> dict[str, Any]:
+    import json
+
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(started: str, charts: int) -> None:
+    import json
+
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps({"last_sync_started": started, "charts": charts}, indent=2) + "\n",
+                          encoding="utf-8")
+
+
 def migrate_users(conn: Any, *, dry_run: bool) -> int:
     """Every users row as review-ui's Cosmos users doc (id = users.id as text, same hash)."""
     from common.db.cosmos_store import _json
@@ -215,9 +317,14 @@ def main(argv: list[str] | None = None) -> int:
     pick = ap.add_mutually_exclusive_group(required=True)
     pick.add_argument("--chart", action="append", help="chart name (repeatable)")
     pick.add_argument("--all", action="store_true", help="every chart in Postgres")
+    pick.add_argument("--changed-since", metavar="WHEN",
+                      help="charts changed in Postgres after WHEN (YYYY-MM-DD or ISO time), plus failed copies")
+    pick.add_argument("--since-last", action="store_true",
+                      help="charts changed since the last successful sync, plus failed copies")
     ap.add_argument("--dry-run", action="store_true", help="Postgres counts only; write nothing")
     ap.add_argument("--skip-existing", action="store_true", help="skip charts Cosmos already has")
     ap.add_argument("--limit", type=int, help="at most this many charts")
+    ap.add_argument("--failed-file", help="the live mirror's failed list (default: core-pipeline log folder)")
     args = ap.parse_args(argv)
 
     import os
@@ -227,8 +334,34 @@ def main(argv: list[str] | None = None) -> int:
     from common.db.cosmos_store import _containers, CosmosStore
 
     store = None if args.dry_run else CosmosStore(_containers())
+    incremental = bool(args.changed_since or args.since_last)
+    failed_file = failed_path(args.failed_file)
     with connect() as conn:
-        if args.all:
+        from datetime import timezone
+
+        # UTC, as the failed list writes its times (compared as text).
+        started = conn.execute("SELECT now() AS t").fetchone()["t"].astimezone(timezone.utc).isoformat(timespec="seconds")
+        gt_only: set[str] = set()
+        sync_users = bool(args.all)
+        if incremental:
+            if args.since_last:
+                since = load_state().get("last_sync_started")
+                if not since:
+                    print(f"No earlier sync recorded in {STATE_FILE}. Run --all once (or --changed-since).")
+                    return 2
+            else:
+                since = args.changed_since
+            ids, names = changed_charts(conn, since)
+            failed, unknown = read_failed(failed_file)
+            charts = rows(conn, "SELECT * FROM chart_list WHERE id = ANY(%s) OR chart_name = ANY(%s) ORDER BY id",
+                          (sorted(ids), sorted(names | failed)))
+            gt_only = (names | failed) - {c["chart_name"] for c in charts}
+            sync_users = users_changed(conn, since)
+            print(f"since {since}: {len(ids)} chart(s) with newer results, {len(names)} with newer ground truth / "
+                  f"manifest, {len(failed)} in the failed list ({failed_file.name})")
+            if unknown:
+                print(f"  {unknown} failed copy line(s) name no chart: run --all to be sure")
+        elif args.all:
             charts = rows(conn, "SELECT * FROM chart_list ORDER BY id")
         else:
             charts = rows(conn, "SELECT * FROM chart_list WHERE chart_name = ANY(%s) ORDER BY id", (args.chart,))
@@ -257,9 +390,19 @@ def main(argv: list[str] | None = None) -> int:
                 bad += 1
                 diff = {k: (expected.get(k), got.get(k)) for k in expected if expected.get(k) != got.get(k)}
                 print(f"{name}: COUNT MISMATCH postgres vs cosmos {diff}")
-        extra = migrate_manifest_and_ground_truth(conn, store, [c["chart_name"] for c in charts], dry_run=args.dry_run)
-        users = migrate_users(conn, dry_run=args.dry_run) if args.all else 0
-    print(f"charts: {len(charts)} | copied {ok}, mismatched {bad}, skipped {skipped} | "
+        extra = migrate_manifest_and_ground_truth(
+            conn, store, sorted({c["chart_name"] for c in charts} | gt_only), dry_run=args.dry_run)
+        users = migrate_users(conn, dry_run=args.dry_run) if sync_users else 0
+    if not args.dry_run and not bad:
+        synced = {c["chart_name"] for c in charts} | gt_only
+        dropped = clear_failed(failed_file, synced, started)
+        if dropped:
+            print(f"failed list: {dropped} line(s) cleared")
+        if incremental or args.all:
+            save_state(started, len(charts))
+            print(f"next --since-last starts from {started}")
+    print(f"charts: {len(charts)} | copied {ok}, mismatched {bad}, skipped {skipped}"
+          f"{f', ground-truth-only {len(gt_only)}' if gt_only else ''} | "
           f"manifest rows {extra['manifest_rows']}, ground-truth pages {extra['ground_truth_pages']}, users {users}"
           f"{' (dry run: nothing written)' if args.dry_run else ''}")
     return 1 if bad else 0

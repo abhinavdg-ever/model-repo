@@ -210,7 +210,8 @@ def resolve_log_dir() -> Path:
 _PURGE_LOCK = threading.Lock()
 _PURGE_MARK = ".last_purge"
 _DATED_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
-_KEEP_FILES = {"README.md", _PURGE_MARK}
+# cosmos_mirror_failed.tsv: failed DB_BACKEND=both copies, until the next sync (common/db/cosmos_store).
+_KEEP_FILES = {"README.md", _PURGE_MARK, "cosmos_mirror_failed.tsv"}
 
 
 def purge_old_logs(days: int | None = None, *, today: date | None = None, force: bool = False) -> list[Path]:
