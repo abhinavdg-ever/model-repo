@@ -157,3 +157,20 @@ def test_chart_review_doc_from_postgres(migrate):
     assert doc["id"] == "chart" and doc["chart_name"] == "chart_a"
     assert doc["chart_review"]["user_id"] == 3 and doc["chart_ground_truth"] is None
     assert doc["encounter_review"] == [{"seq": 1, "start_page": 1, "end_page": 4}] and doc["review_entries"] == []
+
+
+def test_imaging_final_uses_ground_truth_names_in_cosmos():
+    """2026-11-14 (user): imaging_final in a Cosmos page doc carries the ground truth's names;
+    core-pipeline writes them, review-ui reads them back; both tables are the same."""
+    from common.db import cosmos_store
+    from app.store.cosmos import final_names
+
+    assert cosmos_store.FINAL_TO_COSMOS == final_names.FINAL_TO_COSMOS
+    row = {"provider_name": "Dr A", "codability": "Codable", "seq": 3, "page_type": "Progress Note",
+           "encounter_type": "Outpatient (F2F)", "orientation_angle": 90}
+    doc = cosmos_store.final_to_cosmos(row)
+    assert doc == {"rendering_provider": "Dr A", "codeable": "Codable", "page_sequence": 3,
+                   "page_type": "Progress Note", "encounter_type": "Outpatient (F2F)", "rotation": 90}
+    assert cosmos_store.final_from_cosmos(doc) == row == final_names.from_cosmos(doc)
+    # A document written before the rename reads as it is.
+    assert final_names.from_cosmos(row) == row and cosmos_store.final_from_cosmos(row) == row

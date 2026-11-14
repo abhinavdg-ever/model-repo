@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   ExternalLink,
   Filter,
@@ -158,6 +159,53 @@ const POP_MARGIN = 8;
  * left and right, opening upwards when there is more room above, scrolling when long.
  * Rendered into document.body: .workspace's backdrop-filter would otherwise make
  * "fixed" relative to it, not to the window. */
+/** A table as tab-separated text (caption, head, rows): pastes into Excel cells. */
+function tableTsv(table: InfoTable): string {
+  const cell = (value: string | number) => String(value).replace(/[\t\n\r]+/g, " ");
+  const lines = [table.caption];
+  if (table.head.length) lines.push(table.head.map(cell).join("\t"));
+  for (const row of table.rows) lines.push(row.map(cell).join("\t"));
+  return lines.join("\n");
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers / insecure origins: a hidden textarea and execCommand.
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+/** Copy a table (or all of them) for Excel (2026-11-14, user). */
+function CopyButton({ label, text }: { label: string; text: () => string }) {
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  return (
+    <button
+      type="button"
+      className="accuracy-info-copy"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={async () => {
+        setState((await copyText(text())) ? "done" : "failed");
+        window.setTimeout(() => setState("idle"), 1500);
+      }}
+      title="Copy as tab-separated text: paste into Excel"
+    >
+      <Copy size={11} aria-hidden="true" />
+      {state === "done" ? "Copied" : state === "failed" ? "Copy failed" : label}
+    </button>
+  );
+}
+
 function InfoTip({ text, className }: { text: string | InfoSection[]; className?: string }) {
   const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -231,6 +279,14 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
             maxHeight: place.maxHeight,
           }}
         >
+          {blocks.some((block) => block.tables?.length) ? (
+            <div className="accuracy-info-copyall">
+              <CopyButton
+                label="Copy all tables"
+                text={() => blocks.flatMap((block) => block.tables ?? []).map(tableTsv).join("\n\n")}
+              />
+            </div>
+          ) : null}
           {blocks.map((block, index) => (
             <section key={index} className="accuracy-info-section">
               {block.title ? <h4>{block.title}</h4> : null}
@@ -244,6 +300,8 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                 <p>{block.lines[0]}</p>
               ) : null}
               {(block.tables ?? []).map((table) => (
+                <Fragment key={table.caption}>
+                <CopyButton label="Copy" text={() => tableTsv(table)} />
                 <table
                   key={table.caption}
                   className={`accuracy-info-matrix${table.match ? " has-match" : table.head[0].startsWith("GT") ? " is-cross" : ""}`}
@@ -272,6 +330,7 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                     ))}
                   </tbody>
                 </table>
+                </Fragment>
               ))}
             </section>
           ))}
@@ -682,21 +741,20 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
 }
 
 /** Provider Signature (2026-11-14, user): Credentials match on the pages whose ground truth has
- * credentials (any one shared is a match). */
-function credentialTables(rates: ClassRates): InfoTable[] {
+ * credentials (any one shared is a match), the last section, one row. */
+function credentialSection(rates: ClassRates): InfoSection {
   const cases = rates.credCases ?? 0;
   const match = rates.credMatch ?? 0;
-  return [{
-    caption: "Credentials match (pages where the ground truth has credentials)",
-    head: ["", "Pages"],
-    rows: [
-      ["Match (any one credential shared)", match],
-      ["No Match", cases - match],
-      ["Total", cases],
-      ["Cred. M = Match / Total", cases ? `${Math.round((100 * match) / cases)}%` : "—"],
-    ],
-    match: [[0, 1]],
-  }];
+  return {
+    title: "Credentials match (pages where the ground truth has credentials)",
+    lines: [],
+    tables: [{
+      caption: "Any one credential shared is a Match",
+      head: ["", "Match", "No Match", "Total"],
+      rows: [["Pages", match, cases - match, cases]],
+      match: [[0, 1]],
+    }],
+  };
 }
 
 /** Codability Stats (2026-11-14, user): ground truth Codable / Non-Codable x pipeline. */
@@ -1639,12 +1697,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         // DOS has its own Yes view (page counts), above.
                         ["blankJunk", "orientation", "signature"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
-                        metric.id === "codeable"
-                          ? codableTables(codableMatrix)
-                          : metric.id === "signature"
-                            ? credentialTables(signatureRates)
-                            : [],
-                      )}
+                        metric.id === "codeable" ? codableTables(codableMatrix) : [],
+                      ).concat(metric.id === "signature" ? [credentialSection(signatureRates)] : [])}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
                   binary={metric.binary}

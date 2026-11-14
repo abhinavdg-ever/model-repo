@@ -95,6 +95,7 @@ def _bulk_truth(docs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _value_rows(review: Any, chart_name: str, truth_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Search by value's rows: every page's imaging_final and ground truth."""
+    from app.store.cosmos.final_names import from_cosmos
     from app.store.cosmos.gt_lists import from_doc
 
     truth = {int(d["page_number"]): from_doc({k: v for k, v in d.items() if not k.startswith("_") and k != "entries"})
@@ -106,7 +107,7 @@ def _value_rows(review: Any, chart_name: str, truth_docs: list[dict[str, Any]]) 
             continue
         number = page.get("page_number")
         rows.append({"page_number": number, "page_name": page.get("page_name"),
-                     "final": doc.get("imaging_final") or {},
+                     "final": from_cosmos(doc.get("imaging_final")) or {},
                      "truth": truth.get(int(number)) if number is not None else None})
     rows.sort(key=lambda r: r["page_number"] if r["page_number"] is not None else 0)
     return rows

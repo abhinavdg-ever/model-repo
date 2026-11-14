@@ -57,6 +57,35 @@ PAGE_FIELDS = {
     "member_extractions": "member_extraction",
 }
 TUPLE_FIELDS = {"ocr": "ocr", "blank_junk": "blank_junk", "page_stages": "stages"}
+
+# 2026-11-14 (user): a page doc's imaging_final uses the ground truth's field names where they
+# mean the same thing (Postgres keeps its own). review-ui app/store/cosmos/final_names.py has the
+# same table; tests/test_cosmos_sync.py keeps them equal. Page type / encounter type keep theirs.
+FINAL_TO_COSMOS = {
+    "handwritten_area_pct": "handwritten_pct",
+    "quality_tag": "quality",
+    "orientation_angle": "rotation",
+    "tilt_angle": "tilt",
+    "specialty": "provider_specialty",
+    "codability": "codeable",
+    "provider_name": "rendering_provider",
+    "signature_present": "provider_signature",
+    "seq": "page_sequence",
+}
+COSMOS_TO_FINAL = {cosmos: pg for pg, cosmos in FINAL_TO_COSMOS.items()}
+
+
+def final_to_cosmos(row: Any) -> Any:
+    if not isinstance(row, dict):
+        return row
+    return {FINAL_TO_COSMOS.get(k, k): v for k, v in row.items()}
+
+
+def final_from_cosmos(row: Any) -> Any:
+    """Back to Postgres names; a document written before the rename passes through."""
+    if not isinstance(row, dict):
+        return row
+    return {COSMOS_TO_FINAL.get(k, k) if k not in FINAL_TO_COSMOS else k: v for k, v in row.items()}
 WRITE_PREFIXES = ("upsert_", "set_", "init_", "reset_", "clear_", "delete_", "mark_", "revise_",
                   "create_", "update_", "heartbeat_", "insert_", "prune_")
 CROSS_CHART = {"list_stages", "list_jobs", "get_job", "list_run_usage_daily", "list_finished_chart_names",
@@ -196,7 +225,7 @@ class CosmosStore(MemoryStore):
             ids.append(pid)
         for attr, field in PAGE_FIELDS.items():
             if doc.get(field) is not None:
-                getattr(self, attr)[pid] = doc[field]
+                getattr(self, attr)[pid] = final_from_cosmos(doc[field]) if field == "imaging_final" else doc[field]
         for key, row in (doc.get("ocr") or {}).items():
             self.ocr[(pid, key)] = row
         for key, row in (doc.get("blank_junk") or {}).items():
@@ -221,6 +250,7 @@ class CosmosStore(MemoryStore):
         doc: dict[str, Any] = {"id": f"page-{page_id}", "chart_name": chart_name, "page_id": page_id, "page": page}
         for attr, field in PAGE_FIELDS.items():
             doc[field] = getattr(self, attr).get(page_id)
+        doc["imaging_final"] = final_to_cosmos(doc.get("imaging_final"))
         for attr, field in TUPLE_FIELDS.items():
             doc[field] = {_tuple_key(k): v for k, v in getattr(self, attr).items() if k[0] == page_id}
         return _json(doc)

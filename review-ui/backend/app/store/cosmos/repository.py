@@ -111,8 +111,13 @@ class _Chart:
     """One chart's documents: the chart doc and its page docs in page order."""
 
     def __init__(self, chart: dict[str, Any] | None, pages: list[dict[str, Any]]):
+        from app.store.cosmos.final_names import from_cosmos
+
         self.chart_doc = chart
         self.row = (chart or {}).get("chart") or {}
+        # imaging_final carries the ground truth's names in Cosmos (2026-11-14): back to Postgres'.
+        pages = [{**d, "imaging_final": from_cosmos(d["imaging_final"])} if d.get("imaging_final") else d
+                 for d in pages]
         chart_id = self.row.get("id")
         # As the Postgres JOIN chart_list ON id = page_list.chart_id.
         self.pages = [

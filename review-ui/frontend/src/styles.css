@@ -6888,3 +6888,26 @@ input {
   gap: 0.3rem;
   padding-left: 1.45rem;
 }
+
+/* Copy buttons in the info boxes (2026-11-14): tables paste into Excel. */
+.accuracy-info-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.3rem 0 -0.1rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  background: var(--card, #fff);
+  color: var(--muted);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.accuracy-info-copy:hover {
+  color: var(--text);
+  border-color: var(--brand-200, #9ca3af);
+}
+.accuracy-info-copyall {
+  display: flex;
+  justify-content: flex-end;
+}
