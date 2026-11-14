@@ -260,8 +260,10 @@ def migrate_manifest_and_ground_truth(conn: Any, store: Any, names: list[str], *
     if gt:
         for e in rows(conn, "SELECT * FROM page_ground_truth_entry WHERE page_ground_truth_id = ANY(%s) ORDER BY id",
                       ([g["id"] for g in gt],)):
-            entries.setdefault(int(e["page_ground_truth_id"]), []).append(
-                {k: e.get(k) for k in ("entry_mode", "labels", "source_path", "user_id", "created_at")})
+            entry = {k: e.get(k) for k in ("entry_mode", "labels", "source_path", "user_id", "created_at")}
+            if isinstance(entry.get("labels"), dict):
+                entry["labels"] = gt_lists(entry["labels"])
+            entries.setdefault(int(e["page_ground_truth_id"]), []).append(entry)
     reviews = {n: chart_review_doc(conn, n) for n in names}
     if not dry_run:
         keep_manifest: dict[str, set[str]] = {n: set() for n in names}
@@ -272,7 +274,7 @@ def migrate_manifest_and_ground_truth(conn: Any, store: Any, names: list[str], *
         gt_container = _ground_truth_container()
         keep_gt: dict[str, set[str]] = {n: set() for n in names}
         for g in gt:
-            doc = {k: v for k, v in g.items() if k != "id"}
+            doc = gt_lists({k: v for k, v in g.items() if k != "id"})
             doc.update({"id": f"page-{int(g['page_number'])}", "entries": entries.get(int(g["id"]), [])})
             gt_container.upsert_item(_json(doc))
             keep_gt.setdefault(g["chart_name"], set()).add(doc["id"])
@@ -380,6 +382,22 @@ def save_state(started: str, charts: int) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps({"last_sync_started": started, "charts": charts}, indent=2) + "\n",
                           encoding="utf-8")
+
+
+# 2026-11-14 (user): several provider names / credentials ("MD, NP") are a JSON array in a Cosmos
+# ground_truth document (review-ui app/store/cosmos/gt_lists.py reads them back).
+GT_LIST_COLUMNS = ("rendering_provider", "provider_credentials")
+
+
+def gt_lists(labels: dict[str, Any]) -> dict[str, Any]:
+    out = dict(labels)
+    for column in GT_LIST_COLUMNS:
+        value = out.get(column)
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.split(",") if p.strip()]
+            if len(parts) > 1:
+                out[column] = parts
+    return out
 
 
 def migrate_users(conn: Any, *, dry_run: bool) -> int:

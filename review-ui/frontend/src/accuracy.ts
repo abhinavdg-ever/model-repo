@@ -24,7 +24,9 @@ export type MetricId =
   | "pageType"
   | "codeable"
   | "signature"
-  | "orientation";
+  | "orientation"
+  | "invoice"
+  | "duplicate";
 
 /** ``inOverall: false`` = scored, but not part of the page's overall match.
  * ``binary`` = Match or No Match only, never Partial (only Page Type has a Partial).
@@ -49,7 +51,7 @@ export const METRICS: {
     id: "dos",
     label: "DOS",
     binary: true,
-    rule: "Labelled From / To equal the Final or Extracted DOS = Match. No labelled date: a page with no DOS is a Match. Blank / Junk pages are not scored.",
+    rule: "Labelled From / To equal the Final or Extracted DOS = Match. Not Found = Not Found is a Match (no label and no pipeline date). Blank / Junk pages (either side) are not scored.",
   },
   {
     id: "blankJunk",
@@ -80,6 +82,21 @@ export const METRICS: {
     label: "Orientation",
     binary: true,
     rule: "Text angle (0 / 90 / 180 / 270) equals the ground truth; NA = 0°.",
+  },
+  // 2026-11-14 (user): Invoice and Duplicate, scored on every labelled page; not in Overall.
+  {
+    id: "invoice",
+    label: "Invoice",
+    binary: true,
+    inOverall: false,
+    rule: "Ground truth Invoice (Is Invoice = Yes, or Invoice in the Encounter Type) vs the pipeline's Final Page Type = Invoice. Match = both Yes or both No.",
+  },
+  {
+    id: "duplicate",
+    label: "Duplicate",
+    binary: true,
+    inOverall: false,
+    rule: "Ground truth Is Duplicate vs the pipeline. Yes and Partial both count as a duplicate on either side. Match = both a duplicate, or both No. Pages with no Is Duplicate label are not scored.",
   },
 ];
 
@@ -150,6 +167,13 @@ export type ChartAccuracy = {
   memberMatrix?: MemberMatrix;
   /** DOS Stats: From / To Match, No Match, Not Found and Both counts (2026-11-14). */
   dosMatrix?: MemberMatrix;
+  /** Codability Stats: ground truth x pipeline counts (2026-11-14). */
+  codableMatrix?: MemberMatrix;
+  /** Class 1 = Invoice; Class 1 = a duplicate (Yes or Partial) (2026-11-14). */
+  invoiceRates?: ClassRates;
+  duplicateRates?: ClassRates;
+  /** Duplicate Stats: ground truth Yes / No x pipeline Yes / Partial / No. */
+  dupMatrix?: MemberMatrix;
   /** Class 1 = the ground truth says the page is signed; credMatch counts its credentials. */
   signatureRates: ClassRates;
   /** Class 1 = the ground truth dates the page. */
@@ -556,8 +580,12 @@ function pageScores(
   /** The metrics a page is held to. */
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
-  dos: PresenceCall;
+  dos: PresenceCall | null;
   dosCells: string[];
+  invoiceCall: { expected: boolean; predicted: boolean } | null;
+  dupCell: string | null;
+  dupCall: { expected: boolean; predicted: boolean } | null;
+  codableCell: string | null;
   signature: SignatureCall | null;
 } {
   const parts = splitPageType(page.pageType);
@@ -651,29 +679,48 @@ function pageScores(
       }
     : // Either undated (Final or Extracted) is a Match.
       { expected: false, predicted: extractedDated && pipelineDated, verdict: extractedDated && pipelineDated ? "no" : "yes" };
-  const dos = dosCall.verdict;
+  // 2026-11-14 (user): DOS is not scored on a Blank / Junk page (either side), as the page
+  // view shows no mark there.
+  const dosSkipped = blankOrJunk || pipelineBlankJunk;
+  const dos = dosSkipped ? null : dosCall.verdict;
+  // Duplicate (2026-11-14, user): Yes and Partial are both a duplicate.
+  const dupTruth = gtDuplicate(page.groundTruth?.isDuplicate);
+  const dupAlgo = algoDuplicate(page);
   // DOS Stats (2026-11-14, user): each labelled field (From / To) as Match (the Final or the
   // Extracted date equals it), No Match (another date), Not Found (no date); and per page with
   // both labelled, how many of the two match.
+  // Not Found = Not Found is a match, as for Member (2026-11-14, user): a field with no label
+  // and no pipeline date matches. A field with no label but a pipeline date is left out when
+  // the other field is labelled (a From-only label does not make a To wrong); on a page with no
+  // label at all it is No Match.
   const dosCells: string[] = [];
-  if (gtDated) {
+  if (!dosSkipped && page.groundTruth) {
     const fields = [
       ["from", bits.dosFrom, finalBits.dosFrom, finalFrom, pipelineDate(page.dosFrom)],
       ["to", bits.dosTo, finalBits.dosTo, finalTo, pipelineDate(page.dosTo)],
     ] as const;
-    let labelledCount = 0;
+    let counted = 0;
     let matches = 0;
     for (const [field, own, fin, finalDate, ownDate] of fields) {
-      if (!labeled(own) && !labeled(fin)) continue;
-      labelledCount += 1;
-      const matched = labeled(fin) && grade(fin) === "yes"
-        ? true
-        : !finalOnly && labeled(own) && grade(own) === "yes";
       const found = finalOnly ? Boolean(finalDate) : Boolean(finalDate || ownDate);
-      dosCells.push(`${field}|${matched ? "match" : found ? "no_match" : "not_found"}`);
-      if (matched) matches += 1;
+      const labelled = labeled(own) || labeled(fin);
+      let cell: string | null;
+      if (labelled) {
+        const matched = labeled(fin) && grade(fin) === "yes"
+          ? true
+          : !finalOnly && labeled(own) && grade(own) === "yes";
+        cell = matched ? "match" : "no_match";
+      } else if (!found) {
+        cell = "match";
+      } else {
+        cell = gtDated ? null : "no_match";
+      }
+      if (cell == null) continue;
+      counted += 1;
+      if (cell === "match") matches += 1;
+      dosCells.push(`${field}|${cell}`);
     }
-    if (labelledCount === 2) dosCells.push(`both|${matches}`);
+    if (counted === 2) dosCells.push(`both|${matches}`);
   }
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
@@ -706,6 +753,20 @@ function pageScores(
         single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
         single(codeableBits(page.isCodeable)),
       );
+  // Codability Stats (2026-11-14, user): ground truth x pipeline. The pipeline's side is the
+  // value that matched (Final or Extracted), else the Final; a Blank / Junk page is Non-Codable.
+  const codableSide = (value: string | null | undefined): string => {
+    const t = text(value).toLowerCase();
+    if (!t) return "none";
+    return /non/.test(t) ? "non_codable" : /discharge|cod/.test(t) ? "codable" : "none";
+  };
+  const gtCodable = gtDischarge ? "codable" : codableSide(gtForCodable?.codeable);
+  const pipeCodable = pipelineBlankJunk
+    ? "non_codable"
+    : codeable === "yes" && gtCodable !== "none"
+      ? gtCodable
+      : codableSide(text(page.finalCodeable) || page.isCodeable);
+  const codableCell = codeable != null && gtCodable !== "none" ? `cod|${gtCodable}|${pipeCodable}` : null;
 
   // 2026-11-06 (user): a page the pipeline calls blank / junk is not scored for Provider
   // Signature: its provider may still be extracted, but it is not shown or matched.
@@ -734,13 +795,19 @@ function pageScores(
       // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
       // stage left alone. Equal angles = Match, else No Match.
       orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
+      invoice: page.groundTruth ? (gtInvoice(page) === algoInvoice(page) ? "yes" : "no") : null,
+      duplicate: dupTruth ? ((dupTruth !== "no") === (dupAlgo !== "no") ? "yes" : "no") : null,
     },
+    invoiceCall: page.groundTruth ? { expected: gtInvoice(page), predicted: algoInvoice(page) } : null,
+    dupCell: dupTruth ? `dup|${dupTruth === "no" ? "no" : "yes"}|${dupAlgo}` : null,
+    dupCall: dupTruth ? { expected: dupTruth !== "no", predicted: dupAlgo !== "no" } : null,
     blankJunk: blankJunkCalls,
     rotation: bits.rotation,
     applicable: OVERALL_METRICS,
     member: memberCalls,
-    dos: dosCall,
+    dos: dosSkipped ? null : dosCall,
     dosCells,
+    codableCell,
     signature: signatureCalled,
   };
 }
@@ -870,6 +937,10 @@ export function scoreChart(
   const memberRates = emptyRates();
   const memberMatrix: MemberMatrix = { cells: {}, excluded: 0 };
   const dosMatrix: MemberMatrix = { cells: {}, excluded: 0 };
+  const codableMatrix: MemberMatrix = { cells: {}, excluded: 0 };
+  const invoiceRates = emptyRates();
+  const duplicateRates = emptyRates();
+  const dupMatrix: MemberMatrix = { cells: {}, excluded: 0 };
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyOverall();
@@ -887,6 +958,10 @@ export function scoreChart(
     }
     addPresenceRates(dosRates, scored.dos);
     for (const cell of scored.dosCells) dosMatrix.cells[cell] = (dosMatrix.cells[cell] ?? 0) + 1;
+    if (scored.codableCell) codableMatrix.cells[scored.codableCell] = (codableMatrix.cells[scored.codableCell] ?? 0) + 1;
+    if (scored.invoiceCall) addRates(invoiceRates, scored.invoiceCall.expected, scored.invoiceCall.predicted);
+    if (scored.dupCall) addRates(duplicateRates, scored.dupCall.expected, scored.dupCall.predicted);
+    if (scored.dupCell) dupMatrix.cells[scored.dupCell] = (dupMatrix.cells[scored.dupCell] ?? 0) + 1;
 
     const pageOverall = overallVerdict(scored.scores, scored.applicable);
     pages.push({
@@ -927,6 +1002,10 @@ export function scoreChart(
     memberRates,
     memberMatrix,
     dosMatrix,
+    codableMatrix,
+    invoiceRates,
+    duplicateRates,
+    dupMatrix,
     signatureRates,
     dosRates,
     pages,

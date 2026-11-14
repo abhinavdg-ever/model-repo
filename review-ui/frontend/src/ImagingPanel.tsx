@@ -540,12 +540,6 @@ const NOT_AVAILABLE_FIELDS = new Set(["page_type", "page_subtype", "specialty", 
 
 /** Yes or No; no signature found is No (2026-10-27, user). */
 const SIGNATURE_FIELDS = new Set(["electronic_signature"]);
-/** No Skipped choice on the Member and Provider rows (2026-11-14, user): a member field is
- * Yes / No / Not Found, the signature Yes / No, the provider name / credentials a value or
- * Not Found. */
-const NO_SKIPPED_FIELDS = new Set([
-  "name", "dob", "member_id", "provider_name", "provider_credentials", "electronic_signature",
-]);
 
 function emptyLabel(fieldId: string): string {
   if (SIGNATURE_FIELDS.has(fieldId)) return "No";
@@ -649,8 +643,8 @@ function normalizeEntry(id: string, value: string): string | null {
     // No Skipped on the Member / Provider rows: a member field is Not Found, the signature No.
     if (MEMBER_FIELDS.has(id)) return NOT_FOUND;
     if (SIGNATURE_FIELDS.has(id)) return "No";
-    if (NO_SKIPPED_FIELDS.has(id)) return "";
-    return SKIPPED_ENTRY;
+    // No Skipped anywhere (2026-11-14, user): an empty cell.
+    return "";
   }
   const rule = ENTRY_RULES[id];
   if (!rule) return value.trim();
@@ -742,8 +736,9 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     name: presenceStored(gt?.memberName),
     dob: presenceStored(gt?.memberDob),
     member_id: presenceStored(gt?.memberId),
-    provider_name: (gt?.renderingProvider ?? "").trim(),
-    provider_credentials: gtCredentials(gt),
+    // Several values (stored comma separated) show as "1. A" / "2. B" (2026-11-14, user).
+    provider_name: numberedList(gt?.renderingProvider),
+    provider_credentials: numberedList(gtCredentials(gt)),
     electronic_signature: gtSignature(gt),
     visibility: visibilityLabel(gt?.isVisible),
     handwritten_area: (gt?.handwrittenPct ?? "").trim(),
@@ -800,6 +795,8 @@ function groundTruthBody(
     dosFrom: cleanGt(values.dos_from),
     dosTo: cleanGt(values.dos_to),
     ...blankJunkStored(values.blank_junk ?? ""),
+    // Page Type Invoice is an invoice (2026-11-14, user).
+    ...(/^invoice\b/i.test(pageType ?? "") ? { isInvoice: "Yes" } : {}),
     // The client sheet's Page Type column is Accept / Unaccept, not a page type: kept as
     // loaded. A page with none gets the page type, as before.
     pageType: cleanGt(page.groundTruth?.pageType) ?? pageType,
@@ -860,6 +857,12 @@ function presenceStored(value: string | null | undefined): string {
 
 /** Provider Credentials as stored (2026-11-14, user): several signers' numbered lines
  * ("1. MD", "2. NP") become one list "MD, NP"; none is Not Found. The backend does the same. */
+/** "A, B" (as stored) shown as "1. A" / "2. B", one per line; a single value as it is. */
+function numberedList(value: string | null | undefined): string {
+  const parts = (value ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 ? parts.map((part, i) => `${i + 1}. ${part}`).join("\n") : parts[0] ?? "";
+}
+
 function credentialList(value: string | null | undefined): string {
   return signerList(value) || NOT_FOUND;
 }
@@ -1243,7 +1246,8 @@ function GroundTruthCell({
         ? [NOT_FOUND]
         : [];
   const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
-  const extras = NO_SKIPPED_FIELDS.has(row.id) ? [...none] : [...none, SKIPPED_ENTRY];
+  // No Skipped choice on any row (2026-11-14, user).
+  const extras = [...none];
   // A long list puts them first, so they are not lost under its values.
   const options =
     values.length + extras.length < INLINE_OPTIONS_BELOW ? [...values, ...extras] : [...extras, ...values];
@@ -1722,10 +1726,6 @@ function dosCompareRow(
     extracted === SKIPPED || extracted === YET_TO_PROCESS
       ? extracted
       : finalDosValue(page, extracted, side, processed, skipped);
-  // A non-visit document's Final is 2222-02-22; the page's own date shows beside it as
-  // (E: date), and the ground truth matches either one (2026-10-27, user).
-  const ownDate = /^\d{4}-\d{2}-\d{2}/.test(extracted) && !extracted.startsWith("2222") ? extracted : "";
-  const nonVisit = final.startsWith(NON_VISIT_DOS) && Boolean(ownDate);
   const confidence = fmtConfidence(
     finalOr(page, "dos", page.dosConfidence),
     processed,
@@ -1735,17 +1735,8 @@ function dosCompareRow(
     id: side === "from" ? "dos_from" : "dos_to",
     label: side === "from" ? "DOS From" : "DOS To",
     extracted,
-    processed: nonVisit ? `${final} (E: ${ownDate})` : final,
-    // Both dates are in the Final cell, so either matches, in the client's copy too.
-    ...(nonVisit
-      ? {
-          compare: (truth: string) => {
-            const againstFinal = groundTruthMark(final, truth, false);
-            if (againstFinal === "match") return againstFinal;
-            return groundTruthMark(ownDate, truth, false) === "match" ? "match" : againstFinal;
-          },
-        }
-      : {}),
+    // 2026-11-14 (user): the Final date only, no "(E: date)" beside it.
+    processed: final,
     confidence,
     truth,
     key: true,
@@ -2280,7 +2271,8 @@ function PageDetails({
             // Scored as the accuracy report scores it: any one credential shared
             // ('MD | NP' against 'MD, PhD') is a match.
             compare: (truth: string) => {
-              const verdict = credentialsVerdict(truth, providerCredentials || undefined);
+              // The ground truth may show as "1. MD" / "2. NP": compared as "MD, NP".
+              const verdict = credentialsVerdict(signerList(truth) || truth, providerCredentials || undefined);
               return verdict == null ? null : verdict === "no" ? "mismatch" : "match";
             },
           },

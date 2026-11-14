@@ -65,7 +65,8 @@ Every field: blank / `NA` / `N/A` / `Not Available` → **NULL**; `Skipped` → 
 Notes:
 
 - **Not Found** is a real answer only for Member Name / DOB / ID (stored as the text `Not Found`). On every other field it means empty and is stored as NULL.
-- **Is Invoice** has no row of its own: Blank / Junk sets it (`No` whenever Blank / Junk is answered). An invoice `Yes` comes from a spreadsheet load or `utilities/gt_replace_value.py`.
+- **Is Invoice** has no row of its own: a **Page Type of Invoice sets it to `Yes`** (2026-11-14); otherwise Blank / Junk sets it (`No` whenever Blank / Junk is answered). It can also come from a spreadsheet load or `utilities/gt_replace_value.py`.
+- **No Skipped answer** on any row (2026-11-14): Skipped is saved as an empty cell (Member: Not Found; Signature: No).
 
 ## Other tabs (chart level)
 

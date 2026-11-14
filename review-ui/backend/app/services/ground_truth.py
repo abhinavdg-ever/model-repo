@@ -38,7 +38,8 @@ _COLUMNS = """
     to_jsonb(page_ground_truth) ->> 'handwritten_pct'
 """
 
-_EMPTY = {"", "na", "n/a", "not found", "not available"}
+# "skipped": no Skipped answer any more (2026-11-14, user); an old one is an empty cell.
+_EMPTY = {"", "na", "n/a", "not found", "not available", "skipped"}
 
 # Which ground truth the screens show: the latest value, whoever wrote it, or
 # each page's latest spreadsheet load with manual edits hidden.
@@ -170,10 +171,18 @@ def member_label(value: str | None) -> str | None:
     return "Not Found" if label in (None, "Skipped") else label
 
 
+def invoice_label(value: str | None, page_type: str | None) -> str | None:
+    """Is Invoice; Page Type Invoice makes it Yes (2026-11-14, user)."""
+    if re.match(r"\s*invoice\b", page_type or "", re.IGNORECASE):
+        return "Yes"
+    return clean_label(value)
+
+
 def signature_label(value: str | None) -> str | None:
     """Provider Signature: Yes / No; Skipped is No (2026-11-14, user: no Skipped option)."""
-    label = yes_no_label(value)
-    return "No" if label == "Skipped" else label
+    if (value or "").strip().casefold() == "skipped":
+        return "No"
+    return yes_no_label(value)
 
 
 _SIGNER_NUMBER = re.compile(r"(?:^|(?<=\s))\d+\.\s+")
@@ -486,7 +495,7 @@ def upsert_page_ground_truth(
         spell_codeable(body.codeable),
         clean_label(body.blankPage),
         clean_label(body.junkPage),
-        clean_label(body.isInvoice),
+        invoice_label(body.isInvoice, body.encounterType or body.pageType),
         clean_label(body.rotation),
         clean_label(body.isVisible),
         signer_list(body.renderingProvider),

@@ -2319,7 +2319,8 @@ input {
 .imaging-gt-copied {
   flex: 0 1 auto;
   min-width: 0;
-  white-space: normal;
+  /* pre-line: several values show one per line ("1. A" / "2. B"). */
+  white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
@@ -6840,7 +6841,8 @@ input {
 .accuracy-info-matrix.is-cross tbody tr:nth-child(1):not(:last-child) td:nth-child(2),
 .accuracy-info-matrix.is-cross tbody tr:nth-child(2):not(:last-child) td:nth-child(3),
 .accuracy-info-matrix.is-cross tbody tr:nth-child(3):not(:last-child) td:nth-child(4),
-.accuracy-info-matrix:not(.is-cross) tbody tr:not(:last-child) td:nth-child(2) {
+.accuracy-info-matrix td.is-match,
+.accuracy-info-matrix:not(.is-cross):not(.has-match) tbody tr:not(:last-child) td:nth-child(2) {
   background: #e6f4f1;
   font-weight: 600;
 }

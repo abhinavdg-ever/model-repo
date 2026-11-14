@@ -48,6 +48,7 @@ from app.core.schemas import (
     StagedEncounter,
 )
 from app.store import rows as R
+from app.store.cosmos.gt_lists import from_doc, from_doc_value, to_doc
 from app.store.cosmos.repository import CosmosFolderRepository, _TRUTH_COLUMNS, _as_datetime, _status
 
 logger = logging.getLogger("review_ui.cosmos.review")
@@ -105,7 +106,7 @@ def entries(doc: dict[str, Any]) -> list[dict[str, Any]]:
 def truth_row(doc: dict[str, Any]) -> tuple:
     """A ground-truth page doc as a row of services/ground_truth._COLUMNS."""
     return (int(doc["page_number"]), R.json_text(doc.get("source_page_id")),
-            *(R.json_text(doc.get(c)) for c in _TRUTH_COLUMNS))
+            *(R.json_text(from_doc_value(doc.get(c))) for c in _TRUTH_COLUMNS))
 
 
 class CosmosReviewStore:
@@ -330,11 +331,12 @@ class CosmosReviewStore:
                        "source_page_id": None, "source_path": None, "created_at": now, "entries": []}
             if source_page_id is not None:
                 doc["source_page_id"] = source_page_id
-            doc.update(labels)
+            stored = to_doc(labels)  # several provider names / credentials: a JSON array
+            doc.update(stored)
             doc["user_id"] = user_id
             doc["updated_at"] = now
             doc["entries"] = list(doc.get("entries") or []) + [{
-                "entry_mode": "manual_entry", "labels": dict(labels), "source_path": None,
+                "entry_mode": "manual_entry", "labels": dict(stored), "source_path": None,
                 "user_id": user_id, "created_at": now,
             }]
             return doc
@@ -355,7 +357,7 @@ class CosmosReviewStore:
                 if bulk:
                     last = bulk[-1]
                     out[(str(chart), int(doc["page_number"]))] = (
-                        {**(last.get("labels") or {}), "source_page_id": doc.get("source_page_id")},
+                        {**from_doc(last.get("labels") or {}), "source_page_id": doc.get("source_page_id")},
                         _as_datetime(last.get("created_at")),
                     )
         return out
@@ -372,7 +374,7 @@ class CosmosReviewStore:
         out: list[tuple[str, int, dict]] = []
         for chart in sorted(set(charts)):
             for doc in sorted(self.truth_docs(chart), key=lambda d: int(d["page_number"])):
-                labels = {k: v for k, v in doc.items() if k != "entries" and not k.startswith("_")}
+                labels = from_doc({k: v for k, v in doc.items() if k != "entries" and not k.startswith("_")})
                 out.append((str(chart), int(doc["page_number"]), labels))
         return out
 
@@ -382,7 +384,8 @@ class CosmosReviewStore:
         from app.services.ground_truth import LABEL_COLUMNS, _EMPTY
 
         cells = " OR ".join(
-            f"(IS_NUMBER(c.{col}) OR (IS_STRING(c.{col}) AND NOT ARRAY_CONTAINS(@empty, LOWER(TRIM(c.{col})))))"
+            f"(IS_NUMBER(c.{col}) OR (IS_ARRAY(c.{col}) AND ARRAY_LENGTH(c.{col}) > 0) OR "
+            f"(IS_STRING(c.{col}) AND NOT ARRAY_CONTAINS(@empty, LOWER(TRIM(c.{col})))))"
             for col in LABEL_COLUMNS
         )
         names = self.query_all(
@@ -515,7 +518,7 @@ class CosmosReviewStore:
                     return GroundTruthUpdate(by=self.display_name(entry.get("user_id")), at=_iso(entry.get("created_at")))
             return None
 
-        labels = lambda e: e.get("labels") if isinstance(e.get("labels"), dict) else {}  # noqa: E731
+        labels = lambda e: from_doc(e.get("labels")) if isinstance(e.get("labels"), dict) else {}  # noqa: E731
         bulk = newest(lambda e: e.get("entry_mode") == "bulk_upload") or GroundTruthUpdate()
         review = self.chart_doc(chart)
         enc_rows = [r for r in review.get("encounter_review") or [] if isinstance(r, dict)]
@@ -577,7 +580,7 @@ class CosmosReviewStore:
             key = (str(doc["chart_name"]), int(doc["page_number"]))
             for i, e in enumerate(entries(doc)):
                 rows.append((i, key, doc["chart_name"], doc["page_number"], e.get("entry_mode"),
-                             e.get("labels") or {}, _as_datetime(e.get("created_at")), _int(e.get("user_id")),
+                             from_doc(e.get("labels") or {}), _as_datetime(e.get("created_at")), _int(e.get("user_id")),
                              self.display_name(e.get("user_id"))))
         items = log_entries(rows, user_id=user_id, all_users=all_users)
         charts = self.query_all("ground_truth",

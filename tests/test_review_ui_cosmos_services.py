@@ -786,3 +786,15 @@ def test_manual_review_reads_cosmos(cosmos, containers):
     assert body and body.count(b"\n") >= 4  # header + 3 pages
     assert charts.load("missing") is None
     assert charts.last_run("C1").startswith(str(datetime.now(timezone.utc).year))
+
+
+def test_several_provider_values_are_a_json_array_on_cosmos():
+    """2026-11-14 (user): "MD, NP" is ["MD", "NP"] in a Cosmos ground_truth doc, read back as text."""
+    from app.store.cosmos.gt_lists import from_doc, from_doc_value, to_doc, to_doc_value
+
+    assert to_doc_value("MD, NP") == ["MD", "NP"] and to_doc_value("MD") == "MD"
+    assert to_doc_value("Not Found") == "Not Found" and to_doc_value(None) is None
+    assert from_doc_value(["MD", "NP"]) == "MD, NP" and from_doc_value("MD") == "MD"
+    doc = to_doc({"provider_credentials": "MD, NP", "rendering_provider": "Dr A, Dr B", "member_name": "Yes"})
+    assert doc == {"provider_credentials": ["MD", "NP"], "rendering_provider": ["Dr A", "Dr B"], "member_name": "Yes"}
+    assert from_doc(doc)["provider_credentials"] == "MD, NP"

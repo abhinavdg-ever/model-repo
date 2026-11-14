@@ -236,7 +236,12 @@ def test_member_not_found_is_its_own_answer():
     from app.services.ground_truth import yes_no_label
 
     assert yes_no_label("Not Found") == "Not Found"
-    assert yes_no_label("no") == "No" and yes_no_label("Skipped") == "Skipped"
+    # No Skipped answer any more (2026-11-14, user): an old Skipped is an empty cell.
+    assert yes_no_label("no") == "No" and yes_no_label("Skipped") is None
+    from app.services.ground_truth import invoice_label
+
+    assert invoice_label(None, "Invoice") == "Yes" and invoice_label("No", "Invoice (Invoice Page)") == "Yes"
+    assert invoice_label("No", "Progress Note") == "No" and invoice_label("Skipped", None) is None
     # 2026-11-14 (user): the member fields store Skipped as Not Found; the signature keeps it.
     from app.services.ground_truth import member_label
 

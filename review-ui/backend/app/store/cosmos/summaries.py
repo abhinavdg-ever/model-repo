@@ -86,14 +86,18 @@ def _bulk_truth(docs: list[dict[str, Any]]) -> dict[str, Any]:
         if not loads:
             continue
         last = loads[-1]
-        labelled = {**doc, **(last.get("labels") or {}), "updated_at": last.get("created_at")}
+        from app.store.cosmos.gt_lists import from_doc
+
+        labelled = {**from_doc(doc), **from_doc(last.get("labels") or {}), "updated_at": last.get("created_at")}
         out[str(int(doc["page_number"]))] = _ground_truth_from_row(truth_row(labelled)).model_dump(mode="json")
     return out
 
 
 def _value_rows(review: Any, chart_name: str, truth_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Search by value's rows: every page's imaging_final and ground truth."""
-    truth = {int(d["page_number"]): {k: v for k, v in d.items() if not k.startswith("_") and k != "entries"}
+    from app.store.cosmos.gt_lists import from_doc
+
+    truth = {int(d["page_number"]): from_doc({k: v for k, v in d.items() if not k.startswith("_") and k != "entries"})
              for d in truth_docs}
     rows = []
     for doc in review.query("pages", "SELECT c.page, c.imaging_final FROM c", chart_name):

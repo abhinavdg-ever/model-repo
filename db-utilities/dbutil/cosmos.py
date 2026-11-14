@@ -140,6 +140,18 @@ def upsert_manifest_members(s: CosmosSink, members: list[dict[str, Any]]) -> dic
 # ground truth
 # ---------------------------------------------------------------------------
 
+# 2026-11-14 (user): several provider names / credentials are a JSON array in Cosmos (review-ui
+# app/store/cosmos/gt_lists.py reads them back as "MD, NP"); one value, Not Found: text.
+LIST_COLUMNS = ("rendering_provider", "provider_credentials")
+
+
+def _doc_value(column: str, value: Any) -> Any:
+    if column not in LIST_COLUMNS or not isinstance(value, str):
+        return value
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    return parts if len(parts) > 1 else value
+
+
 def upsert_ground_truth(s: CosmosSink, rows: list[dict[str, Any]], columns_for) -> int:
     """``columns_for(row)`` = the label columns that row's file has. Returns pages written."""
     container = s.c["ground_truth"]
@@ -156,7 +168,7 @@ def upsert_ground_truth(s: CosmosSink, rows: list[dict[str, Any]], columns_for) 
             incoming_page_id = row.get("source_page_id")
             if doc is not None:
                 same_page_id = (incoming_page_id or doc.get("source_page_id")) == doc.get("source_page_id")
-                if same_page_id and all(doc.get(c) == row.get(c) for c in columns):
+                if same_page_id and all(doc.get(c) == _doc_value(c, row.get(c)) for c in columns):
                     continue                   # unchanged: no write, no bulk entry
                 doc = dict(doc)
             else:
@@ -165,7 +177,7 @@ def upsert_ground_truth(s: CosmosSink, rows: list[dict[str, Any]], columns_for) 
             if incoming_page_id is not None:
                 doc["source_page_id"] = incoming_page_id
             for c in columns:
-                doc[c] = row.get(c)
+                doc[c] = _doc_value(c, row.get(c))
             doc["source_path"] = row.get("source_path")
             doc["updated_at"] = _now()
             last_bulk: dict[str, Any] = {}
@@ -174,7 +186,7 @@ def upsert_ground_truth(s: CosmosSink, rows: list[dict[str, Any]], columns_for) 
                     last_bulk = entry.get("labels") or {}
             doc.setdefault("entries", []).append({
                 "entry_mode": "bulk_upload",
-                "labels": {**last_bulk, **{c: row.get(c) for c in columns}},
+                "labels": {**last_bulk, **{c: _doc_value(c, row.get(c)) for c in columns}},
                 "source_path": row.get("source_path"),
                 "user_id": None,
                 "created_at": _now(),

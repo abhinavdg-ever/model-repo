@@ -100,11 +100,14 @@ export function DateLines({ iso }: { iso: string | null | undefined }) {
 
 /** An ⓘ that shows what a number means: on hover, and on click / tap. */
 /** One titled block of an info popover; each line is drawn on its own. */
+/** ``match``: the [row, column] cells that are matches, when they are not the diagonal. */
+type InfoTable = { caption: string; head: string[]; rows: (string | number)[][]; match?: [number, number][] };
+
 type InfoSection = {
   title?: string;
   lines: string[];
   /** A raw-count table (the Stats cross matrix): a caption, column heads, rows. */
-  tables?: { caption: string; head: string[]; rows: (string | number)[][] }[];
+  tables?: InfoTable[];
 };
 
 /** "A. B. C." -> ["A.", "B.", "C."]: one sentence per line. */
@@ -246,7 +249,7 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
               {(block.tables ?? []).map((table) => (
                 <table
                   key={table.caption}
-                  className={`accuracy-info-matrix${table.head[0].startsWith("GT") ? " is-cross" : ""}`}
+                  className={`accuracy-info-matrix${table.match ? " has-match" : table.head[0].startsWith("GT") ? " is-cross" : ""}`}
                 >
                   <caption>{table.caption}</caption>
                   <thead>
@@ -260,7 +263,13 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                     {table.rows.map((row, r) => (
                       <tr key={r}>
                         {row.map((cell, c) =>
-                          c === 0 ? <th key={c} scope="row">{cell}</th> : <td key={c}>{cell}</td>,
+                          c === 0 ? (
+                            <th key={c} scope="row">{cell}</th>
+                          ) : (
+                            <td key={c} className={table.match?.some(([mr, mc]) => mr === r && mc === c) ? "is-match" : undefined}>
+                              {cell}
+                            </td>
+                          ),
                         )}
                       </tr>
                     ))}
@@ -666,7 +675,7 @@ function rateLines(rates: ClassRates, classLabel: string): string[] {
 
 /** Every other metric's info (2026-11-14, user): the same four sections as Member. */
 function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRates, classLabel = "",
-                    extraTables: ReturnType<typeof dosTables> = []): InfoSection[] {
+                    extraTables: InfoTable[] = []): InfoSection[] {
   const accuracy = binary
     ? `Accuracy = Match / Scored = ${share(tally.yes, tally.scored)}`
     : `Accuracy = (Match + 0.5 × Partial) / Scored = (${tally.yes} + 0.5 × ${tally.maybe}) / ${tally.scored}` +
@@ -685,21 +694,55 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
   ];
 }
 
+function emptyClassRates(): ClassRates {
+  return { tp: 0, fp: 0, fn: 0, tn: 0 };
+}
+
+/** Duplicate Stats (2026-11-14, user): ground truth Yes (Yes or Partial) / No x the pipeline's
+ * Yes / Partial / No. */
+function duplicateTables(matrix: MemberMatrix): InfoTable[] {
+  const at = (gt: string, algo: string) => matrix.cells[`dup|${gt}|${algo}`] ?? 0;
+  const algos = ["yes", "partial", "no"];
+  return [{
+    caption: "Duplicate (ground truth Yes = Yes or Partial)",
+    head: ["Ground truth / Pipeline", "Yes", "Partial", "No", "Total"],
+    rows: withTotals([
+      ["Yes", ...algos.map((a) => at("yes", a))],
+      ["No", ...algos.map((a) => at("no", a))],
+    ]),
+    // Ground truth Yes matches the pipeline's Yes and Partial; No matches No.
+    match: [[0, 1], [0, 2], [1, 3]],
+  }];
+}
+
+/** Codability Stats (2026-11-14, user): ground truth Codable / Non-Codable x pipeline. */
+function codableTables(matrix: MemberMatrix) {
+  const at = (gt: string, pipe: string) => matrix.cells[`cod|${gt}|${pipe}`] ?? 0;
+  const sides = [["codable", "Codable"], ["non_codable", "Non-Codable"]] as const;
+  return [{
+    caption: "Codability (a Blank / Junk page is Non-Codable)",
+    head: ["GT \\ Pipeline", "Codable", "Non-Codable", "None", "Total"],
+    rows: withTotals(sides.map(([gt, label]) => [label, at(gt, "codable"), at(gt, "non_codable"), at(gt, "none")])),
+  }];
+}
+
 /** DOS Stats (2026-11-14, user): From / To as Match, No Match, Not Found; then Both. */
-function dosTables(matrix: MemberMatrix) {
-  const at = (field: string, kind: string) => matrix.cells[`${field}|${kind}`] ?? 0;
-  const kinds = ["match", "no_match", "not_found"];
-  return [
-    {
-      caption: "DOS From / To (labelled fields)",
-      head: ["Field", "Match", "No Match", "Not Found", "Total"],
-      rows: withTotals([
-        ["DOS From", ...kinds.map((k) => at("from", k))],
-        ["DOS To", ...kinds.map((k) => at("to", k))],
-      ]),
-    },
-    bothTable(matrix, "Both (From & To, pages with both labelled)"),
-  ];
+function dosTables(matrix: MemberMatrix): InfoTable[] {
+  const at = (key: string) => matrix.cells[key] ?? 0;
+  const both = at("both|2");
+  const notBoth = at("both|1") + at("both|0");
+  // 2026-11-14 (user): From Match, To Match and Both Match in one table; Not Found = Not Found
+  // counts as a Match.
+  return [{
+    caption: "DOS (Not Found = Not Found is a Match)",
+    head: ["", "Match", "No Match", "Total"],
+    rows: [
+      ["From", at("from|match"), at("from|no_match"), at("from|match") + at("from|no_match")],
+      ["To", at("to|match"), at("to|no_match"), at("to|match") + at("to|no_match")],
+      ["Both (page)", both, notBoth, both + notBoth],
+    ],
+    match: [[0, 1], [1, 1], [2, 1]],
+  }];
 }
 
 /** Both (2026-11-14, user): one row -- pages where both fields match, one does, neither. */
@@ -1163,6 +1206,8 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   if (id === "orientation") return row.orientationRates;
   if (id === "signature") return row.signatureRates;
   if (id === "dos") return row.dosRates;
+  if (id === "invoice") return row.invoiceRates;
+  if (id === "duplicate") return row.duplicateRates;
   return undefined;
 }
 
@@ -1440,6 +1485,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const memberRates = useMemo(() => sumRates(filtered.map((row) => row.memberRates)), [filtered]);
   const memberMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.memberMatrix)), [filtered]);
   const dosMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.dosMatrix)), [filtered]);
+  const codableMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.codableMatrix)), [filtered]);
   const signatureRates = useMemo(
     () => sumRates(filtered.map((row) => row.signatureRates)),
     [filtered],
@@ -1450,6 +1496,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [filtered],
   );
   const extra = useMemo(() => sumExtras(filtered.map((row) => row.extra)), [filtered]);
+  const invoiceRates = useMemo(() => sumRates(filtered.map((row) => row.invoiceRates ?? emptyClassRates())), [filtered]);
+  const duplicateRates = useMemo(() => sumRates(filtered.map((row) => row.duplicateRates ?? emptyClassRates())), [filtered]);
+  const dupMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.dupMatrix)), [filtered]);
   /** Class 1 counts across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk"
@@ -1462,7 +1511,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             ? signatureRates
             : id === "dos"
               ? dosRates
-              : undefined;
+              : id === "invoice"
+                ? invoiceRates
+                : id === "duplicate"
+                  ? duplicateRates
+                  : undefined;
   const ratesLabelFor = (id: MetricId) =>
     id === "member"
       ? "Name & DOB = Yes"
@@ -1472,7 +1525,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           ? "Signature = Yes"
           : id === "dos"
             ? "Date = Yes"
-            : "Blank/Junk = Yes";
+            : id === "invoice"
+              ? "Invoice = Yes"
+              : id === "duplicate"
+                ? "Duplicate = Yes (Yes or Partial)"
+                : "Blank/Junk = Yes";
 
   function downloadPageAccuracy() {
     const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered)], { type: "text/csv;charset=utf-8" });
@@ -1576,9 +1633,15 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         metric.rule,
                         overallByMetric[metric.id],
                         Boolean(metric.binary),
-                        ["blankJunk", "orientation", "signature", "dos"].includes(metric.id) ? ratesFor(metric.id) : undefined,
+                        ["blankJunk", "orientation", "signature", "dos", "invoice", "duplicate"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
-                        metric.id === "dos" ? dosTables(dosMatrix) : [],
+                        metric.id === "dos"
+                          ? dosTables(dosMatrix)
+                          : metric.id === "codeable"
+                            ? codableTables(codableMatrix)
+                            : metric.id === "duplicate"
+                              ? duplicateTables(dupMatrix)
+                              : [],
                       )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
