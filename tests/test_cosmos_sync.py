@@ -111,6 +111,63 @@ def test_since_last_needs_an_earlier_sync(tmp_path, migrate, monkeypatch, capsys
     assert "Run --all once" in capsys.readouterr().out
 
 
+def test_chart_list_file_is_read(tmp_path, migrate):
+    """--chart-list (2026-11-15, user): one name per line; blanks, # comments, commas, a BOM ok."""
+    f = tmp_path / "charts.txt"
+    f.write_text("\ufeff52743839_44976074\r\n\n# a comment\n28394399_95601927, 34551225_32782696 # x\n"
+                 "52743839_44976074\n", encoding="utf-8")
+    assert migrate.read_chart_list(f) == ["52743839_44976074", "28394399_95601927", "34551225_32782696"]
+
+
+def test_chart_list_migrates_only_those_charts(tmp_path, migrate, monkeypatch, capsys):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    f = tmp_path / "charts.txt"
+    f.write_text("A\nB\nC\n", encoding="utf-8")
+
+    class _Fake:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, *a, **k):
+            class _R:
+                def fetchone(self):
+                    from datetime import datetime, timezone
+
+                    return {"t": datetime(2026, 11, 15, tzinfo=timezone.utc)}
+
+            return _R()
+
+    import common.db
+
+    monkeypatch.setattr(common.db, "connect", lambda: _Fake())
+    asked = []
+    # Postgres has pipeline runs for A and B; C has ground truth only.
+    monkeypatch.setattr(migrate, "rows", lambda conn, sql, params=(): asked.append(params) or
+                        [{"chart_name": n} for n in ("A", "B") if n in params[0]])
+    copied = []
+    monkeypatch.setattr(migrate, "migrate_chart", lambda conn, store, chart, dry_run: copied.append(chart["chart_name"])
+                        or (True, {"pages": 1}, {"pages": 1}))
+    extra = {}
+    monkeypatch.setattr(migrate, "migrate_manifest_and_ground_truth", lambda conn, store, names, dry_run: extra.update(
+        names=names) or {"manifest_rows": 0, "ground_truth_pages": 0, "chart_reviews": 0})
+    monkeypatch.setattr(migrate, "migrate_deletions", lambda *a, **k: pytest.fail("no deletions for a chart list"))
+    assert migrate.main(["--chart-list", str(f), "--dry-run"]) == 0
+    assert copied == ["A", "B"] and extra["names"] == ["A", "B", "C"]
+    assert "manifest / ground truth only" in capsys.readouterr().out
+
+
+def test_chart_list_or_a_choice_is_required(tmp_path, migrate):
+    with pytest.raises(SystemExit):
+        migrate.main([])
+    empty = tmp_path / "empty.txt"
+    empty.write_text("# nothing\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        migrate.main(["--chart-list", str(empty)])
+
+
 class _Container:
     def __init__(self, ids):
         self.ids, self.deleted = list(ids), []

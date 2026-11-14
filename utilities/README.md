@@ -20,6 +20,11 @@ Incremental (2026-11-14): `--changed-since 2026-11-10` or `--since-last` copy on
 Postgres since then, plus the charts whose live `DB_BACKEND=both` copy failed
 (`core-pipeline/logs/cosmos_mirror_failed.tsv`), and users when they changed. `--dry-run` first.
 
+Optional chart list (2026-11-15): `--chart-list charts.txt`, one chart name per line (blank lines
+and `#` comments ignored). Alone it copies only those charts, plus the manifest and ground truth of
+listed charts that have no pipeline run. Added to `--changed-since` / `--since-last` it narrows
+them to the list. A narrowed run leaves the `--since-last` mark and chart deletions alone.
+
 ```
 cd core-pipeline && source .venv/bin/activate                        (Ubuntu VM)
 python ../utilities/migrate_postgres_to_cosmos.py --all              (first time: sets the watermark)
@@ -27,6 +32,13 @@ python ../utilities/migrate_postgres_to_cosmos.py --since-last       (then, e.g.
 
 cd core-pipeline && .venv\Scripts\activate.bat                       (Windows Command Prompt)
 python ..\utilities\migrate_postgres_to_cosmos.py --since-last
+python ..\utilities\migrate_postgres_to_cosmos.py --chart-list C:\path\to\charts.txt --dry-run
+python ..\utilities\migrate_postgres_to_cosmos.py --chart-list C:\path\to\charts.txt
+
+(Ubuntu VM)
+python ../utilities/migrate_postgres_to_cosmos.py --chart-list ~/charts.txt --dry-run
+python ../utilities/migrate_postgres_to_cosmos.py --chart-list ~/charts.txt
+python ../utilities/migrate_postgres_to_cosmos.py --since-last --chart-list ~/charts.txt   (changed AND listed)
 ```
 
 ## Change one ground-truth value to another

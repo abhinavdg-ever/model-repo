@@ -14,6 +14,13 @@ with Postgres; a mismatch is reported and the run exits 1.
     python ../utilities/migrate_postgres_to_cosmos.py --all --skip-existing  # resume
     python ../utilities/migrate_postgres_to_cosmos.py --changed-since 2026-11-10  # incremental
     python ../utilities/migrate_postgres_to_cosmos.py --since-last           # since the last sync
+    python ../utilities/migrate_postgres_to_cosmos.py --chart-list charts.txt  # only these charts
+
+Chart list (2026-11-15, user, optional): --chart-list FILE, a .txt with one chart name per line
+(blank lines and # comments ignored; commas / tabs also separate names). Alone it copies just
+those charts (and their manifest / ground truth, even with no pipeline run); with --chart it adds
+to them; with --all / --changed-since / --since-last it narrows them to the listed charts. A
+narrowed run does not move the --since-last mark (the other charts were not synced).
 
 Incremental (2026-11-14, user): --changed-since / --since-last copy only the charts with a
 newer updated_at in Postgres (chart, pages, any result table, member summary, jobs, page
@@ -337,6 +344,22 @@ def failed_path(override: str | None = None) -> Path:
     return mirror_failed_path()
 
 
+def read_chart_list(path: str | Path) -> list[str]:
+    """Chart names from a .txt: one per line (commas / tabs also split), blank lines and
+    # comments ignored, a Windows BOM / CRLF tolerated, duplicates dropped in order."""
+    import re
+
+    names: list[str] = []
+    text = Path(path).read_text(encoding="utf-8-sig")
+    for line in text.splitlines():
+        line = line.split("#", 1)[0]
+        for name in re.split(r"[,\t]", line):
+            name = name.strip().strip('"').strip("'").strip()
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
 def read_failed(path: Path) -> tuple[set[str], int]:
     """Chart names in the failed list, and how many lines name no chart ('?')."""
     names, unknown = set(), 0
@@ -442,18 +465,37 @@ def _container(name: str) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    pick = ap.add_mutually_exclusive_group(required=True)
+    pick = ap.add_mutually_exclusive_group()
     pick.add_argument("--chart", action="append", help="chart name (repeatable)")
     pick.add_argument("--all", action="store_true", help="every chart in Postgres")
     pick.add_argument("--changed-since", metavar="WHEN",
                       help="charts changed in Postgres after WHEN (YYYY-MM-DD or ISO time), plus failed copies")
     pick.add_argument("--since-last", action="store_true",
                       help="charts changed since the last successful sync, plus failed copies")
+    ap.add_argument("--chart-list", metavar="FILE",
+                    help="optional .txt of chart names, one per line: alone = only these charts; "
+                         "with --all / --changed-since / --since-last = narrowed to these")
     ap.add_argument("--dry-run", action="store_true", help="Postgres counts only; write nothing")
     ap.add_argument("--skip-existing", action="store_true", help="skip charts Cosmos already has")
     ap.add_argument("--limit", type=int, help="at most this many charts")
     ap.add_argument("--failed-file", help="the live mirror's failed list (default: core-pipeline log folder)")
     args = ap.parse_args(argv)
+    listed: Optional[list[str]] = None
+    if args.chart_list:
+        try:
+            listed = read_chart_list(args.chart_list)
+        except OSError as exc:
+            ap.error(f"--chart-list: {exc}")
+        if not listed:
+            ap.error(f"--chart-list: no chart names in {args.chart_list}")
+        print(f"chart list: {len(listed)} chart(s) from {args.chart_list}")
+    elif not (args.chart or args.all or args.changed_since or args.since_last):
+        ap.error("pick one of --chart, --all, --changed-since, --since-last or --chart-list")
+    # Alone (or with --all): just the listed charts; with --chart: both.
+    narrow = listed is not None and bool(args.changed_since or args.since_last)
+    if listed is not None and not narrow:
+        args.chart = list(dict.fromkeys((args.chart or []) + listed))
+        args.all = False
 
     import os
 
@@ -496,7 +538,15 @@ def main(argv: list[str] | None = None) -> int:
             charts = rows(conn, "SELECT * FROM chart_list WHERE chart_name = ANY(%s) ORDER BY id", (args.chart,))
             missing = sorted(set(args.chart) - {c["chart_name"] for c in charts})
             if missing:
-                print(f"not in Postgres: {', '.join(missing)}")
+                print(f"no pipeline run in Postgres: {', '.join(missing)} (manifest / ground truth only)")
+                # Their manifest and ground truth are still copied (2026-11-15).
+                gt_only = set(missing)
+        if narrow:
+            wanted = set(listed or [])
+            charts = [c for c in charts if c["chart_name"] in wanted]
+            gt_only = gt_only & wanted
+            print(f"narrowed to the chart list: {len(charts)} chart(s)"
+                  f"{f', {len(gt_only)} ground-truth-only' if gt_only else ''}")
         if args.limit:
             charts = charts[: args.limit]
         if store is not None:
@@ -523,13 +573,13 @@ def main(argv: list[str] | None = None) -> int:
             conn, store, sorted({c["chart_name"] for c in charts} | gt_only), dry_run=args.dry_run)
         users = migrate_users(conn, dry_run=args.dry_run) if sync_users else 0
         deletions = (migrate_deletions(conn, dry_run=args.dry_run, since=since if incremental else None)
-                     if (args.all or incremental) else 0)
+                     if (args.all or incremental) and not narrow else 0)
     if not args.dry_run and not bad:
         synced = {c["chart_name"] for c in charts} | gt_only
         dropped = clear_failed(failed_file, synced, started)
         if dropped:
             print(f"failed list: {dropped} line(s) cleared")
-        if incremental or args.all:
+        if (incremental or args.all) and not narrow:
             save_state(started, len(charts))
             print(f"next --since-last starts from {started}")
     print(f"charts: {len(charts)} | copied {ok}, mismatched {bad}, skipped {skipped}"
