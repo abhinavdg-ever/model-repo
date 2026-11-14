@@ -427,24 +427,7 @@ def write_report(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # ---------------------------------------------------------
-    # Explicit column order
-    # ---------------------------------------------------------
-
-    result_columns = (
-        ["PDF ID", "Page Number"]
-        + fields
-        + ["Status", "Reason"]
-    )
-
-    results_df = pd.DataFrame(result_rows)
-
-    for column in result_columns:
-        if column not in results_df.columns:
-            results_df[column] = ""
-
-    results_df = results_df[result_columns]
-
+    results_df = _results_df(result_rows, fields)
     exempted_df = build_exempted_columns_df(exempted_columns)
     excluded_df = build_excluded_records_df(result_rows)
 
@@ -478,37 +461,86 @@ def write_report(
             index=False,
         )
 
-        workbook = writer.book
-
-        # -----------------------------------------------------
-        # Formatting
-        # -----------------------------------------------------
-
-        for worksheet in workbook.worksheets:
-
-            worksheet.freeze_panes = "A2"
-
-            worksheet.auto_filter.ref = worksheet.dimensions
-
-            # Header formatting
-            for cell in worksheet[1]:
-                cell.font = cell.font.copy(bold=True)
-
-            # Column widths
-            for column_cells in worksheet.columns:
-
-                max_length = 0
-                column_letter = column_cells[0].column_letter
-
-                for cell in column_cells:
-
-                    if cell.value is None:
-                        continue
-
-                    max_length = max(max_length, len(str(cell.value)))
-
-                worksheet.column_dimensions[column_letter].width = min(
-                    max_length + 2, 60
-                )
+        _format(writer.book)
 
     return output_path
+
+
+def _results_df(result_rows, fields):
+    """The Comparison Results sheet: explicit column order."""
+
+    result_columns = (
+        ["PDF ID", "Page Number"]
+        + fields
+        + ["Status", "Reason"]
+    )
+
+    results_df = pd.DataFrame(result_rows)
+
+    for column in result_columns:
+        if column not in results_df.columns:
+            results_df[column] = ""
+
+    return results_df[result_columns]
+
+
+def write_report_sections(output_path, sections, overview_df):
+    """
+    Several comparisons in one workbook (Manual Review across three
+    sources): an Overview sheet (``overview_df``), then each comparison's
+    four sheets named "<prefix> Results / Summary / Exempted / Excluded".
+    ``sections`` is a list of dicts with prefix, rows, summary_df, fields,
+    exempted_columns.
+    """
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+
+        overview_df.to_excel(writer, sheet_name="Overview", index=False)
+
+        for section in sections:
+            prefix = section["prefix"]
+            _results_df(section["rows"], section["fields"]).to_excel(
+                writer, sheet_name=f"{prefix} Results"[:31], index=False
+            )
+            section["summary_df"].to_excel(writer, sheet_name=f"{prefix} Summary"[:31], index=False)
+            build_exempted_columns_df(section["exempted_columns"]).to_excel(
+                writer, sheet_name=f"{prefix} Exempted"[:31], index=False
+            )
+            build_excluded_records_df(section["rows"]).to_excel(
+                writer, sheet_name=f"{prefix} Excluded"[:31], index=False
+            )
+
+        _format(writer.book)
+
+    return output_path
+
+
+def _format(workbook):
+    """Frozen header, filters, bold headers, fitted column widths."""
+
+    for worksheet in workbook.worksheets:
+
+        worksheet.freeze_panes = "A2"
+
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+        # Header formatting
+        for cell in worksheet[1]:
+            cell.font = cell.font.copy(bold=True)
+
+        # Column widths
+        for column_cells in worksheet.columns:
+
+            max_length = 0
+            column_letter = column_cells[0].column_letter
+
+            for cell in column_cells:
+
+                if cell.value is None:
+                    continue
+
+                max_length = max(max_length, len(str(cell.value)))
+
+            worksheet.column_dimensions[column_letter].width = min(
+                max_length + 2, 60
+            )

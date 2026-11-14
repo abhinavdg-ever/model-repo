@@ -366,7 +366,19 @@ def _one_value_match(field_name, gt_raw, system_raw, gt_normalized, system_norma
     return gt_normalized == system_normalized
 
 
-def compare_fields(gt_row, system_row, fields_to_compare=None):
+def _presence(field_name, raw):
+    """A ground-truth presence label as "yes" / "no": Yes / No, or Not Found (no).
+    "" when the cell holds a value (or nothing) rather than a label."""
+
+    label = normalize_yes_no(raw)
+    if label in ("yes", "no"):
+        return label
+    if clean_text(raw) == "not found":
+        return "no"
+    return ""
+
+
+def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=False):
     """
     Compare a matched Ground Truth row against its System
     Generated row across the given fields (defaults to every
@@ -380,6 +392,14 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
     This is the ONLY place correctness is decided. It is run
     after matching and does not know or care how the two rows
     were determined to correspond.
+
+    ``second_is_ground``: the second row is a ground-truth sheet too (QA
+    against Client ground truth), so its labels read as the first side's do,
+    both ways: an unlabelled cell on either side is not scored, Skipped on
+    either side agrees with a page the other calls blank / junk, an
+    unscored page type ("-", N/A) on either side is not scored, and a
+    presence label (Yes / No / Not Found) on either side is compared as
+    "was a value found" against the other side's label or value.
     """
 
     if fields_to_compare is None:
@@ -398,8 +418,37 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         gt_normalized = normalize_field_value(field_name, gt_raw)
         system_normalized = normalize_field_value(field_name, system_raw)
         presence = normalize_yes_no(gt_raw) if field_name in PRESENCE_FIELDS else ""
+        second_presence = (
+            _presence(field_name, system_raw) if second_is_ground and field_name in PRESENCE_FIELDS else ""
+        )
+        first_presence = (
+            _presence(field_name, gt_raw) or ("yes" if has_value(gt_raw) else "no")
+            if second_presence else ""
+        )
 
-        if not gt_raw or both_skipped:
+        if second_is_ground and (not gt_raw or not system_raw or both_skipped):
+            # Either sheet left the field unlabelled: nothing to score.
+            is_match = True
+        elif second_is_ground and clean_text(system_raw) == SKIPPED:
+            # The second reviewer skipped the page as blank / junk: right when the first did too.
+            is_match = clean_text(gt_raw) == SKIPPED or says_blank_or_junk(gt_row)
+        elif (
+            second_is_ground
+            and field_name in TEXT_CLASSIFICATION_FIELDS
+            and clean_text(system_raw) in _UNSCORED_TYPE_LABELS
+        ):
+            is_match = True
+        elif (
+            second_is_ground
+            and field_name == BLANK_OR_JUNK_FIELD
+            and normalize_labelled_yes_no(system_raw) == "yes"
+            and normalize_labelled_yes_no(_raw_value(gt_row, "Duplicate")) == "yes"
+        ):
+            is_match = True
+        elif second_presence and clean_text(gt_raw) != SKIPPED:
+            # A presence label on the second sheet: found on both, or on neither.
+            is_match = first_presence == second_presence
+        elif not gt_raw or both_skipped:
             # Not labelled: ground truth says nothing, so it is not an error.
             # ("-" or "N/A" is a label -- "none" -- and is compared.)
             is_match = True
@@ -452,7 +501,9 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             or field_name == "Member ID"
             or field_name in ALTERNATE_FIELDS
             or presence in ("yes", "no")
+            or bool(second_presence)
             or not gt_raw
+            or (second_is_ground and not system_raw)
         ) and normalize_field_value(field_name, gt_raw) != normalize_field_value(field_name, system_raw)
 
         if both_skipped:

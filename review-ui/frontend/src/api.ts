@@ -940,15 +940,41 @@ export type ManualReviewResult = {
   lastRun?: Record<string, string | null>;
 };
 
-/** Each side is an uploaded sheet or the database. Database ground truth follows the
- * user menu's manual-edits choice and covers the system file's PDF IDs (every chart
- * with ground truth when the system side is the database too). Database system output
- * covers the ground truth's PDF IDs. */
+/** Up to three sources. QA Ground Truth is an upload (absent when null). Client ground
+ * truth (``ground``) and the pipeline output (``system``) are each an uploaded sheet, the
+ * database, or left out ("none"). Database ground truth follows the user menu's
+ * manual-edits choice and covers the QA file's PDF IDs (else the system file's; every
+ * chart with ground truth when neither is uploaded). Database pipeline output covers the
+ * ground truth's PDF IDs. Any two sources are enough. */
 export type ManualReviewInput = {
+  qa: File | null;
   ground: File | null;
-  groundSource: "upload" | "db";
+  groundSource: "upload" | "db" | "none";
   system: File | null;
-  systemSource: "db" | "upload";
+  systemSource: "db" | "upload" | "none";
+};
+
+/** qa_client / qa_pipeline / client_pipeline, and ``all`` (every pair agrees) with three sources. */
+export type ManualReviewComparisonKey = "qa_client" | "qa_pipeline" | "client_pipeline" | "all";
+
+/** What a comparison is between: its sources' names, and the prefixes its differing
+ * cells carry ("GT: a | Algo: b" for a pair, "QA: a | Client: b | Pipeline: c" for all 3). */
+export type ManualReviewComparisonMeta = {
+  key: ManualReviewComparisonKey;
+  label: string;
+  sides: string[];
+  shortSides: string[];
+  tokens: string[];
+};
+
+export type ManualReviewComparison = ManualReviewResult & ManualReviewComparisonMeta;
+
+/** Every comparison of one run, in display order; one reportId builds the downloads. */
+export type ManualReviewBundle = {
+  order: ManualReviewComparisonKey[];
+  comparisons: Partial<Record<ManualReviewComparisonKey, ManualReviewComparison>>;
+  reportId?: string;
+  lastRun: Record<string, string | null>;
 };
 
 export type ManualReviewColumns = {
@@ -957,8 +983,9 @@ export type ManualReviewColumns = {
   exempt: string[];
 };
 
-function manualReviewForm({ ground, groundSource, system, systemSource }: ManualReviewInput): FormData {
+function manualReviewForm({ qa, ground, groundSource, system, systemSource }: ManualReviewInput): FormData {
   const form = new FormData();
+  if (qa) form.append("qa_file", qa);
   form.append("ground_source", groundSource);
   if (groundSource === "upload" && ground) form.append("ground_file", ground);
   if (groundSource === "db") form.append("ground_truth", readGroundTruthSource());
@@ -1000,10 +1027,32 @@ type ManualReviewTotals = Pick<
   "matchedCount" | "groundCharts" | "systemCharts" | "chartsCompared" | "fieldErrors" | "reportId"
 >;
 
+type ManualReviewDone = { summary: ManualReviewResult["summary"] } & ManualReviewCounts & ManualReviewTotals;
+
+/** The two-source stream (no QA file, Client and Pipeline both given), or, with a QA
+ * file or a source left out, the same events carrying ``comparisons``. */
 export type ManualReviewEvent =
-  | ({ type: "start"; charts: number } & Pick<ManualReviewResult, "fields" | "exemptedColumns">)
-  | ({ type: "chart"; pdfId: string; lastRunAt: string | null; rows: ManualReviewRow[] } & ManualReviewCounts)
-  | ({ type: "done"; summary: ManualReviewResult["summary"] } & ManualReviewCounts & ManualReviewTotals)
+  | ({ type: "start"; charts: number; comparisons?: undefined } & Pick<ManualReviewResult, "fields" | "exemptedColumns">)
+  | ({ type: "chart"; pdfId: string; lastRunAt: string | null; rows: ManualReviewRow[]; comparisons?: undefined } &
+      ManualReviewCounts)
+  | ({ type: "done"; comparisons?: undefined } & ManualReviewDone)
+  | {
+      type: "start";
+      charts: number;
+      sources: string[];
+      comparisons: (ManualReviewComparisonMeta & Pick<ManualReviewResult, "fields" | "exemptedColumns">)[];
+    }
+  | {
+      type: "chart";
+      pdfId: string;
+      lastRunAt: string | null;
+      comparisons: Partial<Record<ManualReviewComparisonKey, { rows: ManualReviewRow[] } & ManualReviewCounts>>;
+    }
+  | {
+      type: "done";
+      reportId: string;
+      comparisons: Partial<Record<ManualReviewComparisonKey, Omit<ManualReviewDone, "reportId">>>;
+    }
   | { type: "error"; pdfId: string; detail: string };
 
 /** The comparison one chart at a time (NDJSON), handed to ``onEvent`` as each

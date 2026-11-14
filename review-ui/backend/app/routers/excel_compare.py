@@ -126,7 +126,10 @@ def _system_from_pipeline(
 
 
 def _ground_from_database(
-    settings: Settings, pdf_ids: list[str] | None, ground_truth: GroundTruthSource
+    settings: Settings,
+    pdf_ids: list[str] | None,
+    ground_truth: GroundTruthSource,
+    against: str = "Algo Generated file",
 ) -> tuple[bytes, str]:
     """page_ground_truth as a Ground Truth sheet: for ``pdf_ids``, or every
     chart that has ground truth when None."""
@@ -142,7 +145,7 @@ def _ground_from_database(
     if not rows:
         shown = ", ".join(pdf_ids[:5]) + (" …" if len(pdf_ids) > 5 else "")
         detail = (
-            f"No ground truth in the database for the PDF IDs in the Algo Generated file ({shown}). "
+            f"No ground truth in the database for the PDF IDs in the {against} ({shown}). "
             "PDF ID must be the chart name."
             if pdf_ids
             else "No ground truth in the database."
@@ -184,10 +187,10 @@ async def _inputs(
     """(ground, uploaded algo sheet or None when the algo side is the
     database). Database ground truth covers the algo file's PDF IDs, or every
     chart with ground truth when the algo side is the database too."""
-    if ground_source not in ("upload", "db"):
-        raise HTTPException(status_code=400, detail="ground_source must be upload or db")
-    if system_source not in ("db", "upload"):
-        raise HTTPException(status_code=400, detail="system_source must be db or upload")
+    if ground_source not in ("upload", "db", "none"):
+        raise HTTPException(status_code=400, detail="ground_source must be upload, db or none")
+    if system_source not in ("db", "upload", "none"):
+        raise HTTPException(status_code=400, detail="system_source must be db, upload or none")
     ground = await _upload_bytes("Ground Truth", ground_file) if ground_source == "upload" else None
     system = await _upload_bytes("Algo Generated", system_file) if system_source == "upload" else None
     if ground is not None:
@@ -213,7 +216,99 @@ async def _compare_inputs(
     return ground, system
 
 
-_GROUND_SOURCE = Form(default="upload", description="upload = the Ground Truth file; db = page_ground_truth")
+def _classic(qa_file: UploadFile | None, ground_source: str, system_source: str) -> bool:
+    """No QA file, and both Client ground truth and Pipeline output given: the
+    two-source compare, exactly as before the QA source was added."""
+    return not (qa_file and qa_file.filename) and ground_source != "none" and system_source != "none"
+
+
+def _source_label(label: str, upload: UploadFile | None, source: str) -> str:
+    if source == "upload" and upload and upload.filename:
+        return f"{label} ({upload.filename})"
+    return f"{label} (database)"
+
+
+async def _three_way_inputs(
+    settings: Settings,
+    repo: FolderRepository,
+    qa_file: UploadFile | None,
+    ground_file: UploadFile | None,
+    ground_source: str,
+    ground_truth: GroundTruthSource,
+    system_file: UploadFile | None,
+    system_source: str,
+) -> dict:
+    """The sources of a Manual Review across QA / Client / Pipeline, as
+    excel_compare.three_way.stream takes them. Database Client ground truth
+    covers the QA file's PDF IDs (else the uploaded Pipeline file's, else every
+    chart with ground truth); the database Pipeline output covers every PDF ID
+    in the ground-truth sources, read chart by chart."""
+    if ground_source not in ("upload", "db", "none"):
+        raise HTTPException(status_code=400, detail="ground_source must be upload, db or none")
+    if system_source not in ("db", "upload", "none"):
+        raise HTTPException(status_code=400, detail="system_source must be db, upload or none")
+    has_qa = bool(qa_file and qa_file.filename)
+    if has_qa + (ground_source != "none") + (system_source != "none") < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Choose at least two sources: QA Ground Truth, Client Ground Truth, Pipeline Output.",
+        )
+    qa = _as_ground_truth(await _upload_bytes("QA Ground Truth", qa_file)) if has_qa else None
+    client = (
+        _as_ground_truth(await _upload_bytes("Client Ground Truth", ground_file))
+        if ground_source == "upload"
+        else None
+    )
+    pipeline = await _upload_bytes("Pipeline Output", system_file) if system_source == "upload" else None
+    if ground_source == "db":
+        if qa is not None:
+            ids, against = _pdf_ids(qa, "QA Ground Truth"), "QA Ground Truth file"
+        elif pipeline is not None:
+            ids, against = _pdf_ids(pipeline, "Pipeline Output"), "Pipeline Output file"
+        else:
+            ids, against = None, ""
+        client = _ground_from_database(settings, ids, ground_truth, against)
+    ground_ids = sorted({
+        pdf_id
+        for sheet, label in ((qa, "QA Ground Truth"), (client, "Client Ground Truth"))
+        if sheet is not None
+        for pdf_id in _pdf_ids(sheet, label)
+    })
+    charts = _PipelineCharts(repo, settings, ground_ids)
+    return {
+        "sheets": {"qa": qa, "client": client, "pipeline": pipeline},
+        "load_pipeline": charts.load if system_source == "db" else None,
+        "last_run": charts.last_run,
+        "labels": {
+            "qa": _source_label("QA Ground Truth", qa_file, "upload") if has_qa else None,
+            "client": _source_label("Client Ground Truth", ground_file, ground_source),
+            "pipeline": _source_label("Pipeline Output", system_file, system_source),
+        },
+    }
+
+
+def _three_way_run(inputs: dict) -> dict:
+    try:
+        return excel_compare.three_way.run(**inputs)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("manual review three-way compare failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+
+
+_QA_FILE = File(
+    default=None,
+    description="QA Ground Truth (upload only). With it, every pair of the sources given is compared, plus All 3.",
+)
+
+
+_GROUND_SOURCE = Form(
+    default="upload",
+    description="Client ground truth: upload = the Ground Truth file; db = page_ground_truth; none = left out",
+)
 
 
 _GROUND_TRUTH = Form(
@@ -226,7 +321,10 @@ _GROUND_TRUTH = Form(
 _PROGRESS_LOG_SEC = 10.0
 
 
-_SYSTEM_SOURCE = Form(default="db", description="db = the pipeline output review-ui shows; upload = the Algo Generated file")
+_SYSTEM_SOURCE = Form(
+    default="db",
+    description="Pipeline output: db = what review-ui shows; upload = the Algo Generated file; none = left out",
+)
 
 
 @router.get("/excel-compare/columns")
@@ -242,10 +340,19 @@ async def post_excel_compare(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    qa_file: UploadFile | None = _QA_FILE,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Manual Review: compare ground truth with the system output. Nothing is stored."""
+    """Manual Review: compare ground truth with the system output. Nothing is stored.
+    With a QA file, or a source left out (none): every pair of the sources given,
+    plus All 3 -- ``comparisons`` keyed by qa_client / qa_pipeline /
+    client_pipeline / all, each in the two-source shape."""
+    if not _classic(qa_file, ground_source, system_source):
+        inputs = await _three_way_inputs(
+            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source
+        )
+        return await run_in_threadpool(_three_way_run, inputs)
     ground, system = await _compare_inputs(
         settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
     )
@@ -266,20 +373,30 @@ async def post_excel_compare_stream(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    qa_file: UploadFile | None = _QA_FILE,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     """The comparison as NDJSON, one chart per line, so the screen fills in
     while later charts are still being read. Bad input fails before the
-    stream starts; a failure part-way is an ``error`` line."""
-    ground, system = await _inputs(settings, ground_file, ground_source, ground_truth, system_file, system_source)
-    charts = _PipelineCharts(repo, settings, _pdf_ids(ground, "Ground Truth"))
-    events = excel_compare.stream(
-        ground,
-        system,
-        load_system=None if system is not None else charts.load,
-        last_run=charts.last_run,
-    )
+    stream starts; a failure part-way is an ``error`` line. With a QA file or
+    a source left out, the events carry ``comparisons`` (see three_way.stream)."""
+    if _classic(qa_file, ground_source, system_source):
+        ground, system = await _inputs(
+            settings, ground_file, ground_source, ground_truth, system_file, system_source
+        )
+        charts = _PipelineCharts(repo, settings, _pdf_ids(ground, "Ground Truth"))
+        events = excel_compare.stream(
+            ground,
+            system,
+            load_system=None if system is not None else charts.load,
+            last_run=charts.last_run,
+        )
+    else:
+        inputs = await _three_way_inputs(
+            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source
+        )
+        events = excel_compare.three_way.stream(**inputs)
     try:
         first = next(events)  # reads and checks both files' headers
     except ValueError as exc:
@@ -335,12 +452,23 @@ async def _download_result(
     ground_truth: GroundTruthSource,
     system_file: UploadFile | None,
     system_source: str,
+    qa_file: UploadFile | None = None,
 ) -> dict:
     """The comparison a download is built from: the one on screen (``report_id``)
-    while it is kept, else the inputs compared again."""
+    while it is kept, else the inputs compared again. A three-source run is the
+    bundle of every comparison (excel_compare.is_bundle)."""
     result = excel_compare.remembered(report_id)
     if result is not None:
         return result
+    if not _classic(qa_file, ground_source, system_source):
+        inputs = await _three_way_inputs(
+            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source
+        )
+        body = await run_in_threadpool(_three_way_run, inputs)
+        bundle = excel_compare.remembered(body["reportId"])
+        if bundle is None:
+            raise HTTPException(status_code=500, detail="The comparison was not kept for the download")
+        return bundle
     ground, system = await _compare_inputs(
         settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
     )
@@ -360,13 +488,15 @@ async def post_excel_compare_report(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    qa_file: UploadFile | None = _QA_FILE,
     report_id: str | None = _REPORT_ID,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """The same comparison as an Excel workbook (Comparison Results, Summary, Exempted Columns)."""
     result = await _download_result(
-        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source,
+        qa_file,
     )
     try:
         data = await run_in_threadpool(excel_compare.report, result)
@@ -387,6 +517,7 @@ async def post_excel_compare_summary(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    qa_file: UploadFile | None = _QA_FILE,
     report_id: str | None = _REPORT_ID,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
@@ -394,7 +525,8 @@ async def post_excel_compare_summary(
     """The same comparison as the printable Master Summary PDF (totals, chart-wise and
     field-wise accuracy, mismatch patterns, Missing / Extra pages, exempted columns)."""
     result = await _download_result(
-        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source,
+        qa_file,
     )
     ground_label = (
         ground_file.filename

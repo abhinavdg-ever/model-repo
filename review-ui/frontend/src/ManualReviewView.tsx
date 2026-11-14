@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Ban,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -23,8 +24,11 @@ import {
   downloadManualReviewReport,
   downloadManualReviewSummary,
   getManualReviewColumns,
+  type ManualReviewBundle,
   type ManualReviewColumns,
-  type ManualReviewResult,
+  type ManualReviewComparison,
+  type ManualReviewComparisonKey,
+  type ManualReviewComparisonMeta,
   type ManualReviewRow,
   type ManualReviewStatus,
 } from "./api";
@@ -78,15 +82,21 @@ function passesFieldFilters(row: ManualReviewRow, fieldFilters: Record<string, F
 /** A cell with no value, as a value filter's option. */
 const BLANK_VALUE = "(Blank)";
 
-/** Which side a value filter reads: either, the ground truth, or the algo output. */
-type ValueSide = "either" | "gt" | "algo";
+/** Which side a value filter reads: any, or one source -- the comparison's first (gt),
+ * second (algo) or, for All 3, third. */
+type ValueSide = "either" | "gt" | "algo" | "third";
+const SIDE_IDS = ["gt", "algo", "third"] as const;
 
-/** A row's values for one column on the chosen side(s); a Missing record has only ground
- * truth and an Extra one only algo output. */
-function rowValues(row: ManualReviewRow, field: string, side: ValueSide): string[] {
+/** A row's values for one column on the chosen side(s); a Missing record has only the
+ * first source and an Extra one only the second. */
+function rowValues(row: ManualReviewRow, field: string, side: ValueSide, tokens: string[]): string[] {
   const out: string[] = [];
-  if (side !== "algo" && row.status !== "EXTRA") out.push(sideValue(row, field, "gt").trim() || BLANK_VALUE);
-  if (side !== "gt" && row.status !== "MISSING") out.push(sideValue(row, field, "algo").trim() || BLANK_VALUE);
+  tokens.forEach((_token, index) => {
+    if (side !== "either" && side !== SIDE_IDS[index]) return;
+    if (row.status === "EXTRA" && index !== 1) return;
+    if (row.status === "MISSING" && index !== 0) return;
+    out.push(sideValue(row, field, index, tokens).trim() || BLANK_VALUE);
+  });
   return out;
 }
 
@@ -96,10 +106,11 @@ function passesValueFilters(
   row: ManualReviewRow,
   valueFilters: Record<string, string[]>,
   valueSides: Record<string, ValueSide>,
+  tokens: string[],
 ): boolean {
   return Object.entries(valueFilters).every(([field, wanted]) => {
     if (!wanted.length) return true;
-    return rowValues(row, field, valueSides[field] ?? "either").some((v) => wanted.includes(v));
+    return rowValues(row, field, valueSides[field] ?? "either", tokens).some((v) => wanted.includes(v));
   });
 }
 
@@ -125,7 +136,7 @@ function InputCard({
   );
 }
 
-/** Upload file / Database toggle in a card's title row. */
+/** Database / Upload file / Not used toggle in a card's title row. */
 function SourceToggle({
   label,
   value,
@@ -139,8 +150,9 @@ function SourceToggle({
     <div className="excel-compare-filters" role="radiogroup" aria-label={label}>
       {(
         [
-          ["upload", "Upload file", Upload],
           ["db", "Database", Database],
+          ["upload", "Upload file", Upload],
+          ["none", "Not used", Ban],
         ] as const
       ).map(([id, text, Icon]) => (
         <button
@@ -171,6 +183,19 @@ function DatabasePick({ title }: { title: string }) {
         <Link2 size={13} aria-hidden="true" />
         Connected to Local Folder/Database
       </span>
+    </div>
+  );
+}
+
+/** A source left out of the comparison. */
+function NotUsedPick() {
+  return (
+    <div className="excel-compare-pick has-file excel-compare-db excel-compare-unused">
+      <span className="excel-compare-pick-file">
+        <Ban size={14} aria-hidden="true" />
+        Not used
+      </span>
+      <span className="excel-compare-pick-hint">Left out of the comparison</span>
     </div>
   );
 }
@@ -319,58 +344,217 @@ function ColumnsInfo() {
   );
 }
 
-/** "GT: a | Algo: b" -> the two sides; anything else is one agreed value. */
-function splitDisplay(display: string): { gt: string; system: string } | null {
-  const cut = display.indexOf(" | Algo: ");
-  if (!display.startsWith("GT: ") || cut < 0) return null;
-  return { gt: display.slice(4, cut), system: display.slice(cut + 9) };
+/** "GT: a | Algo: b" (the comparison's ``tokens``; three for All 3) -> each side's value;
+ * anything else is one agreed value (null). */
+function splitDisplay(display: string, tokens: string[]): string[] | null {
+  const first = `${tokens[0]}: `;
+  if (!display.startsWith(first)) return null;
+  const out: string[] = [];
+  let rest = display.slice(first.length);
+  for (const token of tokens.slice(1)) {
+    const separator = ` | ${token}: `;
+    const cut = rest.indexOf(separator);
+    if (cut < 0) return null;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut + separator.length);
+  }
+  out.push(rest);
+  return out;
 }
 
 /** One side's value. A mismatched cell holds "GT: a | Algo: b", and so does a match
  * written differently (credentials "MD" / "MD, PhD", a blank / junk page's Skipped);
- * any other cell is the value both agree on. A Missing record has only ground truth
- * and an Extra one only algo output. */
-function sideValue(row: ManualReviewRow, field: string, side: "gt" | "algo"): string {
+ * any other cell is the value every side agrees on. A Missing record has only the first
+ * source and an Extra one only the second. */
+function sideValue(row: ManualReviewRow, field: string, side: number, tokens: string[]): string {
   const display = row.values[field] ?? "";
-  if (row.status === "MISSING") return side === "gt" ? display : "";
-  if (row.status === "EXTRA") return side === "algo" ? display : "";
-  const sides = splitDisplay(display);
+  if (row.status === "MISSING") return side === 0 ? display : "";
+  if (row.status === "EXTRA") return side === 1 ? display : "";
+  const sides = splitDisplay(display, tokens);
   if (!sides) return display;
-  return side === "gt" ? sides.gt : sides.system;
+  return sides[side] ?? "";
 }
 
-/** A Correct record whose two sides read the same everywhere: one row. Otherwise the
- * GT and Algo rows, so the algo values show as the chart view shows them (2026-10-29). */
-function oneRow(row: ManualReviewRow, fields: string[]): boolean {
-  return row.status === "CORRECT" && !fields.some((field) => splitDisplay(row.values[field] ?? ""));
+/** A Correct record whose sides read the same everywhere: one row. Otherwise a row per
+ * source, so the algo values show as the chart view shows them (2026-10-29). */
+function oneRow(row: ManualReviewRow, fields: string[], tokens: string[]): boolean {
+  return row.status === "CORRECT" && !fields.some((field) => splitDisplay(row.values[field] ?? "", tokens));
 }
 
 function percent(value: number | null | undefined): string {
   return value == null ? "—" : `${value.toFixed(2)}%`;
 }
 
+/** "Display all": every comparison's headline numbers and per-field accuracy side by
+ * side; a column's heading opens that comparison. */
+function DisplayAll({
+  bundle,
+  onPick,
+}: {
+  bundle: ManualReviewBundle;
+  onPick: (key: ManualReviewComparisonKey) => void;
+}) {
+  const comparisons = bundle.order
+    .map((key) => bundle.comparisons[key])
+    .filter((c): c is ManualReviewComparison => Boolean(c));
+  const fields = [...new Set(comparisons.flatMap((c) => c.fields))];
+  const rate = (c: ManualReviewComparison, metric: string) =>
+    percent(c.summary.find((row) => row.metric === metric)?.percentage);
+  const matched = (c: ManualReviewComparison) =>
+    c.matchedCount ?? c.correctCount + c.errorCount + c.unvalidatedCount + (c.excludedCount ?? 0);
+  const metrics: [string, (c: ManualReviewComparison) => ReactNode][] = [
+    ["Base pages", (c) => c.groundCount],
+    ["Compared-against pages", (c) => c.systemCount],
+    ["Matched", matched],
+    ["Exact matches", (c) => c.correctCount],
+    ["Field errors", (c) => c.errorCount],
+    ["Missing", (c) => c.missingCount],
+    ["Exact match rate", (c) => rate(c, "Match Percentage")],
+    ["Discrepancy rate", (c) => rate(c, "Overall Disparity Rate")],
+  ];
+
+  function fieldCell(c: ManualReviewComparison, field: string): ReactNode {
+    if (!c.fields.includes(field)) return <span className="excel-compare-all-na">not compared</span>;
+    if (!c.fieldErrors) return "…";
+    const evaluated = c.evaluatedCount ?? matched(c);
+    if (!evaluated) return "—";
+    const entry = c.fieldErrors.find((e) => e.field === field);
+    const accuracy = 100 - (entry?.percentage ?? 0);
+    const tone = accuracy >= 95 ? "good" : accuracy >= 80 ? "fair" : "poor";
+    return (
+      <span className="excel-compare-all-field">
+        <span className="excel-compare-field-bar" aria-hidden="true">
+          <span className={`is-${tone}`} style={{ width: `${accuracy}%` }} />
+        </span>
+        {accuracy.toFixed(2)}%
+      </span>
+    );
+  }
+
+  return (
+    <section className="accuracy-section" aria-label="Every comparison">
+      <h2>Every comparison</h2>
+      <p className="accuracy-note">
+        Each comparison's totals, and each field's accuracy (evaluated pages that agreed on it).
+        Open a comparison for its pages.
+      </p>
+      <div className="accuracy-table-scroll">
+        <table className="landing-history-table accuracy-table excel-compare-all-table">
+          <thead>
+            <tr>
+              <th scope="col">Metric</th>
+              {comparisons.map((c) => (
+                <th key={c.key} scope="col">
+                  <button type="button" className="excel-compare-all-open" onClick={() => onPick(c.key)}>
+                    {c.label}
+                  </button>
+                  <span className="excel-compare-all-sides">{c.shortSides.join(" · ")}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map(([label, value]) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                {comparisons.map((c) => (
+                  <td key={c.key}>{value(c)}</td>
+                ))}
+              </tr>
+            ))}
+            {fields.map((field) => (
+              <tr key={field}>
+                <th scope="row">{field}</th>
+                {comparisons.map((c) => (
+                  <td key={c.key}>{fieldCell(c, field)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** The two-source stream's one comparison (no QA file): Client vs Pipeline. */
+const CLASSIC_META = {
+  key: "client_pipeline" as const,
+  label: "Client vs Pipeline",
+  sides: ["Client Ground Truth", "Pipeline Output"],
+  shortSides: ["Client", "Pipeline"],
+  tokens: ["GT", "Algo"],
+};
+
+const COMPARISON_LABELS: Record<ManualReviewComparisonKey, string> = {
+  qa_client: "QA vs Client",
+  qa_pipeline: "QA vs Pipeline",
+  client_pipeline: "Client vs Pipeline",
+  all: "All 3",
+};
+
+/** One comparison, or every comparison's summary side by side. */
+type ViewKey = ManualReviewComparisonKey | "display_all";
+
+function emptyComparison(
+  meta: ManualReviewComparisonMeta,
+  fields: string[],
+  exemptedColumns: { column: string; reason: string }[],
+): ManualReviewComparison {
+  return {
+    ...meta,
+    groundCount: 0,
+    systemCount: 0,
+    correctCount: 0,
+    errorCount: 0,
+    missingCount: 0,
+    extraCount: 0,
+    unvalidatedCount: 0,
+    excludedCount: 0,
+    fields,
+    exemptedColumns,
+    summary: [],
+    rows: [],
+  };
+}
+
 /** The last comparison, kept while review-ui is open so coming back to the
  * page shows it again. Cleared whenever an input changes. */
-let lastResult: ManualReviewResult | null = null;
+let lastBundle: ManualReviewBundle | null = null;
+let lastViewKey: ViewKey | null = null;
 
 export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Props) {
+  const [qa, setQa] = useState<File | null>(null);
   const [ground, setGround] = useState<File | null>(null);
   const [system, setSystem] = useState<File | null>(null);
   const [groundSource, setGroundSource] = useState<Source>(() => readSources().ground);
   const [systemSource, setSystemSource] = useState<Source>(() => readSources().system);
   const [showExempt, setShowExempt] = useState(false);
-  const [result, setResultState] = useState<ManualReviewResult | null>(lastResult);
+  const [bundle, setBundleState] = useState<ManualReviewBundle | null>(lastBundle);
+  const [viewKey, setViewKeyState] = useState<ViewKey | null>(lastViewKey);
 
-  function setResult(next: ManualReviewResult | null) {
-    lastResult = next;
-    setResultState(next);
+  function setBundle(next: ManualReviewBundle | null) {
+    lastBundle = next;
+    setBundleState(next);
   }
+
+  // The comparison on screen: the one chosen, else the first (Client vs Pipeline without QA).
+  const activeKey: ViewKey | null = bundle
+    ? viewKey && (viewKey === "display_all" ? bundle.order.length > 1 : bundle.comparisons[viewKey])
+      ? viewKey
+      : bundle.order[0] ?? null
+    : null;
+  const result: ManualReviewComparison | null =
+    bundle && activeKey && activeKey !== "display_all" ? bundle.comparisons[activeKey] ?? null : null;
+  const tokens = result?.tokens ?? CLASSIC_META.tokens;
+  const shortSides = result?.shortSides ?? CLASSIC_META.shortSides;
 
   // Files uploaded earlier, back from the browser's storage.
   useEffect(() => {
     let live = true;
-    void Promise.all([readFile("ground"), readFile("system")]).then(([savedGround, savedSystem]) => {
+    void Promise.all([readFile("qa"), readFile("ground"), readFile("system")]).then(([savedQa, savedGround, savedSystem]) => {
       if (!live) return;
+      setQa((current) => current ?? savedQa);
       setGround((current) => current ?? savedGround);
       setSystem((current) => current ?? savedSystem);
     });
@@ -444,35 +628,51 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     () => () => {
       if (streamRef.current) {
         streamRef.current.abort();
-        lastResult = null;
+        lastBundle = null;
       }
     },
     [],
   );
 
-  function pick(side: "ground" | "system", setter: (file: File | null) => void) {
+  function pick(side: "qa" | "ground" | "system", setter: (file: File | null) => void) {
     return (file: File | null) => {
       streamRef.current?.abort();
       setStopped(null);
       setter(file);
       void writeFile(side, file);
       // A result belongs to the files it was run on.
-      setResult(null);
+      setBundle(null);
       setError(null);
     };
   }
 
-  const ready = Boolean(
-    (groundSource === "db" || ground) && (systemSource === "db" || system),
-  );
-  const input = () => ({ ground, groundSource, system, systemSource });
+  // Any two sources are enough; a source set to Upload needs its file.
+  const groundUsed = groundSource !== "none";
+  const systemUsed = systemSource !== "none";
+  const uploadMissing = (groundSource === "upload" && !ground) || (systemSource === "upload" && !system);
+  const sourceCount = (qa ? 1 : 0) + (groundUsed ? 1 : 0) + (systemUsed ? 1 : 0);
+  const ready = sourceCount >= 2 && !uploadMissing;
+  const planned: ManualReviewComparisonKey[] = [
+    ...(qa && groundUsed ? (["qa_client"] as const) : []),
+    ...(qa && systemUsed ? (["qa_pipeline"] as const) : []),
+    ...(groundUsed && systemUsed ? (["client_pipeline"] as const) : []),
+    ...(qa && groundUsed && systemUsed ? (["all"] as const) : []),
+  ];
+  const input = () => ({ qa, ground, groundSource, system, systemSource });
+
+  function setViewKey(next: ViewKey) {
+    lastViewKey = next;
+    setViewKeyState(next);
+    // Each comparison has its own fields: its filters start fresh.
+    setView({ filter: "ALL", page: 1, fieldFilters: {}, valueFilters: {}, valueSides: {}, filterField: "" });
+  }
 
   function chooseSource(setter: (source: Source) => void) {
     return (source: Source) => {
       streamRef.current?.abort();
       setStopped(null);
       setter(source);
-      setResult(null);
+      setBundle(null);
       setError(null);
     };
   }
@@ -485,52 +685,71 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     setComparing(true);
     setError(null);
     setStopped(null);
-    setView({ filter: "ALL", page: 1, fieldFilters: {} });
+    setView({ filter: "ALL", page: 1, fieldFilters: {}, valueFilters: {}, valueSides: {}, filterField: "" });
+    lastViewKey = null;
+    setViewKeyState(null);
     // Filled in chart by chart as the backend reads each one.
-    let current: ManualReviewResult | null = null;
+    let current: ManualReviewBundle | null = null;
+    const update = (
+      key: ManualReviewComparisonKey,
+      change: (comparison: ManualReviewComparison) => ManualReviewComparison,
+    ) => {
+      const comparison = current?.comparisons[key];
+      if (current && comparison) current = { ...current, comparisons: { ...current.comparisons, [key]: change(comparison) } };
+    };
     try {
       await streamManualReview(
         input(),
         (event) => {
           if (event.type === "start") {
+            const metas = event.comparisons ?? [
+              { ...CLASSIC_META, fields: event.fields, exemptedColumns: event.exemptedColumns },
+            ];
             current = {
-              groundCount: 0,
-              systemCount: 0,
-              correctCount: 0,
-              errorCount: 0,
-              missingCount: 0,
-              extraCount: 0,
-              unvalidatedCount: 0,
-              excludedCount: 0,
-              fields: event.fields,
-              exemptedColumns: event.exemptedColumns,
-              summary: [],
-              rows: [],
+              order: metas.map((meta) => meta.key),
+              comparisons: Object.fromEntries(
+                metas.map(({ fields, exemptedColumns, ...meta }) => [meta.key, emptyComparison(meta, fields, exemptedColumns)]),
+              ),
+              lastRun: {},
             };
             setProgress({ loaded: 0, total: event.charts });
           } else if (event.type === "error") {
             setError(`Stopped at chart ${event.pdfId}: ${event.detail}`);
             return;
           } else if (current && event.type === "chart") {
-            const { type: _type, pdfId, lastRunAt, rows, ...counts } = event;
-            current = {
-              ...current,
-              ...counts,
-              rows: [...current.rows, ...rows],
-              lastRun: { ...current.lastRun, [pdfId]: lastRunAt },
-            };
+            const parts = event.comparisons ?? (() => {
+              const { type: _type, pdfId: _pdfId, lastRunAt: _lastRunAt, comparisons: _none, ...part } = event;
+              return { client_pipeline: part };
+            })();
+            for (const [key, part] of Object.entries(parts)) {
+              if (!part) continue;
+              const { rows, ...counts } = part;
+              update(key as ManualReviewComparisonKey, (comparison) => ({
+                ...comparison,
+                ...counts,
+                rows: [...comparison.rows, ...rows],
+              }));
+            }
+            current = { ...current, lastRun: { ...current.lastRun, [event.pdfId]: event.lastRunAt } };
             setProgress((p) => (p ? { ...p, loaded: p.loaded + 1 } : p));
           } else if (current && event.type === "done") {
-            const { type: _type, ...totals } = event;
-            current = { ...current, ...totals };
+            const reportId = event.reportId;
+            const parts = event.comparisons ?? (() => {
+              const { type: _type, comparisons: _none, ...totals } = event;
+              return { client_pipeline: totals };
+            })();
+            for (const [key, totals] of Object.entries(parts)) {
+              if (totals) update(key as ManualReviewComparisonKey, (comparison) => ({ ...comparison, ...totals, reportId }));
+            }
+            current = { ...current, reportId };
           }
-          setResult(current);
+          setBundle(current);
         },
         controller.signal,
       );
     } catch (err) {
       if (controller.signal.aborted) return;
-      if (!current) setResult(null);
+      if (!current) setBundle(null);
       setError(err instanceof Error ? err.message : "Comparison failed");
     } finally {
       if (streamRef.current === controller) {
@@ -547,7 +766,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     setError(null);
     try {
       // The comparison on screen, so the file matches it and nothing is compared again.
-      const reportId = result?.reportId;
+      const reportId = bundle?.reportId;
       const blob =
         kind === "pdf"
           ? await downloadManualReviewSummary(input(), reportId)
@@ -580,9 +799,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
       (row) =>
         (!needle || row.pdfId.toLowerCase().includes(needle)) &&
         passesFieldFilters(row, fieldFilters) &&
-        passesValueFilters(row, valueFilters, valueSides),
+        passesValueFilters(row, valueFilters, valueSides, tokens),
     );
-  }, [result, query, fieldFilters, valueFilters, valueSides]);
+  }, [result, query, fieldFilters, valueFilters, valueSides, tokens]);
   const fieldFilterCount = new Set([...Object.keys(fieldFilters), ...Object.keys(valueFilters)]).size;
   // The column the filter bar works on, and that column's values in the results.
   const filterField = view.filterField && result?.fields.includes(view.filterField) ? view.filterField : "";
@@ -590,11 +809,11 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     if (!filterField || !result) return [] as string[];
     const seen = new Set<string>();
     for (const row of result.rows) {
-      for (const v of rowValues(row, filterField, valueSides[filterField] ?? "either")) seen.add(v);
+      for (const v of rowValues(row, filterField, valueSides[filterField] ?? "either", tokens)) seen.add(v);
     }
     const values = [...seen].filter((v) => v !== BLANK_VALUE).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     return seen.has(BLANK_VALUE) ? [...values, BLANK_VALUE] : values;
-  }, [result, filterField, valueSides]);
+  }, [result, filterField, valueSides, tokens]);
   const filtered = useMemo(
     () => (filter === "ALL" ? searched : searched.filter((row) => row.status === filter)),
     [searched, filter],
@@ -657,30 +876,35 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
       <section className="accuracy-section" aria-label="Input files">
         <h2>Input files</h2>
         <p className="accuracy-note">
-          Ground truth against the algo output, matched on Chart and Page
-          Number. Nothing is stored.
+          Up to three sources, matched on Chart and Page Number: any two are
+          enough. Every pair given is compared, and with all three, All 3 (a
+          field matches only where every source agrees). Nothing is stored.
         </p>
         <div className="excel-compare-picks">
+          <InputCard title="QA Ground Truth" extra={<ColumnsInfo />}>
+            <FilePick
+              hint="QA ground truth file (CSV or Excel) — click or drop; optional"
+              file={qa}
+              onFile={pick("qa", setQa)}
+            />
+          </InputCard>
           <InputCard
-            title="Ground Truth"
+            title="Client Ground Truth"
             extra={
-              <div className="excel-compare-card-tools">
-                <SourceToggle
-                  label="Ground truth source"
-                  value={groundSource}
-                  onChange={chooseSource(setGroundSource)}
-                />
-                <ColumnsInfo />
-              </div>
+              <SourceToggle
+                label="Client ground truth source"
+                value={groundSource}
+                onChange={chooseSource(setGroundSource)}
+              />
             }
           >
             {groundSource === "upload" ? (
               <FilePick
-                hint="Manual QA file (CSV or Excel) — click or drop"
+                hint="Client ground truth file (CSV or Excel) — click or drop"
                 file={ground}
                 onFile={pick("ground", setGround)}
               />
-            ) : (
+            ) : groundSource === "db" ? (
               <DatabasePick
                 title={
                   readGroundTruthSource() === "bulk_upload"
@@ -688,13 +912,15 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                     : "Ground Truth — latest per page"
                 }
               />
+            ) : (
+              <NotUsedPick />
             )}
           </InputCard>
           <InputCard
-            title="Algo Generated Output"
+            title="Pipeline Output"
             extra={
               <SourceToggle
-                label="Algo output source"
+                label="Pipeline output source"
                 value={systemSource}
                 onChange={chooseSource(setSystemSource)}
               />
@@ -706,11 +932,20 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 file={system}
                 onFile={pick("system", setSystem)}
               />
-            ) : (
+            ) : systemSource === "db" ? (
               <DatabasePick title="Pipeline Output" />
+            ) : (
+              <NotUsedPick />
             )}
           </InputCard>
         </div>
+        <p className="accuracy-note excel-compare-plan" role="status">
+          {sourceCount < 2
+            ? "Choose at least two sources."
+            : uploadMissing
+              ? "Upload the file for each source set to Upload file."
+              : `Compares: ${planned.map((key) => COMPARISON_LABELS[key]).join(", ")}.`}
+        </p>
         <div className="excel-compare-actions">
           <button
             type="button"
@@ -739,7 +974,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
               Stop
             </button>
           ) : null}
-          {result && !comparing ? (
+          {bundle && !comparing ? (
             <>
               <button
                 type="button"
@@ -783,30 +1018,60 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
       <p className="accuracy-note excel-compare-downloading" role="status" aria-live="polite">
         {downloading
           ? `Building the ${downloading === "pdf" ? "Master Summary (PDF)" : "Excel report"}… ${downloadSeconds}s` +
-            (result?.reportId
+            (bundle?.reportId
               ? ""
               : " — this comparison was stopped part-way, so it is compared again in full first; that can take a few minutes.")
           : ""}
       </p>
       {error ? <div className="error-banner">{error}</div> : null}
-      {stopped && result ? (
+      {stopped && bundle ? (
         <p className="accuracy-note excel-compare-stopped">
           Stopped after {stopped.loaded} of {stopped.total} charts. Counts and results cover those charts only;
           Compare Files runs it again in full.
         </p>
       ) : null}
 
+      {bundle && bundle.order.length > 0 ? (
+        <section className="accuracy-section excel-compare-views" aria-label="Comparison to show">
+          <h2>Comparison</h2>
+          <div className="excel-compare-filters excel-compare-view-toggle" role="radiogroup" aria-label="Comparison to show">
+            {[...bundle.order, ...(bundle.order.length > 1 ? (["display_all"] as const) : [])].map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="radio"
+                aria-checked={activeKey === key}
+                className={`excel-compare-filter${activeKey === key ? " active" : ""}`}
+                onClick={() => setViewKey(key)}
+              >
+                {key === "display_all" ? "Display all" : COMPARISON_LABELS[key]}
+              </button>
+            ))}
+          </div>
+          {result ? (
+            <p className="accuracy-note">
+              {result.key === "all"
+                ? "QA's pages; a field matches only where QA, Client and Pipeline all agree (every pair matches). " +
+                  "A page missing from Client or Pipeline is Missing."
+                : `${result.sides[0]} (base) against ${result.sides[1]}.`}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {bundle && activeKey === "display_all" ? <DisplayAll bundle={bundle} onPick={setViewKey} /> : null}
+
       {result ? (
         <>
           <section className="accuracy-section" aria-label="Comparison summary">
-            <h2>Summary</h2>
+            <h2>Summary — {result.label}</h2>
             <div className="excel-compare-stats">
               {[
                 {
                   label: "Records",
                   items: [
-                    ["ground truth", result.groundCount],
-                    ["algo generated", result.systemCount],
+                    [shortSides[0].toLowerCase(), result.groundCount],
+                    [result.key === "all" ? "in all 3" : shortSides[1].toLowerCase(), result.systemCount],
                     [
                       "matched",
                       result.matchedCount ??
@@ -825,8 +1090,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                       {
                         label: "Charts",
                         items: [
-                          ["ground truth", result.groundCharts],
-                          ["algo generated", result.systemCharts ?? 0],
+                          [shortSides[0].toLowerCase(), result.groundCharts],
+                          [result.key === "all" ? "in all 3" : shortSides[1].toLowerCase(), result.systemCharts ?? 0],
                           ["compared", result.chartsCompared ?? 0],
                         ],
                       },
@@ -1009,9 +1274,12 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                       }
                       aria-label={`Filter ${filterField} values on`}
                     >
-                      <option value="either">GT or Algo</option>
-                      <option value="gt">GT</option>
-                      <option value="algo">Algo</option>
+                      <option value="either">{shortSides.join(" or ")}</option>
+                      {shortSides.map((name, index) => (
+                        <option key={name} value={SIDE_IDS[index]}>
+                          {name}
+                        </option>
+                      ))}
                     </select>
                     <ColumnFilterButton
                       label={`${filterField} values`}
@@ -1098,14 +1366,14 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   {pageRows.map((row, index) => {
                     const key = `${row.pdfId}:${row.pageNumber}:${row.status}:${index}`;
                     // A record with nothing to tell apart is one row: every value agrees.
-                    const sides = oneRow(row, result.fields) ? (["gt"] as const) : (["gt", "algo"] as const);
-                    const span = sides.length > 1 ? 2 : undefined;
+                    const sides = oneRow(row, result.fields, tokens) ? [0] : tokens.map((_token, index) => index);
+                    const span = sides.length > 1 ? sides.length : undefined;
                     return sides.map((side) => (
                       <tr
                         key={`${key}:${side}`}
-                        className={`excel-compare-row-${side}`}
+                        className={`excel-compare-row-${side === 0 ? "gt" : "algo"}`}
                       >
-                        {side === "gt" ? (
+                        {side === 0 ? (
                           <>
                             <th scope="rowgroup" rowSpan={span}>
                               <a
@@ -1136,13 +1404,13 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                               </button>
                             </th>
                             <td rowSpan={span} className="landing-col-updated accuracy-col-date">
-                              <DateLines iso={result.lastRun?.[row.pdfId]} />
+                              <DateLines iso={bundle?.lastRun[row.pdfId]} />
                             </td>
                             <td rowSpan={span}>{row.pageNumber}</td>
                           </>
                         ) : null}
                         <td className="excel-compare-source">
-                          {span ? (side === "gt" ? "GT" : "Algo") : "GT = Algo"}
+                          {span ? shortSides[side] : shortSides.join(" = ")}
                         </td>
                         {result.fields.map((field) => {
                           const mismatched = row.mismatched.includes(field);
@@ -1151,19 +1419,19 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                             !mismatched &&
                             span !== undefined &&
                             (row.status === "ERROR" || row.status === "CORRECT") &&
-                            !splitDisplay(row.values[field] ?? "");
-                          if (agreed && side === "algo") return null;
+                            !splitDisplay(row.values[field] ?? "", tokens);
+                          if (agreed && side > 0) return null;
                           return (
                             <td
                               key={field}
-                              rowSpan={agreed ? 2 : undefined}
+                              rowSpan={agreed ? span : undefined}
                               className={mismatched ? "excel-compare-mismatch" : undefined}
                             >
-                              {sideValue(row, field, side) || "—"}
+                              {sideValue(row, field, side, tokens) || "—"}
                             </td>
                           );
                         })}
-                        {side === "gt" ? (
+                        {side === 0 ? (
                           <>
                             <td rowSpan={span}>
                               <span className={STATUS_CLASS[row.status]}>

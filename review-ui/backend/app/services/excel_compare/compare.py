@@ -176,9 +176,11 @@ def restrict_to_ground(ground, system):
     return system[keep]
 
 
-def compare_frames(ground, system, fields_to_compare):
+def compare_frames(ground, system, fields_to_compare, second_is_ground=False):
     """
     Match and compare two already-read, already-validated frames.
+    ``second_is_ground``: the second frame is a ground-truth sheet too
+    (see field_comparator.compare_fields).
 
     Returns (result_rows, missing_count, extra_count). compare_files
     runs this once over whole files; review-ui's streaming compare
@@ -198,7 +200,7 @@ def compare_frames(ground, system, fields_to_compare):
         gt_row = ground.loc[gt_index]
         system_row = system.loc[system_index]
 
-        field_results = compare_fields(gt_row, system_row, fields_to_compare)
+        field_results = compare_fields(gt_row, system_row, fields_to_compare, second_is_ground)
         status = determine_status(field_results)
         # Both sides blank / junk: every field matches (compare_fields), said so.
         reason = build_reason(

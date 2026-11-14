@@ -17,6 +17,7 @@ from reportlab.platypus import (
     Spacer,
     KeepTogether,
     CondPageBreak,
+    PageBreak,
 )
 
 
@@ -456,10 +457,11 @@ def build_master_summary_pdf(
     Returns the PDF as raw bytes.
     """
 
-    styles = _styles()
-    buffer = BytesIO()
+    return build_master_summary_pdf_sections([(None, comparison_result, ground_label, system_label)])
 
-    doc = SimpleDocTemplate(
+
+def _document(buffer):
+    return SimpleDocTemplate(
         buffer,
         pagesize=LETTER,
         topMargin=0.6 * inch,
@@ -470,6 +472,51 @@ def build_master_summary_pdf(
         author="Manual Review",
     )
 
+
+def build_master_summary_pdf_sections(sections, overview=None):
+    """
+    One Master Summary per comparison, each starting on a new page:
+    ``sections`` is a list of (heading or None, comparison_result,
+    ground_label, system_label). ``overview`` (rows of a table, header
+    first) opens the document when several comparisons are in it.
+    """
+
+    styles = _styles()
+    buffer = BytesIO()
+    doc = _document(buffer)
+    elements = []
+
+    if overview:
+        elements.append(Paragraph(REPORT_TITLE, styles["ReportTitle"]))
+        elements.append(Paragraph(
+            f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} &nbsp;|&nbsp; "
+            f"{len(sections)} comparisons",
+            styles["ReportSubtitle"],
+        ))
+        widths = [1.6 * inch] + [(CONTENT_WIDTH - 1.6 * inch) / (len(overview[0]) - 1)] * (len(overview[0]) - 1)
+        _section(
+            elements, styles,
+            "Comparisons at a glance",
+            "Each comparison's headline numbers and every field's accuracy, side by side. "
+            "The pages after this one hold each comparison's full summary.",
+            _table([[escape(str(cell)) for cell in row] for row in overview], widths, styles,
+                   right_cols=tuple(range(1, len(overview[0])))),
+            "",
+        )
+
+    for index, (heading, result, ground_label, system_label) in enumerate(sections):
+        if index or overview:
+            elements.append(PageBreak())
+        elements.extend(_summary_elements(result, styles, ground_label, system_label, heading))
+
+    doc.build(elements, canvasmaker=_NumberedCanvas)
+
+    return buffer.getvalue()
+
+
+def _summary_elements(comparison_result, styles, ground_label, system_label, heading=None):
+    """One comparison's Master Summary, as flowables."""
+
     r = comparison_result
     elements = []
 
@@ -477,7 +524,9 @@ def build_master_summary_pdf(
     # Header and headline tiles
     # ---------------------------------------------------------
 
-    elements.append(Paragraph(REPORT_TITLE, styles["ReportTitle"]))
+    elements.append(Paragraph(
+        REPORT_TITLE + (f" — {escape(heading)}" if heading else ""), styles["ReportTitle"]
+    ))
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     elements.append(Paragraph(
@@ -772,6 +821,4 @@ def build_master_summary_pdf(
         "Every column was compared.",
     )
 
-    doc.build(elements, canvasmaker=_NumberedCanvas)
-
-    return buffer.getvalue()
+    return elements

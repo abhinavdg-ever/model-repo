@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterator
 from io import BytesIO
 from typing import Any
 
-from . import database_algo, database_ground, database_system  # noqa: F401  (no pandas at import)
+from . import database_algo, database_ground, database_system, three_way  # noqa: F401  (no pandas at import)
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
@@ -280,11 +280,116 @@ def comparison(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict:
     return compare_files(_upload(*ground), _upload(*system))
 
 
+def is_bundle(result: dict) -> bool:
+    """A three-source run (three_way.stream): several comparisons under one reportId."""
+    return "comparisons" in result
+
+
+def _relabelled(rows: list[dict], fields: list[str], tokens: list[str], names: list[str]) -> list[dict]:
+    """A pair's "GT: a | Algo: b" cells as "<first>: a | <second>: b" for a download,
+    so a QA vs Client sheet does not read GT / Algo. The screen keeps the tokens."""
+    if tokens == names:
+        return rows
+    prefixes = [f"{token}: " for token in tokens]
+    separators = [f" | {token}: " for token in tokens[1:]]
+    out = []
+    for row in rows:
+        copy = dict(row)
+        for field in fields:
+            value = copy.get(field)
+            if isinstance(value, str) and value.startswith(prefixes[0]) and all(sep in value for sep in separators):
+                value = f"{names[0]}: " + value[len(prefixes[0]):]
+                for sep, name in zip(separators, names[1:]):
+                    value = value.replace(sep, f" | {name}: ", 1)
+                copy[field] = value
+        out.append(copy)
+    return out
+
+
+def _bundle_sections(bundle: dict) -> list[tuple[str, dict, list[str]]]:
+    """(key, result with relabelled rows, [first label, second label]) per comparison."""
+    from .three_way import ALL, SHORT_LABELS, _sides
+
+    sections = []
+    for key in bundle["order"]:
+        result = bundle["comparisons"][key]
+        names = [SHORT_LABELS[source] for source in _sides(key)]
+        tokens = bundle["tokens"][key]
+        rows = result["result_rows"]
+        if key != ALL:
+            rows = _relabelled(rows, result["active_comparison_fields"], tokens, names)
+        sections.append((key, {**result, "result_rows": rows}, bundle["labels"][key]))
+    return sections
+
+
+def _bundle_overview(bundle: dict) -> list[list[Any]]:
+    """Every comparison's headline numbers and each field's accuracy, side by side
+    (the "Display all" view): header row first."""
+    from .field_comparator import ACTIVE_COMPARISON_FIELDS
+
+    order = bundle["order"]
+    results = [bundle["comparisons"][key] for key in order]
+
+    def pct(value):
+        return "N/A" if value is None else f"{float(value):.2f}%"
+
+    def accuracy(result, field):
+        if field not in result["active_comparison_fields"]:
+            return "not compared"
+        if not result["evaluated_count"]:
+            return "N/A"
+        errors = next((e["error_percentage"] for e in result["field_error_summary"] if e["field"] == field), 0.0)
+        return pct(100.0 - errors)
+
+    rows: list[list[Any]] = [["Metric", *(bundle["titles"][key] for key in order)]]
+    rows.append(["Compared", *(" vs ".join(bundle["labels"][key]) for key in order)])
+    for metric, name in (
+        ("Base pages", "ground_count"),
+        ("Compared-against pages", "system_count"),
+        ("Matched", "matched_count"),
+        ("Correct", "correct_count"),
+        ("Errors", "error_count"),
+        ("Missing", "missing_count"),
+    ):
+        rows.append([metric, *(r[name] for r in results)])
+    rows.append(["Exact match rate", *(pct(r["exact_match_rate"]) for r in results)])
+    rows.append(["Discrepancy rate", *(pct(r["overall_discrepancy_rate"]) for r in results)])
+    for field in ACTIVE_COMPARISON_FIELDS:
+        if any(field in r["active_comparison_fields"] for r in results):
+            rows.append([f"{field} accuracy", *(accuracy(r, field) for r in results)])
+    return rows
+
+
+_SHEET_PREFIXES = {"qa_client": "QA-Client", "qa_pipeline": "QA-Pipeline", "client_pipeline": "Client-Pipeline", "all": "All 3"}
+
+
 def report(result: dict) -> bytes:
-    """A comparison (``comparison`` or ``remembered``) as the tool's Excel report (three sheets)."""
+    """A comparison (``comparison`` or ``remembered``) as the tool's Excel report (three sheets).
+    A three-source run: an Overview sheet, then each comparison's sheets."""
     from .result_builder import write_report
 
     buffer = BytesIO()
+    if is_bundle(result):
+        import pandas as pd
+
+        from .result_builder import write_report_sections
+
+        overview = _bundle_overview(result)
+        write_report_sections(
+            buffer,
+            [
+                {
+                    "prefix": _SHEET_PREFIXES[key],
+                    "rows": section["result_rows"],
+                    "summary_df": section["summary_df"],
+                    "fields": section["active_comparison_fields"],
+                    "exempted_columns": section["exempted_columns"],
+                }
+                for key, section, _labels in _bundle_sections(result)
+            ],
+            pd.DataFrame(overview[1:], columns=overview[0]),
+        )
+        return buffer.getvalue()
     write_report(
         buffer,
         result["result_rows"],
@@ -300,7 +405,16 @@ def summary_pdf(
     ground_label: str = "Ground Truth",
     system_label: str = "Algo Generated",
 ) -> bytes:
-    """A comparison (``comparison`` or ``remembered``) as the printable Master Summary (PDF)."""
-    from .master_summary import build_master_summary_pdf
+    """A comparison (``comparison`` or ``remembered``) as the printable Master Summary (PDF).
+    A three-source run: an overview page, then one summary per comparison (its own
+    source labels; ``ground_label`` / ``system_label`` are not used)."""
+    from .master_summary import build_master_summary_pdf, build_master_summary_pdf_sections
 
+    if is_bundle(result):
+        sections = [
+            (result["titles"][key], section, labels[0], labels[1] if len(labels) == 2 else " / ".join(labels[1:]))
+            for key, section, labels in _bundle_sections(result)
+        ]
+        overview = _bundle_overview(result) if len(sections) > 1 else None
+        return build_master_summary_pdf_sections(sections, overview=overview)
     return build_master_summary_pdf(result, ground_label=ground_label, system_label=system_label)

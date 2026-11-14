@@ -3,13 +3,17 @@
  * clone); the source choices to localStorage. Storage can be missing or
  * blocked (private window): every call then quietly does nothing. */
 
-export type Source = "upload" | "db";
-export type Side = "ground" | "system";
+/** none: the source is left out of the comparison. */
+export type Source = "upload" | "db" | "none";
+/** qa = QA Ground Truth, ground = Client Ground Truth, system = Pipeline Output. */
+export type Side = "qa" | "ground" | "system";
+type SourceSide = Exclude<Side, "qa">;
 
 const DB_NAME = "advantmed_manual_review";
 const STORE = "files";
-const SOURCE_KEY = "advantmed_manual_review_sources";
-const DEFAULT_SOURCES: Record<Side, Source> = { ground: "upload", system: "db" };
+// v2 (2026-11-14): Client Ground Truth defaults to the database, as the Pipeline does.
+const SOURCE_KEY = "advantmed_manual_review_sources_v2";
+const DEFAULT_SOURCES: Record<SourceSide, Source> = { ground: "db", system: "db" };
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -51,18 +55,20 @@ export async function writeFile(side: Side, file: File | null): Promise<void> {
   }
 }
 
-export function readSources(): Record<Side, Source> {
+export function readSources(): Record<SourceSide, Source> {
   try {
-    const saved = JSON.parse(localStorage.getItem(SOURCE_KEY) ?? "{}") as Partial<Record<Side, unknown>>;
-    const pick = (side: Side): Source =>
-      saved[side] === "upload" || saved[side] === "db" ? saved[side] : DEFAULT_SOURCES[side];
+    const saved = JSON.parse(localStorage.getItem(SOURCE_KEY) ?? "{}") as Partial<Record<SourceSide, unknown>>;
+    const pick = (side: SourceSide): Source => {
+      const value = saved[side];
+      return value === "upload" || value === "db" || value === "none" ? value : DEFAULT_SOURCES[side];
+    };
     return { ground: pick("ground"), system: pick("system") };
   } catch {
     return { ...DEFAULT_SOURCES };
   }
 }
 
-export function writeSources(sources: Record<Side, Source>): void {
+export function writeSources(sources: Record<SourceSide, Source>): void {
   try {
     localStorage.setItem(SOURCE_KEY, JSON.stringify(sources));
   } catch {
