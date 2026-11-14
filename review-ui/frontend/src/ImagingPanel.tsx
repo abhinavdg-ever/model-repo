@@ -30,7 +30,6 @@ import {
   displayIsoDates,
   groundTruthBits,
   gtCredentials,
-  blankJunkTruth,
   gtSignature,
   hasGroundTruth,
   pageTypeVerdict,
@@ -43,6 +42,7 @@ import {
   subtypeFitsType,
   SPECIALTY_CHOICES,
   CREDENTIAL_CHOICES,
+  blankJunkTruth,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
@@ -708,14 +708,9 @@ function rotationLabel(value: string | null | undefined): string {
   return /^-?\d+(\.\d+)?$/.test(text) ? `${text}°` : text;
 }
 
+/** The form's Is Blank or Junk: an invoice is a Main page, not Junk (2026-11-14). */
 function blankJunkLabel(gt: PageGroundTruth | null | undefined): string {
-  if (!gt) return "";
-  if (yesNo(gt.blankPage) === "yes") return "Yes (Blank)";
-  if (yesNo(gt.junkPage) === "yes" || yesNo(gt.isInvoice) === "yes") return "Yes (Junk)";
-  if (yesNo(gt.blankPage) === "no" || yesNo(gt.junkPage) === "no" || yesNo(gt.isInvoice) === "no") {
-    return "No";
-  }
-  return "";
+  return gt ? blankJunkTruth(gt) ?? "" : "";
 }
 
 function blankJunkStored(shown: string): Pick<PageGroundTruth, "blankPage" | "junkPage" | "isInvoice"> {

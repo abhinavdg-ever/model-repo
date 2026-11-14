@@ -223,15 +223,30 @@ function codeableMark(
   return bit(shown, leftNon === rightNon ? "match" : "mismatch");
 }
 
-/** Blank Page / Junk Page / Is Invoice collapsed into the pipeline's own format. */
+/** Is Invoice set on the ground truth: Yes / Y / True / 1 (2026-11-14, user: is_invoice = 1
+ * counts as well as Yes). */
+export function invoiceFlag(value: string | null | undefined): boolean {
+  const folded = fold(value);
+  return /^1(\.0+)?$/.test(folded) || yesNo(folded) === "yes";
+}
+
+/** Blank Page / Junk Page collapsed into the pipeline's own format. An invoice is a Main
+ * page (2026-11-14, user: every Junk / Invoice page is Main), so Is Invoice = Yes / 1 means
+ * "No" (not blank / junk) unless Blank or Junk itself says Yes. */
 export function blankJunkTruth(gt: PageGroundTruth): string | null {
   const blank = yesNo(gt.blankPage);
   const junk = yesNo(gt.junkPage);
-  const invoice = yesNo(gt.isInvoice);
   if (blank === "yes") return "Yes (Blank)";
-  if (junk === "yes" || invoice === "yes") return "Yes (Junk)";
-  if (blank === "no" || junk === "no" || invoice === "no") return "No";
+  if (junk === "yes") return "Yes (Junk)";
+  if (blank === "no" || junk === "no" || gt.isInvoice != null && fold(gt.isInvoice) !== "") return "No";
   return null;
+}
+
+/** The ground truth's page type: Encounter Type, else the Page Type cell; Is Invoice = Yes / 1
+ * with neither makes it Invoice (2026-11-14, user). */
+export function gtPageTypeLabel(gt: PageGroundTruth): string | null | undefined {
+  const label = missing(gt.encounterType) ? gt.pageType : gt.encounterType;
+  return missing(label) && invoiceFlag(gt.isInvoice) ? "Invoice" : label;
 }
 
 function blankJunkMark(
@@ -623,12 +638,12 @@ export function groundTruthBits(input: {
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown, input.isDuplicate === true),
     // The ground-truth page type lives in the Encounter Type column; the Page
     // Type cell is the fallback when Encounter Type is empty.
-    pageType: pageTypeMark(
-      missing(gt.encounterType) ? gt.pageType : gt.encounterType,
-      [input.pageType, input.pageSubtype],
-      input.pageTypeKnown,
-      input.pageTypeSemantic,
-    ),
+    // Is Invoice = Yes / 1 and the pipeline's page type is Invoice: a Match whatever the
+    // label says (2026-11-14, user).
+    pageType:
+      invoiceFlag(gt.isInvoice) && input.pageTypeKnown && /^\s*invoice\b/i.test(text(input.pageType))
+        ? bit(text(gtPageTypeLabel(gt)) || "Invoice", "match")
+        : pageTypeMark(gtPageTypeLabel(gt), [input.pageType, input.pageSubtype], input.pageTypeKnown, input.pageTypeSemantic),
     codeable: codeableMark(gt.codeable, input.isCodeable, input.codeableKnown),
     pageSequence: sequenceMark(gt.pageSequence, input.actualSequence, input.sequenceKnown),
   };

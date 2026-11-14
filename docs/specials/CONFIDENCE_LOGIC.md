@@ -647,7 +647,7 @@ Built server-side from the view `v_accuracy_page` and cached
 | Overall | per page, k of the 7 streams match; accuracy = pages with 7 of 7 / scored; bands Good 5-7, Fair 3-4, Bad 0-2 (`accuracy.ts:660`, `:958`) |
 | Class-1 precision / recall / F1 | per stream on the "Yes" class (blank / junk, rotated, Name & DOB present, signed, dated); Provider Signature also "Cred. M" (credentials match share) |
 | Visibility Match % (Additional Metrics) | labelled Visible Yes / No pages the pipeline measured: matches / scored (`accuracy.ts:217`) |
-| Invoice | ground truth Is Invoice = Yes or Invoice in Encounter Type; pipeline Final Page Type = Invoice. Precision, recall, F1, accuracy from both / GT only / algo only / neither (`accuracy.ts:242`) |
+| Invoice | ground truth Is Invoice = Yes or 1, or Invoice as its page type (an invoice is Main, never ground-truth Junk); pipeline Final Page Type starts with Invoice. Page Type: Is Invoice = Yes / 1 against a pipeline Invoice is a Match. Precision, recall, F1, accuracy from both / GT only / algo only / neither (`accuracy.ts:242`) |
 | Duplicate | GT Is Duplicate vs pipeline; Yes and Partial both count as a duplicate on either side; precision, recall, F1, accuracy plus a 3 x 3 matrix (`accuracy.ts:252`) |
 
 Manual Review (ExcelCompare) has its own Exact Match Rate = correct / total ground truth

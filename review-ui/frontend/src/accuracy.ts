@@ -7,8 +7,10 @@ import {
   blankJunkTruth,
   groundTruthBits,
   gtCredentials,
+  gtPageTypeLabel,
   gtSignature,
   hasGroundTruth,
+  invoiceFlag,
   type GtBit,
 } from "./groundTruth";
 import { DEFAULT_DOS, NON_VISIT_DOS, splitPageType } from "./ImagingPanel";
@@ -221,19 +223,18 @@ function algoDuplicate(page: ImagingPageResult): DupState {
 
 const INVOICE = /invoice/i;
 
-/** The ground truth's invoice (2026-11-12, user): Is Invoice = Yes / 1, or Invoice in its
- * Encounter Type. */
+/** The ground truth's invoice (2026-11-12, user): Is Invoice = Yes / 1, or Invoice as its
+ * page type (Encounter Type, else the Page Type cell). */
 function gtInvoice(page: ImagingPageResult): boolean {
   const gt = page.groundTruth;
-  const flag = text(gt?.isInvoice).trim().toLowerCase();
-  return flag === "1" || yesNo(flag) === "yes" || INVOICE.test(text(gt?.encounterType));
+  return Boolean(gt) && (invoiceFlag(gt?.isInvoice) || INVOICE.test(text(gt ? gtPageTypeLabel(gt) : null)));
 }
 
 /** The pipeline's invoice (2026-11-12, user): its Final Page Type is Invoice
  * (imaging_final.page_type; shown as "Invoice (sub-type)"). */
 function algoInvoice(page: ImagingPageResult): boolean {
-  const final = text(page.finalPageType).split(" (")[0].trim().toLowerCase();
-  return final === "invoice";
+  // Invoice, Invoice (Invoice Page) or Invoice Page; the Final, else the Extracted type.
+  return /^\s*invoice\b/i.test(text(page.finalPageType) || text(page.pageType));
 }
 
 function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {

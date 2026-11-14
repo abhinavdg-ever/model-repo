@@ -614,8 +614,8 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
                 <h4>Invoice</h4>
                 <PrecisionRecallTable tp={invoice.both} fn={invoice.gtOnly} fp={invoice.algoOnly} />
                 <p className="accuracy-extra-rule">
-                  Pages where the ground truth or the pipeline says Invoice. Ground truth: Is Invoice = Yes, or
-                  Invoice in its Encounter Type. Pipeline: its Final Page Type is Invoice.
+                  Pages where the ground truth or the pipeline says Invoice. Ground truth: Is Invoice = Yes or 1, or
+                  Invoice as its Page Type (an invoice is a Main page, not Junk). Pipeline: its Final Page Type is Invoice (Invoice Page).
                 </p>
               </section>
               <section className="accuracy-info-section">
