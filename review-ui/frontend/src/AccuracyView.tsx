@@ -454,9 +454,6 @@ function Donut({
             </div>
           ) : null}
           <RatesGrid rates={rates} />
-          <p className="accuracy-yes-acc" title="Only the cases where the ground truth or the pipeline says Yes: Both Yes / (Both Yes + GT only + Pipeline only)">
-            Yes accuracy {yesAccuracyText(rates)}
-          </p>
         </div>
       ) : null}
     </figure>
@@ -464,15 +461,6 @@ function Donut({
 }
 
 const EXTRA_POP_WIDTH = 460;
-
-/** Yes accuracy (2026-11-14, user): the universe is the cases either side calls Yes, so the
- * count shrinks: TP / (TP + FP + FN). */
-function yesAccuracyText(rates: ClassRates): string {
-  const universe = rates.tp + rates.fp + rates.fn;
-  return universe > 0
-    ? `${Math.round((100 * rates.tp) / universe)}% (${rates.tp} of ${universe} Yes cases)`
-    : "— (no Yes cases)";
-}
 
 
 /** Precision · Recall · F1 · Accuracy, then the 2 x 2 counts. */
@@ -612,6 +600,31 @@ function share(num: number, den: number): string {
 
 /** Member's info (2026-11-14, user): Match rules, Page matches, Accuracy & precision
  * calculation with the real numbers, and Stats as ground truth x pipeline counts. */
+/** The Yes universe (2026-11-14, user): the cases either side calls Yes, as a 2 x 2 cross tab
+ * without the No / No cell; its accuracy, precision and recall on that denominator. */
+function yesSection(classLabel: string, rates: ClassRates): InfoSection {
+  const { tp, fp, fn } = rates;
+  const universe = tp + fp + fn;
+  return {
+    title: `Yes cases only (${classLabel}; denominator = Yes on either side, ${universe})`,
+    lines: [
+      `Yes accuracy = Both Yes / Yes on either side = ${share(tp, universe)}`,
+      `Yes precision = Both Yes / pipeline Yes = ${share(tp, tp + fp)}`,
+      `Yes recall = Both Yes / ground truth Yes = ${share(tp, tp + fn)}`,
+    ],
+    tables: [{
+      caption: "GT x Pipeline, Yes on either side (No / No left out)",
+      head: ["GT \\ Pipeline", "Yes", "No", "Total"],
+      rows: [
+        ["Yes", tp, fn, tp + fn],
+        ["No", fp, "—", fp],
+        ["Total", tp + fp, fn, universe],
+      ],
+      match: [[0, 1]],
+    }],
+  };
+}
+
 /** A 2 x 2 cross tab from Class 1 counts: ground truth Yes / No down, pipeline Yes / No across. */
 function classTable(caption: string, rates: ClassRates) {
   const { tp, fp, fn, tn } = rates;
@@ -677,6 +690,7 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
           tables: [...extraTables, ...(rates ? [classTable(classLabel, rates)] : [])],
         }]
       : []),
+    ...(rates ? [yesSection(classLabel, rates)] : []),
   ];
 }
 
@@ -762,6 +776,7 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
         bothTable(matrix),
       ],
     },
+    yesSection("Name & DOB = Yes", rates),
   ];
 }
 
