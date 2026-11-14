@@ -148,6 +148,8 @@ export type ChartAccuracy = {
   memberRates: ClassRates;
   /** Member Stats: ground truth x pipeline counts (2026-11-14). */
   memberMatrix?: MemberMatrix;
+  /** DOS Stats: From / To Match, No Match, Not Found and Both counts (2026-11-14). */
+  dosMatrix?: MemberMatrix;
   /** Class 1 = the ground truth says the page is signed; credMatch counts its credentials. */
   signatureRates: ClassRates;
   /** Class 1 = the ground truth dates the page. */
@@ -439,8 +441,14 @@ function memberCall(
     verdict: labelled.length === 0 ? null : labelled.every(([side, pipe]) => side === pipe) ? "yes" : "no",
     excluded: false,
     // The Stats matrix (2026-11-14, user): ground truth x pipeline per field, labelled only.
-    cells: (["name", "dob"] as const).flatMap((field, index) =>
-      truth[index] == null ? [] : [`${field}|${truth[index]}|${piped[index]}`]),
+    cells: [
+      ...(["name", "dob"] as const).flatMap((field, index) =>
+        truth[index] == null ? [] : [`${field}|${truth[index]}|${piped[index]}`]),
+      // Both (2026-11-14, user): how many of Name and DOB match (2 / 1 / 0), when both are labelled.
+      ...(truth[0] != null && truth[1] != null
+        ? [`both|${(truth[0] === piped[0] ? 1 : 0) + (truth[1] === piped[1] ? 1 : 0)}`]
+        : []),
+    ],
   };
 }
 
@@ -549,6 +557,7 @@ function pageScores(
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
   dos: PresenceCall;
+  dosCells: string[];
   signature: SignatureCall | null;
 } {
   const parts = splitPageType(page.pageType);
@@ -643,6 +652,29 @@ function pageScores(
     : // Either undated (Final or Extracted) is a Match.
       { expected: false, predicted: extractedDated && pipelineDated, verdict: extractedDated && pipelineDated ? "no" : "yes" };
   const dos = dosCall.verdict;
+  // DOS Stats (2026-11-14, user): each labelled field (From / To) as Match (the Final or the
+  // Extracted date equals it), No Match (another date), Not Found (no date); and per page with
+  // both labelled, how many of the two match.
+  const dosCells: string[] = [];
+  if (gtDated) {
+    const fields = [
+      ["from", bits.dosFrom, finalBits.dosFrom, finalFrom, pipelineDate(page.dosFrom)],
+      ["to", bits.dosTo, finalBits.dosTo, finalTo, pipelineDate(page.dosTo)],
+    ] as const;
+    let labelledCount = 0;
+    let matches = 0;
+    for (const [field, own, fin, finalDate, ownDate] of fields) {
+      if (!labeled(own) && !labeled(fin)) continue;
+      labelledCount += 1;
+      const matched = labeled(fin) && grade(fin) === "yes"
+        ? true
+        : !finalOnly && labeled(own) && grade(own) === "yes";
+      const found = finalOnly ? Boolean(finalDate) : Boolean(finalDate || ownDate);
+      dosCells.push(`${field}|${matched ? "match" : found ? "no_match" : "not_found"}`);
+      if (matched) matches += 1;
+    }
+    if (labelledCount === 2) dosCells.push(`both|${matches}`);
+  }
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
@@ -708,6 +740,7 @@ function pageScores(
     applicable: OVERALL_METRICS,
     member: memberCalls,
     dos: dosCall,
+    dosCells,
     signature: signatureCalled,
   };
 }
@@ -836,6 +869,7 @@ export function scoreChart(
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
   const memberMatrix: MemberMatrix = { cells: {}, excluded: 0 };
+  const dosMatrix: MemberMatrix = { cells: {}, excluded: 0 };
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyOverall();
@@ -852,6 +886,7 @@ export function scoreChart(
       if (scored.signature.credMatch) signatureRates.credMatch = (signatureRates.credMatch ?? 0) + 1;
     }
     addPresenceRates(dosRates, scored.dos);
+    for (const cell of scored.dosCells) dosMatrix.cells[cell] = (dosMatrix.cells[cell] ?? 0) + 1;
 
     const pageOverall = overallVerdict(scored.scores, scored.applicable);
     pages.push({
@@ -891,6 +926,7 @@ export function scoreChart(
     orientationRates,
     memberRates,
     memberMatrix,
+    dosMatrix,
     signatureRates,
     dosRates,
     pages,

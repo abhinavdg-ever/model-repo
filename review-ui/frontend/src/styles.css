@@ -3353,6 +3353,8 @@ input {
   z-index: 60;
   box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
   overscroll-behavior: contain;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--brand-200);
@@ -6808,8 +6810,13 @@ input {
 .accuracy-info-matrix {
   border-collapse: collapse;
   margin: 0.35rem 0 0.6rem;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   width: 100%;
+  /* Fixed columns: the table never grows wider than the box. */
+  table-layout: fixed;
+}
+.accuracy-info-matrix th:first-child {
+  width: 26%;
 }
 .accuracy-info-matrix caption {
   text-align: left;
@@ -6819,8 +6826,10 @@ input {
 .accuracy-info-matrix th,
 .accuracy-info-matrix td {
   border: 1px solid var(--border, #e5e7eb);
-  padding: 0.18rem 0.4rem;
+  padding: 0.18rem 0.35rem;
   text-align: right;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .accuracy-info-matrix thead th,
 .accuracy-info-matrix tbody th {
@@ -6828,9 +6837,10 @@ input {
   font-weight: 600;
   background: var(--card-muted, #f6f7f9);
 }
-.accuracy-info-matrix tbody tr:nth-child(1):not(:last-child) td:nth-child(2),
-.accuracy-info-matrix tbody tr:nth-child(2):not(:last-child) td:nth-child(3),
-.accuracy-info-matrix tbody tr:nth-child(3):not(:last-child) td:nth-child(4) {
+.accuracy-info-matrix.is-cross tbody tr:nth-child(1):not(:last-child) td:nth-child(2),
+.accuracy-info-matrix.is-cross tbody tr:nth-child(2):not(:last-child) td:nth-child(3),
+.accuracy-info-matrix.is-cross tbody tr:nth-child(3):not(:last-child) td:nth-child(4),
+.accuracy-info-matrix:not(.is-cross) tbody tr:not(:last-child) td:nth-child(2) {
   background: #e6f4f1;
   font-weight: 600;
 }
@@ -6840,4 +6850,16 @@ input {
   border-top: 2px solid var(--border, #d1d5db);
   font-weight: 600;
   background: var(--card-muted, #f6f7f9);
+}
+
+/* A one-row table (Member Both): no diagonal, no totals row styling. */
+.accuracy-info-matrix tbody tr:only-child th,
+.accuracy-info-matrix tbody tr:only-child td {
+  border-top: 1px solid var(--border, #e5e7eb);
+  background: transparent;
+  font-weight: 400;
+}
+.accuracy-info-matrix tbody tr:only-child td:nth-child(2) {
+  background: #e6f4f1;
+  font-weight: 600;
 }

@@ -150,7 +150,8 @@ function ruleSections(title: string, rule: string): InfoSection[] {
   return out;
 }
 
-const POP_WIDTH = 360;
+// One width for every info box (2026-11-14, user): the Member stats tables fit without overflow.
+const POP_WIDTH = 440;
 const POP_MARGIN = 8;
 
 /** ⓘ with a popover kept inside the window: fixed-position from the button, clamped
@@ -243,7 +244,10 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                 <p>{block.lines[0]}</p>
               ) : null}
               {(block.tables ?? []).map((table) => (
-                <table key={table.caption} className="accuracy-info-matrix">
+                <table
+                  key={table.caption}
+                  className={`accuracy-info-matrix${table.head[0].startsWith("GT") ? " is-cross" : ""}`}
+                >
                   <caption>{table.caption}</caption>
                   <thead>
                     <tr>
@@ -619,7 +623,7 @@ function classTable(caption: string, rates: ClassRates) {
   const { tp, fp, fn, tn } = rates;
   return {
     caption,
-    head: ["Ground truth \\ Pipeline", "Yes", "No", "Total"],
+    head: ["GT \\ Pipeline", "Yes", "No", "Total"],
     rows: withTotals([
       ["Yes", tp, fn],
       ["No", fp, tn],
@@ -661,7 +665,8 @@ function rateLines(rates: ClassRates, classLabel: string): string[] {
 }
 
 /** Every other metric's info (2026-11-14, user): the same four sections as Member. */
-function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRates, classLabel = ""): InfoSection[] {
+function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRates, classLabel = "",
+                    extraTables: ReturnType<typeof dosTables> = []): InfoSection[] {
   const accuracy = binary
     ? `Accuracy = Match / Scored = ${share(tally.yes, tally.scored)}`
     : `Accuracy = (Match + 0.5 × Partial) / Scored = (${tally.yes} + 0.5 × ${tally.maybe}) / ${tally.scored}` +
@@ -670,10 +675,41 @@ function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRa
     { title: "Match rules", lines: sentences(rule) },
     { title: "Page matches", lines: pageMatchLines(tally, binary) },
     { title: "Accuracy & precision calculation", lines: [accuracy, ...(rates ? rateLines(rates, classLabel) : [])] },
-    ...(rates
-      ? [{ title: "Stats (raw counts; the diagonal matches)", lines: [], tables: [classTable(classLabel, rates)] }]
+    ...(rates || extraTables.length
+      ? [{
+          title: "Stats (raw counts; the diagonal matches)",
+          lines: [],
+          tables: [...extraTables, ...(rates ? [classTable(classLabel, rates)] : [])],
+        }]
       : []),
   ];
+}
+
+/** DOS Stats (2026-11-14, user): From / To as Match, No Match, Not Found; then Both. */
+function dosTables(matrix: MemberMatrix) {
+  const at = (field: string, kind: string) => matrix.cells[`${field}|${kind}`] ?? 0;
+  const kinds = ["match", "no_match", "not_found"];
+  return [
+    {
+      caption: "DOS From / To (labelled fields)",
+      head: ["Field", "Match", "No Match", "Not Found", "Total"],
+      rows: withTotals([
+        ["DOS From", ...kinds.map((k) => at("from", k))],
+        ["DOS To", ...kinds.map((k) => at("to", k))],
+      ]),
+    },
+    bothTable(matrix, "Both (From & To, pages with both labelled)"),
+  ];
+}
+
+/** Both (2026-11-14, user): one row -- pages where both fields match, one does, neither. */
+function bothTable(matrix: MemberMatrix, caption = "Both (Name & DOB, pages with both labelled)") {
+  const n = (k: number) => matrix.cells[`both|${k}`] ?? 0;
+  return {
+    caption,
+    head: ["", "Both Match", "One Match", "No Match", "Total"],
+    rows: [["Pages", n(2), n(1), n(0), n(2) + n(1) + n(0)]] as (string | number)[][],
+  };
 }
 
 function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: MemberMatrix): InfoSection[] {
@@ -686,7 +722,7 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
     const at = (gt: string, pipe: string) => matrix.cells[`${field}|${gt}|${pipe}`] ?? 0;
     return {
       caption,
-      head: ["Ground truth \\ Pipeline", ...MEMBER_SIDES.map(([, l]) => l), "Total"],
+      head: ["GT \\ Pipeline", ...MEMBER_SIDES.map(([, l]) => l), "Total"],
       rows: withTotals(MEMBER_SIDES.map(([gt, l]) => [l, ...MEMBER_SIDES.map(([pipe]) => at(gt, pipe))])),
     };
   };
@@ -714,7 +750,7 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
       tables: [
         table("name", "Member Name"),
         table("dob", "Member DOB"),
-        classTable("Both: Name & DOB found", rates),
+        bothTable(matrix),
       ],
     },
   ];
@@ -1403,6 +1439,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   );
   const memberRates = useMemo(() => sumRates(filtered.map((row) => row.memberRates)), [filtered]);
   const memberMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.memberMatrix)), [filtered]);
+  const dosMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.dosMatrix)), [filtered]);
   const signatureRates = useMemo(
     () => sumRates(filtered.map((row) => row.signatureRates)),
     [filtered],
@@ -1541,6 +1578,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         Boolean(metric.binary),
                         ["blankJunk", "orientation", "signature", "dos"].includes(metric.id) ? ratesFor(metric.id) : undefined,
                         ratesLabelFor(metric.id),
+                        metric.id === "dos" ? dosTables(dosMatrix) : [],
                       )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
