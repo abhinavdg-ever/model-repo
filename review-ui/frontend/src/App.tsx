@@ -10,7 +10,8 @@ import SearchView from "./SearchView";
 import ReviewLogView from "./ReviewLogView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
-import { getAppConfig, type AppConfig, type OutputMode } from "./api";
+import { fetchDbBackendInfo, getAppConfig, type AppConfig, type OutputMode } from "./api";
+import { readDbChoice, readsFrom, storeLabel, writeDbChoice, type DbBackendInfo, type DbStore } from "./dbBackend";
 import { ClientViewContext, isClientCopy, scoreFinalOnly, setFinalOnlyChoice, setScoreFinalOnly, setScoringAdmin } from "./clientView";
 import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
 
@@ -99,6 +100,22 @@ export default function App() {
   // Bumped when an admin switches "Include Extracted" (profile menu): the views re-score.
   const [scoring, setScoring] = useState(0);
   setScoringAdmin(isAdmin);
+  // Admin store switch (2026-11-14): the deployment's stores, and this browser's choice.
+  const [dbInfo, setDbInfo] = useState<DbBackendInfo | null>(null);
+  const [dbChoice, setDbChoice] = useState<DbStore | null>(readDbChoice);
+  useEffect(() => {
+    if (!isAdmin) {
+      // Only an admin's choice counts: drop one left from an admin session.
+      if (readDbChoice()) writeDbChoice(null);
+      setDbChoice(null);
+      setDbInfo(null);
+      return;
+    }
+    writeDbChoice(readDbChoice()); // re-sets the cookie for page images after a reload
+    fetchDbBackendInfo().then(setDbInfo).catch(() => setDbInfo(null));
+  }, [isAdmin]);
+  const dbStore: DbStore = dbChoice ?? readsFrom(dbInfo?.configured);
+  const onOtherStore = Boolean(dbInfo && dbChoice && dbChoice !== readsFrom(dbInfo.configured));
   const leaveGuard = useRef<((run: () => void) => void) | null>(null);
 
   function guardedNavigate(next: Route) {
@@ -154,6 +171,8 @@ export default function App() {
   }
 
   function handleLogout() {
+    writeDbChoice(null);
+    setDbChoice(null);
     clearSession();
     setSession(null);
     guardedNavigate({ view: "landing" });
@@ -189,6 +208,14 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-meta">
+          {onOtherStore ? (
+            <span
+              className="db-store-badge"
+              title={`Admin test mode: this browser reads and writes ${storeLabel(dbChoice)}; the deployment uses ${storeLabel(dbInfo?.configured)}.`}
+            >
+              {storeLabel(dbChoice)}
+            </span>
+          ) : null}
           <UserProfileMenu
             displayName={session?.user.name || session?.user.username || "Signed in"}
             initials={session ? initialsOf(session.user) : "U"}
@@ -204,6 +231,19 @@ export default function App() {
                 ? (on) => {
                     setFinalOnlyChoice(!on);
                     setScoring((n) => n + 1);
+                  }
+                : undefined
+            }
+            dbStore={dbStore}
+            dbStores={isAdmin ? dbInfo?.available ?? [] : []}
+            onChangeDbStore={
+              isAdmin
+                ? (store) => {
+                    // The deployment's own store needs no override.
+                    const next = store === readsFrom(dbInfo?.configured) ? null : store;
+                    writeDbChoice(next);
+                    setDbChoice(next);
+                    setScoring((n) => n + 1); // the views reload from the chosen store
                   }
                 : undefined
             }

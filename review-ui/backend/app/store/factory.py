@@ -15,19 +15,28 @@ def request_is_production(request: Request) -> bool:
     return True
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
+def repository_for(kind: str) -> FolderRepository:
+    """One repository per store (postgres / cosmos), each with its own caches."""
+    return build_repository(get_settings(), kind=kind)
+
+
 def _repository() -> FolderRepository:
-    return build_repository(get_settings())
+    """This request's repository: Cosmos when it reads Cosmos (DB_BACKEND, or the admin
+    switch), else Postgres."""
+    from app.services.backend import reads_cosmos
+
+    return repository_for("cosmos" if reads_cosmos() else "postgres")
 
 
 def get_repository(request: Request) -> FolderRepository:
     return _repository()
 
 
-def build_repository(settings: Settings, production: bool | None = None) -> FolderRepository:
+def build_repository(settings: Settings, production: bool | None = None, kind: str | None = None) -> FolderRepository:
     """DB_BACKEND=cosmos: Cosmos DB; otherwise (postgres, both) Postgres. Never disk: page
     images come from Azure Blob only. ``production`` is accepted for old callers and ignored."""
-    if settings.db_backend == "cosmos":
+    if (kind or settings.db_backend) == "cosmos":
         from app.store.cosmos.repository import CosmosFolderRepository
 
         logger.info("repository=cosmos database=%s (page images from Azure Blob)", settings.cosmos_database)

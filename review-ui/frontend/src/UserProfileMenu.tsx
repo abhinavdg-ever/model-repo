@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, FlaskConical, Layers, LogOut, Search, Users } from "lucide-react";
+import { ClipboardList, Database, FlaskConical, Layers, LogOut, Search, Users } from "lucide-react";
+import { type DbStore } from "./dbBackend";
 import { roleLabel } from "./UsersView";
 
 type Props = {
@@ -21,6 +22,10 @@ type Props = {
   includeExtracted?: boolean;
   /** Admins only: given, the menu's Yes / No can be switched; otherwise it shows the setting. */
   onToggleIncludeExtracted?: (on: boolean) => void;
+  /** Admins only (2026-11-14): the store this browser reads, and the ones it can switch to. */
+  dbStore?: DbStore;
+  dbStores?: DbStore[];
+  onChangeDbStore?: (store: DbStore) => void;
   onLogout: () => void;
 };
 
@@ -35,6 +40,9 @@ export default function UserProfileMenu({
   onOpenReviewLog,
   includeExtracted = true,
   onToggleIncludeExtracted,
+  dbStore,
+  dbStores = [],
+  onChangeDbStore,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -110,6 +118,33 @@ export default function UserProfileMenu({
               })}
             </span>
           </div>
+
+          {onChangeDbStore && dbStores.length > 1 ? (
+            <div
+              className="user-menu-item include-extracted-row"
+              role="group"
+              aria-label="Data store"
+              title="Admins only, this browser only: read and write Postgres or Cosmos, to compare them. Everyone else stays on the deployment's store."
+            >
+              <Database size={14} aria-hidden="true" />
+              <span className="user-menu-switch-label">Data store</span>
+              <span className="include-extracted">
+                {dbStores.map((store) => (
+                  <button
+                    key={store}
+                    type="button"
+                    className={`include-extracted-option${dbStore === store ? " is-active" : ""}`}
+                    aria-pressed={dbStore === store}
+                    onClick={() => {
+                      if (dbStore !== store) onChangeDbStore(store);
+                    }}
+                  >
+                    {store === "cosmos" ? "Cosmos" : "Postgres"}
+                  </button>
+                ))}
+              </span>
+            </div>
+          ) : null}
 
           {onOpenReviewLog && currentView !== "review-log" ? (
             <button

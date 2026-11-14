@@ -27,6 +27,16 @@ def health(request: Request) -> HealthResponse:
     return HealthResponse(status="ok", data_mode=data_mode, mode_label=label)
 
 
+@router.get("/db-backend")
+def db_backend_info() -> dict:
+    """The admin switch (2026-11-14): the configured store, the one this request used, and the
+    stores this deployment can switch between."""
+    from app.services import backend
+
+    return {"configured": backend.configured_mode(), "active": backend.mode(),
+            "available": backend.available(), "switchable": len(backend.available()) > 1}
+
+
 @router.get("/config", response_model=AppConfigResponse)
 def app_config(request: Request) -> AppConfigResponse:
     """Public UI config. Does not expose secrets."""

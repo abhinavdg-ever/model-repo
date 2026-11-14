@@ -1,3 +1,4 @@
+import { dbChoiceHeader, type DbBackendInfo } from "./dbBackend";
 import { groundTruthQuery, readGroundTruthSource } from "./groundTruthSource";
 import { readSession, type Session } from "./session";
 
@@ -415,6 +416,11 @@ export function formatBatchLabel(raw: string | null | undefined): string {
   return m ? `Batch ${m[1]}` : s;
 }
 
+/** The admin store switch: what this deployment can use and what it is on (dbBackend.ts). */
+export function fetchDbBackendInfo(): Promise<DbBackendInfo> {
+  return api("/api/db-backend");
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   // Every request carries the signed-in user, so a ground-truth save records who made it.
   const token = readSession()?.token;
@@ -423,6 +429,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // An admin's Postgres / Cosmos choice (ignored by the backend for anyone else).
+      ...dbChoiceHeader(),
       ...init?.headers,
     },
   });

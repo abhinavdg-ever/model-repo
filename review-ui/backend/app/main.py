@@ -14,7 +14,63 @@ from app.services.db import close_pools
 settings = get_settings()
 configure_logging()
 
+
+class DbBackendSwitch:
+    """Admin switch between Postgres and Cosmos for one request (2026-11-14, user). The choice
+    comes in the ``X-DB-Backend`` header or the ``db_backend`` cookie (an ``<img>`` cannot send
+    a header). A request with a sign-in token takes it only when the token is an admin's; one
+    with no token (a page image) only for a read. The store must be configured. Every answer
+    says which store it used (``X-DB-Backend``)."""
+
+    READS = {"GET", "HEAD", "OPTIONS"}
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.inner(scope, receive, send)
+        from http.cookies import SimpleCookie
+
+        from app.services import backend
+        from app.services.auth import read_token
+
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+        wanted = (headers.get(backend.SWITCH_HEADER) or "").strip().lower()
+        if not wanted and headers.get("cookie"):
+            jar = SimpleCookie()
+            try:
+                jar.load(headers["cookie"])
+            except Exception:  # noqa: BLE001 - a malformed cookie header: no switch
+                jar = SimpleCookie()
+            if backend.SWITCH_COOKIE in jar:
+                wanted = jar[backend.SWITCH_COOKIE].value.strip().lower()
+        choice = None
+        if wanted in backend.SWITCHABLE and wanted in backend.available():
+            auth = headers.get("authorization") or ""
+            if auth.lower().startswith("bearer "):
+                user = read_token(get_settings(), auth[7:].strip())
+                allowed = user is not None and user.role == "admin"
+            else:
+                allowed = scope.get("method", "GET").upper() in self.READS
+            choice = wanted if allowed else None
+        token = backend.use(choice)
+        used = backend.mode()
+
+        async def tagged(message):
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", [])
+                message["headers"] = [*message["headers"], (b"x-db-backend", used.encode("latin-1"))]
+            await send(message)
+
+        try:
+            await self.inner(scope, receive, tagged)
+        finally:
+            backend.reset(token)
+
+
 app = FastAPI(title="Advantmed Imaging UI", version="0.1.0")
+app.add_middleware(DbBackendSwitch)
 app.add_middleware(RequestLoggingMiddleware)
 # /ocr and /imaging return whole-chart JSON that compresses 5-10x. Level 5
 # trades a little ratio for much less CPU than the default 9.

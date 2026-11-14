@@ -6734,3 +6734,19 @@ input {
 .accuracy-extra-rule {
   color: var(--muted);
 }
+
+/* Admin store switch (2026-11-14): shown while this browser reads the other store. */
+.db-store-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  margin-right: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #0f766e;
+  background: #e6f4f1;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
