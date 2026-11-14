@@ -50,8 +50,9 @@ The first rule that matches decides.
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
 | 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
 |    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
-|    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, Terms of Payment / Sale / Service, General / Standard Terms (Final OCR or Tesseract text) | Junk / Others |
-|    |  | Otherwise Invoice | Main (page type Invoice / Invoice Page) |
+|    |  | Otherwise Invoice, with a **table holding a dollar amount** (Final OCR 1 / Docling markdown `\| … \| $25.00 \|`, else the Final OCR text, an HTML `<td>$…</td>` too). Terms wording cannot overrule it (2026-11-14) | Main (page type Invoice / Invoice Page) |
+|    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, **Payment Instructions**, Terms of Payment / Sale / Service, General / Standard Terms, appearing **before** the first invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) or on a page with none (Final OCR text, else Tesseract's) | Junk / Others |
+|    |  | Otherwise Invoice (no terms, or the terms come after the invoice, e.g. "Please refer to the Payment Terms & Conditions on next page") | Main (page type Invoice / Invoice Page) |
 |    |  | The model says JUNK of another kind | Junk / its subtype |
 |    |  | The model says BLANK | Junk / Others |
 |    |  | Otherwise | Main |

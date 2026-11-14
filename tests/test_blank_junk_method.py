@@ -401,18 +401,41 @@ class TestInvoiceKept:
             assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
 
     def test_a_terms_page_is_junk_others(self):
-        """2026-11-14 (user): T&C, Terms and Conditions, Payment Terms ... -> Junk / Others."""
+        """2026-11-14 (user): T&C, Terms and Conditions, Payment Terms, Payment Instructions ...
+        BEFORE the invoice wording -> Junk / Others."""
         for words in ("T&C apply", "T & C", "Terms and Conditions", "TERMS & CONDITIONS", "Payment Terms: Net 30",
-                      "Terms of Payment", "Terms of Sale", "General Terms", "Standard terms"):
-            inputs = PageInputs(text=INVOICE_TEXT + " " + words, pass_no=2, bert=bert(0.99))
+                      "Terms of Payment", "Terms of Sale", "General Terms", "Standard terms",
+                      "Payment Instructions", "Terms &amp; Conditions"):
+            inputs = PageInputs(text=words + " " + INVOICE_TEXT, pass_no=2, bert=bert(0.99))
             v = method.post_process(decide(inputs), inputs)
             assert v.code == classify.CODE_OTHERS and v.votes.get("invoice_not_kept"), words
-        # found in the Tesseract text too.
-        inputs = PageInputs(text=INVOICE_TEXT, prelim_text="terms and conditions", pass_no=2, bert=bert(0.99))
+        # found in the Tesseract text too; a page with no invoice wording at all.
+        inputs = PageInputs(text=FILLER, prelim_text="terms and conditions", pass_no=2, bert=bert(0.99))
         assert decide(inputs).code == classify.CODE_OTHERS
         # "terms" alone is not a terms page.
-        inputs = PageInputs(text=INVOICE_TEXT + " short term care", pass_no=2, bert=bert(0.99))
+        inputs = PageInputs(text="short term care " + INVOICE_TEXT, pass_no=2, bert=bert(0.99))
         assert decide(inputs).code == method.CODE_MAIN
+
+    def test_terms_after_the_invoice_is_an_invoice(self):
+        """2026-11-14 (user): "Payment Instructions: Please refer to the Payment Terms & Conditions
+        on next page" below the invoice -> still an invoice."""
+        text = (INVOICE_TEXT + " Payment Instructions: Please refer to the Important Payment "
+                "Terms &amp; Conditions on next page.")
+        inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
+        v = method.post_process(decide(inputs), inputs)
+        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+
+    def test_a_dollar_table_is_an_invoice_whatever_the_terms(self):
+        """2026-11-14 (user): a table with a dollar amount in Final OCR 1 (Docling) is an invoice;
+        terms / payment instructions can't overrule it."""
+        table = "| ITEM | TOTAL |\n| Chart Fee | $25.00 |\n| TOTAL | $25.00 |"
+        text = "Payment Instructions: Terms and Conditions apply. " + FILLER
+        inputs = PageInputs(text=text, final1_text=table, pass_no=2, bert=bert(0.99))
+        v = method.post_process(decide(inputs), inputs)
+        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE") and v.votes.get("invoice_table") == "$25.00"
+        # An HTML table cell (Doc Intel) counts too; a dollar amount outside a table does not.
+        assert method.invoice_table(PageInputs(text="<table><tr><td>$1,200.50</td></tr></table>", pass_no=2))
+        assert method.invoice_table(PageInputs(text="copay $25 today", pass_no=2)) is None
 
     def test_a_card_the_model_calls_invoice_is_junk_cards(self):
         """2026-11-07 (user): an insurance card (card rule near miss, or the model's insurance-ID
@@ -542,7 +565,7 @@ class TestVerdictConfidence2026_11_14:
         inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.97))
         v = method.post_process(decide(inputs), inputs)
         assert (v.code, v.rule, v.confidence) == (method.CODE_MAIN, "INVOICE", 0.97)
-        terms = INVOICE_TEXT + " Terms and Conditions apply"
+        terms = "Terms and Conditions apply. " + INVOICE_TEXT
         inputs = PageInputs(text=terms, pass_no=2, bert=bert(0.97))
         moved = method.post_process(decide(inputs), inputs)
         assert (moved.code, moved.confidence) == (classify.CODE_OTHERS, 0.3)

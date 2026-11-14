@@ -497,6 +497,8 @@ class PageInputs:
     header_canon: tuple[str, ...] = ()
     # Pass 2: the share of the page inside the box round every OCR word (the card rule).
     text_area: Optional[float] = None
+    # Pass 2: Final OCR 1 (Docling) markdown, for its tables (the invoice rule, 2026-11-14).
+    final1_text: str = ""
 
 
 @dataclass
@@ -998,45 +1000,86 @@ ANY_DATE = re.compile(
 
 
 # 2026-11-14 (user): every Junk / Invoice page is Main (Invoice / Invoice Page) -- the money
-# amount + Invoice / Due Date check is gone -- except a terms page: T&C, Terms and Conditions,
-# Payment Terms and the like anywhere on it -> Junk / Others.
+# amount + Invoice / Due Date check is gone -- except a terms page. Terms wording: T&C, Terms and
+# Conditions, Payment Terms and the like, and Payment Instructions.
 TERMS_PAGE = re.compile(
     r"(?<![A-Za-z])(?:"
-    r"T\s*&\s*Cs?|T\s+and\s+Cs?"
-    r"|terms\s*(?:and|&)\s*conditions?"
-    r"|conditions\s*(?:and|&)\s*terms"
+    r"T\s*(?:&|&amp;)\s*Cs?|T\s+and\s+Cs?"
+    r"|terms\s*(?:and|&|&amp;)\s*conditions?"
+    r"|conditions\s*(?:and|&|&amp;)\s*terms"
     r"|(?:standard|general)\s+terms"
     r"|payment\s+terms|terms\s+of\s+(?:payment|sale|service|use|business)"
+    r"|payment\s+instructions?"
     r")(?![A-Za-z])",
     re.IGNORECASE)
 
+# What makes the page an invoice, for the order check: the word Invoice / Bill To / Amount Due /
+# Balance Due / Total, or a dollar amount.
+INVOICE_MARK_TEXT = re.compile(
+    r"(?<![A-Za-z])(?:invoice|bill\s+to|amount\s+due|balance\s+due|sub\s*-?\s*total|total)(?![A-Za-z])"
+    r"|\$\s?\d[\d,]*(?:\.\d{2})?",
+    re.IGNORECASE)
+
+# A dollar amount inside a table: a markdown row (| ... | $25.00 |) or an HTML cell.
+_DOLLAR = r"\$\s?\d[\d,]*(?:\.\d{2})?"
+TABLE_DOLLAR = re.compile(
+    rf"^[ \t]*\|[^\n]*\|[^\n]*{_DOLLAR}[^\n]*\|?[ \t]*$"
+    rf"|<td[^>]*>[^<]*{_DOLLAR}[^<]*</td>",
+    re.IGNORECASE | re.MULTILINE)
+
+
+def invoice_table(inputs: PageInputs) -> Optional[str]:
+    """A dollar amount in a table of Final OCR 1 (Docling), else of the Final OCR text: the
+    amount, or None (2026-11-14, user: a table of dollar amounts is an invoice)."""
+    for text in (inputs.final1_text, inputs.text):
+        hit = TABLE_DOLLAR.search(text or "")
+        if hit:
+            amount = re.search(_DOLLAR, hit.group(0))
+            return amount.group(0) if amount else hit.group(0).strip()
+    return None
+
 
 def terms_page(inputs: PageInputs) -> Optional[str]:
-    """The terms wording on a Junk / Invoice page (Final OCR or Tesseract text), or None."""
-    hit = TERMS_PAGE.search(f"{inputs.text or ''}\n{inputs.prelim_text or ''}")
-    return " ".join(hit.group(0).split()) if hit else None
+    """The terms wording on a Junk / Invoice page that comes BEFORE anything invoice-like, or
+    None (2026-11-14, user: terms or payment instructions before the invoice = a terms page;
+    after it, e.g. "Please refer to the Payment Terms & Conditions on next page", an invoice).
+    Final OCR text first, else Tesseract's."""
+    for text in (inputs.text or "", inputs.prelim_text or ""):
+        hit = TERMS_PAGE.search(text)
+        if hit is None:
+            continue
+        mark = INVOICE_MARK_TEXT.search(text)
+        if mark is None or hit.start() < mark.start():
+            return " ".join(hit.group(0).split())
+    return None
 
 
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
     """There is no Junk / Invoice (2026-11-07, user). An invoice page is Main (page_classify:
-    Invoice / Invoice Page), unless it is a terms page (T&C, Terms and Conditions, Payment Terms:
-    2026-11-14, user) -> Junk / Others. A card the model called an invoice is already Junk / Cards
-    (decide)."""
+    Invoice / Invoice Page), unless it is a terms page -> Junk / Others (2026-11-14, user):
+      1. a table with a dollar amount (Final OCR 1 / Docling) -> Invoice; terms can't overrule it;
+      2. terms wording / Payment Instructions before the invoice wording -> Junk / Others;
+      3. otherwise (no terms, or terms after the invoice) -> Invoice.
+    A card the model called an invoice is already Junk / Cards (decide)."""
     if verdict.code != CODE_INVOICE:
         return verdict
-    terms = terms_page(inputs)
+    table = invoice_table(inputs)
+    terms = None if table is not None else terms_page(inputs)
     if terms is not None:
-        verdict.votes["invoice_not_kept"] = f"terms page ('{terms}')"
+        verdict.votes["invoice_not_kept"] = f"terms page ('{terms}' before the invoice)"
         # The terms rule moved the model's Invoice to Junk / Others: flipped (2026-11-14).
         return Verdict(CODE_OTHERS, conf.flipped(), verdict.rule,
-                       f"{verdict.reason}; terms page ('{terms}') -> Junk / Others", verdict.votes,
+                       f"{verdict.reason}; terms page ('{terms}' before the invoice) -> Junk / Others", verdict.votes,
                        strength=verdict.strength)
+    if table is not None:
+        verdict.votes["invoice_table"] = table
     verdict.votes["invoice_kept"] = verdict.reason
     verdict.votes["rule"] = INVOICE_RULE
     p_keep, p_junk, p_blank = _model_probs(inputs)
+    why = f"table with {table}; " if table is not None else ""
     # Scored as the invoice call it is (p(junk)), not as a keep the model disagrees with.
     return Verdict(CODE_MAIN, rule_confidence(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk, p_blank), INVOICE_RULE,
-                   f"{verdict.reason}; {INVOICE_MARK} -> Main (Page Type {INVOICE_PAGE_TYPE} / "
+                   f"{verdict.reason}; {why}{INVOICE_MARK} -> Main (Page Type {INVOICE_PAGE_TYPE} / "
                    f"{INVOICE_PAGE_SUBTYPE})", verdict.votes,
                    strength=rule_strength(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk))
 

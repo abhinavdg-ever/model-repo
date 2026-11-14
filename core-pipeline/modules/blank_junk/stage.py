@@ -722,6 +722,8 @@ def _page_inputs(
             inputs.content_bottom = bottom
             if bottom is not None and bottom <= top:
                 inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"])
+            # Docling markdown, for the invoice rule's dollar table (2026-11-14, user).
+            inputs.final1_text = unwrap_ocr_content((final1 or {}).get(pid))
             # Tesseract's text for the junk terms the final OCR missed; only where prelim is
             # trusted (printed, not low quality).
             if not page_blocks_prelim(q):
