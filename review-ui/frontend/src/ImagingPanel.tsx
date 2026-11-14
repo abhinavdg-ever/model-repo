@@ -538,8 +538,14 @@ const SKIPPED_ENTRY = "Skipped";
  * (2026-10-27, user). */
 const NOT_AVAILABLE_FIELDS = new Set(["page_type", "page_subtype", "specialty", "encounter", "quality"]);
 
-/** Yes, No or Skipped; no signature found is No (2026-10-27, user). */
+/** Yes or No; no signature found is No (2026-10-27, user). */
 const SIGNATURE_FIELDS = new Set(["electronic_signature"]);
+/** No Skipped choice on the Member and Provider rows (2026-11-14, user): a member field is
+ * Yes / No / Not Found, the signature Yes / No, the provider name / credentials a value or
+ * Not Found. */
+const NO_SKIPPED_FIELDS = new Set([
+  "name", "dob", "member_id", "provider_name", "provider_credentials", "electronic_signature",
+]);
 
 function emptyLabel(fieldId: string): string {
   if (SIGNATURE_FIELDS.has(fieldId)) return "No";
@@ -639,7 +645,13 @@ function normalizeEntry(id: string, value: string): string | null {
   if (SIGNATURE_FIELDS.has(id) && CLEARED_ENTRY.has(value.trim().toLowerCase())) return "No";
   if (MEMBER_FIELDS.has(id) && value.trim().toLowerCase() === "not found") return NOT_FOUND;
   if (CLEARED_ENTRY.has(value.trim().toLowerCase())) return "";
-  if (value.trim().toLowerCase() === "skipped") return SKIPPED_ENTRY;
+  if (value.trim().toLowerCase() === "skipped") {
+    // No Skipped on the Member / Provider rows: a member field is Not Found, the signature No.
+    if (MEMBER_FIELDS.has(id)) return NOT_FOUND;
+    if (SIGNATURE_FIELDS.has(id)) return "No";
+    if (NO_SKIPPED_FIELDS.has(id)) return "";
+    return SKIPPED_ENTRY;
+  }
   const rule = ENTRY_RULES[id];
   if (!rule) return value.trim();
   if (rule.presence) return exactOption(value, YES_NO_CHOICES);
@@ -762,12 +774,17 @@ function groundTruthBody(
   return {
     pageNumber: page.pageNumber,
     sourcePageId: page.fileName,
-    memberName: presenceStored(values.name) || null,
-    memberDob: presenceStored(values.dob) || null,
-    memberId: presenceStored(values.member_id) || null,
+    // Skipped and an empty cell are saved as Not Found for the member fields (2026-11-14, user).
+    memberName: memberStored(values.name) || null,
+    memberDob: memberStored(values.dob) || null,
+    memberId: memberStored(values.member_id) || null,
     renderingProvider: cleanGt(values.provider_name),
-    providerSignature: presenceStored(values.electronic_signature) || null,
-    providerCredentials: cleanGt(values.provider_credentials),
+    // Yes / No only (2026-11-14, user): an old Skipped is saved as No.
+    providerSignature: presenceStored(values.electronic_signature) === SKIPPED_ENTRY
+      ? "No"
+      : presenceStored(values.electronic_signature) || null,
+    // The credentials, or Not Found (2026-11-14, user).
+    providerCredentials: cleanGt(values.provider_credentials) ?? NOT_FOUND,
     isVisible: visibilityStored(values.visibility ?? ""),
     handwrittenPct: cleanGt(values.handwritten_area),
     quality: cleanGt(values.quality),
@@ -838,6 +855,13 @@ function presenceStored(value: string | null | undefined): string {
   if (folded === "not found") return NOT_FOUND;
   if (folded === "skipped") return SKIPPED_ENTRY;
   return "";
+}
+
+/** Member Name / DOB / ID: Yes / No / Not Found. Skipped and an empty cell are Not Found
+ * (2026-11-14, user). */
+function memberStored(value: string | null | undefined): string {
+  const stored = presenceStored(value);
+  return stored === SKIPPED_ENTRY || !stored ? NOT_FOUND : stored;
 }
 
 function valueFound(processed: string): boolean {
@@ -1103,8 +1127,15 @@ function GroundTruthCell({
   // a match, one is wrong. The Final date a continuation page carries from its document
   // does not count against it. The 2222-02-02 placeholder is not a date.
   const truthBlank = noValue(stored);
-  const blankNone = truthBlank && Boolean(row.blankIsNone);
-  const blankCross = blankNone && valueFound(row.extracted) && !row.extracted.includes("2222");
+  // 2026-11-14 (user): on a labelled page a blank Member Name / DOB / ID is Not Found, and
+  // Not Found = Not Found is a match: a tick when the pipeline found none, a cross when it did.
+  // Provider Credentials too (2026-11-14, user): blank is Not Found. Provider Name is free
+  // text and not matched.
+  const memberBlank = (MEMBER_FIELDS.has(row.id) || row.id === "provider_credentials") && noValue(stored) && !suggest && !verdict;
+  const blankNone = (truthBlank && Boolean(row.blankIsNone)) || memberBlank;
+  const blankCross = blankNone && (memberBlank
+    ? valueFound(row.processed)
+    : valueFound(row.extracted) && !row.extracted.includes("2222"));
   const mark = blankCross ? (
     <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
   ) : blankNone ? (
@@ -1124,7 +1155,7 @@ function GroundTruthCell({
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
           {stored || emptyLabel(row.id)}
         </span>
-        {(stored || blankCross) && !row.noMark ? mark : null}
+        {(stored || blankCross || memberBlank) && !row.noMark ? mark : null}
       </span>
     );
   }
@@ -1183,7 +1214,7 @@ function GroundTruthCell({
     ? ["Yes", "No"]
     : row.choices ?? (kind === "degrees" && row.id === "orientation" ? ORIENTATION_CHOICES : []);
   const yesNoRow = row.presence || listed.every((option) => yesNo(option) != null);
-  // Provider Signature: Yes, No, Skipped; Not Found is No (2026-10-27, user).
+  // Provider Signature: Yes or No; Not Found is No (2026-10-27, user).
   const none = SIGNATURE_FIELDS.has(row.id)
     ? []
     : NOT_AVAILABLE_FIELDS.has(row.id)
@@ -1192,7 +1223,7 @@ function GroundTruthCell({
         ? [NOT_FOUND]
         : [];
   const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
-  const extras = [...none, SKIPPED_ENTRY];
+  const extras = NO_SKIPPED_FIELDS.has(row.id) ? [...none] : [...none, SKIPPED_ENTRY];
   // A long list puts them first, so they are not lost under its values.
   const options =
     values.length + extras.length < INLINE_OPTIONS_BELOW ? [...values, ...extras] : [...extras, ...values];

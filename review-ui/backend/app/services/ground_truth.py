@@ -162,6 +162,32 @@ def yes_no_label(value: str | None) -> str | None:
     return None
 
 
+def member_label(value: str | None) -> str | None:
+    """Member name, DOB and member id: Yes / No / Not Found. Skipped and an empty cell
+    (blank, NA, NULL) are stored as Not Found (2026-11-14, user); Provider Signature keeps
+    Skipped (``yes_no_label``)."""
+    label = yes_no_label(value)
+    return "Not Found" if label in (None, "Skipped") else label
+
+
+def signature_label(value: str | None) -> str | None:
+    """Provider Signature: Yes / No; Skipped is No (2026-11-14, user: no Skipped option)."""
+    label = yes_no_label(value)
+    return "No" if label == "Skipped" else label
+
+
+def credentials_label(value: str | None) -> str:
+    """Provider Credentials: the credentials, or Not Found (2026-11-14, user). Blank, NA,
+    NULL and Skipped are stored as Not Found."""
+    return no_skip_label(value) or "Not Found"
+
+
+def no_skip_label(value: str | None) -> str | None:
+    """Provider name / credentials: a value, or empty; Skipped is empty (2026-11-14, user)."""
+    text = clean_label(value)
+    return None if text is not None and text.casefold() == "skipped" else text
+
+
 # is_visible, rendering_provider, provider_signature, member_id, and provider_credentials are read
 # through to_jsonb so a database created before the column existed returns
 # NULL instead of failing the whole lookup.
@@ -431,9 +457,9 @@ def upsert_page_ground_truth(
         chart,
         body.pageNumber,
         clean_label(body.sourcePageId),
-        yes_no_label(body.memberName),
-        yes_no_label(body.memberDob),
-        yes_no_label(body.memberId),
+        member_label(body.memberName),
+        member_label(body.memberDob),
+        member_label(body.memberId),
         clean_label(body.dosFrom),
         clean_label(body.dosTo),
         clean_label(body.encounterType),
@@ -444,9 +470,9 @@ def upsert_page_ground_truth(
         clean_label(body.isInvoice),
         clean_label(body.rotation),
         clean_label(body.isVisible),
-        clean_label(body.renderingProvider),
-        yes_no_label(body.providerSignature),
-        clean_label(body.providerCredentials),
+        no_skip_label(body.renderingProvider),
+        signature_label(body.providerSignature),
+        credentials_label(body.providerCredentials),
         clean_label(body.pageSubtype),
         clean_label(body.specialty),
         clean_label(body.encounterLabel),

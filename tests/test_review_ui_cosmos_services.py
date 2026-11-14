@@ -306,7 +306,7 @@ def test_cosmos_ground_truth_reads_as_postgres_does(cosmos, containers, monkeypa
 
     monkeypatch.setattr(backend, "mode", lambda: "postgres")
     row = (2, "2.jpg", "Yes", "No", "03/15/2024", None, None, "Progress Note", "Non-Codable", "No", None, None,
-           None, None, None, None, "Yes") + (None,) * 11
+           None, None, None, None, "Yes") + ("Not Found", "Not Found") + (None,) * 9  # member_id, provider_credentials: blank saves Not Found
     _postgres(monkeypatch, gt, lambda sql, params: [row])
     monkeypatch.setattr(gt, "_last_reviews", lambda *a: {2: ("Ann Lee", doc["entries"][-1]["created_at"], None)})
     expected = gt.ground_truth_by_page(PG, "C1")[2]

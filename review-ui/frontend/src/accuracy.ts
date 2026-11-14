@@ -43,43 +43,43 @@ export const METRICS: {
     id: "member",
     label: "Member Verification",
     binary: true,
-    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, else No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Name & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
+    rule: "Name and DOB: the ground truth (Yes / No / Not Found; blank = Not Found) vs what the pipeline found. Match = both agree, Not Found = Not Found included. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial). Member ID is not scored.",
   },
   {
     id: "dos",
     label: "DOS",
     binary: true,
-    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) both match the Final DOS or both match the Extracted DOS: Match; else No Match. A page whose DOS label is blank / NA / Not Available expects no date: the Extracted or the Final DOS being empty is a Match (either side matching counts), both dated is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Labelled From / To equal the Final or Extracted DOS = Match. No labelled date: a page with no DOS is a Match. Blank / Junk pages are not scored.",
   },
   {
     id: "blankJunk",
     label: "Blank / Junk",
     binary: true,
-    rule: "Blank / Junk (Yes) or not (No) matches the ground truth, on every labelled page. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial. Under Blank/Junk = Yes (cases = pages the ground truth calls blank / junk): Precision, Recall and F1",
+    rule: "Blank / Junk Yes or No equals the ground truth. Blank vs Junk does not matter.",
   },
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Scored on the pages the ground truth says are not blank / junk. The client's label is mapped to our L1 > L2 > L3 (gtPageTypeCanon.json; the table is training/taxonomy/gt_page_type_mapping.csv). Match (1): a full target is the start of our Final or Extracted path. Partial (0.5): a listed neighbour is, or our path has the same L1 (stops above the label's level, a sibling L3, another L2). Else No Match (0). Cover / index / fax / blank, NA and Misc labels are not scored. A label not in the mapping falls back to the accepted-label lists. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
+    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. A page we call Blank / Junk is No Match. Cover / index / fax / NA labels are not scored.",
   },
   {
     id: "codeable",
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
     binary: true,
-    rule: "Every labelled page. Codable label matches the Final or the Extracted codability: Match. Neither: No Match. Discharge counts as Codable on both sides; a page the pipeline called blank / junk is Non-Codable",
+    rule: "Codable / Non-Codable equals the Final or Extracted value. Discharge counts as Codable; a Blank / Junk page is Non-Codable.",
   },
   {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Every labelled page the pipeline did not call blank / junk (a junk page's provider is not shown or matched), Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. M (credentials match) = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
+    rule: "Provider Signature Yes / No (blank = No) equals whether the pipeline found a signature. Cred. M: Provider Credentials (credentials or Not Found) match, any one shared; Not Found = Not Found counts. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial).",
   },
   {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Every page with ground truth, Match or No Match: the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise). A label of NA / blank is Not Found, read as upright (0°), and so is a page with no stored angle. Under Rotated (not 0°) = Yes (pages the ground truth or the pipeline calls rotated): Precision = of the pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle",
+    rule: "Text angle (0 / 90 / 180 / 270) equals the ground truth; NA = 0°.",
   },
 ];
 
@@ -146,6 +146,8 @@ export type ChartAccuracy = {
   orientationRates: ClassRates;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
+  /** Member Stats: ground truth x pipeline counts (2026-11-14). */
+  memberMatrix?: MemberMatrix;
   /** Class 1 = the ground truth says the page is signed; credMatch counts its credentials. */
   signatureRates: ClassRates;
   /** Class 1 = the ground truth dates the page. */
@@ -181,6 +183,17 @@ function emptyExtra(): ExtraCounts {
 }
 
 /** A ground-truth Is Duplicate as yes / partial / no. */
+/** 2026-11-14 (user): Member, Provider Signature and Provider Credentials are not scored on a
+ * page both sides call Blank / Junk, or one either side calls a duplicate (Yes or Partial). */
+export function notScoredForPeople(page: ImagingPageResult): boolean {
+  const gt = page.groundTruth;
+  const pipelineBlankJunk = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  const gtBlankJunk = gt ? (blankJunkTruth(gt) ?? "").toLowerCase().startsWith("yes") : false;
+  const gtDup = gtDuplicate(gt?.isDuplicate);
+  const duplicate = page.isDuplicate === true || page.isDuplicateContent === true || gtDup === "yes" || gtDup === "partial";
+  return (pipelineBlankJunk && gtBlankJunk) || duplicate;
+}
+
 function gtDuplicate(value: string | null | undefined): DupState | null {
   const folded = (value ?? "").trim().toLowerCase();
   if (folded === "1" || folded.startsWith("yes") || folded === "y" || folded === "true") return "yes";
@@ -397,19 +410,26 @@ export function memberPipeline(value: string | null | undefined, matches: boolea
 function memberCall(
   page: ImagingPageResult,
   manifest?: ImagingManifestDetails | null,
-): { expected: [boolean, boolean]; predicted: [boolean, boolean]; verdict: Verdict | null } {
+): MemberCall {
   const gt = page.groundTruth;
   const nameIsMember = !manifest?.member || nameMatchesManifest(page.memberName, manifest.member);
   const dobIsMember = !manifest?.dob || dobMatchesManifest(page.memberDob, manifest.dob);
-  const truth = [memberTruth(gt?.memberName), memberTruth(gt?.memberDob)];
-  // A blank / junk page is scored on the member values read on it (2026-11-04, user); it is
-  // Skipped only when nothing was read.
-  const blankJunk = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
-  const read = [page.memberName, page.memberDob, page.memberId].some((v) => (v ?? "").toString().trim() !== "");
-  const skipped = blankJunk && !read;
+  // 2026-11-14 (user): a blank (or Skipped) member label is Not Found, and Not Found =
+  // Not Found is a match that counts. A page with no ground truth row is not scored.
+  const side = (value: string | null | undefined): MemberSide | null => {
+    if (!gt) return null;
+    const t = memberTruth(value);
+    return t === "skipped" || t === null ? "not_found" : t;
+  };
+  const truth = [side(gt?.memberName), side(gt?.memberDob)];
+  // 2026-11-14 (user): not scored on a page both call Blank / Junk, or a duplicate.
+  if (gt && notScoredForPeople(page)) {
+    return { expected: [false, false], predicted: [false, false], verdict: null, excluded: true, cells: [] };
+  }
+  // Nothing read on a page the pipeline skipped is Not Found.
   const piped = [
-    memberPipeline(page.memberName, nameIsMember, skipped),
-    memberPipeline(page.memberDob, dobIsMember, skipped),
+    memberPipeline(page.memberName, nameIsMember, false),
+    memberPipeline(page.memberDob, dobIsMember, false),
   ];
   // Each labelled field must agree; an unlabelled one is not scored; none labelled, no score.
   const labelled = truth.map((side, index) => [side, piped[index]] as const).filter(([side]) => side != null);
@@ -417,7 +437,35 @@ function memberCall(
     expected: [truth[0] === "yes", truth[1] === "yes"],
     predicted: [piped[0] === "yes", piped[1] === "yes"],
     verdict: labelled.length === 0 ? null : labelled.every(([side, pipe]) => side === pipe) ? "yes" : "no",
+    excluded: false,
+    // The Stats matrix (2026-11-14, user): ground truth x pipeline per field, labelled only.
+    cells: (["name", "dob"] as const).flatMap((field, index) =>
+      truth[index] == null ? [] : [`${field}|${truth[index]}|${piped[index]}`]),
   };
+}
+
+type MemberCall = {
+  expected: [boolean, boolean];
+  predicted: [boolean, boolean];
+  verdict: Verdict | null;
+  /** Both the ground truth and the pipeline call the page Blank / Junk: not scored. */
+  excluded: boolean;
+  /** "name|yes|not_found" ...: one per labelled field. */
+  cells: string[];
+};
+
+/** Member Stats: raw counts per "field|ground truth|pipeline", and pages left out because
+ * both call them Blank / Junk. */
+export type MemberMatrix = { cells: Record<string, number>; excluded: number };
+
+export function sumMemberMatrix(rows: (MemberMatrix | undefined)[]): MemberMatrix {
+  const out: MemberMatrix = { cells: {}, excluded: 0 };
+  for (const row of rows) {
+    if (!row) continue;
+    out.excluded += row.excluded;
+    for (const [key, n] of Object.entries(row.cells)) out.cells[key] = (out.cells[key] ?? 0) + n;
+  }
+  return out;
 }
 
 function add(tally: Tally, verdict: Verdict | null) {
@@ -621,7 +669,9 @@ function pageScores(
 
   // 2026-11-06 (user): a page the pipeline calls blank / junk is not scored for Provider
   // Signature: its provider may still be extracted, but it is not shown or matched.
-  const signatureCalled = pipelineBlankJunk ? null : signatureCall(page);
+  // 2026-11-14 (user): Provider Signature and Credentials as Member: not scored on a page both
+  // call Blank / Junk, or a duplicate.
+  const signatureCalled = notScoredForPeople(page) ? null : signatureCall(page);
 
   return {
     scores: {
@@ -717,7 +767,18 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
 type SignatureCall = { expected: boolean; predicted: boolean; credCase: boolean; credMatch: boolean };
 
 function signatureCall(page: ImagingPageResult): SignatureCall {
-  const verdict = credentialsVerdict(gtCredentials(page.groundTruth), page.providerCredentials);
+  const gtCred = gtCredentials(page.groundTruth);
+  const verdict = credentialsVerdict(gtCred, page.providerCredentials);
+  // 2026-11-14 (user): no credentials in the ground truth (Not Found) against none extracted
+  // is a match that counts in Cred. M; against some, a miss.
+  if (verdict == null && page.groundTruth && noValue(gtCred)) {
+    return {
+      expected: gtSignature(page.groundTruth) === "Yes",
+      predicted: yesNo(page.providerSignature) === "yes",
+      credCase: true,
+      credMatch: noValue(page.providerCredentials),
+    };
+  }
   return {
     expected: gtSignature(page.groundTruth) === "Yes",
     predicted: yesNo(page.providerSignature) === "yes",
@@ -775,6 +836,7 @@ export function scoreChart(
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
+  const memberMatrix: MemberMatrix = { cells: {}, excluded: 0 };
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyOverall();
@@ -809,12 +871,17 @@ export function scoreChart(
     }
     addOrientationRates(orientationRates, page);
     addExtra(extra, raw);
-    // Class 1: both Name and DOB on the page (by the ground truth or the pipeline).
-    addRates(
-      memberRates,
-      scored.member.expected.every(Boolean),
-      scored.member.predicted.every(Boolean),
-    );
+    // Class 1: both Name and DOB on the page (by the ground truth or the pipeline). A page
+    // that is not scored for Member (both call it Blank / Junk, or nothing labelled) is left out.
+    if (scored.member.verdict != null) {
+      addRates(
+        memberRates,
+        scored.member.expected.every(Boolean),
+        scored.member.predicted.every(Boolean),
+      );
+    }
+    if (scored.member.excluded) memberMatrix.excluded += 1;
+    for (const cell of scored.member.cells) memberMatrix.cells[cell] = (memberMatrix.cells[cell] ?? 0) + 1;
   }
   return {
     chartId,
@@ -824,6 +891,7 @@ export function scoreChart(
     blankJunkRates,
     orientationRates,
     memberRates,
+    memberMatrix,
     signatureRates,
     dosRates,
     pages,

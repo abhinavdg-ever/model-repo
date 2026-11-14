@@ -57,7 +57,9 @@ import {
   DUP_STATES,
   duplicateScores,
   sumExtras,
+  sumMemberMatrix,
   sumRates,
+  type MemberMatrix,
   sumTallies,
   type ChartAccuracy,
   type ClassRates,
@@ -98,7 +100,12 @@ export function DateLines({ iso }: { iso: string | null | undefined }) {
 
 /** An ⓘ that shows what a number means: on hover, and on click / tap. */
 /** One titled block of an info popover; each line is drawn on its own. */
-type InfoSection = { title?: string; lines: string[] };
+type InfoSection = {
+  title?: string;
+  lines: string[];
+  /** A raw-count table (the Stats cross matrix): a caption, column heads, rows. */
+  tables?: { caption: string; head: string[]; rows: (string | number)[][] }[];
+};
 
 /** "A. B. C." -> ["A.", "B.", "C."]: one sentence per line. */
 function sentences(text: string): string[] {
@@ -232,9 +239,30 @@ function InfoTip({ text, className }: { text: string | InfoSection[]; className?
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
-              ) : (
+              ) : block.lines.length === 1 ? (
                 <p>{block.lines[0]}</p>
-              )}
+              ) : null}
+              {(block.tables ?? []).map((table) => (
+                <table key={table.caption} className="accuracy-info-matrix">
+                  <caption>{table.caption}</caption>
+                  <thead>
+                    <tr>
+                      {table.head.map((cell, i) => (
+                        <th key={i} scope="col">{cell}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.map((row, r) => (
+                      <tr key={r}>
+                        {row.map((cell, c) =>
+                          c === 0 ? <th key={c} scope="row">{cell}</th> : <td key={c}>{cell}</td>,
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
             </section>
           ))}
         </div>,
@@ -328,17 +356,11 @@ function CompactScore({
   );
 }
 
-const SCORE_INFO =
-  "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match. Only Page Type has a Partial.";
-const OVERALL_SCORE_INFO =
-  "Accuracy score = pages with all seven streams matching (7/7) / all scored pages.";
+const SCORE_INFO = "Accuracy = (Match + 0.5 × Partial) / scored pages. Only Page Type has a Partial.";
+const OVERALL_SCORE_INFO = "Accuracy = pages with all 7 matching / scored pages.";
 const RATES_INFO =
-  "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1. " +
-  "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
-  "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
-  "F1 = 2 × Precision × Recall / (Precision + Recall). " +
-  "Provider Signature shows Cred. M (credentials match) instead of F1: of the pages the ground truth gives credentials for, the share whose credentials match the ground truth's. " +
-  "These matter because Class 1 pages are rare: the overall accuracy can be high while they are missed.";
+  "On the Yes pages only. Precision = of the pipeline's Yes, the share right. " +
+  "Recall = of the real Yes pages, the share found. F1 = their balance.";
 
 function Donut({
   label,
@@ -347,9 +369,12 @@ function Donut({
   rates,
   ratesLabel,
   binary = false,
+  info,
 }: {
   label: string;
   detail: string;
+  /** Replaces the default info sections (Member, 2026-11-14). */
+  info?: InfoSection[];
   tally: Tally;
   /** Match or No Match only. */
   binary?: boolean;
@@ -401,7 +426,7 @@ function Donut({
       </svg>
       <InfoTip
         className="accuracy-info-corner"
-        text={[
+        text={info ?? [
           ...ruleSections(label, detail),
           { title: "Accuracy score", lines: sentences(tally.fullOnly ? OVERALL_SCORE_INFO : SCORE_INFO) },
           ...(rates ? [{ title: "Precision, Recall, F1", lines: sentences(RATES_INFO) }] : []),
@@ -578,9 +603,55 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
 }
 
 const OVERALL_RULE =
-  "Seven streams per page: Member, DOS, Page Type (exact match only; a Partial is not a match), Provider Signature, Codability, Blank / Junk and Orientation. " +
-  "Each page counts how many of the seven match, 0 to 7; a stream with no ground-truth label does not count against the page. " +
-  "Accuracy = pages with 7 of 7 / all scored pages. Good = 5 to 7 matching, Fair = 3 or 4, Bad = 0 to 2.";
+  "Per page: how many of the 7 streams match (Member, DOS, Page Type, Signature, Codability, Blank / Junk, Orientation). " +
+  "Accuracy = pages with 7 of 7. Good = 5 to 7, Fair = 3 to 4, Bad = 0 to 2.";
+
+const MEMBER_SIDES = [["yes", "Yes"], ["no", "No"], ["not_found", "Not Found"]] as const;
+
+function share(num: number, den: number): string {
+  return den > 0 ? `${num} / ${den} = ${Math.round((100 * num) / den)}%` : `${num} / 0 = —`;
+}
+
+/** Member's info (2026-11-14, user): Match rules, Page matches, Accuracy & precision
+ * calculation with the real numbers, and Stats as ground truth x pipeline counts. */
+function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: MemberMatrix): InfoSection[] {
+  const { tp, fp, fn, tn } = rates;
+  const precision = tp + fp ? tp / (tp + fp) : null;
+  const recall = tp + fn ? tp / (tp + fn) : null;
+  const f1 = precision != null && recall != null && precision + recall > 0
+    ? `${Math.round((200 * precision * recall) / (precision + recall))}%` : "—";
+  const table = (field: "name" | "dob", caption: string) => {
+    const at = (gt: string, pipe: string) => matrix.cells[`${field}|${gt}|${pipe}`] ?? 0;
+    return {
+      caption,
+      head: ["Ground truth \\ Pipeline", ...MEMBER_SIDES.map(([, l]) => l), "Total"],
+      rows: MEMBER_SIDES.map(([gt, l]) => {
+        const cells = MEMBER_SIDES.map(([pipe]) => at(gt, pipe));
+        return [l, ...cells, cells.reduce((a, b) => a + b, 0)];
+      }),
+    };
+  };
+  return [
+    { title: "Match rules", lines: sentences(rule) },
+    {
+      title: "Page matches",
+      lines: [
+        `Match ${tally.yes} · No Match ${tally.no} · Scored ${tally.scored}`,
+        `Not scored: ${matrix.excluded} page${matrix.excluded === 1 ? "" : "s"} both call Blank / Junk, or a duplicate`,
+      ],
+    },
+    {
+      title: "Accuracy & precision calculation",
+      lines: [
+        `Accuracy = Match / Scored = ${share(tally.yes, tally.scored)}`,
+        `Precision = TP / (TP + FP) = ${share(tp, tp + fp)}`,
+        `Recall = TP / (TP + FN) = ${share(tp, tp + fn)}`,
+        `F1 = ${f1} (Yes = both Name and DOB found; TP ${tp} · FP ${fp} · FN ${fn} · TN ${tn})`,
+      ],
+    },
+    { title: "Stats (raw counts; the diagonal matches)", lines: [], tables: [table("name", "Member Name"), table("dob", "Member DOB")] },
+  ];
+}
 
 function pct(count: number, total: number): string {
   return total > 0 ? `${Math.round((100 * count) / total)}%` : "—";
@@ -1264,6 +1335,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [filtered],
   );
   const memberRates = useMemo(() => sumRates(filtered.map((row) => row.memberRates)), [filtered]);
+  const memberMatrix = useMemo(() => sumMemberMatrix(filtered.map((row) => row.memberMatrix)), [filtered]);
   const signatureRates = useMemo(
     () => sumRates(filtered.map((row) => row.signatureRates)),
     [filtered],
@@ -1394,6 +1466,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   label={metric.label}
                   detail={metric.rule}
                   tally={overallByMetric[metric.id]}
+                  info={metric.id === "member"
+                    ? memberInfo(metric.rule, overallByMetric.member, memberRates, memberMatrix)
+                    : undefined}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
                   binary={metric.binary}

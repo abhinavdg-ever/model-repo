@@ -529,8 +529,9 @@ const LABEL_FIELDS: Array<keyof PageGroundTruth> = [
 /** Provider Credentials ground truth. Rows saved before it had its own column
  * keep the credentials in providerSignature. */
 export function gtCredentials(gt: PageGroundTruth | null | undefined): string {
+  // A stored Not Found (2026-11-14) is no credentials, not a credential called "Not Found".
   const own = (gt?.providerCredentials ?? "").trim();
-  if (own) return own;
+  if (own && !missing(own)) return own;
   const legacy = (gt?.providerSignature ?? "").trim();
   return legacy && !missing(legacy) && yesNo(legacy) === null ? legacy : "";
 }

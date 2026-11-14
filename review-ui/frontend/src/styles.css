@@ -6803,3 +6803,34 @@ input {
   color: var(--muted);
   font-style: italic;
 }
+
+/* Member Stats cross matrix in the info popover (2026-11-14). */
+.accuracy-info-matrix {
+  border-collapse: collapse;
+  margin: 0.35rem 0 0.6rem;
+  font-size: 0.74rem;
+  width: 100%;
+}
+.accuracy-info-matrix caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.2rem;
+}
+.accuracy-info-matrix th,
+.accuracy-info-matrix td {
+  border: 1px solid var(--border, #e5e7eb);
+  padding: 0.18rem 0.4rem;
+  text-align: right;
+}
+.accuracy-info-matrix thead th,
+.accuracy-info-matrix tbody th {
+  text-align: left;
+  font-weight: 600;
+  background: var(--card-muted, #f6f7f9);
+}
+.accuracy-info-matrix tbody tr:nth-child(1) td:nth-child(2),
+.accuracy-info-matrix tbody tr:nth-child(2) td:nth-child(3),
+.accuracy-info-matrix tbody tr:nth-child(3) td:nth-child(4) {
+  background: #e6f4f1;
+  font-weight: 600;
+}

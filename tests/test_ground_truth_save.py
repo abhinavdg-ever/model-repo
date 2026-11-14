@@ -237,6 +237,22 @@ def test_member_not_found_is_its_own_answer():
 
     assert yes_no_label("Not Found") == "Not Found"
     assert yes_no_label("no") == "No" and yes_no_label("Skipped") == "Skipped"
+    # 2026-11-14 (user): the member fields store Skipped as Not Found; the signature keeps it.
+    from app.services.ground_truth import member_label
+
+    assert member_label("Skipped") == "Not Found" and member_label("not found") == "Not Found"
+    assert member_label("yes") == "Yes"
+    assert member_label("") == member_label(None) == member_label("NA") == "Not Found"
+    # No Skipped on the Provider rows either (2026-11-14, user).
+    from app.services.ground_truth import no_skip_label, signature_label
+
+    assert signature_label("Skipped") == "No" and signature_label("yes") == "Yes" and signature_label("") is None
+    assert no_skip_label("Skipped") is None and no_skip_label(" Dr A ") == "Dr A"
+    # Provider Credentials: the credentials or Not Found (2026-11-14, user).
+    from app.services.ground_truth import credentials_label
+
+    assert credentials_label("MD, NP") == "MD, NP"
+    assert {credentials_label(v) for v in ("", None, "NA", "Skipped", "Not Found")} == {"Not Found"}
     assert yes_no_label("") is None and yes_no_label("NA") is None
 
 
