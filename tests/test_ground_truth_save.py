@@ -252,6 +252,15 @@ def test_member_not_found_is_its_own_answer():
     from app.services.ground_truth import credentials_label
 
     assert credentials_label("MD, NP") == "MD, NP"
+    # Several signers' numbered lines are stored as one list.
+    assert credentials_label("1. MD\n2. X") == "MD, X"
+    assert credentials_label("1. M.D. 2. NP") == "M.D., NP"
+    assert credentials_label("1. MD\n2. Not Found\n3. MD") == "MD"
+    # Provider Name too (free text, not matched): a list, or empty.
+    from app.services.ground_truth import signer_list
+
+    assert signer_list("1. Dr A Smith\n2. Dr B Jones") == "Dr A Smith, Dr B Jones"
+    assert signer_list("") is None and signer_list("Skipped") is None
     assert {credentials_label(v) for v in ("", None, "NA", "Skipped", "Not Found")} == {"Not Found"}
     assert yes_no_label("") is None and yes_no_label("NA") is None
 

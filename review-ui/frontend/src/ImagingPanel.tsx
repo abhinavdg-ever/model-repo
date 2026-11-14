@@ -778,13 +778,14 @@ function groundTruthBody(
     memberName: memberStored(values.name) || null,
     memberDob: memberStored(values.dob) || null,
     memberId: memberStored(values.member_id) || null,
-    renderingProvider: cleanGt(values.provider_name),
+    // Free text, not matched; several signers' "1. Dr A" / "2. Dr B" as "Dr A, Dr B" (2026-11-14).
+    renderingProvider: signerList(values.provider_name) || null,
     // Yes / No only (2026-11-14, user): an old Skipped is saved as No.
     providerSignature: presenceStored(values.electronic_signature) === SKIPPED_ENTRY
       ? "No"
       : presenceStored(values.electronic_signature) || null,
-    // The credentials, or Not Found (2026-11-14, user).
-    providerCredentials: cleanGt(values.provider_credentials) ?? NOT_FOUND,
+    // The credentials, or Not Found (2026-11-14, user); "1. MD" / "2. NP" lines as "MD, NP".
+    providerCredentials: credentialList(values.provider_credentials),
     isVisible: visibilityStored(values.visibility ?? ""),
     handwrittenPct: cleanGt(values.handwritten_area),
     quality: cleanGt(values.quality),
@@ -855,6 +856,25 @@ function presenceStored(value: string | null | undefined): string {
   if (folded === "not found") return NOT_FOUND;
   if (folded === "skipped") return SKIPPED_ENTRY;
   return "";
+}
+
+/** Provider Credentials as stored (2026-11-14, user): several signers' numbered lines
+ * ("1. MD", "2. NP") become one list "MD, NP"; none is Not Found. The backend does the same. */
+function credentialList(value: string | null | undefined): string {
+  return signerList(value) || NOT_FOUND;
+}
+
+/** "1. Dr A" / "2. Dr B" (several signers, as the pipeline shows them) as "Dr A, Dr B";
+ * Not Found / Skipped lines dropped, a repeat kept once; "" when nothing is left. */
+function signerList(value: string | null | undefined): string {
+  const kept: string[] = [];
+  for (const line of (value ?? "").split(/\r?\n/)) {
+    for (const raw of line.split(/(?:^|(?<=\s))\d+\.\s+/)) {
+      const part = raw.replace(/^[\s,;|]+|[\s,;|]+$/g, "");
+      if (part && cleanGt(part) && part.toLowerCase() !== "skipped" && !kept.includes(part)) kept.push(part);
+    }
+  }
+  return kept.join(", ");
 }
 
 /** Member Name / DOB / ID: Yes / No / Not Found. Skipped and an empty cell are Not Found

@@ -614,6 +614,68 @@ function share(num: number, den: number): string {
 
 /** Member's info (2026-11-14, user): Match rules, Page matches, Accuracy & precision
  * calculation with the real numbers, and Stats as ground truth x pipeline counts. */
+/** A 2 x 2 cross tab from Class 1 counts: ground truth Yes / No down, pipeline Yes / No across. */
+function classTable(caption: string, rates: ClassRates) {
+  const { tp, fp, fn, tn } = rates;
+  return {
+    caption,
+    head: ["Ground truth \\ Pipeline", "Yes", "No", "Total"],
+    rows: withTotals([
+      ["Yes", tp, fn],
+      ["No", fp, tn],
+    ]),
+  };
+}
+
+/** Each row's total on the right, and a Total row under it: the pipeline's column totals
+ * (2026-11-14, user). */
+function withTotals(rows: (string | number)[][]): (string | number)[][] {
+  const sum = (cells: (string | number)[]) => cells.reduce<number>((a, b) => a + (typeof b === "number" ? b : 0), 0);
+  const body = rows.map((row) => [...row, sum(row.slice(1))]);
+  const width = body[0]?.length ?? 0;
+  const totals: (string | number)[] = ["Total"];
+  for (let c = 1; c < width; c += 1) totals.push(body.reduce((a, row) => a + Number(row[c] ?? 0), 0));
+  return [...body, totals];
+}
+
+function pageMatchLines(tally: Tally, binary: boolean): string[] {
+  const parts = [`Match ${tally.yes}`, ...(binary ? [] : [`Partial ${tally.maybe}`]), `No Match ${tally.no}`, `Scored ${tally.scored}`];
+  return [parts.join(" · "), ...(tally.na ? [`Not available (no label): ${tally.na}`] : [])];
+}
+
+function rateLines(rates: ClassRates, classLabel: string): string[] {
+  const { tp, fp, fn, tn } = rates;
+  const precision = tp + fp ? tp / (tp + fp) : null;
+  const recall = tp + fn ? tp / (tp + fn) : null;
+  const f1 = precision != null && recall != null && precision + recall > 0
+    ? `${Math.round((200 * precision * recall) / (precision + recall))}%` : "—";
+  const lines = [
+    `Precision = TP / (TP + FP) = ${share(tp, tp + fp)}`,
+    `Recall = TP / (TP + FN) = ${share(tp, tp + fn)}`,
+    `F1 = ${f1} (${classLabel}: TP ${tp} · FP ${fp} · FN ${fn} · TN ${tn})`,
+  ];
+  if (rates.credCases != null) {
+    lines.push(`Cred. M = matching credentials / pages with credentials = ${share(rates.credMatch ?? 0, rates.credCases)}`);
+  }
+  return lines;
+}
+
+/** Every other metric's info (2026-11-14, user): the same four sections as Member. */
+function metricInfo(rule: string, tally: Tally, binary: boolean, rates?: ClassRates, classLabel = ""): InfoSection[] {
+  const accuracy = binary
+    ? `Accuracy = Match / Scored = ${share(tally.yes, tally.scored)}`
+    : `Accuracy = (Match + 0.5 × Partial) / Scored = (${tally.yes} + 0.5 × ${tally.maybe}) / ${tally.scored}` +
+      (tally.scored ? ` = ${Math.round((100 * (tally.yes + 0.5 * tally.maybe)) / tally.scored)}%` : "");
+  return [
+    { title: "Match rules", lines: sentences(rule) },
+    { title: "Page matches", lines: pageMatchLines(tally, binary) },
+    { title: "Accuracy & precision calculation", lines: [accuracy, ...(rates ? rateLines(rates, classLabel) : [])] },
+    ...(rates
+      ? [{ title: "Stats (raw counts; the diagonal matches)", lines: [], tables: [classTable(classLabel, rates)] }]
+      : []),
+  ];
+}
+
 function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: MemberMatrix): InfoSection[] {
   const { tp, fp, fn, tn } = rates;
   const precision = tp + fp ? tp / (tp + fp) : null;
@@ -625,10 +687,7 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
     return {
       caption,
       head: ["Ground truth \\ Pipeline", ...MEMBER_SIDES.map(([, l]) => l), "Total"],
-      rows: MEMBER_SIDES.map(([gt, l]) => {
-        const cells = MEMBER_SIDES.map(([pipe]) => at(gt, pipe));
-        return [l, ...cells, cells.reduce((a, b) => a + b, 0)];
-      }),
+      rows: withTotals(MEMBER_SIDES.map(([gt, l]) => [l, ...MEMBER_SIDES.map(([pipe]) => at(gt, pipe))])),
     };
   };
   return [
@@ -649,7 +708,15 @@ function memberInfo(rule: string, tally: Tally, rates: ClassRates, matrix: Membe
         `F1 = ${f1} (Yes = both Name and DOB found; TP ${tp} · FP ${fp} · FN ${fn} · TN ${tn})`,
       ],
     },
-    { title: "Stats (raw counts; the diagonal matches)", lines: [], tables: [table("name", "Member Name"), table("dob", "Member DOB")] },
+    {
+      title: "Stats (raw counts; the diagonal matches)",
+      lines: [],
+      tables: [
+        table("name", "Member Name"),
+        table("dob", "Member DOB"),
+        classTable("Both: Name & DOB found", rates),
+      ],
+    },
   ];
 }
 
@@ -1468,7 +1535,13 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   info={metric.id === "member"
                     ? memberInfo(metric.rule, overallByMetric.member, memberRates, memberMatrix)
-                    : undefined}
+                    : metricInfo(
+                        metric.rule,
+                        overallByMetric[metric.id],
+                        Boolean(metric.binary),
+                        ["blankJunk", "orientation", "signature", "dos"].includes(metric.id) ? ratesFor(metric.id) : undefined,
+                        ratesLabelFor(metric.id),
+                      )}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
                   binary={metric.binary}

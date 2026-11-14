@@ -55,8 +55,8 @@ Every field: blank / `NA` / `N/A` / `Not Available` → **NULL**; `Skipped` → 
 | Is Codable Or Non-Codable | Non-Codable | page_ground_truth | `codeable` | `Non-Codable` (any spelling: Codeable, Non Codeable … is stored this way) |
 | DOS From | a date | page_ground_truth | `dos_from` | `YYYY-MM-DD` |
 | DOS To | a date | page_ground_truth | `dos_to` | `YYYY-MM-DD` |
-| Provider Name | free text (no Skipped choice; blank = Not Found) | page_ground_truth | `rendering_provider` | as typed; blank / Skipped → NULL (shows Not Found) |
-| Provider Credentials | one or more (MD, DO, NP …) (no Skipped choice) | page_ground_truth | `provider_credentials` | as typed, comma separated; blank / NA / Skipped → `Not Found` (2026-11-14) |
+| Provider Name | free text (no Skipped choice; blank = Not Found) | page_ground_truth | `rendering_provider` | as typed; several signers' `1. Dr A` / `2. Dr B` → `Dr A, Dr B`; blank / Skipped → NULL (shows Not Found) |
+| Provider Credentials | one or more (MD, DO, NP …) (no Skipped choice) | page_ground_truth | `provider_credentials` | as typed, comma separated; `1. MD` / `2. NP` → `MD, NP`; blank / NA / Skipped → `Not Found` (2026-11-14) |
 | Provider Signature | Yes | page_ground_truth | `provider_signature` | `Yes` |
 | Provider Signature | No | page_ground_truth | `provider_signature` | `No` |
 | Provider Signature | (no Skipped choice since 2026-11-14; an old Skipped) | page_ground_truth | `provider_signature` | `No` |

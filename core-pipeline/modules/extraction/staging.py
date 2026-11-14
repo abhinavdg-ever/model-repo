@@ -96,15 +96,25 @@ def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict
     }
 
 
+# Fields whose "not found" is certain when kv_extract read the page and offered no candidate.
+KV_SURE_WHEN_EMPTY = frozenset({"electronic_signature"})
+
+
 def absent_confidences(fields: dict[str, list[dict[str, Any]]], reasons: tuple[str, ...] = ()) -> dict[str, float]:
     """Each field the page has no accepted row for: how sure "not found" is
     (``confidence.absent``, 2026-11-14): 1 - the best turned-down candidate's model
-    probability; no candidate the model scored -> backup. ``reasons`` is ignored."""
+    probability; no candidate the model scored -> backup. A signature with no candidate at all
+    -> 1.0 (``KV_SURE_WHEN_EMPTY``). ``reasons`` is ignored."""
     out: dict[str, float] = {}
     for field_id, rows in fields.items():
         if any(row.get("accepted") for row in rows):
             continue
         scores = [_number(row.get("model_score")) for row in rows]
+        if field_id in KV_SURE_WHEN_EMPTY and not rows:
+            # 2026-11-14 (user): kv_extract read the page and nothing looked like a signature:
+            # that is its answer, "no signature", as sure as a measured fact.
+            out[field_id] = conf.measured()
+            continue
         value = conf.absent(scores, module="extraction")
         if value is not None:
             out[field_id] = value

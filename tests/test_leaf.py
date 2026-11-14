@@ -251,3 +251,6 @@ def test_chosen_confidence_2026_11_14():
     assert c(how="deciding") == 0.83  # the Deciding word and the model's top agree
     assert c(how="deciding", model_agrees=False) == 0.3
     assert c(overruled=True) == 0.3
+    # 2026-11-14 (user): flipped only when the L1 differs; the same L1 takes the model's p for it.
+    assert c(how="deciding", model_agrees=False, model_l1_agrees=True, p_l1=0.77) == 0.77
+    assert c(how="deciding", model_agrees=False, model_l1_agrees=False, p_l1=0.77) == 0.3

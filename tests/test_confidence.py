@@ -168,6 +168,8 @@ def test_staging_gives_each_field_without_an_accepted_row_its_absence():
     assert absent_confidences(fields) == {"dob": pytest.approx(0.6), "member_id": 0.4, "electronic_signature": 0.4}
     # Always worked out on read, whatever an older staging stored.
     assert StagedPage("1.jpg", {"fields": fields, "absent": {"dob": 0.1}}).absent == absent_confidences(fields)
+    # 2026-11-14 (user): kv_extract offered no signature candidate at all: sure there is none.
+    assert absent_confidences({"electronic_signature": []}) == {"electronic_signature": 1.0}
 
 
 def test_orientation_and_tilt_confidence_from_osd_and_the_read():

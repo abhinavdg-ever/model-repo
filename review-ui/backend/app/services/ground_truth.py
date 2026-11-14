@@ -176,10 +176,29 @@ def signature_label(value: str | None) -> str | None:
     return "No" if label == "Skipped" else label
 
 
+_SIGNER_NUMBER = re.compile(r"(?:^|(?<=\s))\d+\.\s+")
+
+
 def credentials_label(value: str | None) -> str:
     """Provider Credentials: the credentials, or Not Found (2026-11-14, user). Blank, NA,
-    NULL and Skipped are stored as Not Found."""
-    return no_skip_label(value) or "Not Found"
+    NULL and Skipped are stored as Not Found. Several signers' numbered lines ("1. MD" /
+    "2. NP", as the pipeline shows them) are stored as one list: "MD, NP"; a Not Found line
+    is dropped and a repeat is kept once."""
+    return signer_list(value) or "Not Found"
+
+
+def signer_list(value: str | None) -> str | None:
+    """Several signers' numbered lines ("1. Dr A" / "2. Dr B", "1. MD 2. NP") as one list
+    "Dr A, Dr B"; Not Found / Skipped lines dropped, a repeat kept once; None when empty."""
+    text = no_skip_label(value)
+    if text is None:
+        return None
+    parts = [p.strip(" ,;|") for line in text.splitlines() for p in _SIGNER_NUMBER.split(line)]
+    kept: list[str] = []
+    for part in parts:
+        if part and clean_label(part) is not None and part.casefold() != "skipped" and part not in kept:
+            kept.append(part)
+    return ", ".join(kept) if kept else None
 
 
 def no_skip_label(value: str | None) -> str | None:
@@ -470,7 +489,7 @@ def upsert_page_ground_truth(
         clean_label(body.isInvoice),
         clean_label(body.rotation),
         clean_label(body.isVisible),
-        no_skip_label(body.renderingProvider),
+        signer_list(body.renderingProvider),
         signature_label(body.providerSignature),
         credentials_label(body.providerCredentials),
         clean_label(body.pageSubtype),

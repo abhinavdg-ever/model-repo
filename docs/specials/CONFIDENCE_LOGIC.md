@@ -921,3 +921,16 @@ confidence uses the new curves (`duplicateLabel.ts`, `services/duplicate_label.p
 
 Not done: calibration (12.3); measuring on the dev DB how many Final values move into review.
 
+
+
+### 12.7 Changes after the dev re-run (2026-11-14, user)
+
+The dev re-run (9 charts, 215 pages) flagged 207 pages. Two rules changed:
+
+1. **No signature:** kv_extract read the page and offered no signature candidate at all ->
+   1.0 (`KV_SURE_WHEN_EMPTY`, `modules/extraction/staging.py`). Candidates it scored still give
+   1 - the best one's probability; rules-only candidates still give the backup 0.40.
+2. **Page type flipped only when the L1 differs:** a Deciding keyword that overrules the model's
+   top answer within the same L1 takes the model's probability for that L1 (its best candidate
+   under it), not 0.30 (`chosen_confidence`, `modules/page_classify/leaf.py`). The model
+   overruling a Deciding keyword already needs another L1, so it stays 0.30.

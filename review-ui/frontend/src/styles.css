@@ -6828,9 +6828,16 @@ input {
   font-weight: 600;
   background: var(--card-muted, #f6f7f9);
 }
-.accuracy-info-matrix tbody tr:nth-child(1) td:nth-child(2),
-.accuracy-info-matrix tbody tr:nth-child(2) td:nth-child(3),
-.accuracy-info-matrix tbody tr:nth-child(3) td:nth-child(4) {
+.accuracy-info-matrix tbody tr:nth-child(1):not(:last-child) td:nth-child(2),
+.accuracy-info-matrix tbody tr:nth-child(2):not(:last-child) td:nth-child(3),
+.accuracy-info-matrix tbody tr:nth-child(3):not(:last-child) td:nth-child(4) {
   background: #e6f4f1;
   font-weight: 600;
+}
+
+.accuracy-info-matrix tbody tr:last-child th,
+.accuracy-info-matrix tbody tr:last-child td {
+  border-top: 2px solid var(--border, #d1d5db);
+  font-weight: 600;
+  background: var(--card-muted, #f6f7f9);
 }

@@ -60,20 +60,20 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. A page we call Blank / Junk is No Match. Cover / index / fax / NA labels are not scored.",
+    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. Blank / Junk is a type of its own: a page both call Blank / Junk is a Match; only one side calling it Blank / Junk is No Match. Cover / index / fax / NA labels are not scored.",
   },
   {
     id: "codeable",
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
     binary: true,
-    rule: "Codable / Non-Codable equals the Final or Extracted value. Discharge counts as Codable; a Blank / Junk page is Non-Codable.",
+    rule: "Codable / Non-Codable equals the Final or Extracted value. A Blank / Junk page is Non-Codable on either side, so a page both call Blank / Junk is a Match. Discharge counts as Codable.",
   },
   {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Provider Signature Yes / No (blank = No) equals whether the pipeline found a signature. Cred. M: Provider Credentials (credentials or Not Found) match, any one shared; Not Found = Not Found counts. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial).",
+    rule: "Provider Signature Yes / No (blank = No) equals whether the pipeline found a signature. Cred. M: of the pages whose ground truth has credentials, those sharing at least one with the pipeline. Not scored on a page both call Blank / Junk, or a duplicate (Yes / Partial).",
   },
   {
     id: "orientation",
@@ -652,15 +652,23 @@ function pageScores(
 
   // Codability on every labelled page; Discharge is Codable. A page the
   // pipeline called blank / junk carries no codability: it is Non-Codable.
+  // 2026-11-14 (user): a Blank / Junk page is Non-Codable on either side -- the pipeline's
+  // whatever value it carries, the ground truth's when its Codable label is empty -- so a page
+  // both call Blank / Junk matches; one only one side calls Blank / Junk is compared as usual.
+  const gtForCodable =
+    page.groundTruth && blankOrJunk && noValue(page.groundTruth.codeable)
+      ? { ...page.groundTruth, codeable: "Non-Codable" }
+      : page.groundTruth;
   const codeableBits = (value: string | null | undefined) =>
     groundTruthBits({
       ...input,
-      isCodeable: pipelineBlankJunk && !text(value) ? "Non-Codable" : value,
+      gt: gtForCodable,
+      isCodeable: pipelineBlankJunk ? "Non-Codable" : value,
       codeableKnown: input.codeableKnown || pipelineBlankJunk,
     }).codeable;
   // A ground-truth Discharge page type is a Match for now.
   const gtDischarge = /discharge/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
-  const codeable = gtDischarge
+  const codeable = gtDischarge || (blankOrJunk && pipelineBlankJunk)
     ? "yes"
     : finalOrExtractedMatch(
         single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
@@ -767,18 +775,9 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
 type SignatureCall = { expected: boolean; predicted: boolean; credCase: boolean; credMatch: boolean };
 
 function signatureCall(page: ImagingPageResult): SignatureCall {
-  const gtCred = gtCredentials(page.groundTruth);
-  const verdict = credentialsVerdict(gtCred, page.providerCredentials);
-  // 2026-11-14 (user): no credentials in the ground truth (Not Found) against none extracted
-  // is a match that counts in Cred. M; against some, a miss.
-  if (verdict == null && page.groundTruth && noValue(gtCred)) {
-    return {
-      expected: gtSignature(page.groundTruth) === "Yes",
-      predicted: yesNo(page.providerSignature) === "yes",
-      credCase: true,
-      credMatch: noValue(page.providerCredentials),
-    };
-  }
+  // Cred. M (2026-11-14, user): only pages whose ground truth has credentials; a match is
+  // any one credential shared. A ground truth of Not Found is not a Cred. M case.
+  const verdict = credentialsVerdict(gtCredentials(page.groundTruth), page.providerCredentials);
   return {
     expected: gtSignature(page.groundTruth) === "Yes",
     predicted: yesNo(page.providerSignature) === "yes",

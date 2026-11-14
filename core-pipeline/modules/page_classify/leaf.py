@@ -352,7 +352,13 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
         has_model=model.source != NO_MODEL, margin=_margin(model, winner, model_first),
         overruled=bool(overruled), others=is_others(winner), settings=settings,
     )
+    # 2026-11-14 (user): a Deciding word and the model that differ only below the L1 are not a
+    # flip: the model's own probability for that L1 (its best candidate under it) is used.
+    winner_l1 = winner.split(SEP)[0]
+    same_l1 = [float(c["score"]) for c in model.candidates if str(c["path"]).split(SEP)[0] == winner_l1]
     confidence, rule = chosen_confidence(
+        model_l1_agrees=bool(model_first) and str(model_first).split(SEP)[0] == winner_l1,
+        p_l1=max(same_l1) if same_l1 else None,
         how=how, p=_prob(model, winner), has_model=model.source != NO_MODEL and bool(model_first),
         model_agrees=bool(model_first) and stands_for(model, winner, model_first),
         overruled=bool(overruled), others=is_others(winner),
@@ -364,7 +370,8 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
 
 
 def chosen_confidence(*, how: str, p: float, has_model: bool, model_agrees: bool, overruled: bool,
-                      others: bool) -> tuple[Optional[float], str]:
+                      others: bool, model_l1_agrees: bool = False,
+                      p_l1: Optional[float] = None) -> tuple[Optional[float], str]:
     """The page type's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the leaf
     model's probability for the chosen leaf when the model decided it (or a Deciding word
     chose what the model's top also says); ``confidence.flipped`` when a Deciding word
@@ -381,7 +388,10 @@ def chosen_confidence(*, how: str, p: float, has_model: bool, model_agrees: bool
             return conf.backup(), "Deciding keyword, no model: backup"
         if model_agrees:
             return conf.chosen(p, module="page_type"), "Deciding keyword and the model's top agree: model probability"
-        return conf.flipped(), "a Deciding keyword overruled the model's top: flipped"
+        if model_l1_agrees and p_l1 is not None:
+            # 2026-11-14 (user): flipped only when the L1 differs.
+            return conf.chosen(p_l1, module="page_type"), "Deciding keyword and the model agree on the L1: model probability"
+        return conf.flipped(), "a Deciding keyword overruled the model's top L1: flipped"
     return conf.backup(), "keywords only: backup" if how == "keywords" else "neither: backup"
 
 
