@@ -21,8 +21,9 @@
    least 95%, none below 90%, are all duplicates.
 7. **Conflicts.** Two pages that are partial (not exact) matches to the same original: neither
    is a duplicate, both are flagged "Conflict". Several exact copies are all duplicates.
-8. **Labels.** "Duplicate of N" for a duplicate; "Copy of N" for a 100% text match a hard
-   block kept from being a duplicate (it stays a normal page). N is always the earliest page.
+8. **Labels.** "Duplicate of N" for a duplicate; "Copy of N" (shown Partial) for any 100% match
+   that is not a duplicate: word for word but hard-blocked, or the same distinct words not word
+   for word (2026-11-15). It stays a normal page. N is always the earliest page.
 
 The score of a pair is the overlap of the two bodies' distinct words.
 """
@@ -286,6 +287,19 @@ def find(pages: Sequence[Page], *, all_texts: Optional[Sequence[str]] = None,
         elif exact:
             out = outcomes[page.page_id]
             out.label, out.original, out.score, out.blocked_by = "copy", exact[0].original, 1.0, exact[0].block
+    # 2026-11-15 (user): any other 100% match -- the same distinct words, not word for word, or a
+    # hard block stopped it -- shows as Partial (to the earliest such page). A run (step 6) can
+    # still make it a duplicate.
+    for page in pages:
+        out = outcomes[page.page_id]
+        if page.page_id in dup or out.label:
+            continue
+        full = sorted((p for p in pairs.get(page.page_id, {}).values() if not p.exact and p.score >= 1.0),
+                      key=lambda p: by_id[p.original].position)
+        if full:
+            why = full[0].block or ("not word for word, within near pages"
+                                    if page.position - by_id[full[0].original].position <= near else "not word for word")
+            out.label, out.original, out.score, out.blocked_by = "copy", full[0].original, 1.0, why
 
     if not near_only:
         # Step 6: runs more than ``near`` pages apart, in the same order.

@@ -118,9 +118,11 @@ Built 2026-11-11 from the user's `Duplicate_Logic.md`. Code: `dup_rules.py` (the
 7. **Conflicts.** Two partial (not exact) matches to one original: neither is a duplicate,
    both are flagged `Review: Conflict` (reason `duplicate_review: Conflict`). Several exact
    copies are all duplicates.
-8. **Labels.** **Duplicate of N** (flag duplicate); **Copy of N** (a 100% text match a block
-   stopped: a normal Main page, reason `duplicate_content_of_page_id:N`). N is always the
-   earliest copy and links to that page in review-ui. There are no Partials.
+8. **Labels.** **Yes (to page N)** (flag duplicate); **Partial (to page N)** (stored as Copy of N,
+   reason `duplicate_content_of_page_id:N`, a normal Main page): **any 100% match that is not a
+   duplicate** -- word for word but stopped by a hard block, or the same distinct words not word
+   for word (2026-11-15). N is always the earliest copy and links to that page in review-ui.
+   "Page 8 out of 11" is pagination, stripped like "Page 8 of 11" (2026-11-15).
 
 Per page, `blank_junk.json` records label, duplicate, copy_of, rule (Exact / Rule A / Rule B),
 score, blocked_by and review.

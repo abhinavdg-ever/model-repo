@@ -245,3 +245,16 @@ def test_page_out_of_numbering_does_not_block_a_duplicate():
     from modules.blank_junk import dup_rules
     assert dup_rules.is_boilerplate("Page 8 out of 11") and dup_rules.is_boilerplate("11 out of 11")
     assert dup_rules.is_boilerplate("Page 8 of 11") and not dup_rules.is_boilerplate("Blood pressure 120 of 80")
+
+
+def test_any_100_percent_match_that_is_not_a_duplicate_is_partial():
+    """2026-11-15 (user): the same distinct words not word for word (within 3 pages), or a hard
+    block on a 100% match -> Partial ("copy") to the earlier page."""
+    base = note(1)
+    lines = base.split("\n")
+    reordered = "\n".join(lines[1:] + lines[:1])          # same words, other order
+    out = find(chart(12, p8=base, p11=reordered))
+    assert out[11].label == "copy" and out[11].original == 8 and not out[11].is_duplicate
+    # signed vs unsigned (a hard block) on the same words -> Partial too.
+    out = find(chart(12, p8=base, p11=reordered), signed={11})
+    assert out[11].label == "copy" and out[11].blocked_by == dup_rules.BLOCK_SIGNATURE
