@@ -25,7 +25,7 @@ The first rule that matches decides.
 
 | # | Check | Verdict |
 |---|---|---|
-| 1 | No ink, stage 1 says blank, no text, or the word "blank" in < 30 characters | Blank |
+| 1 | No ink; stage 1 says blank **and** the OCR has < 15 characters (a page typed blank with text on it goes on down the ladder, 2026-11-15); no text; or the word "blank" in < 30 characters | Blank |
 | 2 | "Intentionally left blank" on a page of ≤ 25 words | Blank |
 | 3 | A cover mark (Accept, Unaccept, Cover) on a page of < 10 words | Junk / Cover Page |
 | 4 | "End of Report" on a page of < 10 words | Junk / Cover Page |
@@ -48,7 +48,8 @@ The first rule that matches decides.
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
 | 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers | Junk / Others |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
-| 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
+| 11 | Classifier | The service says JUNK only by its own keyword rule (invoice / shell / end-of-record rule in its decision reason) while the model's p(keep) > p(junk): the model wins, p(blank) never added to p(junk) (2026-11-15) | Main (review) |
+|    |  | The model says JUNK, but p(keep) ≥ 0.99 | Main |
 |    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
 |    |  | Otherwise Invoice, with a **table holding a dollar amount** (Final OCR 1 / Docling markdown `\| … \| $25.00 \|`, else the Final OCR text, an HTML `<td>$…</td>` too). Terms wording cannot overrule it (2026-11-14) | Main (page type Invoice / Invoice Page) |
 |    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, **Payment Instructions**, Terms of Payment / Sale / Service, General / Standard Terms, appearing **before** the first invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) or on a page with none (Final OCR text, else Tesseract's) | Junk / Others |
@@ -65,8 +66,9 @@ clinical rules is never junked here. The first check that matches decides.
 | # | Check | Verdict |
 |---|---|---|
 | a | **The signature carries on from the page before.** The previous page ends in its Electronic Signature (kv_extract places it in the footer, or its signature sentence is in that page's last paragraph). This page has the provider's name or credentials (kv_extract), the signer's name, credentials (MD, DO, NP…), or a date | Main |
-| b | **Fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
-|   | …unless those words are only "Diagnosis" / "Visit Diagnosis" | Main |
+| b | **Only a section header differs**: every word not on the previous or next page belongs to this page's own section header(s), "Visit Diagnosis" included (2026-11-15) | Junk / Others |
+| c | **The section carries on from the page before.** Fewer than 5 new words, some of them not header words, and the previous page's **last section header** is one that runs on to the next page: Visit Diagnosis, Diagnosis, Assessment, Plan, Assessment and Plan, Impression, Problem List, Medications, Orders, Results, Findings (canon `contained_page.continue_after_headers`, editable) (2026-11-15) | Main |
+| d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
 | — | Otherwise | the classifier decides (rule 11) |
 
 An invoice page is never junked by the short page rule.

@@ -34,8 +34,10 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
     INDEX contents  "Index" / "Contents" as a title and 3+ lines with page numbers ->
                     Junk / Others (2026-11-08, user)
     short page      content in the top 20%: stage._classify (a signature carried on from
-                    the page before -> Main; < 5 words not on the previous / next non-blank
-                    page -> Junk / Others; 2026-11-08, user)
+                    the page before -> Main; only its own section header new -> Junk / Others;
+                    < 5 new words under the page before's last section when that section runs
+                    on (Visit Diagnosis, Medications ...) -> Main; else < 5 words not on the
+                    previous / next non-blank page -> Junk / Others; 2026-11-08 / 2026-11-15, user)
     R5 DistilBERT   p(junk) >= 0.70 -> Junk (DistilBERT's subtype); below -> Main (2026-11-03,
                     user: no review band; canon junk_at = review_junk_at = 0.7)
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
@@ -721,8 +723,12 @@ def decide(inputs: PageInputs) -> Verdict:
     # (0.95), in either pass (2026-11-14, user, CONFIDENCE_LOGIC.md 12.4.5).
     if inputs.no_ink:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
-    if inputs.document_type == "blank":
+    # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15,
+    # user: a page typed blank with two lines of text came out Blank).
+    if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
+    if inputs.document_type == "blank":
+        votes["stage1_blank_overruled"] = f"{chars} characters of text"
     if not visual and chars == 0:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
     if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
@@ -815,6 +821,16 @@ def decide(inputs: PageInputs) -> Verdict:
     why = _service_why(service)
     if service.get("review_required"):
         votes["review_required"] = True
+    # 2026-11-15 (user: "Junk is winning ... please don't"): the service's own keyword rules
+    # (invoice / shell / end of record) turn a page the model scores KEEP into JUNK. Junk wins
+    # only when the model's p(junk) beats p(keep); p(blank) is never added to p(junk).
+    rule_junk = SERVICE_RULE_JUNK.search(str(service.get("decision_reason") or ""))
+    if (service["flag"] == "JUNK" and rule_junk and p_keep is not None and p_junk is not None
+            and p_keep > p_junk):
+        votes["review_required"] = True
+        votes["service_rule_overruled"] = rule_junk.group(0)
+        return ruled(CODE_MAIN, "R5", f"R5 service {why}: its {rule_junk.group(0)} only, the model's p(keep) "
+                     f"{p_keep:.3f} > p(junk) {p_junk:.3f} -> Main (review)", conf.score(p_keep))
     if service["flag"] == "JUNK":
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
             return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
@@ -846,6 +862,10 @@ def decide(inputs: PageInputs) -> Verdict:
 
 def _service_subtype(service: dict[str, Any]) -> str:
     return MODEL_SUBTYPE.get(service.get("subclass") or "", "Others")
+
+
+# The service's keyword rules, named in its decision_reason ("below_review_threshold+invoice_rule").
+SERVICE_RULE_JUNK = re.compile(r"(?:invoice|shell|end_record)_rule")
 
 
 def _service_why(service: dict[str, Any]) -> str:

@@ -228,8 +228,6 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
 # The reason a short page carries (2026-11-08, user; continuity keeps its junk inside a note).
 # Was "short_page_contained_in_page_id:" (2026-11-03), which continuity still reads on old rows.
 SHORT_MARK = "short_page:"
-# The words that keep a short page when they are all it adds to its neighbours (2026-11-08, user).
-KEEP_IF_ONLY_ADDED = frozenset({"visit", "diagnosis"})
 # A page that is a Copy of an earlier one: Main, pointing at it (2026-11-11, user: "Copy of N",
 # a 100% text match a hard block kept from being a duplicate). review-ui reads the mark.
 SAME_CONTENT_MARK = "duplicate_content_of_page_id:"
@@ -278,6 +276,7 @@ def _classify(
     image_paths: Optional[dict[int, Path]] = None,
     find_duplicates: bool = True,
     exact_near: bool = False,
+    headers_by_id: Optional[dict[int, tuple[str, ...]]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages (dup_rules.find).
 
@@ -291,7 +290,8 @@ def _classify(
     filled for every page compared.
 
     ``exact_near`` (pass 1): exact copies within 3 pages only. ``find_duplicates`` (pass 2):
-    every rule.
+    every rule. ``headers_by_id``: each page's section headers (stage 6; texts and canon names,
+    in page order) for the short page.
     """
     prior = set(prior_main_ids or ())
     signed = set(signed_ids or ())
@@ -417,14 +417,30 @@ def _classify(
     #   1. the page before ends in its Electronic Signature (kv_extract: footer band, or the
     #      signature sentence in its last paragraph) and this page carries it on: the provider's
     #      name / credentials (kv_extract), the signer's name, credentials or a date -> Main;
-    #   2. fewer than 5 distinct words not on the page before or after -> Junk / Others (unless
-    #      the only ones left are "Diagnosis" / "Visit Diagnosis": a diagnosis page, kept).
+    #   2. what it adds to the pages before and after (2026-11-15, user):
+    #      a. nothing but its own section header -> Junk / Others;
+    #      b. under 5 new words, and the page before ends in a section that runs on (its last
+    #         section header is Visit Diagnosis, Assessment, Plan ...: canon
+    #         contained_page.continue_after_headers) -> Main: this page carries that section on;
+    #      c. otherwise under 5 new words -> Junk / Others.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         top = float(cfg.get("top_fraction", 0.20))
         junk_below = int(cfg.get("junk_below_unique_words", 5))
+        runs_on = [h.strip().lower() for h in cfg.get("continue_after_headers") or [] if str(h).strip()]
+        headers = headers_by_id or {}
         words_of: dict[int, frozenset[str]] = {}
+
+        def _runs_on(page_id: Optional[int]) -> Optional[str]:
+            """The page's last section header when it is one that runs on to the next page."""
+            last = (headers.get(page_id) or ())[-1:] if page_id is not None else ()
+            for header in last:
+                folded = " ".join(re.findall(r"\w+", header.lower()))
+                if any(re.search(rf"(?<!\w){re.escape(' '.join(re.findall(r'[a-z0-9]+', h)))}(?!\w)", folded)
+                       for h in runs_on):
+                    return header
+            return None
 
         def _words(page_id: Optional[int]) -> frozenset[str]:
             if page_id is None:
@@ -481,9 +497,18 @@ def _classify(
             left = _words(pid) - _words(prev_id) - _words(next_id)
             if len(left) >= junk_below:
                 continue
-            if left and left <= KEEP_IF_ONLY_ADDED and "diagnosis" in left:
-                _keep(pid, "diagnosis", f"{short}; the only words not on the pages before / after are "
-                                         f"{', '.join(sorted(left))}")
+            own_header_words = unique_words(" ".join(headers.get(pid) or ()))
+            body = left - own_header_words
+            if left and not body:
+                _junk(pid, CODE_OTHERS, f"{SHORT_MARK}header_only: {short}; the only words not on the page "
+                                        f"before or after are its section header ({', '.join(sorted(left))}) "
+                                        f"-> Junk / Others")
+                continue
+            section = _runs_on(prev_id) if body else None
+            if section is not None:
+                _keep(pid, "section_continued",
+                      f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its '{section}' section, "
+                      f"carried on here ({len(body)} new word(s))")
                 continue
             _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated: {short}; {len(left)} distinct word(s) not on the "
                                     f"page before or after (< {junk_below}) -> Junk / Others")
@@ -729,6 +754,24 @@ def _page_inputs(
             if not page_blocks_prelim(q):
                 inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
+    return out
+
+
+def _headers_by_id(ctx: Any) -> dict[int, tuple[str, ...]]:
+    """Each page's section header texts by page id, in page order, for the short page
+    (2026-11-15). The last one also carries stage 6's canon name ("Dx: / Visit Diagnosis"), so
+    the run-on list matches either."""
+    texts = section_heading_texts(ctx.chart_name)
+    canon_names = section_heading_canon(ctx.chart_name)
+    out: dict[int, tuple[str, ...]] = {}
+    for page in ctx.pages:
+        name = page["page_name"]
+        found = texts.get(name) or canon_names.get(name) or ()
+        if not found:
+            continue
+        last_canon = (canon_names.get(name) or ("",))[-1]
+        last = found[-1] if not last_canon or last_canon == found[-1] else f"{found[-1]} / {last_canon}"
+        out[page["id"]] = tuple(found[:-1]) + (last,)
     return out
 
 
@@ -1037,6 +1080,7 @@ def _run_pass(
             needs_image=needs_image, image_paths=image_paths,
             find_duplicates=pass_no == 2,
             exact_near=pass_no == 1,
+            headers_by_id=_headers_by_id(ctx) if pass_no == 2 else None,
         )
 
         with connect() as conn:

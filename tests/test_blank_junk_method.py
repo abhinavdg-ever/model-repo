@@ -250,6 +250,12 @@ class TestBlankFromStage1AndLabKeep:
             v = run("x .", pass_no=pass_no, document_type="blank", bert=bert(0.99))
             assert (v.code, v.rule) == (method.CODE_BLANK, "R1")
 
+    def test_stage_1_blank_with_text_on_the_page_is_not_blank(self):
+        """2026-11-15 (user): a page typed blank with lines of text on it is not Blank."""
+        text = "Outside Labs: Ameripath Quest. In-House Tests OK? YES - AON Lab / YES - AON Path"
+        v = run(text, pass_no=1, document_type="blank")
+        assert v.code != method.CODE_BLANK and v.votes.get("stage1_blank_overruled")
+
 
     def test_all_three_words_are_needed(self):
         no_range = "Lab report. Test Value Units. Invoice number 4411 amount due now. " + FILLER
@@ -569,3 +575,22 @@ class TestVerdictConfidence2026_11_14:
         inputs = PageInputs(text=terms, pass_no=2, bert=bert(0.97))
         moved = method.post_process(decide(inputs), inputs)
         assert (moved.code, moved.confidence) == (classify.CODE_OTHERS, 0.3)
+
+
+def test_the_services_keyword_rule_does_not_beat_the_models_keep():
+    """2026-11-15 (user): the service's invoice / shell / end-of-record rule made a page the model
+    scored p(keep) 0.49 > p(junk) 0.45 JUNK. Junk only when p(junk) beats p(keep); p(blank) is
+    never added in."""
+    b = {"p_keep": 0.4934, "p_junk": 0.4487, "p_blank": 0.0579, "top_junk_label": "JUNK_INVOICE",
+         "service": {"flag": "JUNK", "subclass": "JUNK_INVOICE", "confidence": 0.4934, "review_required": True,
+                     "decision_reason": "below_review_threshold+invoice_rule", "audit_tag": "JUNK_INVOICE",
+                     "p_keep": 0.4934, "p_blank": 0.0579, "p_junk": 0.4487}}
+    v = run(FILLER, bert=b)
+    assert v.code == method.CODE_MAIN and v.votes.get("service_rule_overruled") == "invoice_rule"
+    # the model's own junk call (p(junk) > p(keep)) still stands: an invoice, kept as Invoice page.
+    b2 = {**b, "p_keep": 0.30, "p_junk": 0.65, "service": {**b["service"], "p_keep": 0.30, "p_junk": 0.65}}
+    v2 = run(FILLER, bert=b2)
+    assert v2.rule == "INVOICE" and not v2.votes.get("service_rule_overruled")
+    b3 = {**b2, "top_junk_label": "JUNK_OTHERS", "service": {**b2["service"], "subclass": "JUNK_OTHERS",
+                                                               "decision_reason": "below_review_threshold+shell_rule"}}
+    assert run(FILLER, bert=b3).code != method.CODE_MAIN
