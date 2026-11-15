@@ -467,7 +467,7 @@ def _classify(
         top = float(cfg.get("top_fraction", 0.20))
         junk_below = int(cfg.get("junk_below_unique_words", 5))
         runs_on = _run_on_headers(cfg)
-        repeated_max = int(cfg.get("repeated_only_max_words", 120))
+        repeated_max = int(cfg.get("repeated_only_max_words", 100))
         headers = headers_by_id or {}
         words_of: dict[int, frozenset[str]] = {}
 

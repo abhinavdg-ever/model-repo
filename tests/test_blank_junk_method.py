@@ -625,3 +625,13 @@ def test_a_hospital_page_without_the_word_card_is_not_a_card():
     finally:
         m.detect_card = orig
     assert v.code == method.CODE_MAIN and v.code != classify.CODE_CARDS
+
+
+def test_a_medication_list_with_doses_is_main():
+    """2026-11-15 (user): a medication list with doses (mg ...) is Main, like a lab result."""
+    meds = ("Medications Reviewed Medications ezetimibe 10 mg tablet TAKE ONE TABLET BY MOUTH ONCE A DAY "
+            "indapamide 1.25 mg tablet valsartan 80 mg tablet " + FILLER)
+    v = run(meds, bert=bert(0.99, "JUNK_OTHERS"))
+    assert (v.code, v.rule) == (method.CODE_MAIN, "MEDS")
+    assert method.medication_doses("Rx: Prolia 60 mg/ml, Vitamin D 1.25 mg") is not None   # word + 2
+    assert method.medication_doses("Tot Copay 18.98 Page 2 of 5") is None

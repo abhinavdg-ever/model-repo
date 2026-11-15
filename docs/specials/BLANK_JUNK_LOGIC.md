@@ -44,6 +44,7 @@ The first rule that matches decides.
 | 3b | Fax cover sheet | The word **Fax** and 2+ of its routing boxes: **Urgent, For (Your) Review, Please Comment, Please Reply / Reply ASAP, Please Recycle, As Requested** — even when signed (a cover sheet lists doctors) (2026-11-15) | Junk / Letter/Fax |
 | 4 | **Signature** | An Electronic Signature here, **and** not the same signature in the same spot on the previous or next page (2026-11-15), **and** the model's p(junk) < 0.95 | Main |
 | 5 | Lab result | One word from each group: **Laboratory / Lab Result(s) / Lab Report / Lab Test(s)** (not "Lab" alone) · **Reference Range** (Ref Range, Reference Interval) · **Value(s)** | Main |
+| 5b | Medication list | 3+ different doses (a number + mg, mcg, mL, g, units, mEq, tablets …), or a Medications / Rx / Prescription word and 2+ (2026-11-15) | Main |
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
 | 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
@@ -79,7 +80,7 @@ signature on the previous or next non-blank page, it is a stamp the record repea
 replaces "the previous or next page is signed too" (2026-11-08): a neighbour signed elsewhere or by
 someone else no longer stops the keep.
 
-**A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 120,
+**A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 100,
 canon `contained_page.repeated_only_max_words`) is on the previous or next page, e.g. page 6 of 6 holding
 only the running header and the end-of-report block page 5 also has, low on the page -> Junk / Others.
 

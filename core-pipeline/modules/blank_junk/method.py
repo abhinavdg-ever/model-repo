@@ -797,6 +797,10 @@ def decide(inputs: PageInputs) -> Verdict:
     lab = lab_result_words(inputs)
     if lab:
         return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
+    # 4a. a medication list with doses (2026-11-15, user): "ezetimibe 10 mg tablet" ... -> Main.
+    meds = medication_doses(text)
+    if meds:
+        return ruled(CODE_MAIN, MEDS_RULE, f"{MEDS_RULE}: medication list ({meds}) -> Main")
     # 4b. clinical content: 2+ ICD-10 codes or a Social History header -> Main.
     clinical = clinical_content_signs(inputs)
     if clinical:
@@ -931,6 +935,27 @@ def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
 ICD10_CODE = re.compile(r"(?<![A-Za-z0-9])[A-TV-Z][0-9][0-9A-Z]\.[0-9A-Z]{1,4}(?![A-Za-z0-9])")
 SOCIAL_HISTORY = re.compile(r"(?<![A-Za-z])social\s+history(?![A-Za-z])", re.IGNORECASE)
 SOCIAL_HISTORY_LINE = re.compile(r"^\W*social\s+history\W*$", re.IGNORECASE | re.MULTILINE)
+# 2026-11-15 (user): a medication list with doses is Main, like a lab result. A dose = a number and
+# a unit (mg, mcg, mL, units, mEq ...). 3+ different doses, or a Medication(s) / Rx / Prescription
+# word and 2+.
+MEDS_RULE = "MEDS"
+RULE_SUPPORT[MEDS_RULE] = 0.95
+DOSE = re.compile(
+    r"(?<![\w.])\d+(?:[.,]\d+)?\s*(?:-\s*\d+(?:\.\d+)?\s*)?"
+    r"(?:mg|mcg|µg|ug|g|gm|ml|mL|units?|iu|meq|mmol|mg/ml|mg/kg|mcg/act|puffs?|tabs?|tablets?|caps?|capsules?)"
+    r"(?![A-Za-z])", re.IGNORECASE)
+MEDS_WORD = re.compile(r"(?<![A-Za-z])(?:medications?|meds|rx|prescriptions?|prescribed|dosage)(?![A-Za-z])",
+                       re.IGNORECASE)
+
+
+def medication_doses(text: str) -> Optional[str]:
+    """The doses that make the page a medication list, or None (MEDS_RULE)."""
+    doses = list(dict.fromkeys(" ".join(m.group(0).lower().split()) for m in DOSE.finditer(text or "")))
+    if len(doses) >= 3 or (len(doses) >= 2 and MEDS_WORD.search(text or "")):
+        return f"{len(doses)} doses: {', '.join(doses[:4])}{' ...' if len(doses) > 4 else ''}"
+    return None
+
+
 CLINICAL_CONTENT_RULE = "CLINICAL_CONTENT"
 RULE_SUPPORT[CLINICAL_CONTENT_RULE] = 0.95
 
