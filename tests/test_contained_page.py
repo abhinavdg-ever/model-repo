@@ -66,19 +66,25 @@ def test_only_the_pages_before_and_after_count(monkeypatch):
     assert rows[3]["flag"] == "junk" and rows[3]["subtype"] == "Others"
 
 
-def test_a_signature_keeps_a_page_only_when_the_pages_around_it_are_not_signed(monkeypatch):
-    """2026-11-08 (user), every page: Electronic Signature here, none on the previous / next
-    non-blank page, raw p(junk) < 0.95 -> Main (R4). Blank pages in between are skipped over."""
+def test_a_signature_keeps_a_page_unless_it_repeats_in_the_same_spot(monkeypatch):
+    """2026-11-15 (user; replaces 2026-11-08 "none on the previous / next page"), every page:
+    Electronic Signature here, not the same signature (region + sentence / signer) on the previous
+    / next non-blank page, raw p(junk) < 0.95 -> Main (R4). Blank pages in between are skipped over."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    stamp = {"region": "footer", "sentence": "Electronically signed by Nathan A Monaco MD", "provider_name": "Nathan A Monaco"}
+    own = {"region": "mid", "sentence": "Signed by Jane Roe NP", "provider_name": "Jane Roe"}
     texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER, 3: HEADER + BODY + FOOTER + " more"}
-    rows = _run(texts, signed={2})
+    rows = _run(texts, signed={2}, signatures={2: stamp})
     assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("R4")
-    # the page after is signed too: no signature keep, the short page is judged on its words.
-    rows = _run(texts, signed={2, 3})
+    # the page after is signed too, elsewhere / by someone else: the signature still keeps it.
+    rows = _run(texts, signed={2, 3}, signatures={2: stamp, 3: own})
+    assert rows[2]["reason"].startswith("R4")
+    # the same signature in the same spot on the page after: a stamp, judged on its words.
+    rows = _run(texts, signed={2, 3}, signatures={2: stamp, 3: stamp})
     assert rows[2]["flag"] == "junk" and "r4_not_alone" in rows[2]["votes"]
-    # a blank page between them does not hide the signed neighbour.
+    # a blank page between them does not hide it.
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER, 3: "", 4: HEADER + BODY + FOOTER + " more"},
-                signed={2, 4})
+                signed={2, 4}, signatures={2: stamp, 4: stamp})
     assert rows[2]["flag"] == "junk"
     # p(junk) >= 0.95: no signature keep either.
     assert not method.signature_keeps(True, 0.98) and method.signature_keeps(True, 0.5)
@@ -210,18 +216,21 @@ def test_a_page_whose_words_are_all_on_its_neighbours_is_junk_wherever_they_sit(
     assert rows[2]["flag"] == "not_blank_junk"
 
 
-def test_a_signature_in_the_same_spot_within_2_pages_does_not_keep_a_short_page(monkeypatch):
+def test_a_signature_in_the_same_spot_on_a_neighbour_does_not_keep_a_short_page(monkeypatch):
     """2026-11-15 (user): a short page whose Electronic Signature sits in the same spot (region and
-    sentence / signer) as one within 2 pages is a repeated stamp: no signature keep."""
+    sentence / signer) as the previous / next page's is a repeated stamp: no signature keep. Two
+    pages away does not count (+-1 only)."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     stamp = {"region": "footer", "sentence": "Electronically signed by Nathan A Monaco MD",
              "provider_name": "Nathan A Monaco", "provider_credentials": "MD", "signature_date": ""}
     other = " ".join(f"other{i} words here" for i in range(60))
-    # page 1 signed in the footer; page 2 unsigned; page 3 short, the same footer signature.
     texts = {1: other + " first", 2: HEADER + BODY + FOOTER, 3: HEADER + FOOTER, 4: other + " more"}
-    rows = _run(texts, signed={1, 3}, signatures={1: stamp, 3: stamp})
+    rows = _run(texts, signed={2, 3}, signatures={2: stamp, 3: stamp})
     assert rows[3]["flag"] == "junk" and rows[3]["votes"].get("signature_repeated")
+    # the same stamp two pages away: not counted, the signature keeps the page.
+    rows = _run(texts, signed={1, 3}, signatures={1: stamp, 3: stamp})
+    assert rows[3]["reason"].startswith("R4")
     # a different signer in that spot is the page's own signing: kept by R4.
-    rows = _run(texts, signed={1, 3}, signatures={1: stamp, 3: {**stamp, "sentence": "Signed by Jane Roe NP",
+    rows = _run(texts, signed={2, 3}, signatures={2: stamp, 3: {**stamp, "sentence": "Signed by Jane Roe NP",
                                                                  "provider_name": "Jane Roe"}})
     assert rows[3]["flag"] == "not_blank_junk" and rows[3]["reason"].startswith("R4")

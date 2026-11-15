@@ -41,7 +41,7 @@ The first rule that matches decides.
 | 1 | Blank | The pass 1 rules 1–5 again | as in pass 1 |
 | 2 | Visual | A visual page under 20 words that is not a card | Main |
 | 3 | Handwritten | More than 30% handwritten | Main |
-| 4 | **Signature** | An Electronic Signature here, **and** none on the previous or next page, **and** the model's p(junk) < 0.95 | Main |
+| 4 | **Signature** | An Electronic Signature here, **and** not the same signature in the same spot on the previous or next page (2026-11-15), **and** the model's p(junk) < 0.95 | Main |
 | 5 | Lab result | One word from each group: **Laboratory / Lab Result(s) / Lab Report / Lab Test(s)** (not "Lab" alone) · **Reference Range** (Ref Range, Reference Interval) · **Value(s)** | Main |
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
 | 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
@@ -71,10 +71,12 @@ clinical rules is never junked here. The first check that matches decides.
 | d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
 | — | Otherwise | the classifier decides (rule 11) |
 
-**A repeated signature does not count on a short page** (2026-11-15): when its Electronic Signature sits in
-the same spot (same region: header / mid / footer, and the same signature sentence or signer) as a signed
-page within 2 non-blank pages either side, it is a stamp the record repeats: no signature keep (rule 4), and
-check a (signature carried on) ignores a page before whose signature is such a stamp.
+**A repeated signature does not count** (2026-11-15, every page): when its Electronic Signature sits in
+the same spot (same region: header / mid / footer, and the same signature sentence or signer) as the
+signature on the previous or next non-blank page, it is a stamp the record repeats: no signature keep
+(rule 4), and check a (signature carried on) ignores a page before whose signature is such a stamp. This
+replaces "the previous or next page is signed too" (2026-11-08): a neighbour signed elsewhere or by
+someone else no longer stops the keep.
 
 **A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 120,
 canon `contained_page.repeated_only_max_words`) is on the previous or next page, e.g. page 6 of 6 holding

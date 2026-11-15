@@ -30,7 +30,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   pass 2 (Final OCR text):
     R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's
                     p(junk) > 0.95 (a signed records-request letter is still junk), and not when
-                    the previous / next non-blank page is signed too (2026-11-08, user)
+                    the same signature (region + sentence / signer) is on the previous / next non-blank page:
+                    a repeated stamp (2026-11-15, user; replaced "a neighbour is signed too")
     INDEX contents  "Index" / "Contents" as a title and 3+ lines with page numbers ->
                     Junk / Others (2026-11-08, user)
     short page      content in the top 20%: stage._classify (a signature carried on from
@@ -484,7 +485,8 @@ class PageInputs:
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
     # kv_extract found the member's name on the page (extraction.json "name"): the card rule's name.
     member_name_found: bool = False
-    # The previous or next non-blank page has an Electronic Signature too (stage._classify).
+    # The page's Electronic Signature repeats in the same spot (region + sentence / signer) on the previous / next
+    # non-blank page: a stamp, not its own signing (stage._classify, 2026-11-15).
     neighbour_signed: bool = False
     signature_known: bool = False  # the KV signature output was there to read
     provider: bool = False  # provider details extracted (kv_extract's provider name / credentials); pass 2
@@ -544,8 +546,8 @@ def _junk_code(subtype: str) -> int:
 
 def signature_keeps(signed: bool, p_junk: Optional[float], neighbour_signed: bool = False) -> bool:
     """THE signature condition, used everywhere a signature saves a page, on every page:
-    kv_extract found an Electronic Signature on it, the previous and next non-blank pages have
-    none (2026-11-08, user: a signature shared with a neighbour does not save the page), AND the
+    kv_extract found an Electronic Signature on it, it is not repeated in the same spot on the previous
+    / next non-blank page (2026-11-15, user; was "the previous and next pages have none"), AND the
     model's raw p(junk) is below ``distilbert.signature_overruled_above`` (0.95; 2026-11-07).
     Signature words in the text never count. No model score (None) leaves the signature standing."""
     if not signed or neighbour_signed:
@@ -776,13 +778,13 @@ def decide(inputs: PageInputs) -> Verdict:
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
         return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
-    # 4. signed (signature_keeps: Electronic Signature here, none on the previous / next non-blank
-    # page, raw p(junk) < 0.95), every page.
+    # 4. signed (signature_keeps: Electronic Signature here, not repeated in the same spot on the
+    # previous / next page, raw p(junk) < 0.95), every page.
     if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
-        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not on the previous / next page, raw p(junk) "
+        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby, raw p(junk) "
                                       f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
     if inputs.signed and inputs.neighbour_signed:
-        votes["r4_not_alone"] = "Electronic Signature, but the previous or next non-blank page has one too"
+        votes["r4_not_alone"] = "Electronic Signature, but the previous or next page has the same signature in the same spot"
     elif inputs.signed:
         votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
     # 4a. a lab result: one term of every lab_keep group (Lab, Reference Range, Value) -> Main.
