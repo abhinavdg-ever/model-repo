@@ -62,8 +62,10 @@ def _connect(database_url: str, schema: str):
 
 
 def from_db(database_url: Optional[str] = None, schema: str = "public",
-            chart_list: Optional[list[str]] = None, batch: int = 50) -> Iterator[Chart]:
-    """Charts from Postgres (DATABASE_URL by default). ``chart_list`` limits them."""
+            chart_list: Optional[list[str]] = None, batch: int = 50,
+            missing: Optional[list[str]] = None) -> Iterator[Chart]:
+    """Charts from Postgres (DATABASE_URL by default). ``chart_list`` limits them; the charts can
+    come from any runs / batches (looked up by name). Listed charts with no pages go to ``missing``."""
     url = database_url or os.environ.get("DATABASE_URL") or ""
     if not url:
         raise SystemExit("DATABASE_URL is not set (put it in .env)")
@@ -86,6 +88,8 @@ def from_db(database_url: Optional[str] = None, schema: str = "public",
             for name in part:
                 pages = by_chart.get(name) or []
                 if not pages:
+                    if missing is not None:
+                        missing.append(name)
                     continue
                 texts = [(str(r[1]), str(r[3] or "")) for r in pages]
                 labels = {
@@ -132,31 +136,85 @@ def _download_text(client, name: str) -> Optional[str]:
         return None
 
 
-def from_blob(container: str, prefix: str, chart_list: Optional[list[str]] = None) -> Iterator[Chart]:
-    """Charts under ``<container>/<prefix>/<chart>/`` (e.g. prefix Processed/Run1): each needs
-    ocr/<chart>_prelim.txt; imaging/<chart>_final.csv is read when present."""
-    client = _container_client(container)
-    base = prefix.strip("/").replace("\\", "/")
-    base = f"{base}/" if base else ""
-    wanted = set(chart_list) if chart_list else None
-    names: set[str] = set()
-    for blob in client.list_blobs(name_starts_with=base):
-        rest = blob.name[len(base):]
-        parts = rest.split("/")
-        if len(parts) == 3 and parts[1] == "ocr" and parts[2] == f"{parts[0]}_prelim.txt":
-            names.add(parts[0])
-    for name in sorted(names):
-        if wanted is not None and name not in wanted:
-            continue
-        prelim = _download_text(client, f"{base}{name}/ocr/{name}_prelim.txt")
+def db_output_paths(chart_list: list[str], database_url: Optional[str] = None,
+                    schema: str = "public") -> dict[str, tuple[str, str]]:
+    """chart name -> (blob container, output path) from chart_list, for charts across any runs /
+    batches (core-pipeline stores each chart's Processed/... destination there)."""
+    url = database_url or os.environ.get("DATABASE_URL") or ""
+    if not url:
+        raise SystemExit("--paths-from-db needs DATABASE_URL (in .env)")
+    conn = _connect(url, schema)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT chart_name, COALESCE(blob_container, ''), COALESCE(output_path, '') "
+                        "FROM chart_list WHERE chart_name = ANY(%(names)s)", {"names": sorted(set(chart_list))})
+            return {str(n): (str(c), str(o)) for n, c, o in cur.fetchall() if o}
+    finally:
+        conn.close()
+
+
+def from_blob(container: str, prefixes: list[str], chart_list: Optional[list[str]] = None,
+              paths: Optional[dict[str, tuple[str, str]]] = None,
+              missing: Optional[list[str]] = None) -> Iterator[Chart]:
+    """Charts from Blob. Each chart folder holds ocr/<chart>_prelim.txt (required) and
+    imaging/<chart>_final.csv (read when present).
+
+    With ``chart_list`` (charts across runs / batches, 2026-11-15, user) each chart is fetched
+    directly, no listing: first from its own output path (``paths``, from chart_list when
+    --paths-from-db), else under each of ``prefixes`` in turn (Processed/Run1, Processed/Run2 ...).
+    Without a list, every chart folder under the prefixes is read. Charts not found are added to
+    ``missing``."""
+    clients: dict[str, object] = {}
+
+    def client_for(name: str):
+        if name not in clients:
+            clients[name] = _container_client(name)
+        return clients[name]
+
+    def base(prefix: str) -> str:
+        cleaned = prefix.strip("/").replace("\\", "/")
+        return f"{cleaned}/" if cleaned else ""
+
+    def fetch(cont: str, folder: str, name: str) -> Optional[Chart]:
+        client = client_for(cont)
+        prelim = _download_text(client, f"{folder}ocr/{name}_prelim.txt")
         if not prelim:
-            continue
-        final = _download_text(client, f"{base}{name}/imaging/{name}_final.csv")
-        yield chart_from_pages(name, split_prelim(prelim), final_rows_from_csv(final) if final else {})
-    if wanted:
-        missing = wanted - names
-        if missing:
-            logger.warning("%d listed chart(s) have no prelim text under %s", len(missing), base or "(root)")
+            return None
+        final = _download_text(client, f"{folder}imaging/{name}_final.csv")
+        return chart_from_pages(name, split_prelim(prelim), final_rows_from_csv(final) if final else {})
+
+    prefixes = prefixes or [""]
+    if chart_list:
+        for name in sorted(set(chart_list)):
+            chart = None
+            own = (paths or {}).get(name)
+            if own:
+                folder = base(own[1])
+                if not folder.rstrip("/").endswith(name):
+                    folder = f"{folder}{name}/"
+                chart = fetch(own[0] or container, folder, name)
+            for prefix in prefixes:
+                if chart is None:
+                    chart = fetch(container, f"{base(prefix)}{name}/", name)
+            if chart is None:
+                if missing is not None:
+                    missing.append(name)
+                continue
+            yield chart
+        return
+
+    client = client_for(container)
+    for prefix in prefixes:
+        root = base(prefix)
+        names: set[str] = set()
+        for blob in client.list_blobs(name_starts_with=root):
+            parts = blob.name[len(root):].split("/")
+            if len(parts) == 3 and parts[1] == "ocr" and parts[2] == f"{parts[0]}_prelim.txt":
+                names.add(parts[0])
+        for name in sorted(names):
+            chart = fetch(container, f"{root}{name}/", name)
+            if chart is not None:
+                yield chart
 
 
 def read_chart_list(path: Optional[str]) -> Optional[list[str]]:

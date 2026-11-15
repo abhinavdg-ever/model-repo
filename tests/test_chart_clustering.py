@@ -59,3 +59,34 @@ def test_first_cut_finds_the_templates_and_puts_the_rest_in_others(tmp_path):
         assert "zq" not in (out / name).read_text(encoding="utf-8")
     summary = (out / "cluster_summary.csv").read_text(encoding="utf-8").lower()
     assert "athena" in summary and "hospital course:" in summary   # template words and field labels
+
+
+def test_blob_fetches_listed_charts_across_runs(monkeypatch):
+    """2026-11-15 (user): a chart list across runs / batches: each chart is fetched from its own
+    output path (chart_list) or the first --prefix that has it; the rest are reported missing."""
+    from chart_clustering import sources
+
+    files = {
+        "Processed/Run1/a/ocr/a_prelim.txt": "===== 1.jpg =====\nChief Complaint: x",
+        "Processed/Run2/b/ocr/b_prelim.txt": "===== 1.jpg =====\nPlan: y",
+        "Processed/Run7/B3/c/ocr/c_prelim.txt": "===== 1.jpg =====\nHPI: z",
+    }
+
+    class _Blob:
+        def __init__(self, text):
+            self.text = text
+
+        def readall(self):
+            return self.text.encode()
+
+    class _Client:
+        def download_blob(self, name):
+            if name not in files:
+                raise KeyError(name)
+            return _Blob(files[name])
+
+    monkeypatch.setattr(sources, "_container_client", lambda container: _Client())
+    missing: list[str] = []
+    charts = list(sources.from_blob("imaging-pipeline", ["Processed/Run1", "Processed/Run2"], ["a", "b", "c", "d"],
+                                    paths={"c": ("", "Processed/Run7/B3/c")}, missing=missing))
+    assert [c.name for c in charts] == ["a", "b", "c"] and missing == ["d"]

@@ -38,7 +38,12 @@ def parse(argv=None) -> argparse.Namespace:
     ap.add_argument("--schema", default="public", help="db source: Postgres schema")
     ap.add_argument("--database-url-env", default="DATABASE_URL", help="db source: env var holding the URL")
     ap.add_argument("--container", help="blob source: container")
-    ap.add_argument("--prefix", default="", help="blob source: prefix above the chart folders")
+    ap.add_argument("--prefix", action="append", default=[],
+                    help="blob source: prefix above the chart folders; repeatable for charts across runs "
+                         "(--prefix Processed/Run1 --prefix Processed/Run2)")
+    ap.add_argument("--paths-from-db", action="store_true",
+                    help="blob source with --chart-list: find each chart at its own chart_list.output_path "
+                         "(any run / batch; needs DATABASE_URL), then the --prefix folders")
     ap.add_argument("--chart-list", help="optional .txt of chart names, one per line")
     ap.add_argument("--out", required=True, help="output folder")
     ap.add_argument("--env-file", default=".env")
@@ -55,17 +60,34 @@ def parse(argv=None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
-def charts_from(args):
+def charts_from(args, missing: list[str]):
+    """The charts to cluster. With --chart-list they may come from any runs / batches; listed
+    charts that are not found are appended to ``missing`` (written to missing_charts.txt)."""
     names = sources.read_chart_list(args.chart_list)
     if args.source == "folder":
         if not args.root:
             raise SystemExit("--root is required for --source folder")
-        return sources.from_folder(Path(args.root), names), f"folder:{Path(args.root).name}"
+        return _with_missing(sources.from_folder(Path(args.root), names), names, missing), \
+            f"folder:{Path(args.root).name}"
     if args.source == "db":
-        return sources.from_db(os.environ.get(args.database_url_env), args.schema, names), f"db:{args.schema}"
+        return sources.from_db(os.environ.get(args.database_url_env), args.schema, names, missing=missing), \
+            f"db:{args.schema}"
     if not args.container:
         raise SystemExit("--container is required for --source blob")
-    return sources.from_blob(args.container, args.prefix, names), f"blob:{args.container}/{args.prefix}"
+    if args.paths_from_db and not names:
+        raise SystemExit("--paths-from-db needs --chart-list")
+    paths = (sources.db_output_paths(names, os.environ.get(args.database_url_env), args.schema)
+             if args.paths_from_db else None)
+    return sources.from_blob(args.container, args.prefix, names, paths=paths, missing=missing), \
+        f"blob:{args.container}/{'+'.join(args.prefix) or '(root)'}{' +db paths' if paths is not None else ''}"
+
+
+def _with_missing(charts, names, missing: list[str]):
+    seen = set()
+    for chart in charts:
+        seen.add(chart.name)
+        yield chart
+    missing.extend(sorted(set(names or []) - seen))
 
 
 def main(argv=None) -> int:
@@ -75,7 +97,8 @@ def main(argv=None) -> int:
     cfg = cluster.Settings(anchors=args.anchors, min_charts=args.min_charts, min_cluster_size=args.min_cluster_size,
                            min_samples=args.min_samples, layout_weight=args.layout_weight,
                            stability_runs=args.stability_runs, seed=args.seed)
-    charts, source = charts_from(args)
+    missing: list[str] = []
+    charts, source = charts_from(args, missing)
 
     rows, layout_rows, usable = [], [], []
     tokens: dict[str, list[list[str]]] = {"first_pn": [], "last": []}
@@ -101,6 +124,10 @@ def main(argv=None) -> int:
         rows[-1]["_layout"] = layout
         # Not enough to describe the chart (no anchor page with text): straight to Others.
         usable.append(main_page is not None and len(main_page.text.split()) >= anchors.MIN_WORDS)
+    if missing:
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "missing_charts.txt").write_text("\n".join(sorted(missing)) + "\n", encoding="utf-8")
+        logger.warning("%d listed chart(s) not found: see missing_charts.txt", len(missing))
     if not rows:
         raise SystemExit("No charts with Tesseract text found")
     logger.info("charts read: %d (%d describable)", len(rows), sum(usable))

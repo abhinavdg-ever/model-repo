@@ -44,6 +44,19 @@ From Blob (the chart output folders, e.g. `Processed/Run1/<chart>/ocr/<chart>_pr
 python -m chart_clustering --source blob --container imaging-pipeline --prefix Processed/Run1 --out out\run1
 ```
 
+**A set of charts across runs / batches** (`charts.txt`, one chart name per line):
+
+```
+python -m chart_clustering --source db --chart-list charts.txt --out out\run1
+python -m chart_clustering --source blob --container imaging-pipeline --chart-list charts.txt --paths-from-db --out out\run1
+python -m chart_clustering --source blob --container imaging-pipeline --chart-list charts.txt --prefix Processed/Run1 --prefix Processed/Run2 --out out\run1
+```
+
+- `db` looks every chart up by name, whatever run or batch it came from.
+- `blob` fetches each listed chart directly (no listing): first at its own output path from
+  `chart_list` (`--paths-from-db`, needs DATABASE_URL), then under each `--prefix` in turn.
+- Listed charts that are not found are written to `missing_charts.txt` in the output folder.
+
 From a local folder (`core-pipeline/outputs/charts` shape):
 
 ```

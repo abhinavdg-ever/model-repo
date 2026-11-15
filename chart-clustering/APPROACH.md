@@ -98,7 +98,10 @@ EMR names). Chart names are ids.
 | `blob` | `<container>/<prefix>/<chart>/ocr/<chart>_prelim.txt` (+ `imaging/<chart>_final.csv`): the chart output folders core-pipeline exports | `AZURE_STORAGE_CONNECTION_STRING`, or `AZURE_STORAGE_ACCOUNT_NAME` + `_KEY`, or the account name with a managed identity / `az login` |
 | `folder` | the same files under a local folder (`core-pipeline/outputs/charts` shape) | nothing |
 
-`--chart-list charts.txt` (one name per line) limits any source to those charts.
+`--chart-list charts.txt` (one name per line) limits any source to those charts, from any runs
+/ batches: the database looks them up by name; Blob fetches each from its own `chart_list.output_path`
+(`--paths-from-db`) or the first of several `--prefix` folders that has it. Charts not found are
+listed in `missing_charts.txt`.
 
 ## 8. From first cut to the concept note (next steps, for Cursor)
 
