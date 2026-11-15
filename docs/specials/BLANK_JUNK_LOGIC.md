@@ -135,3 +135,12 @@ other's, one pixel of give (`image_min_match`). Not yet calibrated on real chart
 ## Continuity
 
 Off for now: continuity no longer turns a junk page inside a Progress Note back into Main.
+
+## Debugging file: the page x page similarity matrix
+
+Every blank / junk pass writes `staging/duplicate_similarity_pass<N>.csv` (2026-11-15): one row per
+page with `words` and `distinct_words`, then one column per page (`p1`, `p2` …). A cell is the share of
+the **row** page's distinct body words (the duplicate check's body text: header / footer lines and print
+stamps out) found on the **column** page. So a page contained in another is 100% one way only. Numbers
+only, no page text. Pass 1 reads Tesseract, pass 2 the Final OCR.
+

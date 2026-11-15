@@ -896,6 +896,47 @@ def section_heading_texts(chart_name: str) -> dict[str, tuple[str, ...]]:
     return out
 
 
+def similarity_matrix_path(chart_name: str, pass_no: int) -> Path:
+    return staging_dir(chart_name) / f"duplicate_similarity_pass{pass_no}.csv"
+
+
+def similarity_matrix(pages: list[dict[str, Any]], texts: dict[int, str]) -> list[dict[str, Any]]:
+    """Page x page containment on the duplicate check's body text (header / footer lines and
+    print stamps out, dup_rules.body_text): row page R, column page C = the share of R's distinct
+    words that are on C, so a page contained in another is 100% one way and not the other
+    (2026-11-15, user). Each row also carries the page's word count and distinct words."""
+    cfg = dup_rules.settings(method.canon().raw.get("duplicate_logic"))
+    all_texts = [texts.get(page["id"]) or "" for page in pages]
+    repeated = dup_rules.repeated_band_lines(all_texts, cfg)
+    bodies = [dup_rules.body(dup_rules.body_text(text, repeated, cfg)) for text in all_texts]
+    labels = [str(page.get("page_number") or page.get("page_name")) for page in pages]
+    rows: list[dict[str, Any]] = []
+    for i, page in enumerate(pages):
+        row: dict[str, Any] = {"page": labels[i], "page_name": page.get("page_name"),
+                               "words": bodies[i].count, "distinct_words": len(bodies[i].words)}
+        for j, label in enumerate(labels):
+            mine = bodies[i].words
+            row[f"p{label}"] = (round(100.0 * len(mine & bodies[j].words) / len(mine), 1) if mine else "")
+        rows.append(row)
+    return rows
+
+
+def _write_similarity_matrix(chart_name: str, pass_no: int, pages: list[dict[str, Any]],
+                             texts: dict[int, str]) -> Path:
+    """staging/duplicate_similarity_pass<N>.csv (rebuilt every run): see similarity_matrix.
+    Numbers only, no page text."""
+    import csv
+
+    rows = similarity_matrix(pages, texts)
+    path = similarity_matrix_path(chart_name, pass_no)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]) if rows else ["page"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
 VOTES_FILE = "blank_junk.json"
 VOTES_VERSION = 1
 
@@ -1206,6 +1247,10 @@ def _run_pass(
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
         votes_file = _write_votes(ctx.chart_name, pass_no, classified, best_matches)
+        try:
+            _write_similarity_matrix(ctx.chart_name, pass_no, ctx.pages, texts)
+        except Exception as exc:  # noqa: BLE001 - a debugging file must not fail the stage
+            logger.warning("blank/junk similarity matrix not written: %s", str(exc)[:200])
 
         counts: dict[str, int] = {}
         for row in classified:

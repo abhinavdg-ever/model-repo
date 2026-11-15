@@ -250,3 +250,16 @@ def test_a_contents_pages_next_page_carrying_its_list_is_junk(monkeypatch):
     assert rows[1]["reason"].startswith("INDEX") and rows[1]["flag"] == "junk"
     assert rows[2]["flag"] == "junk" and "INDEX continued" in rows[2]["reason"]
     assert rows[3]["flag"] == "not_blank_junk"
+
+
+def test_the_similarity_matrix_is_containment_one_way(tmp_path, monkeypatch):
+    """2026-11-15 (user): staging duplicate_similarity_pass<N>.csv, page x page, with word counts;
+    page 1 inside page 2 is 100% for row 1 / column 2, not for row 2 / column 1."""
+    import csv
+    monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path)
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in (1, 2, 3)]
+    texts = {1: "alpha beta gamma delta", 2: "alpha beta gamma delta epsilon zeta eta theta", 3: "other words"}
+    path = stage._write_similarity_matrix("c", 2, pages, texts)
+    rows = {r["page"]: r for r in csv.DictReader(path.open(encoding="utf-8"))}
+    assert rows["1"]["p2"] == "100.0" and rows["2"]["p1"] == "50.0" and rows["1"]["p1"] == "100.0"
+    assert rows["2"]["words"] == "8" and rows["3"]["p1"] == "0.0"
