@@ -120,9 +120,10 @@ def test_a_contents_page_is_junk_others():
 
 
 def test_a_contained_page_whose_content_goes_past_20_percent_stays_main(monkeypatch):
-    """2026-11-05 (user): the top-20% condition is back; past it, or not measured, stays Main."""
+    """2026-11-05 (user): the top-20% condition is back; past it, or not measured, stays Main. A
+    page with a word or two of its own (one with none is junk anywhere since 2026-11-15)."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
-    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " addendum newword"}
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
     for bottom, flag in ((0.12, "junk"), (0.35, "not_blank_junk"), (None, "not_blank_junk")):
         inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
@@ -188,3 +189,22 @@ def test_a_short_page_carrying_on_the_section_the_page_before_ends_in_stays(monk
         assert (rows[2]["flag"] == "not_blank_junk") is kept, last
         if kept:
             assert "section_continued" in rows[2]["votes"]["short_page"]
+
+
+def test_a_page_whose_words_are_all_on_its_neighbours_is_junk_wherever_they_sit(monkeypatch):
+    """2026-11-15 (user): page 6 of 6 carries only the running header and the end-of-report block
+    that page 5 has too, low on the page (not short) -> Junk / Others."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    block = ("Orthopedic Progress Note Final Report Result type Result date January 30 2024 Result status "
+             "Auth Verified Performed by Monaco Printed by Printed on 6 20 2025 Page of 6 ")
+    texts = {1: block + "Page 5 " + BODY, 2: block + "Page 6"}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.85   # not short
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "junk" and "repeated_only" in rows[2]["reason"]
+    assert rows[1]["flag"] == "not_blank_junk"
+    # one word of its own keeps a page that is not short.
+    texts[2] = block + "Page 6 addendum"
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "not_blank_junk"

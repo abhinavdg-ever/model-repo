@@ -71,6 +71,10 @@ clinical rules is never junked here. The first check that matches decides.
 | d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
 | — | Otherwise | the classifier decides (rule 11) |
 
+**A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 120,
+canon `contained_page.repeated_only_max_words`) is on the previous or next page, e.g. page 6 of 6 holding
+only the running header and the end-of-report block page 5 also has, low on the page -> Junk / Others.
+
 An invoice page is never junked by the short page rule.
 
 ---

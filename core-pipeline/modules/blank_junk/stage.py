@@ -424,12 +424,15 @@ def _classify(
     #         carries that section on (canon contained_page.continue_after_headers +
     #         section_header_classes.json clinical);
     #      c. otherwise under 5 new words -> Junk / Others.
+    # Any other page that got this far (2026-11-15, user): every one of its distinct words (at most
+    # repeated_only_max_words) is on the page before or after -> Junk / Others, wherever the text sits.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         top = float(cfg.get("top_fraction", 0.20))
         junk_below = int(cfg.get("junk_below_unique_words", 5))
         runs_on = _run_on_headers(cfg)
+        repeated_max = int(cfg.get("repeated_only_max_words", 120))
         headers = headers_by_id or {}
         words_of: dict[int, frozenset[str]] = {}
 
@@ -477,10 +480,20 @@ def _classify(
                 continue
             if not votes.get("reached_classifier"):
                 continue
-            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
-            if bottom is None or bottom > top or method.is_invoice_page(own.get("reason")):
+            if method.is_invoice_page(own.get("reason")):
                 continue
+            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
             prev_id, next_id = around.get(pid, (None, None))
+            if bottom is None or bottom > top:
+                # 2026-11-15 (user): a page that adds nothing -- every word is on the page before
+                # or after (a running header and an end-of-report block, wherever on the page) --
+                # is junk however low its text sits. Small pages only: a long page is never one.
+                mine = _words(pid)
+                if (prev_id is not None or next_id is not None) and 0 < len(mine) <= repeated_max \
+                        and not (mine - _words(prev_id) - _words(next_id)):
+                    _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated_only: all {len(mine)} distinct words are on the "
+                                            f"page before or after -> Junk / Others")
+                continue
             short = f"content ends at {bottom:.0%} <= {top:.0%} of the page"
             # 1. the page before ends in its Electronic Signature (kv_extract: in the footer band,
             # or its signature sentence in that page's last paragraph), carried on here.
