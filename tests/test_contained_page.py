@@ -234,3 +234,19 @@ def test_a_signature_in_the_same_spot_on_a_neighbour_does_not_keep_a_short_page(
     rows = _run(texts, signed={2, 3}, signatures={2: stamp, 3: {**stamp, "sentence": "Signed by Jane Roe NP",
                                                                  "provider_name": "Jane Roe"}})
     assert rows[3]["flag"] == "not_blank_junk" and rows[3]["reason"].startswith("R4")
+
+
+def test_a_contents_pages_next_page_carrying_its_list_is_junk(monkeypatch):
+    """2026-11-15 (user): page 2 carries on page 1's CONTENTS list of encounters."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    contents = ("CONTENTS\n" + "\n".join(f"Encounter: {m}/14/2025 9:15:00 AM\nTRI_Full Exam" for m in range(1, 9)))
+    more = "TRI_Full Exam\nEncounter: 2/11/2025 10:00:00 AM\nTRI_Laser\nEncounter: 2/4/2025 9:00:00 AM\nTRI_OCT"
+    texts = {1: contents, 2: more, 3: HEADER + BODY + FOOTER}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    for i in texts:
+        inputs[i].content_bottom = 0.9
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[1]["reason"].startswith("INDEX") and rows[1]["flag"] == "junk"
+    assert rows[2]["flag"] == "junk" and "INDEX continued" in rows[2]["reason"]
+    assert rows[3]["flag"] == "not_blank_junk"

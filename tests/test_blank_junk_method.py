@@ -591,3 +591,37 @@ class TestVerdictConfidence2026_11_14:
         moved = method.post_process(decide(inputs), inputs)
         assert (moved.code, moved.confidence) == (classify.CODE_OTHERS, 0.3)
 
+
+
+def test_a_contents_page_of_encounter_dates_is_junk():
+    """2026-11-15 (user): CONTENTS with Encounter: <date> lines (no page numbers)."""
+    text = ("NextGen Patient Record\nName: Davis Anthony\nCONTENTS\nEncounter: 4/14/2026 9:15:00 AM\nTRI_Full Exam\n"
+            "Encounter: 2/25/2026 9:15:00 AM\nTRI_Office Procedure\nEncounter: 1/21/2026 9:30:00 AM\nTRI_Full Exam\n")
+    assert method.index_page(text) is not None
+    assert method.index_entries("Encounter: 2/11/2025 10:00:00 AM\nTRI_Laser\nEncounter: 2/4/2025 9:00:00 AM") == 2
+
+
+def test_a_fax_cover_sheet_is_junk_even_when_signed():
+    """2026-11-15 (user): Fax + its routing boxes (Urgent, For Your Review, Reply ASAP ...)."""
+    text = ("Fax To: NW Womens Imaging From: Julie Laurie Bergstrom MD Remarks: Urgent For Your Review "
+            "Reply ASAP Please Comment please send all previous DXA scan results on patient " + FILLER)
+    v = run(text, signed=True, bert=bert(0.1))
+    assert v.code == method.CODE_LETTER_FAX and v.votes.get("fax_cover")
+    # a faxed clinical note (Fax header only) is not a cover sheet.
+    assert method.fax_cover_sheet("Fax 555-1212 Progress Note Assessment Plan") is None
+
+
+def test_a_hospital_page_without_the_word_card_is_not_a_card():
+    """2026-11-15 (user): an Island Hospital Patient Abstract (Account Number, copay) the model calls
+    an invoice and the card rule nearly matched -> not Cards; no invoice wording -> Main."""
+    from types import SimpleNamespace
+    text = ("Island Hospital PATIENT ABSTRACT Patient Rice Timothy Account Number IH59862714 Facility Island "
+            "Hospital Tot Copay 18.98 Tot Est Reimb 93.33 " + FILLER)
+    import modules.blank_junk.method as m
+    orig = m.detect_card
+    m.detect_card = lambda *a, **k: SimpleNamespace(card_type="insurance", matched=[], blocked_by="no card word")
+    try:
+        v = run(text, document_type="printed", bert=bert(0.97))
+    finally:
+        m.detect_card = orig
+    assert v.code == method.CODE_MAIN and v.code != classify.CODE_CARDS

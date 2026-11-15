@@ -508,10 +508,27 @@ def _classify(
             partial.discard(pid)
             contained.add(pid)
 
+        # A contents page's next page carrying on its list (2026-11-15, user): the page before is a
+        # contents page (INDEX) and this one is 2+ entry lines (dates / page numbers), at most
+        # 120 distinct words, with nothing that kept it earlier -> Junk / Others.
+        for pid in order:
+            own = by_id.get(pid) or {}
+            if pid in dup_of or not (own.get("votes") or {}).get("reached_classifier"):
+                continue
+            prev_id = around.get(pid, (None, None))[0]
+            prev_row = by_id.get(prev_id) if prev_id is not None else None
+            if not prev_row or not str(prev_row.get("reason") or "").startswith("INDEX"):
+                continue
+            body = texts.get(pid) or ""
+            if method.index_entries(body) >= 2 and len(_words(pid)) <= 120:
+                _junk(pid, CODE_OTHERS, f"INDEX continued: page {page_by_id[prev_id].get('page_number')} is a "
+                                        f"contents page and this page carries its list on "
+                                        f"({method.index_entries(body)} entry lines) -> Junk / Others")
+
         for pid in order:
             own = by_id.get(pid) or {}
             votes = own.get("votes") or {}
-            if pid in dup_of or not (texts.get(pid) or "").strip():
+            if pid in dup_of or pid in contained or not (texts.get(pid) or "").strip():
                 continue
             if not votes.get("reached_classifier"):
                 continue

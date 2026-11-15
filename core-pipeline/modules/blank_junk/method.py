@@ -778,6 +778,12 @@ def decide(inputs: PageInputs) -> Verdict:
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
         return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
+    # 3b. a fax cover sheet (2026-11-15, user): "Fax" and its routing boxes -- Urgent / For Review /
+    # Please Comment / Please Reply -- are junk even when signed (a cover sheet lists doctors).
+    cover = fax_cover_sheet(text)
+    if cover is not None:
+        votes["fax_cover"] = cover
+        return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
     # 4. signed (signature_keeps: Electronic Signature here, not repeated in the same spot on the
     # previous / next page, raw p(junk) < 0.95), every page.
     if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
@@ -832,6 +838,11 @@ def decide(inputs: PageInputs) -> Verdict:
         # cards under JUNK_INVOICE; the card rule's near miss (a card type it recognised but
         # whose strict guards blocked it) or the service's insurance-ID audit tag says card.
         near_card = subtype == "Invoice" and card is not None and bool(card.card_type)
+        # 2026-11-15 (user): a hospital / clinic page (a Patient Abstract: Account Number, copay)
+        # without the word "card" is not a card; it goes on to the invoice check below.
+        if near_card and FACILITY_WORDS.search(text) and not CARD_WORD.search(text):
+            near_card = False
+            votes["card_not_kept"] = "care provider's page, no 'card' on it"
         if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
             subtype = "Cards"
         # The card rule's near miss turning the model's Invoice into Cards goes against the
@@ -873,6 +884,21 @@ def _terms(words: list[str]) -> Optional[re.Pattern[str]]:
     return re.compile(r"(?<![A-Za-z])(?:" + "|".join(re.escape(str(w)).replace(r"\ ", r"\s+")
                                                      for w in sorted(words, key=len, reverse=True)) + r")(?![A-Za-z])",
                       re.IGNORECASE)
+
+
+FAX_WORD = re.compile(r"(?<![A-Za-z])(?:fax|facsimile)(?![A-Za-z])", re.IGNORECASE)
+FAX_COVER_BOXES = re.compile(
+    r"(?<![A-Za-z])(?:urgent|for\s+(?:your\s+)?review|please\s+comment|please\s+reply|reply\s+asap"
+    r"|please\s+recycle|as\s+requested)(?![A-Za-z])", re.IGNORECASE)
+
+
+def fax_cover_sheet(text: str) -> Optional[str]:
+    """A fax cover sheet: the word Fax and 2+ of its routing boxes (Urgent, For Review, Please
+    Comment, Please Reply, Please Recycle, As Requested), or None (2026-11-15, user)."""
+    if not FAX_WORD.search(text or ""):
+        return None
+    boxes = list(dict.fromkeys(" ".join(m.group(0).lower().split()) for m in FAX_COVER_BOXES.finditer(text or "")))
+    return f"Fax + {', '.join(boxes)}" if len(boxes) >= 2 else None
 
 
 def fax_unsigned(inputs: PageInputs) -> Optional[str]:
@@ -961,6 +987,9 @@ INDEX_TITLE = re.compile(r"^\W*(?:table\s+of\s+contents|contents|(?:document\s+|
 PAGE_NUMBER_LINE = re.compile(r"^(?=.*[A-Za-z]).*?(?:\.{2,}|\s)\s*\d{1,4}\s*$|\bpages?\s*\d{1,4}(?:\s*[-\u2013]\s*\d{1,4})?\b",
                               re.IGNORECASE)
 INDEX_MIN_PAGE_LINES = 3
+# 2026-11-15 (user): a contents page of encounters lists dates, not page numbers
+# ("Encounter: 4/14/2026 9:15:00 AM"): a line with a date counts as an entry too.
+INDEX_ENTRY_DATE = re.compile(r"(?<!\d)\d{1,2}/\d{1,2}/\d{2,4}(?!\d)|(?<!\d)\d{4}-\d{1,2}-\d{1,2}(?!\d)")
 
 
 def index_page(text: str, headings: tuple[str, ...] = ()) -> Optional[str]:
@@ -970,10 +999,18 @@ def index_page(text: str, headings: tuple[str, ...] = ()) -> Optional[str]:
         (h for h in headings or () if INDEX_TITLE.fullmatch(str(h).strip())), None)
     if not title_text:
         return None
-    numbered = sum(1 for line in (text or "").splitlines() if PAGE_NUMBER_LINE.search(line.strip()))
+    numbered = sum(1 for line in (text or "").splitlines()
+                   if PAGE_NUMBER_LINE.search(line.strip()) or INDEX_ENTRY_DATE.search(line))
     if numbered < INDEX_MIN_PAGE_LINES:
         return None
-    return f"'{title_text}' and {numbered} lines with page numbers"
+    return f"'{title_text}' and {numbered} lines with page numbers or dates"
+
+
+def index_entries(text: str) -> int:
+    """Lines that read as contents entries (a page number or a date), for a contents page's
+    continuation (stage._classify, 2026-11-15)."""
+    return sum(1 for line in (text or "").splitlines()
+               if PAGE_NUMBER_LINE.search(line.strip()) or INDEX_ENTRY_DATE.search(line))
 
 
 # 2026-11-08 (user): the short page rules (stage._classify) read these.
@@ -1061,6 +1098,8 @@ def terms_page(inputs: PageInputs) -> Optional[str]:
             return " ".join(hit.group(0).split())
     return None
 
+
+CARD_WORD = re.compile(r"(?<![A-Za-z])cards?(?![A-Za-z])", re.IGNORECASE)
 
 # 2026-11-15 (user): a care provider's own page (a surgery center's billing letter) the model
 # filed as an invoice, with no invoice wording on it: Main, and page classification decides.

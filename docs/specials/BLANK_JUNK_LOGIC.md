@@ -1,6 +1,6 @@
 # Blank / Junk Logic
 
-As built on 2026-11-11. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
+As built on 2026-11-15. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
 `stage.py` the short page and duplicates). Numbers: `resources/canon/blank_junk_context_canon.json`.
 
 Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype**. The subtypes are
@@ -41,15 +41,16 @@ The first rule that matches decides.
 | 1 | Blank | The pass 1 rules 1–5 again | as in pass 1 |
 | 2 | Visual | A visual page under 20 words that is not a card | Main |
 | 3 | Handwritten | More than 30% handwritten | Main |
+| 3b | Fax cover sheet | The word **Fax** and 2+ of its routing boxes: **Urgent, For (Your) Review, Please Comment, Please Reply / Reply ASAP, Please Recycle, As Requested** — even when signed (a cover sheet lists doctors) (2026-11-15) | Junk / Letter/Fax |
 | 4 | **Signature** | An Electronic Signature here, **and** not the same signature in the same spot on the previous or next page (2026-11-15), **and** the model's p(junk) < 0.95 | Main |
 | 5 | Lab result | One word from each group: **Laboratory / Lab Result(s) / Lab Report / Lab Test(s)** (not "Lab" alone) · **Reference Range** (Ref Range, Reference Interval) · **Value(s)** | Main |
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
 | 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
-| 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers | Junk / Others |
+| 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers **or dates** ("Encounter: 4/14/2026 9:15 AM", 2026-11-15). The next page carrying the list on (2+ entry lines, ≤ 120 distinct words, nothing kept it earlier) is junk too | Junk / Others |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
 | 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
-|    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
+|    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label). Not a near miss on a hospital / clinic page without the word "card" (a Patient Abstract: Account Number, copay), which goes on to the invoice checks (2026-11-15) | Junk / Cards |
 |    |  | Otherwise Invoice, with a **table holding a dollar amount** (Final OCR 1 / Docling markdown `\| … \| $25.00 \|`, else the Final OCR text, an HTML `<td>$…</td>` too). Terms wording cannot overrule it (2026-11-14) | Main (page type Invoice / Invoice Page) |
 |    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, **Payment Instructions**, Terms of Payment / Sale / Service, General / Standard Terms, appearing **before** the first invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) or on a page with none (Final OCR text, else Tesseract's) | Junk / Others |
 |    |  | Otherwise Invoice with **no invoice wording** but a care provider's name: **Surgery Center**, Surgical Center, Ambulatory Surgery, **Hospital**, **Clinic**, Medical Center, Health Center (2026-11-15) | Main, **not** an invoice: page classification decides |

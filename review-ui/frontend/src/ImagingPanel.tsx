@@ -416,7 +416,10 @@ export function splitPageType(value: string | null | undefined): {
   const match = /^(.+?)\s+\((.+)\)\s*$/.exec(raw);
   if (!match) return { family: raw, subtype: raw };
   const family = match[1].trim();
-  const subtype = match[2].trim();
+  // "Lab Report (Diagnostic Study) (Others)": the lazy split leaves "Diagnostic Study) (Others";
+  // read it back as "Diagnostic Study (Others)" (2026-11-15).
+  let subtype = match[2].trim();
+  if (subtype.includes(") (")) subtype = `${subtype.replace(/\)\s*\(/g, " (")})`;
   if (!family || !subtype) return { family: raw, subtype: raw };
   return { family, subtype };
 }
