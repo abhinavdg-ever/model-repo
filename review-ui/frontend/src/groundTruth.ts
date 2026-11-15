@@ -259,8 +259,9 @@ function blankJunkMark(
   if (!expected) return [];
   if (!known || missing(pipeline)) return bit(expected, "unknown");
   const left = fold(expected);
-  // A full duplicate the reviewer called junk or blank: right either way (2026-11-03, user).
-  if (duplicate && left.startsWith("yes")) return bit(expected, "match");
+  // 2026-11-15 (user): duplicates are not part of Blank / Junk -- a duplicate is scored on its
+  // Blank / Junk value (No) like any page, and on the Is Duplicate row. ``duplicate`` is unused.
+  void duplicate;
   const right = fold(pipeline);
   // Blank against Junk (or one junk subtype against another) is still a match: both say
   // Yes, and the page is out of the record either way.

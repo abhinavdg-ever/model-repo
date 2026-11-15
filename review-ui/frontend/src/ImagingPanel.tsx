@@ -495,7 +495,7 @@ const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 /** Blank / Junk on the page view, as the accuracy report scores it: any Yes against any
  * Yes is a tick (Yes (Junk) against Yes (Blank) included), No against No a tick; Final
  * wrong but Extracted right is "!"; otherwise a cross. */
-function blankJunkCompare(extracted: string, final: string, duplicate = false) {
+function blankJunkCompare(extracted: string, final: string) {
   const side = (value: string): "yes" | "no" | null => {
     const text = value.trim().toLowerCase();
     if (text.startsWith("yes")) return "yes";
@@ -505,7 +505,6 @@ function blankJunkCompare(extracted: string, final: string, duplicate = false) {
   return (truth: string): "match" | "partial" | "mismatch" | null => {
     const expected = side(truth);
     if (!expected) return null;
-    if (duplicate && expected === "yes") return "match";
     const got = side(final);
     if (got === expected) return "match";
     return side(extracted) === expected ? "partial" : "mismatch";
@@ -2295,9 +2294,9 @@ function PageDetails({
               choices: BLANK_JUNK_CHOICES,
               key: true,
             });
-            // Scored on the stored verdict, as the accuracy report does; a full duplicate
-            // matches a ground truth of Yes (Junk / Blank) (2026-11-03, user).
-            return { ...row, compare: blankJunkCompare(stored, stored, page.isDuplicate === true) };
+            // Scored on the stored verdict, as the accuracy report does. A duplicate is not part of
+            // Blank / Junk (2026-11-15, user): it is scored on the Is Duplicate row only.
+            return { ...row, compare: blankJunkCompare(stored, stored) };
           })(),
           sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence, page.isDuplicateContent), sections.junk), {
             id: "duplicate",
