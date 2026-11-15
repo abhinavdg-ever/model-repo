@@ -61,7 +61,9 @@ BLOCK_SHORT_SIGNED = "short signed page"
 BLOCK_IMAGE = "image"
 BLOCK_DOS = "date of service"
 
-_PAGINATION = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d{1,4}\s*(?:of|/)\s*\d{1,4}\b|^\s*\d{1,4}\s+of\s+\d{1,4}\s*$", re.I)
+# "Page 8 of 11", "Pg 8/11", "Page 8 out of 11" (2026-11-15), or a line "8 of 11" / "8 out of 11".
+_PAGINATION = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d{1,4}\s*(?:(?:out\s+)?of|/)\s*\d{1,4}\b"
+                         r"|^\s*\d{1,4}\s+(?:out\s+)?of\s+\d{1,4}\s*$", re.I)
 _STAMP = re.compile(
     r"\b(?:printed|print\s+date|printed\s+(?:on|by)|generated(?:\s+on)?|run\s+date|report\s+date|"
     r"date\s+printed|date/time\s+printed)\b.*\d", re.I)

@@ -238,3 +238,10 @@ class TestDateOfServiceBlock:
         reason = cont.blocked_reason(2, True, frozenset({"2024-05-05"}), frozenset({"2024-01-01"}), was)
         assert reason.startswith(cont.CONTENT_MARK + "2") and cont.DOS_NOTE in reason
         assert cont.restored_reason(reason, 2) == was
+
+
+def test_page_out_of_numbering_does_not_block_a_duplicate():
+    """2026-11-15 (user): "Page 8 out of 11" vs "Page 11 out of 11" is pagination, stripped."""
+    from modules.blank_junk import dup_rules
+    assert dup_rules.is_boilerplate("Page 8 out of 11") and dup_rules.is_boilerplate("11 out of 11")
+    assert dup_rules.is_boilerplate("Page 8 of 11") and not dup_rules.is_boilerplate("Blood pressure 120 of 80")
