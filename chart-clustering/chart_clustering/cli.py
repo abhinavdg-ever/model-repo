@@ -3,7 +3,8 @@
   folder: --root <charts folder>
   db:     DATABASE_URL in .env (or --database-url-env NAME), --schema public
   blob:   --container <name> --prefix Processed/Run1; AZURE_STORAGE_* in .env
-  all:    --chart-list charts.txt (optional), --anchors first_pn|last|both, --min-cluster-size 5
+  all:    --chart-list charts.txt (optional), --anchors first_pn|last|both, --min-cluster-size 5,
+          --write-db (also write chart_list.chart_cluster; needs DATABASE_URL)
 """
 from __future__ import annotations
 
@@ -48,6 +49,9 @@ def parse(argv=None) -> argparse.Namespace:
     ap.add_argument("--layout-weight", type=float, default=0.35)
     ap.add_argument("--stability-runs", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--write-db", action="store_true",
+                    help="also write each chart's cluster to chart_list.chart_cluster (DATABASE_URL); "
+                         "review-ui filters on it")
     return ap.parse_args(argv)
 
 
@@ -107,4 +111,10 @@ def main(argv=None) -> int:
     manifest = report.write(Path(args.out), rows, result, cfg, source)
     logger.info("clusters: %s | silhouette %s | stability %s | out %s", manifest["clusters"],
                 manifest["silhouette"], manifest["stability_ari"], args.out)
+    if args.write_db:
+        from chart_clustering.db_write import write_clusters
+
+        n = write_clusters({r["chart_name"]: r["cluster"] for r in rows},
+                           os.environ.get(args.database_url_env), args.schema)
+        logger.info("chart_list.chart_cluster written for %d chart(s)", n)
     return 0

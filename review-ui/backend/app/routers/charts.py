@@ -83,6 +83,7 @@ def list_folders(
     retrieval: list[str] | None = Query(None, description="Repeatable Retrieval (RR Method) filter"),
     scope: list[str] | None = Query(None, description="Repeatable Scope (project_scope) filter"),
     tag: list[str] | None = Query(None, description="Repeatable chart Tag filter ((Blank) = no tag)"),
+    cluster: list[str] | None = Query(None, description="Repeatable chart Cluster filter ((Blank) = not clustered)"),
     reviewed: list[str] | None = Query(None, description="Repeatable Reviewed filter (Yes / No)"),
     truth: list[str] | None = Query(None, description="Repeatable Ground Truth filter (Yes / No)"),
     sort: str = Query("updated", pattern="^(filename|pages|updated)$"),
@@ -102,6 +103,7 @@ def list_folders(
         retrieval=list(retrieval or []),
         scope=list(scope or []),
         tag=list(tag or []),
+        cluster=list(cluster or []),
         reviewed=list(reviewed or []),
         truth=list(truth or []),
         run_after=run_after,
@@ -143,6 +145,7 @@ def list_folders(
         reviewed_options=result.reviewed_options,
         truth_options=result.truth_options,
         tag_options=result.tag_options,
+        cluster_options=result.cluster_options,
         limit=result.limit,
         offset=result.offset,
     )

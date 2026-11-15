@@ -34,6 +34,8 @@ export type FolderSummary = {
   rr_method?: string | null;
   /** The chart's tags (2026-11-07). */
   tags?: string[];
+  /** chart_list.chart_cluster (chart-clustering, 2026-11-15). */
+  chart_cluster?: string | null;
 };
 
 export type FolderListParams = {
@@ -51,6 +53,8 @@ export type FolderListParams = {
   retrieval?: string[];
   /** Chart tags: any of these ("(Blank)" = no tag). */
   tag?: string[];
+  /** Chart clusters ("(Blank)" = not clustered). */
+  cluster?: string[];
   /** Reviewed / Not Reviewed. */
   reviewed?: string[];
   /** With / No Ground Truth. */
@@ -77,6 +81,7 @@ export type FolderListResponse = {
   measure_options?: string[];
   retrieval_options?: string[];
   tag_options?: string[];
+  cluster_options?: string[];
   reviewed_options?: string[];
   truth_options?: string[];
   limit: number | null;
@@ -635,6 +640,7 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.measure ?? []) sp.append("measure", s);
   for (const s of params?.retrieval ?? []) sp.append("retrieval", s);
   for (const s of params?.tag ?? []) sp.append("tag", s);
+  for (const s of params?.cluster ?? []) sp.append("cluster", s);
   for (const s of params?.reviewed ?? []) sp.append("reviewed", s);
   for (const s of params?.truth ?? []) sp.append("truth", s);
   if (params?.run_after) sp.set("run_after", params.run_after);
@@ -716,6 +722,7 @@ export type AccuracyChartPayload = {
   measure?: string | null;
   rrMethod?: string | null;
   tags?: string[];
+  chartCluster?: string | null;
   metrics?: Record<string, { correct: number; wrong: number; scored: number }> | null;
   overall?: { correct: number; wrong: number; scored: number } | null;
   document?: ImagingDocumentResponse | null;

@@ -518,6 +518,7 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             measure=folder.measure,
             rrMethod=folder.rr_method,
             tags=list(folder.tags),
+            chartCluster=folder.chart_cluster,
             document=ImagingDocumentResponse(
                 folder_id=folder.id,
                 manifest=ImagingManifestDetails(
@@ -571,6 +572,7 @@ def _build_report_cosmos(settings: Settings, source: GroundTruthSource) -> Accur
             measure=folder.measure,
             rrMethod=folder.rr_method,
             tags=list(folder.tags),
+            chartCluster=folder.chart_cluster,
             document=document,
         ))
     return AccuracyReportResponse(charts=charts)

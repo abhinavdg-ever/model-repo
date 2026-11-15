@@ -64,6 +64,31 @@ Useful options: `--anchors first_pn|last|both` (default both), `--min-cluster-si
 
 No page text, names, DOBs or member ids are written anywhere.
 
+## Load the clusters into chart_list (review-ui's Cluster filter)
+
+`chart_clusters.csv` is the chart -> cluster file. Load it into `chart_list.chart_cluster`
+(schema/migrations/2026-11-15.sql; the loader adds the column if missing). Last Run At is kept.
+
+Windows Command Prompt:
+
+```
+cd core-pipeline && .venv\Scripts\activate.bat
+python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run1\chart_clusters.csv --dry-run
+python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run1\chart_clusters.csv
+```
+
+Ubuntu VM:
+
+```
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/load_chart_clusters.py ../chart-clustering/out/run1/chart_clusters.csv --dry-run
+python ../utilities/load_chart_clusters.py ../chart-clustering/out/run1/chart_clusters.csv
+```
+
+Or in one go: add `--write-db` to the clustering run. Any CSV with `chart_name` and `cluster`
+columns works (e.g. after renaming C01 to a real name). Cluster numbers are per run: a new run
+can renumber them, so reload after each run you keep.
+
 ## Layout
 
 ```

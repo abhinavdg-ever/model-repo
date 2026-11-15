@@ -1278,6 +1278,7 @@ function RunAfterColumnFilter({
  * any number for Tag (2026-11-07). None reads "(Blank)". */
 function metaValues(row: ChartAccuracy, key: MetaFilterKey): string[] {
   if (key === "tag") return row.tags ?? [];
+  if (key === "cluster") return row.chartCluster ? [row.chartCluster] : [];
   const value =
     key === "scope" ? row.projectScope
     : key === "source" ? row.sourceName
@@ -1511,6 +1512,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           row.measure = chart.measure ?? null;
           row.rrMethod = chart.rrMethod ?? null;
           row.tags = chart.tags ?? [];
+          row.chartCluster = chart.chartCluster ?? null;
           // Runs before MIN_LAST_RUN used older rules; leave them out.
           const ranAt = row.lastUpdatedAt ? new Date(row.lastUpdatedAt) : null;
           const recent = ranAt != null && !Number.isNaN(ranAt.getTime()) && ranAt >= new Date(`${MIN_LAST_RUN}T00:00:00+05:30`);

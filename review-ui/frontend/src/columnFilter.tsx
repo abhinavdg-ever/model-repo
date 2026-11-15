@@ -260,7 +260,7 @@ export function ClearAllFilters({ count, onClear }: { count: number; onClear: ()
 }
 
 /** The chart-metadata filters both tables offer (manifest / metadata CSV). */
-export type MetaFilterKey = "scope" | "source" | "measure" | "retrieval" | "tag" | "reviewed" | "truth";
+export type MetaFilterKey = "scope" | "source" | "measure" | "retrieval" | "tag" | "cluster" | "reviewed" | "truth";
 export type MetaFilters = Partial<Record<MetaFilterKey, string[]>>;
 export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[] = [
   { key: "scope", label: "Scope", title: "Scope (Project Scope)" },
@@ -270,6 +270,8 @@ export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[
   // 2026-11-07 (user): chart_list.tags, set with utilities/tag_chart.py; a chart with any
   // picked tag passes.
   { key: "tag", label: "Tag", title: "Tag (utilities/tag_chart.py)" },
+  // 2026-11-15 (user): chart_list.chart_cluster from chart-clustering.
+  { key: "cluster", label: "Cluster", title: "Cluster (chart-clustering)" },
   // 2026-11-05 (user).
   // Shown as History column filters, not in the toolbar (2026-11-05, user).
   { key: "reviewed", label: "Reviewed", title: "Reviewed (marked Reviewed in History)" },

@@ -252,6 +252,9 @@ CREATE TABLE chart_list (
     -- review-ui's History and Accuracy filter on them. Setting them leaves updated_at (the
     -- chart's Last Run At) alone.
     tags                JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- 2026-11-15: the chart's segment from chart-clustering (C01, C02 ... or Others);
+    -- written by `python -m chart_clustering ... --write-db`, filtered on in review-ui.
+    chart_cluster       VARCHAR(100),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 

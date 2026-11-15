@@ -429,6 +429,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         measure: data.measure_options ?? [],
         retrieval: data.retrieval_options ?? [],
         tag: data.tag_options ?? [],
+        cluster: data.cluster_options ?? [],
         reviewed: data.reviewed_options ?? [],
         truth: data.truth_options ?? [],
       });

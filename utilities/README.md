@@ -203,3 +203,19 @@ python ../utilities/tag_chart.py 1234 --remove Pilot                    # or --c
 python ../utilities/tag_chart.py 1234                                   # show its tags
 python ../utilities/tag_chart.py --list-tags                            # every tag, with counts
 ```
+
+## Load chart clusters into chart_list
+
+`load_chart_clusters.py` (2026-11-15): reads chart-clustering's `chart_clusters.csv` (or any CSV
+with `chart_name` and `cluster` columns) into `chart_list.chart_cluster`; review-ui's History and
+Accuracy View filter on it (Cluster). `--dry-run` first; `--clear-others` also clears charts not
+in the file. Keeps Last Run At (pauses the updated_at trigger, so run as the table owner).
+
+```
+cd core-pipeline && source .venv/bin/activate                        (Ubuntu VM)
+python ../utilities/load_chart_clusters.py ../chart-clustering/out/run1/chart_clusters.csv --dry-run
+
+cd core-pipeline && .venv\Scripts\activate.bat                       (Windows Command Prompt)
+python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run1\chart_clusters.csv
+```
+

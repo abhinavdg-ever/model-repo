@@ -140,6 +140,7 @@ export type ChartAccuracy = {
   measure?: string | null;
   rrMethod?: string | null;
   tags?: string[];
+  chartCluster?: string | null;
   metrics: Record<MetricId, Tally>;
   overall: Tally;
   /** Class 1 = a blank or junk page. */

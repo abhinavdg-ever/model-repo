@@ -280,7 +280,7 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
         for c in charts:
             summary = chart_summary(c.get("chart_name"), c.get("page_count"), c.get("status"),
                                     _as_datetime(c.get("updated_at")), c.get("current_stage"),
-                                    c.get("run_id"), c.get("batch_id"))
+                                    c.get("run_id"), c.get("batch_id"), c.get("chart_cluster"))
             if summary is not None:
                 rows.append(summary)
         params = FolderListParams(limit=None, offset=0, sort="updated", sort_dir="desc")

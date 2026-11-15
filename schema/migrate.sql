@@ -39,4 +39,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-11-12.sql
 \echo '2026-11-13  accuracy view: the ground truth''s Is Duplicate'
 \ir migrations/2026-11-13.sql
+\echo '2026-11-15  chart_list.chart_cluster (chart-clustering)'
+\ir migrations/2026-11-15.sql
 \echo 'Done: the database matches schema/schema.sql.'

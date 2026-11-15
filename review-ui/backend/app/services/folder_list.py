@@ -103,6 +103,8 @@ class FolderListParams:
     scope: list[str] = field(default_factory=list)
     # 2026-11-07 (user): charts with any of these tags ("(Blank)": charts with none).
     tag: list[str] = field(default_factory=list)
+    # 2026-11-15 (user): chart_list.chart_cluster ("(Blank)": charts not clustered).
+    cluster: list[str] = field(default_factory=list)
     # 2026-11-05 (user): Reviewed / Not Reviewed and With / No Ground Truth.
     reviewed: list[str] = field(default_factory=list)
     truth: list[str] = field(default_factory=list)
@@ -136,6 +138,7 @@ class FolderListResult:
     reviewed_options: list[str] = field(default_factory=list)
     truth_options: list[str] = field(default_factory=list)
     tag_options: list[str] = field(default_factory=list)
+    cluster_options: list[str] = field(default_factory=list)
 
 
 def quick_page_count(folder_dir: Path) -> int:
@@ -171,7 +174,10 @@ def fetch_chart_summaries_from_db(
                 cur.execute(
                     """
                     SELECT chart_name, page_count, status, updated_at,
-                           current_stage, run_id, batch_id
+                           current_stage, run_id, batch_id,
+                           -- 2026-11-15: read through to_jsonb, so a database before
+                           -- migrations/2026-11-15.sql answers no cluster instead of failing.
+                           to_jsonb(chart_list) ->> 'chart_cluster'
                       FROM chart_list
                      WHERE source <> 'manifest' OR page_count > 0
                      ORDER BY updated_at DESC NULLS LAST, id DESC
@@ -191,7 +197,7 @@ def fetch_chart_summaries_from_db(
 
 
 def chart_summary(
-    chart_name, page_count, status, updated_at, current_stage, run_id, batch_id
+    chart_name, page_count, status, updated_at, current_stage, run_id, batch_id, chart_cluster=None
 ) -> FolderSummary | None:
     """One landing row from a chart_list row's columns (None when it has no name). The
     Cosmos repository builds its rows here too."""
@@ -222,6 +228,7 @@ def chart_summary(
         last_updated_at=updated_at,
         run_id=stored_run,
         batch_id=stored_batch,
+        chart_cluster=(str(chart_cluster).strip() or None) if chart_cluster else None,
     )
 
 
@@ -342,6 +349,7 @@ def filter_sort_page(
         ("source_name", {s for s in params.source if s}),
         ("measure", {s for s in params.measure if s}),
         ("rr_method", {s for s in params.retrieval if s}),
+        ("chart_cluster", {s for s in params.cluster if s}),
     ]
     # A chart with no value (none in the database or the CSVs) is offered as "(Blank)".
     metadata_options = {
@@ -433,6 +441,7 @@ def filter_sort_page(
         reviewed_options=REVIEWED_OPTIONS,
         truth_options=TRUTH_OPTIONS,
         tag_options=tag_options,
+        cluster_options=metadata_options["chart_cluster"],
         limit=eff_limit,
         offset=offset,
     )

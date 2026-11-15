@@ -40,6 +40,8 @@ class FolderSummary(BaseModel):
     rr_method: str | None = None
     # 2026-11-07 (user): the chart's tags (chart_list.tags, set by utilities/tag_chart.py).
     tags: list[str] = Field(default_factory=list)
+    # 2026-11-15 (user): chart_list.chart_cluster, written by chart-clustering --write-db.
+    chart_cluster: str | None = None
 
 
 
@@ -64,6 +66,7 @@ class FolderListResponse(BaseModel):
     measure_options: list[str] = Field(default_factory=list)
     retrieval_options: list[str] = Field(default_factory=list)
     tag_options: list[str] = Field(default_factory=list)
+    cluster_options: list[str] = Field(default_factory=list)
     reviewed_options: list[str] = Field(default_factory=list)
     truth_options: list[str] = Field(default_factory=list)
     limit: int | None = None
@@ -542,6 +545,7 @@ class AccuracyChartPayload(BaseModel):
     measure: str | None = None
     rrMethod: str | None = None
     tags: list[str] = Field(default_factory=list)
+    chartCluster: str | None = None
     metrics: dict[str, AccuracyTally] | None = None
     overall: AccuracyTally | None = None
     document: ImagingDocumentResponse | None = None
