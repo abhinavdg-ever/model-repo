@@ -318,6 +318,39 @@ def _classify(
     def _neighbour_signed(page_id: int) -> bool:
         return any(n is not None and n in signed for n in around.get(page_id, (None, None)))
 
+    # A signature in the same spot within 2 non-blank pages either side (2026-11-15, user): the same
+    # region (header / mid / footer) and the same sentence or signer -- a stamp the record repeats,
+    # not a page's own signing. A short page does not count it.
+    sigs = signatures or {}
+    near = [pid for pid in order if not _blank(pid)]
+    place = {pid: i for i, pid in enumerate(near)}
+
+    def _spot(page_id: Optional[int]) -> Optional[tuple[str, frozenset[str], str]]:
+        sig = sigs.get(page_id) if page_id is not None and page_id in signed else None
+        if not sig:
+            return None
+        words = frozenset(w for w in re.findall(r"[a-z]+", (sig.get("sentence") or "").lower()) if len(w) > 1)
+        return ((sig.get("region") or "").strip().casefold(), words,
+                " ".join(re.findall(r"[a-z]+", (sig.get("provider_name") or "").lower())))
+
+    def _repeated_signature(page_id: Optional[int]) -> Optional[int]:
+        """The page within 2 non-blank pages whose signature sits in the same spot, or None."""
+        mine = _spot(page_id)
+        if mine is None or page_id not in place:
+            return None
+        i = place[page_id]
+        for other in near[max(0, i - 2): i] + near[i + 1: i + 3]:
+            theirs = _spot(other)
+            if theirs is None or theirs[0] != mine[0]:
+                continue
+            same_sentence = bool(mine[1]) and len(mine[1] & theirs[1]) >= 0.8 * max(len(mine[1]), len(theirs[1]))
+            if same_sentence or (mine[2] and mine[2] == theirs[2]):
+                return other
+        return None
+
+    short_top = float(method.canon().raw.get("contained_page", {}).get("top_fraction", 0.20))
+    page_by_number = {page["id"]: page.get("page_number") for page in pages}
+
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
@@ -327,11 +360,20 @@ def _classify(
         page_inputs = (inputs or {}).get(page_id) or method.PageInputs(text=text, pass_no=1)
         page_inputs.text = text
         page_inputs.neighbour_signed = _neighbour_signed(page_id)
+        bottom_now = page_inputs.content_bottom
+        repeated_sig = (_repeated_signature(page_id)
+                        if bottom_now is not None and bottom_now <= short_top else None)
+        if repeated_sig is not None:
+            # A short page's signature repeated in the same spot nearby: no signature keep.
+            page_inputs.neighbour_signed = True
         # 2026-11-04 (user): pass 1 is rules only; the model runs in pass 2.
         scores = (model_scores(text, docling=(docling_pages or {}).get(page_id))
                   if text.strip() and page_inputs.pass_no == 2 else {})
         page_inputs.bert = scores.get("bert")
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
+        if repeated_sig is not None:
+            verdict.votes["signature_repeated"] = (
+                f"short page; same signature spot as page {page_by_number.get(repeated_sig, repeated_sig)}")
         by_id[page_id] = _row_for(
             page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,
             votes=verdict.votes, strength=verdict.strength,
@@ -498,6 +540,10 @@ def _classify(
             # 1. the page before ends in its Electronic Signature (kv_extract: in the footer band,
             # or its signature sentence in that page's last paragraph), carried on here.
             prev_sig = (signatures or {}).get(prev_id) if prev_id is not None and prev_id in signed else None
+            # The page before's signature repeated in the same spot within 2 pages: a stamp, not a
+            # signing that this page carries on (2026-11-15, user).
+            if prev_sig and _repeated_signature(prev_id) is not None:
+                prev_sig = None
             if prev_sig and signature_ends_page(prev_sig, texts.get(prev_id) or ""):
                 carried = method.provider_or_date(
                     texts.get(pid) or "", bool(getattr((inputs or {}).get(pid), "provider", False)),

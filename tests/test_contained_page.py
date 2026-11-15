@@ -208,3 +208,20 @@ def test_a_page_whose_words_are_all_on_its_neighbours_is_junk_wherever_they_sit(
     texts[2] = block + "Page 6 addendum"
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
     assert rows[2]["flag"] == "not_blank_junk"
+
+
+def test_a_signature_in_the_same_spot_within_2_pages_does_not_keep_a_short_page(monkeypatch):
+    """2026-11-15 (user): a short page whose Electronic Signature sits in the same spot (region and
+    sentence / signer) as one within 2 pages is a repeated stamp: no signature keep."""
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
+    stamp = {"region": "footer", "sentence": "Electronically signed by Nathan A Monaco MD",
+             "provider_name": "Nathan A Monaco", "provider_credentials": "MD", "signature_date": ""}
+    other = " ".join(f"other{i} words here" for i in range(60))
+    # page 1 signed in the footer; page 2 unsigned; page 3 short, the same footer signature.
+    texts = {1: other + " first", 2: HEADER + BODY + FOOTER, 3: HEADER + FOOTER, 4: other + " more"}
+    rows = _run(texts, signed={1, 3}, signatures={1: stamp, 3: stamp})
+    assert rows[3]["flag"] == "junk" and rows[3]["votes"].get("signature_repeated")
+    # a different signer in that spot is the page's own signing: kept by R4.
+    rows = _run(texts, signed={1, 3}, signatures={1: stamp, 3: {**stamp, "sentence": "Signed by Jane Roe NP",
+                                                                 "provider_name": "Jane Roe"}})
+    assert rows[3]["flag"] == "not_blank_junk" and rows[3]["reason"].startswith("R4")

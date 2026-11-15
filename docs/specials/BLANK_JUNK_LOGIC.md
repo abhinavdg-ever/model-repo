@@ -71,6 +71,11 @@ clinical rules is never junked here. The first check that matches decides.
 | d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
 | — | Otherwise | the classifier decides (rule 11) |
 
+**A repeated signature does not count on a short page** (2026-11-15): when its Electronic Signature sits in
+the same spot (same region: header / mid / footer, and the same signature sentence or signer) as a signed
+page within 2 non-blank pages either side, it is a stamp the record repeats: no signature keep (rule 4), and
+check a (signature carried on) ignores a page before whose signature is such a stamp.
+
 **A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 120,
 canon `contained_page.repeated_only_max_words`) is on the previous or next page, e.g. page 6 of 6 holding
 only the running header and the end-of-report block page 5 also has, low on the page -> Junk / Others.
