@@ -52,7 +52,8 @@ The first rule that matches decides.
 |    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label) | Junk / Cards |
 |    |  | Otherwise Invoice, with a **table holding a dollar amount** (Final OCR 1 / Docling markdown `\| … \| $25.00 \|`, else the Final OCR text, an HTML `<td>$…</td>` too). Terms wording cannot overrule it (2026-11-14) | Main (page type Invoice / Invoice Page) |
 |    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, **Payment Instructions**, Terms of Payment / Sale / Service, General / Standard Terms, appearing **before** the first invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) or on a page with none (Final OCR text, else Tesseract's) | Junk / Others |
-|    |  | Otherwise Invoice (no terms, or the terms come after the invoice, e.g. "Please refer to the Payment Terms & Conditions on next page") | Main (page type Invoice / Invoice Page) |
+|    |  | Otherwise Invoice with **no invoice wording** but a care provider's name: **Surgery Center**, Surgical Center, Ambulatory Surgery, **Hospital**, **Clinic**, Medical Center, Health Center (2026-11-15) | Main, **not** an invoice: page classification decides |
+|    |  | Otherwise Invoice (invoice wording; no terms, or the terms come after the invoice, e.g. "Please refer to the Payment Terms & Conditions on next page") | Main (page type Invoice / Invoice Page) |
 |    |  | The model says JUNK of another kind | Junk / its subtype |
 |    |  | The model says BLANK | Junk / Others |
 |    |  | Otherwise | Main |

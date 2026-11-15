@@ -1060,12 +1060,27 @@ def terms_page(inputs: PageInputs) -> Optional[str]:
     return None
 
 
+# 2026-11-15 (user): a care provider's own page (a surgery center's billing letter) the model
+# filed as an invoice, with no invoice wording on it: Main, and page classification decides.
+FACILITY_WORDS = re.compile(
+    r"(?<![A-Za-z])(?:surg(?:ery|ical)\s+cent(?:er|re)|ambulatory\s+surgery|hospital|clinics?"
+    r"|medical\s+cent(?:er|re)|health\s+cent(?:er|re))(?![A-Za-z])",
+    re.IGNORECASE)
+
+
+def _invoice_wording(inputs: PageInputs) -> bool:
+    return any(INVOICE_MARK_TEXT.search(text or "") for text in (inputs.text, inputs.prelim_text))
+
+
 def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
     """There is no Junk / Invoice (2026-11-07, user). An invoice page is Main (page_classify:
     Invoice / Invoice Page), unless it is a terms page -> Junk / Others (2026-11-14, user):
       1. a table with a dollar amount (Final OCR 1 / Docling) -> Invoice; terms can't overrule it;
-      2. terms wording / Payment Instructions before the invoice wording -> Junk / Others;
-      3. otherwise (no terms, or terms after the invoice) -> Invoice.
+      2. terms wording / Payment Instructions before the invoice wording, or with none -> Junk / Others;
+      3. no invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) but a care
+         provider's name (Surgery Center, Hospital, Clinic, Medical Center ...) -> Main, NOT an
+         invoice: page classification decides its type (2026-11-15, user);
+      4. otherwise (invoice wording, terms after it or none) -> Invoice.
     A card the model called an invoice is already Junk / Cards (decide)."""
     if verdict.code != CODE_INVOICE:
         return verdict
@@ -1077,6 +1092,15 @@ def _keep_invoice(verdict: Verdict, inputs: PageInputs) -> Verdict:
         return Verdict(CODE_OTHERS, conf.flipped(), verdict.rule,
                        f"{verdict.reason}; terms page ('{terms}' before the invoice) -> Junk / Others", verdict.votes,
                        strength=verdict.strength)
+    facility = None if table is not None or _invoice_wording(inputs) else FACILITY_WORDS.search(
+        f"{inputs.text or ''}\n{inputs.prelim_text or ''}")
+    if facility is not None:
+        word = " ".join(facility.group(0).split())
+        verdict.votes["invoice_unjunked"] = f"no invoice wording; '{word}' on the page"
+        # Against the model's Invoice: flipped.
+        return Verdict(CODE_MAIN, conf.flipped(), verdict.rule,
+                       f"{verdict.reason}; no invoice wording, '{word}' on the page -> Main (page classification "
+                       f"decides)", verdict.votes, strength=verdict.strength)
     if table is not None:
         verdict.votes["invoice_table"] = table
     verdict.votes["invoice_kept"] = verdict.reason

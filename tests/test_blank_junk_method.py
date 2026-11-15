@@ -443,6 +443,21 @@ class TestInvoiceKept:
         assert method.invoice_table(PageInputs(text="<table><tr><td>$1,200.50</td></tr></table>", pass_no=2))
         assert method.invoice_table(PageInputs(text="copay $25 today", pass_no=2)) is None
 
+    def test_a_care_providers_page_without_invoice_wording_is_unjunked(self):
+        """2026-11-15 (user): the model's Invoice with no invoice wording but Surgery Center /
+        Hospital / Clinic on it -> Main, page classification decides (not Invoice page)."""
+        letter = "Saint Clare Surgery Center. Explanation of our billing process. We bill your insurance. " + FILLER
+        inputs = PageInputs(text=letter, pass_no=2, bert=bert(0.99))
+        v = method.post_process(decide(inputs), inputs)
+        assert v.code == method.CODE_MAIN and not method.is_invoice_page(v.reason)
+        assert "Surgery Center" in v.votes.get("invoice_unjunked", "")
+        # invoice wording wins over the facility name.
+        inputs = PageInputs(text="Mercy Hospital " + INVOICE_TEXT, pass_no=2, bert=bert(0.99))
+        assert method.is_invoice_page(method.post_process(decide(inputs), inputs).reason)
+        # terms with no invoice wording stay Junk / Others.
+        inputs = PageInputs(text="Terms and Conditions. Mercy Hospital " + FILLER, pass_no=2, bert=bert(0.99))
+        assert decide(inputs).code == classify.CODE_OTHERS
+
     def test_a_card_the_model_calls_invoice_is_junk_cards(self):
         """2026-11-07 (user): an insurance card (card rule near miss, or the model's insurance-ID
         label) is Junk / Cards, never Invoice, and the invoice keep does not touch it."""
