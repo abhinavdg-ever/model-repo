@@ -177,12 +177,13 @@ def test_a_short_page_adding_only_its_header_is_junk(monkeypatch):
 
 
 def test_a_short_page_carrying_on_the_section_the_page_before_ends_in_stays(monkeypatch):
-    """2026-11-15 (user): the page before ends in Visit Diagnosis / Medications (a section that
-    runs on, canon contained_page.continue_after_headers) and this short page adds words of its
-    own under it -> Main; after another section -> Junk as before."""
+    """2026-11-15 (user): the previous page's last header is Visit Diagnosis, Encounter, Summary or
+    any standard Progress Note (clinical) header and this short page adds words of its own under
+    it -> Main; after a non-clinical header -> Junk as before."""
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: {"bert": {"p_keep": 0.9, "p_junk": 0.1, "service": {"flag": "KEEP", "subclass": "", "confidence": 0.9, "decision_reason": "argmax"}}})
     texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER + " Caltrate Minis Vaccines", 3: HEADER + BODY + FOOTER}
-    for last, kept in (("Reviewed Medications", True), ("Dx: / Visit Diagnosis", True), ("Vitals", False)):
+    for last, kept in (("Reviewed Medications", True), ("Dx: / Visit Diagnosis", True), ("Vitals", True),
+                       ("Clinical Encounter", True), ("Visit Summary", True), ("Insurance", False), ("Guarantor", False)):
         rows = _short(texts, {1: ("Chief Complaint", last), 2: ("Vaccines",)})
         assert (rows[2]["flag"] == "not_blank_junk") is kept, last
         if kept:

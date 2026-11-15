@@ -37,24 +37,15 @@
     "image_min_match": 0.9
   },
   "contained_page": {
-    "note": "2026-11-08 (user): the short page, blank / junk pass 2 (stage._classify): a page whose content ends in the top top_fraction of the page and that got past the earlier rules (a signed page kept by R4 never comes here). Before / after = the previous / next non-blank page. First that applies: 1. the page before ends in its Electronic Signature (kv_extract: footer band, or its signature sentence in the last paragraph) carried on here: provider name / credentials or a date on this page -> Main; 2. what it adds to the page before and after (2026-11-15, user): a. only its own section header -> Junk / Others; b. fewer than junk_below_unique_words new words and the page before's last section header is in continue_after_headers (a section that runs on: Visit Diagnosis, Assessment, Plan ...) -> Main; c. otherwise fewer than junk_below_unique_words new words -> Junk / Others. Reason starts short_page:, confidence 0.90. The signature keep (R4, every page): Electronic Signature, none on the previous / next non-blank page, raw p(junk) < 0.95.",
+    "note": "2026-11-08 (user): the short page, blank / junk pass 2 (stage._classify): a page whose content ends in the top top_fraction of the page and that got past the earlier rules (a signed page kept by R4 never comes here). Before / after = the previous / next non-blank page. First that applies: 1. the page before ends in its Electronic Signature (kv_extract: footer band, or its signature sentence in the last paragraph) carried on here: provider name / credentials or a date on this page -> Main; 2. what it adds to the page before and after (2026-11-15, user): a. only its own section header -> Junk / Others; b. fewer than junk_below_unique_words new words and the previous page's last section header is in continue_after_headers (Visit Diagnosis, Encounter, Summary) or, with use_clinical_headers, any clinical (Progress Note) header of section_header_classes.json -> Main (2026-11-15, user); c. otherwise fewer than junk_below_unique_words new words -> Junk / Others. Reason starts short_page:, confidence 0.90. The signature keep (R4, every page): Electronic Signature, none on the previous / next non-blank page, raw p(junk) < 0.95.",
     "top_fraction": 0.2,
     "junk_below_unique_words": 5,
     "continue_after_headers": [
       "Visit Diagnosis",
-      "Diagnosis",
-      "Diagnoses",
-      "Assessment",
-      "Plan",
-      "Assessment and Plan",
-      "Assessment & Plan",
-      "Impression",
-      "Problem List",
-      "Medications",
-      "Orders",
-      "Results",
-      "Findings"
-    ]
+      "Encounter",
+      "Summary"
+    ],
+    "use_clinical_headers": true
   },
   "fax_unsigned": {
     "note": "2026-11-02 (user): pass 2, after every other rule: a page kept as content (Main) one of whose section headers (stage 6, in the Final OCR JSON; 2026-11-03, user: not a band of the page) has one of fax_terms, and that has no signature -- no Electronic Signature from kv_extract and none of signature_terms anywhere on the page -- is Junk / Letter/Fax (rule FAX). A signed faxed page stays Main.",

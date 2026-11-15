@@ -419,16 +419,17 @@ def _classify(
     #      name / credentials (kv_extract), the signer's name, credentials or a date -> Main;
     #   2. what it adds to the pages before and after (2026-11-15, user):
     #      a. nothing but its own section header -> Junk / Others;
-    #      b. under 5 new words, and the page before ends in a section that runs on (its last
-    #         section header is Visit Diagnosis, Assessment, Plan ...: canon
-    #         contained_page.continue_after_headers) -> Main: this page carries that section on;
+    #      b. under 5 new words, and the previous page's last section header is Visit Diagnosis,
+    #         Encounter, Summary or any standard Progress Note (clinical) header -> Main: this page
+    #         carries that section on (canon contained_page.continue_after_headers +
+    #         section_header_classes.json clinical);
     #      c. otherwise under 5 new words -> Junk / Others.
     contained: set[int] = set()
     if find_duplicates:
         cfg = method.canon().raw.get("contained_page", {})
         top = float(cfg.get("top_fraction", 0.20))
         junk_below = int(cfg.get("junk_below_unique_words", 5))
-        runs_on = [h.strip().lower() for h in cfg.get("continue_after_headers") or [] if str(h).strip()]
+        runs_on = _run_on_headers(cfg)
         headers = headers_by_id or {}
         words_of: dict[int, frozenset[str]] = {}
 
@@ -755,6 +756,28 @@ def _page_inputs(
                 inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
     return out
+
+
+_HEADER_CLASSES = None
+
+
+def _run_on_headers(cfg: dict[str, Any]) -> list[str]:
+    """The previous page's last section headers that keep a short page (2026-11-15, user: Visit
+    Diagnosis, Encounter, Summary or any standard Progress Note header): canon
+    contained_page.continue_after_headers, plus every clinical header of
+    section_header_classes.json when use_clinical_headers is on. Lower case."""
+    global _HEADER_CLASSES
+    names = [str(h) for h in cfg.get("continue_after_headers") or []]
+    if cfg.get("use_clinical_headers", True):
+        from modules.canon_store import CANON_DIR, CanonFile
+
+        if _HEADER_CLASSES is None:
+            _HEADER_CLASSES = CanonFile(CANON_DIR / "section_header_classes.json")
+        try:
+            names += [str(h) for h in (_HEADER_CLASSES.get() or {}).get("clinical") or []]
+        except Exception:  # noqa: BLE001 - the canon list alone still works
+            logger.warning("section_header_classes.json unreadable: short page uses the canon list only")
+    return list(dict.fromkeys(h.strip().lower() for h in names if h.strip()))
 
 
 def _headers_by_id(ctx: Any) -> dict[int, tuple[str, ...]]:
