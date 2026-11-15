@@ -36,7 +36,8 @@ SELECT c.chart_name, p.page_name, p.page_number,
        COALESCE(f.page_type, '')           AS page_type,
        COALESCE(f.blank_junk_flag, '')     AS blank_junk_flag,
        COALESCE(f.is_duplicate::text, '')  AS is_duplicate,
-       COALESCE(f.printed_or_handwritten, '') AS printed_or_handwritten
+       COALESCE(f.printed_or_handwritten, '') AS printed_or_handwritten,
+       COALESCE(f.document_seq::text, '')  AS document_seq
   FROM chart_list c
   JOIN page_list p      ON p.chart_id = c.id
   LEFT JOIN ocr_results o ON o.page_id = p.id AND o.ocr_type = 'tesseract'
@@ -94,7 +95,7 @@ def from_db(database_url: Optional[str] = None, schema: str = "public",
                 texts = [(str(r[1]), str(r[3] or "")) for r in pages]
                 labels = {
                     str(r[1]): {"page_number": str(r[2] or ""), "page_type": r[4], "blank_junk_flag": r[5],
-                                "is_duplicate": r[6], "printed_or_handwritten": r[7]}
+                                "is_duplicate": r[6], "printed_or_handwritten": r[7], "document_seq": r[8]}
                     for r in pages
                 }
                 # Labels only when imaging_final has rows for the chart.

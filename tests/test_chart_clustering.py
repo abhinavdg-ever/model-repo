@@ -90,3 +90,22 @@ def test_blob_fetches_listed_charts_across_runs(monkeypatch):
     charts = list(sources.from_blob("imaging-pipeline", ["Processed/Run1", "Processed/Run2"], ["a", "b", "c", "d"],
                                     paths={"c": ("", "Processed/Run7/B3/c")}, missing=missing))
     assert [c.name for c in charts] == ["a", "b", "c"] and missing == ["d"]
+
+
+def test_up_to_three_progress_notes_are_the_anchor():
+    """2026-11-15 (user): the first page of each of the first 2-3 Progress Notes, not one page."""
+    from chart_clustering import anchors
+    from chart_clustering.ingest import chart_from_pages
+
+    note = "Chief Complaint: cough\nHPI: three days of cough and fever\nAssessment: bronchitis\nPlan: rest fluids recheck"
+    lab = "Comprehensive metabolic panel glucose sodium potassium chloride result reference range units flag"
+    pages = [("1.jpg", lab), ("2.jpg", note), ("3.jpg", note + " page two"), ("4.jpg", lab),
+             ("5.jpg", note), ("6.jpg", lab), ("7.jpg", note), ("8.jpg", lab), ("9.jpg", note)]
+    chart = chart_from_pages("x", pages, {})
+    assert [a.page.name for a in anchors.progress_note_starts(chart, 3)] == ["2.jpg", "5.jpg", "7.jpg"]
+    # With the pipeline's documents: one anchor per document.
+    rows = {n: {"page_type": "Progress Note" if t == note or t.startswith(note) else "Lab Report",
+                "document_seq": d, "blank_junk_flag": "not_blank_junk"}
+            for (n, t), d in zip(pages, ["1", "2", "2", "3", "4", "5", "6", "7", "8"])}
+    chart = chart_from_pages("x", pages, rows)
+    assert [a.page.name for a in anchors.progress_note_starts(chart, 2)] == ["2.jpg", "5.jpg"]

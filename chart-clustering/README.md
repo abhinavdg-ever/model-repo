@@ -65,7 +65,7 @@ python -m chart_clustering --source folder --root ..\core-pipeline\outputs\chart
 
 (Ubuntu: same commands with `/` in paths.)
 
-Useful options: `--anchors first_pn|last|both` (default both), `--min-cluster-size 5`,
+Useful options: `--notes 3` (first pages of up to 3 Progress Notes per chart), `--anchors first_pn|last|both` (default both), `--min-cluster-size 5`,
 `--min-samples 3`, `--min-charts 3`, `--layout-weight 0.35`, `--stability-runs 5`, `--seed 42`.
 
 ## Read the result

@@ -29,6 +29,8 @@ class Page:
     blank_junk: str = ""
     duplicate: bool = False
     handwritten: Optional[bool] = None
+    # The continuity document the page belongs to (final.csv / imaging_final document_seq).
+    document: str = ""
 
     @property
     def kept(self) -> bool:
@@ -86,6 +88,7 @@ def chart_from_pages(name: str, pages: list[tuple[str, str]], rows: dict[str, di
             blank_junk=str(row.get("blank_junk_flag") or ""),
             duplicate=_truthy(row.get("is_duplicate") or ""),
             handwritten=(hw in ("handwritten", "mixed")) if hw else None,
+            document=str(row.get("document_seq") or "").strip(),
         ))
     chart.pages.sort(key=lambda p: p.number)
     return chart

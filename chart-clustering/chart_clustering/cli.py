@@ -48,6 +48,8 @@ def parse(argv=None) -> argparse.Namespace:
     ap.add_argument("--out", required=True, help="output folder")
     ap.add_argument("--env-file", default=".env")
     ap.add_argument("--anchors", choices=("first_pn", "last", "both"), default="both")
+    ap.add_argument("--notes", type=int, default=3,
+                    help="first pages of up to this many Progress Notes per chart, words pooled (default 3)")
     ap.add_argument("--min-charts", type=int, default=3, help="a template word must be on this many charts")
     ap.add_argument("--min-cluster-size", type=int, default=5)
     ap.add_argument("--min-samples", type=int, default=3)
@@ -103,7 +105,9 @@ def main(argv=None) -> int:
     rows, layout_rows, usable = [], [], []
     tokens: dict[str, list[list[str]]] = {"first_pn": [], "last": []}
     for chart in charts:
-        first, last = anchors.first_progress_note(chart), anchors.last_page(chart)
+        notes = anchors.progress_note_starts(chart, max(1, args.notes))
+        first = notes[0] if notes else anchors.first_progress_note(chart)
+        last = anchors.last_page(chart)
         kept = [p for p in chart.pages if p.kept and p.text.strip()]
         hw_known = [p for p in kept if p.handwritten is not None]
         hw_share = sum(p.handwritten for p in hw_known) / len(hw_known) if hw_known else 0.0
@@ -111,13 +115,16 @@ def main(argv=None) -> int:
         main_page = first.page or last.page
         rows.append({
             "chart_name": chart.name,
-            "first_pn_page": first.page.name if first.page else "", "first_pn_how": first.how,
+            "first_pn_page": " ".join(n.page.name for n in notes) or (first.page.name if first.page else ""),
+            "first_pn_how": first.how, "notes_used": len(notes),
             "last_page": last.page.name if last.page else "", "last_how": last.how,
             "pages": len(chart.pages), "kept_pages": len(kept),
             "handwritten_share": round(hw_share, 3), "progress_note_share": round(pn_share, 3),
             "has_pipeline_labels": chart.has_pipeline_csv,
         })
-        tokens["first_pn"].append(features.template_tokens(first.page.text) if first.page else [])
+        # The 2-3 notes' first pages pooled: a word on several of them counts more.
+        note_pages = [n.page for n in notes] or ([first.page] if first.page else [])
+        tokens["first_pn"].append([t for page in note_pages for t in features.template_tokens(page.text)])
         tokens["last"].append(features.template_tokens(last.page.text) if last.page else [])
         layout = features.layout(main_page.text if main_page else "", len(chart.pages), hw_share, pn_share).values
         layout_rows.append(layout)

@@ -53,7 +53,7 @@ def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settin
         row["cluster"] = label
         row["membership"] = round(float(p), 3)
 
-    fields = ["chart_name", "cluster", "membership", "first_pn_page", "first_pn_how", "last_page", "last_how",
+    fields = ["chart_name", "cluster", "membership", "first_pn_page", "first_pn_how", "notes_used", "last_page", "last_how",
               "pages", "kept_pages", "handwritten_share", "progress_note_share", "has_pipeline_labels"]
     with (out_dir / "chart_clusters.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")

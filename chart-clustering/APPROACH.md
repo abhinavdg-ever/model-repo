@@ -26,7 +26,7 @@ retrieval trail. Either one alone is available (`first_pn`, `last`).
 
 | Anchor | With the pipeline's labels (DB `imaging_final`, or `imaging/<chart>_final.csv`) | Without labels (text only) |
 |---|---|---|
-| First Progress Note page | first kept page whose page type is Progress Note | first kept page with 2+ note markers: Chief Complaint, HPI, ROS, Physical Exam, Assessment, Plan, Subjective, Objective, Vitals, Reason for Visit, Impression |
+| Progress Note pages (`--notes 3`) | the first page of each of the chart's first **2-3 Progress Notes** (a new note = a new continuity document, `document_seq`) | first kept page with 2+ note markers: Chief Complaint, HPI, ROS, Physical Exam, Assessment, Plan, Subjective, Objective, Vitals, Reason for Visit, Impression; a new note = a note page right after a page that is not one |
 | Last page | last kept page with text | same |
 | Fallback | first page with text | same |
 
@@ -35,6 +35,13 @@ used. How each anchor was found is recorded per chart (`first_pn_how`, `last_how
 
 The text is always **Tesseract** (stage 2): every chart has it on every page, so training
 and later matching see the same text.
+
+The words of the 2-3 note pages are pooled into one bag (2026-11-15, user: more than one
+note per chart, so one odd note does not decide the chart). A chart with fewer notes uses what it has.
+
+**What is downloaded:** text only. No page images (jpg) are needed for this first cut. `db` reads
+the Tesseract text from the database (nothing downloaded to disk); `blob` reads two small files
+per chart into memory (`ocr/<chart>_prelim.txt`, `imaging/<chart>_final.csv`).
 
 ## 3. Features (numbers only)
 
