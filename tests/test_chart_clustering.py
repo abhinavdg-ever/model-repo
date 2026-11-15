@@ -1,0 +1,61 @@
+"""chart-clustering/ (first cut, 2026-11-15): unsupervised segments from anchor pages; odd and
+undescribable charts are one Others cluster; no page text in the outputs."""
+import csv
+import json
+import random
+import sys
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("sklearn")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "chart-clustering"))
+from chart_clustering import cli  # noqa: E402
+
+TEMPLATES = {
+    "athena": "athena Kreptowski Family Practice\nChief Complaint: {w}\nHPI: {w} {w}\nReviewed Medications\n"
+              "Allergies: {w}\nVitals: BP {n}/{n}\nAssessment: {w}\nPlan: {w}\nPatient's Care Team: {w}\n",
+    "fax": "Fax 555 {n} Northeast Endocrinology Page 2 of 5\nSubjective\nCC: {w}\nROS: Const denies {w}\n"
+           "Objective\nExam: {w} {w}\nLab Acquired: {n}\nComp Metabolic Panel glucose {n}\n",
+    "hospital": "Island Hospital *Live* PROGRESS NOTE\nAdmission Date: {n}\nHospital Course: {w} {w}\n"
+                "Physical Examination: {w}\nImpression: {w}\nDischarge Plan: {w}\nAttending Physician: {w}\n",
+}
+
+
+def _chart(root: Path, name: str, template: str, rng: random.Random) -> None:
+    words = lambda: " ".join(f"zq{rng.randint(0, 10**9)}" for _ in range(6))  # one-off "patient" words
+    def fill(t: str) -> str:
+        t = t.replace("{n}", str(rng.randint(10, 99)))
+        while "{w}" in t:
+            t = t.replace("{w}", words(), 1)
+        return t
+    pages = [f"===== {i}.jpg =====\n{fill(template)}" for i in range(1, 4)]
+    folder = root / name / "ocr"
+    folder.mkdir(parents=True)
+    (folder / f"{name}_prelim.txt").write_text("\n".join(pages), encoding="utf-8")
+
+
+def test_first_cut_finds_the_templates_and_puts_the_rest_in_others(tmp_path):
+    rng = random.Random(1)
+    root, out = tmp_path / "charts", tmp_path / "out"
+    for kind, template in TEMPLATES.items():
+        for i in range(8):
+            _chart(root, f"{kind}_{i:02d}", template, rng)
+    for i in range(2):  # odd charts: their own words only
+        _chart(root, f"odd_{i}", "\n".join("zz" + str(rng.random()) for _ in range(30)), rng)
+    (root / "empty" / "ocr").mkdir(parents=True)
+    (root / "empty" / "ocr" / "empty_prelim.txt").write_text("===== 1.jpg =====\n\n", encoding="utf-8")
+
+    assert cli.main(["--source", "folder", "--root", str(root), "--out", str(out), "--stability-runs", "2"]) == 0
+    rows = {r["chart_name"]: r for r in csv.DictReader((out / "chart_clusters.csv").open(encoding="utf-8"))}
+    by_kind = {k: {rows[f"{k}_{i:02d}"]["cluster"] for i in range(8)} for k in TEMPLATES}
+    assert all(len(v) == 1 and "Others" not in v for v in by_kind.values())
+    assert len({next(iter(v)) for v in by_kind.values()}) == 3          # three different clusters
+    assert rows["empty"]["cluster"] == "Others" and rows["odd_0"]["cluster"] == "Others"
+    manifest = json.loads((out / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["charts"] == 27 and "Others" in manifest["clusters"]
+    # No page text: the one-off words never reach the outputs.
+    for name in ("chart_clusters.csv", "cluster_summary.csv", "cluster_cards.md"):
+        assert "zq" not in (out / name).read_text(encoding="utf-8")
+    summary = (out / "cluster_summary.csv").read_text(encoding="utf-8").lower()
+    assert "athena" in summary and "hospital course:" in summary   # template words and field labels

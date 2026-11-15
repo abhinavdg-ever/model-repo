@@ -1,0 +1,82 @@
+# chart-clustering (first cut)
+
+Unsupervised segments of a set of charts (about 550) from each chart's **first Progress Note
+page** and **last page**: TF-IDF on template words → LSA → HDBSCAN; charts that fit no group are
+one **Others** cluster. Standalone: it reads charts from the database, Azure Blob or a local
+folder and imports nothing from core-pipeline. The why and how: [APPROACH.md](APPROACH.md).
+
+## Set up
+
+Windows Command Prompt:
+
+```
+cd chart-clustering
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements.txt
+pip install "psycopg[binary]"                 (only for --source db)
+pip install azure-storage-blob azure-identity (only for --source blob)
+copy .env.example .env                        (then fill in .env)
+```
+
+Ubuntu VM:
+
+```
+cd chart-clustering
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install "psycopg[binary]" azure-storage-blob azure-identity
+cp .env.example .env                          # then fill in .env
+```
+
+## Run
+
+From the database (Tesseract text + the pipeline's page labels):
+
+```
+python -m chart_clustering --source db --out out\run1
+python -m chart_clustering --source db --chart-list charts.txt --out out\run1
+```
+
+From Blob (the chart output folders, e.g. `Processed/Run1/<chart>/ocr/<chart>_prelim.txt`):
+
+```
+python -m chart_clustering --source blob --container imaging-pipeline --prefix Processed/Run1 --out out\run1
+```
+
+From a local folder (`core-pipeline/outputs/charts` shape):
+
+```
+python -m chart_clustering --source folder --root ..\core-pipeline\outputs\charts --out out\run1
+```
+
+(Ubuntu: same commands with `/` in paths.)
+
+Useful options: `--anchors first_pn|last|both` (default both), `--min-cluster-size 5`,
+`--min-samples 3`, `--min-charts 3`, `--layout-weight 0.35`, `--stability-runs 5`, `--seed 42`.
+
+## Read the result
+
+1. `out/run1/run_manifest.json`: clusters and sizes, silhouette, stability (target ≥ 0.8).
+2. `out/run1/cluster_cards.md`: per cluster its template words, layout averages and example
+   charts; write a name for each.
+3. `out/run1/chart_clusters.csv`: every chart's cluster.
+
+No page text, names, DOBs or member ids are written anywhere.
+
+## Layout
+
+```
+chart_clustering/
+  sources.py   folder / db / blob readers -> Chart
+  ingest.py    Chart and Page; the prelim.txt split; final.csv labels
+  anchors.py   first Progress Note page, last page
+  features.py  template words, layout numbers
+  cluster.py   TF-IDF -> SVD -> HDBSCAN; Others; silhouette; stability
+  report.py    the output files
+  vocab.py     the generic words a card may show
+  cli.py       the command line
+```
+
+Test: `python -m pytest ../tests/test_chart_clustering.py -q` (from this folder, with the
+repo's test environment).
