@@ -433,3 +433,16 @@ class TestFinalHierarchy:
 
     def test_an_l1_is_never_its_own_sub_type(self):
         assert decide_final(fp(1, PN), None).page_subtype == "Others"
+
+
+def test_an_invoice_page_does_not_make_its_document_invoice():
+    """2026-11-15 (user): an Invoice page opening a document no longer turns the other pages'
+    Final type into Invoice, and keeps its own type."""
+    invoice = fp(1, "Invoice", "Invoice Page", family="Invoice", category="non_codeable", names=("Invoice Page", "Invoice"))
+    labs = [lab(2), lab(3)]
+    doc = [invoice] + labs
+    agreed, basis = agree_document_type(doc)
+    assert agreed != "Invoice"
+    for page in labs:
+        assert not str(decide_final(page, doc).page_type).startswith("Invoice")
+    assert str(decide_final(invoice, doc).page_type).startswith("Invoice")

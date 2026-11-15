@@ -60,6 +60,8 @@ _ARBITRATION: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "page_arbitratio
 
 UNKNOWN = "Unknown"
 OTHERS = axes.OTHERS
+# 2026-11-15 (user): an Invoice page never sets the type of the document it sits in, and keeps its own.
+INVOICE = "Invoice"
 
 
 def keyword_confidence(keyword: Optional[KeywordResult]) -> Optional[float]:
@@ -132,9 +134,10 @@ def _known(name: Optional[str]) -> bool:
 
 
 def _agreeable(name: Optional[str]) -> bool:
-    """An L1 a document can agree on: not Unknown, and not Others (a page neither
-    the model nor the canon was sure of takes its document's L1 instead)."""
-    return _known(name) and name != OTHERS
+    """An L1 a document can agree on: not Unknown, not Others (a page neither the model nor
+    the canon was sure of takes its document's L1 instead), and not Invoice (2026-11-15, user:
+    an invoice page does not make the pages it is grouped with Invoice)."""
+    return _known(name) and name != OTHERS and name != INVOICE
 
 
 def _placement(agreed: str, family: Optional[str]) -> Optional[str]:
@@ -367,6 +370,9 @@ def decide_final(
 ) -> FinalResult:
     """The Final page type of one page. ``document`` is every page of its
     continuity document in order (None / one page: the page stands alone)."""
+    if document and len(document) > 1 and _family(page) == INVOICE:
+        # An Invoice page keeps its own type in any document (2026-11-15, user).
+        return _keep(page, "invoice_page", False)
     if document and len(document) > 1:
         agreed, basis = agree_document_type(document)
         if basis == "no_agreement":
