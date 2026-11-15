@@ -14,7 +14,7 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   R1 cover mark     Accept / Unaccept / Cover on a page of < 10 words -> Junk / Cover Page
   R1E end of report "End of Report" on a page of < 10 words -> Junk / Cover Page (2026-11-08)
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Blank
-  R3 card           pass 2, page-tag printed or visual: an ID or insurance card by
+  R3 card           pass 2, page-tag printed, visual or uncertain: an ID or insurance card by
                     card_rules.detect (card or no card; no form / letter words, no section
                     header but the card's own, <= 150 words) -> Junk / Cards, after the
                     handwritten and signed keeps (2026-11-05, user)
@@ -93,8 +93,8 @@ SUBTYPE_CODE = {
     "Cards": CODE_CARDS,
 }
 
-# Page-tag types the card rule R3 reads (2026-10-31, user).
-CARD_DOCUMENT_TYPES = frozenset({"printed", "visual"})
+# Page-tag types the card rule R3 reads (2026-10-31, user; uncertain added 2026-11-15, user).
+CARD_DOCUMENT_TYPES = frozenset({"printed", "visual", "uncertain"})
 # DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
     "JUNK_INVOICE": "Invoice",
