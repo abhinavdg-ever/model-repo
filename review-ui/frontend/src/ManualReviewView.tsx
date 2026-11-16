@@ -37,7 +37,7 @@ import { CheckListFilter, ColumnFilterButton } from "./columnFilter";
 import { saveChartOrder } from "./chartSequence";
 import { readGroundTruthSource } from "./groundTruthSource";
 import { readFile, readSources, writeFile, writeSources, type Source } from "./manualReviewStore";
-import { useViewState } from "./viewState";
+import { useScrollRestore, useViewState } from "./viewState";
 
 type Props = {
   onBack: () => void;
@@ -825,6 +825,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
+  // Back from a chart: the scroll position too, once the rows are back (2026-11-16, user).
+  const scrollRef = useScrollRestore("manual-review", Boolean(result) && !comparing);
   const pageRows = filtered.slice(
     (currentPage - 1) * ROWS_PER_PAGE,
     currentPage * ROWS_PER_PAGE,
@@ -860,7 +862,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     : [];
 
   return (
-    <div className="workspace accuracy-view excel-compare-view">
+    <div className="workspace accuracy-view excel-compare-view" ref={scrollRef}>
       <div className="workspace-header">
         <div className="workspace-header-start">
           <button type="button" className="back-btn" onClick={onBack}>

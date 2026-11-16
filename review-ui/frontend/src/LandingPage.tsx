@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useScrollRestore } from "./viewState";
 import { formatIst, formatIstPlain } from "./istTime";
 import {
   CalendarClock,
@@ -352,7 +353,6 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const [runAfter, setRunAfter] = useState<string | null>(saved.runAfter);
   const [metaFilter, setMetaFilter] = useState<MetaFilters>(saved.metaFilter);
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
-  const skipFilterPageReset = useRef(true);
   const isAdmin = readSession()?.user.role === "admin";
   const canMarkReviewed = readSession()?.user.role !== "viewer";
   const myId = readSession()?.user.id ?? null;
@@ -478,19 +478,25 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Back to page 1 when a filter, the search or the sort really changes -- not on the first
+  // render (the saved page stands, 2026-11-16, user), and not when React runs effects twice.
+  const filterKey = JSON.stringify([query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter]);
+  const lastFilterKey = useRef(filterKey);
   useEffect(() => {
-    if (skipFilterPageReset.current) {
-      skipFilterPageReset.current = false;
-      return;
-    }
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
     setPage(1);
-  }, [query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter]);
+  }, [filterKey]);
 
+  // Only once the list has loaded: while it loads ``total`` is 0, and clamping then sent Back
+  // from a chart to page 1 instead of the page the reader left (2026-11-16, user).
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (!loading && page > totalPages) setPage(totalPages);
+  }, [loading, page, totalPages]);
 
   const pageFolders = folders;
+  // Back from a chart: the scroll position too, once the rows are back (2026-11-16, user).
+  const scrollRef = useScrollRestore("landing", !loading && folders.length > 0);
 
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, total);
@@ -662,7 +668,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   }
 
   return (
-    <div className="landing">
+    <div className="landing" ref={scrollRef}>
       <div className="landing-home">
         <div className="landing-intro">
           <div>

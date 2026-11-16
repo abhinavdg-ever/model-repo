@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
-import { useViewState } from "./viewState";
+import { useScrollRestore, useViewState } from "./viewState";
 import {
   ClearAllFilters,
   ColumnFilterButton,
@@ -1647,6 +1647,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const overall = useMemo(() => sumTallies(filtered.map((row) => row.overall)), [filtered]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / CHARTS_PER_PAGE));
+  // Back from a chart: the scroll position too, once the rows are back (2026-11-16, user).
+  const scrollRef = useScrollRestore("accuracy", !loading && filtered.length > 0);
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice(
     (currentPage - 1) * CHARTS_PER_PAGE,
@@ -1718,7 +1720,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   }
 
   return (
-    <div className="workspace accuracy-view">
+    <div className="workspace accuracy-view" ref={scrollRef}>
       {downloadOpen ? (
         <PageAccuracyDownloadDialog
           charts={filtered.length}
