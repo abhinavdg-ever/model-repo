@@ -385,12 +385,21 @@ export const CREDENTIAL_CHOICES: readonly string[] = pageTaxonomy.provider_crede
 function ourPath(pageType: string | null | undefined, pageSubtype: string | null | undefined): string[] {
   const family = text(pageType);
   const sub = text(pageSubtype);
-  const levels = [family, ...(sub && sub !== family ? sub.split(/\)\s+\(/) : [])];
-  return levels.map((level) => acceptKey(level)).filter((level) => level && level !== "others");
+  // The sub-type reads "Diagnostic Study (Echocardiogram Report)" since 2026-11-15
+  // (splitPageType), or "Diagnostic Study) (Echocardiogram Report" before: L2 then L3 either way.
+  const nested = /^(.+?)\)?\s+\((.+?)\)?$/.exec(sub);
+  const below = !sub || sub === family ? [] : nested ? [nested[1], nested[2]] : [sub];
+  return [family, ...below].map((level) => acceptKey(level)).filter((level) => level && level !== "others");
 }
 
 function startsWith(path: string[], target: string): boolean {
   const levels = target.split(">").map((level) => acceptKey(level));
+  // A target ending in Others ("Patient Communication > Others") is our path with no level
+  // there: ourPath drops Others, so compare without it and require nothing below.
+  if (levels.length > 1 && levels[levels.length - 1] === "others") {
+    const head = levels.slice(0, -1);
+    return head.length === path.length && head.every((level, index) => level === path[index]);
+  }
   return levels.length <= path.length && levels.every((level, index) => level === path[index]);
 }
 
@@ -447,6 +456,12 @@ function pageTypeMark(
   // an L1 name may also be a client label), the better of the two.
   const ownPath = ourPath(pipeline[0], pipeline[1]);
   if (ownPath.length > 0 && names.some((name) => OUR_L1.has(acceptKey(name)) && acceptKey(name) === ownPath[0])) {
+    return bit(shown, "match");
+  }
+  // 2026-11-16 (user): the ground-truth label naming our L2 or L3 is a full match
+  // (Radiology Report on Lab Report > Radiology Report, Echo Report on Lab Report >
+  // Diagnostic Study > Echocardiogram Report via its canon target).
+  if (ownPath.length > 1 && names.some((name) => ownPath.slice(1).includes(acceptKey(name)))) {
     return bit(shown, "match");
   }
   const mapped = names.filter((name) => GT_CANON[acceptKey(name)]);

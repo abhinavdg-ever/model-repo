@@ -1922,26 +1922,22 @@
       "standard": "Memo",
       "status": "ambiguous",
       "full": [
-        "Provider Letter > Others",
-        "Patient Communication > Others"
-      ],
-      "partial": [
         "Provider Letter",
         "Patient Communication"
-      ]
+      ],
+      "partial": [],
+      "note": "2026-11-16 (user): Memo on any Provider Letter / Patient Communication page is a full match."
     },
     "memorecord": {
       "label": "Memo Record",
       "standard": "Memo",
       "status": "ambiguous",
       "full": [
-        "Provider Letter > Others",
-        "Patient Communication > Others"
-      ],
-      "partial": [
         "Provider Letter",
         "Patient Communication"
-      ]
+      ],
+      "partial": [],
+      "note": "2026-11-16 (user): Memo on any Provider Letter / Patient Communication page is a full match."
     },
     "message": {
       "label": "MESSAGE",
@@ -2986,36 +2982,33 @@
       "standard": "Questionnaire",
       "status": "mapped",
       "full": [
-        "Forms and Questionnaires > Questionnaire",
+        "Forms and Questionnaires",
         "Progress Note > Questionnaire"
       ],
-      "partial": [
-        "Forms and Questionnaires"
-      ]
+      "partial": [],
+      "note": "2026-11-16 (user): Questionnaire on any Forms and Questionnaires page is a full match."
     },
     "questionnairepage": {
       "label": "Questionnaire Page",
       "standard": "Questionnaire",
       "status": "mapped",
       "full": [
-        "Forms and Questionnaires > Questionnaire",
+        "Forms and Questionnaires",
         "Progress Note > Questionnaire"
       ],
-      "partial": [
-        "Forms and Questionnaires"
-      ]
+      "partial": [],
+      "note": "2026-11-16 (user): Questionnaire on any Forms and Questionnaires page is a full match."
     },
     "questionnaires": {
       "label": "Questionnaires",
       "standard": "Questionnaire",
       "status": "mapped",
       "full": [
-        "Forms and Questionnaires > Questionnaire",
+        "Forms and Questionnaires",
         "Progress Note > Questionnaire"
       ],
-      "partial": [
-        "Forms and Questionnaires"
-      ]
+      "partial": [],
+      "note": "2026-11-16 (user): Questionnaire on any Forms and Questionnaires page is a full match."
     },
     "questionnarie": {
       "label": "Questionnarie",
