@@ -147,7 +147,7 @@ type Props = {
     groundTruth: PageGroundTruth,
   ) => void;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
-  /** The fullscreen drawer: the page table only (no manifest): Field / Extracted /
+  /** The fullscreen drawer: the manifest and the page table: Field / Extracted /
    * Final / Ground Truth, no Confidence, read-only. */
   compact?: boolean;
 };
@@ -3391,8 +3391,8 @@ export default function ImagingPanel({
     const seqRows = [...document.pages].sort((a, b) => a.pageNumber - b.pageNumber);
     return (
       <div className="imaging-panel-stack">
-        <ManifestDetails manifest={manifest} />
         <GroundTruthBanner folderId={document.folder_id} tab="sequencing" />
+        <ManifestDetails manifest={manifest} />
         <SequencingTable
           folderId={document.folder_id}
           pages={seqRows}
@@ -3410,8 +3410,8 @@ export default function ImagingPanel({
     // reviewer's encounters below, starting from a copy of these.
     return (
       <div className="imaging-panel-stack">
-        <ManifestDetails manifest={manifest} />
         <GroundTruthBanner folderId={document.folder_id} tab="encounter" />
+        <ManifestDetails manifest={manifest} />
         <EncounterIdentification
           key={document.folder_id}
           folderId={document.folder_id}
@@ -3426,11 +3426,11 @@ export default function ImagingPanel({
   if (tab === "member") {
     return (
       <div className="imaging-panel-stack">
+        <GroundTruthBanner folderId={document.folder_id} tab="member" />
         <ManifestDetails manifest={manifest} />
         <RejectionRules
           member={
             <>
-              <GroundTruthBanner folderId={document.folder_id} tab="member" />
               <MemberVerificationTable
                 rows={verifications}
                 pages={document.pages}
@@ -3460,8 +3460,8 @@ export default function ImagingPanel({
   if (!currentPage) {
     return (
       <div className="imaging-panel-stack">
-        <ManifestDetails manifest={manifest} />
         <GroundTruthBanner folderId={document.folder_id} tab="page" />
+        <ManifestDetails manifest={manifest} />
         <div className="ocr-empty">
           {currentFileName
             ? `No imaging row for ${currentFileName}.`
@@ -3473,8 +3473,10 @@ export default function ImagingPanel({
 
   return (
     <div className="imaging-panel-stack">
-      {compact ? null : <ManifestDetails manifest={manifest} />}
+      {/* 2026-11-16 (user): Last Updated above the manifest row; the full-screen Results
+          drawer (compact) shows the manifest too. */}
       <GroundTruthBanner folderId={document.folder_id} tab="page" update={pageUpdate(currentPage.groundTruth)} />
+      <ManifestDetails manifest={manifest} />
       <PageDetails
         folderId={document.folder_id}
         page={currentPage}
