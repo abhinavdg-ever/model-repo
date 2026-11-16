@@ -339,6 +339,12 @@ export function TopCheckFilter({
   );
 }
 
+/** A chart tag as shown: "_" reads as a space (2026-11-16, user); it is stored and filtered
+ * with the "_". */
+export function tagLabel(tag: string): string {
+  return tag.replace(/_+/g, " ").replace(/\s+/g, " ").trim() || tag;
+}
+
 /** Source / Measure / Retrieval as labelled filters in a table's toolbar. */
 export function MetaFilterBar({
   options,
@@ -362,6 +368,7 @@ export function MetaFilterBar({
           options={options[filter.key] ?? []}
           selected={filters[filter.key] ?? []}
           onChange={(next) => onChange({ ...filters, [filter.key]: next })}
+          formatOption={filter.key === "tag" ? tagLabel : undefined}
         />
       ))}
     </>
