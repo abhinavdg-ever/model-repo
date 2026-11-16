@@ -13,8 +13,10 @@ ground truth is in the two-source compare:
 With all three, ``all`` is QA's pages where every pair agrees: a field
 matches only when it matched in all three pairs (QA = Client, QA = Pipeline
 and Client = Pipeline), and is compared only when all three pairs compare
-it. A QA page with no Client or no Pipeline row is MISSING. Pages that are
-not in QA are not in ``all``.
+it. QA vs Client and ``all`` cover only the pages QA and Client both have
+(2026-11-16, user): a QA chart or page with no Client ground truth is left
+out of them, not Missing. A QA page with no Pipeline row is MISSING. Pages
+that are not in QA are not in ``all``.
 
 Each comparison's rows keep the two-source shape ("GT: a | Algo: b" for a
 cell the two sides read differently, GT being the pair's first source).
@@ -303,10 +305,18 @@ def stream(
                 parts["pipeline"] = (
                     _read_file(_upload(data, "algo.csv")) if data else pd.DataFrame(columns=COLUMNS)
                 )
+            # QA vs Client (2026-11-16, user): only the pages both have. A QA chart or page the
+            # Client has no ground truth for is left out of QA vs Client (and All three), not
+            # Missing; QA vs Pipeline still covers it.
+            qa_overlap = (
+                restrict_to_ground(parts["client"], parts["qa"])
+                if "qa" in parts and "client" in parts
+                else parts.get("qa")
+            )
             for key, first, second in PAIRS:
                 if key not in pair_keys:
                     continue
-                first_part = parts[first]
+                first_part = qa_overlap if key == "qa_client" else parts[first]
                 second_part = restrict_to_ground(first_part, parts[second])
                 rows, missing, extra = compare_frames(
                     first_part, second_part, fields[key], second_is_ground=second != "pipeline"
@@ -321,11 +331,11 @@ def stream(
                 chart_rows[key] = rows
                 tally(key, first_part, second_part, rows, missing, extra)
             if ALL in keys:
-                rows = _all_three(parts["qa"], fields[ALL], chart_rows, labels)
+                rows = _all_three(qa_overlap, fields[ALL], chart_rows, labels)
                 matched = sum(1 for row in rows if row["Status"] != "MISSING")
-                both = parts["qa"].iloc[[i for i, row in enumerate(rows) if row["Status"] != "MISSING"]]
+                both = qa_overlap.iloc[[i for i, row in enumerate(rows) if row["Status"] != "MISSING"]]
                 chart_rows[ALL] = rows
-                tally(ALL, parts["qa"], both, rows, len(rows) - matched, 0)
+                tally(ALL, qa_overlap, both, rows, len(rows) - matched, 0)
         except Exception as exc:  # noqa: BLE001 - reported to the screen, not raised mid-stream
             yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
             return

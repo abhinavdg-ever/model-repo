@@ -130,9 +130,11 @@ def _ground_from_database(
     pdf_ids: list[str] | None,
     ground_truth: GroundTruthSource,
     against: str = "Algo Generated file",
-) -> tuple[bytes, str]:
+    allow_empty: bool = False,
+) -> tuple[bytes, str] | None:
     """page_ground_truth as a Ground Truth sheet: for ``pdf_ids``, or every
-    chart that has ground truth when None."""
+    chart that has ground truth when None. ``allow_empty``: None instead of an
+    error when there is none (the three-way review goes on without it)."""
     if not backend.store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
@@ -142,6 +144,8 @@ def _ground_from_database(
     except Exception as exc:
         logger.warning("manual review ground truth lookup failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not read ground truth") from exc
+    if not rows and allow_empty:
+        return None
     if not rows:
         shown = ", ".join(pdf_ids[:5]) + (" …" if len(pdf_ids) > 5 else "")
         detail = (
@@ -267,7 +271,14 @@ async def _three_way_inputs(
             ids, against = _pdf_ids(pipeline, "Pipeline Output"), "Pipeline Output file"
         else:
             ids, against = None, ""
-        client = _ground_from_database(settings, ids, ground_truth, against)
+        # 2026-11-16 (user): QA charts with no Client ground truth are not an error; with
+        # none at all the review goes on with the other sources.
+        client = _ground_from_database(settings, ids, ground_truth, against, allow_empty=qa is not None)
+        if client is None and pipeline is None and system_source == "none":
+            raise HTTPException(
+                status_code=400,
+                detail="No Client ground truth in the database for the QA charts, and no Pipeline Output to compare QA with.",
+            )
     ground_ids = sorted({
         pdf_id
         for sheet, label in ((qa, "QA Ground Truth"), (client, "Client Ground Truth"))

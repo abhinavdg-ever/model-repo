@@ -310,4 +310,44 @@ def test_database_client_and_pipeline_cover_the_qa_charts(client, monkeypatch):
     assert sorted(set(fake.asked)) == ["100", "200"]
     assert body["order"] == ["qa_client", "qa_pipeline", "client_pipeline", "all"]
     assert _statuses(body["comparisons"]["client_pipeline"]) == {"1": "CORRECT", "2": "ERROR"}
-    assert _statuses(body["comparisons"]["all"]) == {"1": "CORRECT", "2": "ERROR", "3": "MISSING"}
+    # Chart 200 has no Client ground truth: left out of QA vs Client and All three (2026-11-16),
+    # still compared with the pipeline.
+    assert _statuses(body["comparisons"]["all"]) == {"1": "CORRECT", "2": "ERROR"}
+    assert "3" not in _statuses(body["comparisons"]["qa_client"])
+    assert "3" in _statuses(body["comparisons"]["qa_pipeline"])
+
+
+def test_qa_vs_client_covers_only_the_pages_both_have():
+    """2026-11-16 (user): a QA chart or page with no Client ground truth is left out of QA vs
+    Client and All three -- not Missing, not an error; QA vs Pipeline still has it."""
+    qa = QA + "300,1,03/20/2024,03/20/2024,Codable,Yes\n"
+    client_only_page_1 = (
+        "PDF ID,Page Number,DOS From,DOS To,Codable / Non-Codable,Extracted Name\n"
+        "100,1,2024-03-15,2024-03-15,Codable,Lisa Anderson\n"
+    )
+    pipeline = PIPELINE + "300,1,2024-03-20,2024-03-20,Codable,Lisa Anderson\n"
+    body = excel_compare.three_way.run({
+        "qa": (qa.encode(), "qa.csv"),
+        "client": (client_only_page_1.encode(), "c.csv"),
+        "pipeline": (pipeline.encode(), "p.csv"),
+    })
+    qa_client = body["comparisons"]["qa_client"]
+    assert {(r["pdfId"], r["pageNumber"]) for r in qa_client["rows"]} == {("100", "1")}
+    assert qa_client["missingCount"] == 0
+    assert {(r["pdfId"], r["pageNumber"]) for r in body["comparisons"]["all"]["rows"]} == {("100", "1")}
+    qa_pipeline = {(r["pdfId"], r["pageNumber"]) for r in body["comparisons"]["qa_pipeline"]["rows"]}
+    assert ("300", "1") in qa_pipeline and ("100", "3") in qa_pipeline
+
+
+def test_no_database_client_truth_for_the_qa_charts_is_not_an_error(client, monkeypatch):
+    import app.routers.excel_compare as routes
+
+    monkeypatch.setattr(routes, "database_url_usable", lambda _url: True)
+    monkeypatch.setattr(routes, "ground_truth_labels", lambda *_args: [])
+    res = client.post(
+        "/api/excel-compare",
+        files={"qa_file": _file("qa.csv", QA), "system_file": _file("pipeline.csv", PIPELINE)},
+        data={"ground_source": "db", "system_source": "upload"},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["order"] == ["qa_pipeline"]
