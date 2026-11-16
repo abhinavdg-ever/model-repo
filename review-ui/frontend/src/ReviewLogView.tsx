@@ -3,6 +3,7 @@ import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, RotateCc
 import PageMessage from "./PageMessage";
 import { errorDetail, getReviewLog, type ReviewLogEntry, type ReviewLogResponse } from "./api";
 import { formatIstPlain } from "./istTime";
+import { TopCheckFilter } from "./columnFilter";
 
 type Props = {
   onBack: () => void;
@@ -76,6 +77,8 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // 2026-11-16 (user): filter by the fields a save edited (any one picked).
+  const [fieldPick, setFieldPick] = useState<string[]>([]);
   const [reload, setReload] = useState(0);
   const [page, setPage] = useState(1);
 
@@ -110,9 +113,18 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
       .catch(() => undefined);
   }, [isAdmin, users.length]);
 
+  const fieldOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of data?.items ?? []) for (const f of shownFields(item)) labels.add(f.label);
+    return [...labels].sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const items = data?.items ?? [];
+    const picked = new Set(fieldPick);
+    const items = (data?.items ?? []).filter(
+      (item) => picked.size === 0 || shownFields(item).some((f) => picked.has(f.label)),
+    );
     if (!q) return items;
     return items.filter(
       (item) =>
@@ -121,10 +133,10 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
         (item.user ?? "").toLowerCase().includes(q) ||
         shownFields(item).some((f) => f.label.toLowerCase().includes(q)),
     );
-  }, [data, query]);
+  }, [data, query, fieldPick]);
 
   // A new search, user or refresh starts again at the first page.
-  useEffect(() => setPage(1), [query, who, reload]);
+  useEffect(() => setPage(1), [query, fieldPick, who, reload]);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
   const shownRows = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
@@ -178,6 +190,13 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
               aria-label="Search the review log"
             />
           </label>
+          <TopCheckFilter
+            label="Field"
+            title="Fields edited"
+            options={fieldOptions}
+            selected={fieldPick}
+            onChange={setFieldPick}
+          />
           <span className="review-log-count">
             {rows.length} {rows.length === 1 ? "save" : "saves"} · {pages} {pages === 1 ? "page" : "pages"}
           </span>
@@ -198,6 +217,14 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
 
         <div className="landing-history-scroll">
           <table className="landing-history-table review-log-table">
+            {/* Fixed widths (2026-11-16, user): the columns do not move with the rows shown. */}
+            <colgroup>
+              <col className="review-log-col-time" />
+              {showUser ? <col className="review-log-col-user" /> : null}
+              <col className="review-log-col-chart" />
+              <col className="review-log-col-page" />
+              <col />
+            </colgroup>
             <thead>
               <tr>
                 <th>Time (IST)</th>

@@ -6414,6 +6414,27 @@ input {
   font-size: 0.82rem;
 }
 
+.review-log-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 56rem;
+}
+
+.review-log-table td {
+  overflow-wrap: anywhere;
+}
+
+.review-log-table .landing-col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-log-col-time { width: 11rem; }
+.review-log-col-user { width: 10rem; }
+.review-log-col-chart { width: 16rem; }
+.review-log-col-page { width: 4.5rem; }
+
 .review-log-fields {
   margin: 0;
   padding: 0;
