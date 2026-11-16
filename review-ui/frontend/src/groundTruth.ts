@@ -388,7 +388,17 @@ function ourPath(pageType: string | null | undefined, pageSubtype: string | null
   // The sub-type reads "Diagnostic Study (Echocardiogram Report)" since 2026-11-15
   // (splitPageType), or "Diagnostic Study) (Echocardiogram Report" before: L2 then L3 either way.
   const nested = /^(.+?)\)?\s+\((.+?)\)?$/.exec(sub);
-  const below = !sub || sub === family ? [] : nested ? [nested[1], nested[2]] : [sub];
+  // The pipeline's Invoice page (Invoice / Invoice (Invoice Page)) is our Administrative >
+  // Billing & Invoices (2026-11-16, user: a GT Invoice label on it is a full match).
+  if (acceptKey(family) === "invoice") return ["administrative", "billinginvoices"];
+  // An L2 whose own name has brackets ("Endoscopy (EGD)", "Summary of Care (C-CDA)") is one
+  // level; so is an L2 named like its L1 (Problem List > Problem List shows as "Problem List").
+  const l2s = (PAGE_L2[PAGE_L1_CHOICES.find((name) => acceptKey(name) === acceptKey(family)) ?? ""] ?? []).map(acceptKey);
+  const below = !sub
+    ? []
+    : sub === family
+      ? (l2s.includes(acceptKey(family)) ? [family] : [])
+      : l2s.includes(acceptKey(sub)) || !nested ? [sub] : [nested[1], nested[2]];
   return [family, ...below].map((level) => acceptKey(level)).filter((level) => level && level !== "others");
 }
 
