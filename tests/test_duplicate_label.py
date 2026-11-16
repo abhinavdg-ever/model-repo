@@ -72,15 +72,16 @@ def test_a_duplicate_shows_its_originals_blank_junk_tag():
 
 
 def test_a_copy_is_displayed_as_partial():
-    """2026-11-13 (user): a blocked 100% match reads "Partial (to page N)", a Yes for comparisons."""
+    """2026-11-13 (user): a blocked 100% match reads "Partial (to page N)"; since 2026-11-16 it is
+    a No for comparisons (only Yes is a duplicate)."""
     import sys
     sys.path.insert(0, "review-ui/backend")
     from app.services.duplicate_label import format_duplicate_label
     from app.services.excel_compare.normalizer import normalize_labelled_yes_no
 
     assert format_duplicate_label(False, None, is_content=True) == "Partial"
-    assert normalize_labelled_yes_no("Partial (to page 4)") == "yes"
+    assert normalize_labelled_yes_no("Partial (to page 4)") == "no"
     assert normalize_labelled_yes_no("Yes (to page 4)") == "yes"
-    assert normalize_labelled_yes_no("Copy of 4") == "yes"  # the label before 2026-11-13
+    assert normalize_labelled_yes_no("Copy of 4") == "no"  # the label before 2026-11-13
     assert normalize_labelled_yes_no("Duplicate of 4") == "yes"
     assert normalize_labelled_yes_no("Repeated Content (To Page 4)") == "no"  # older exports

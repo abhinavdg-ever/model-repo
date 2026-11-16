@@ -463,11 +463,39 @@ def test_a_duplicate_matches_a_page_labelled_junk():
     assert match("Duplicate", "Yes", "Yes (To Page 4)") is True
     assert match("Duplicate", "Yes", "Duplicate (To Page 4)") is True  # the old screen label
     assert match("Duplicate", "Yes", "Duplicate of 4") is True  # the screen's label (2026-11-11)
-    # 2026-11-13 (user): Partial (was "Copy of N") matches Yes.
-    assert match("Duplicate", "Yes", "Partial (to page 4)") is True
-    assert match("Duplicate", "No", "Partial (to page 4)") is False
+    # 2026-11-16 (user): only Yes is a duplicate; Partial (was "Copy of N") is a No.
+    assert match("Duplicate", "Yes", "Partial (to page 4)") is False
+    assert match("Duplicate", "No", "Partial (to page 4)") is True
     assert match("Duplicate", "Partial", "Partial") is True
-    assert match("Duplicate", "Yes", "Partial") is True
+    assert match("Duplicate", "Yes", "Partial") is False
+
+
+def test_page_type_on_blank_junk_and_duplicate_pages():
+    """2026-11-16 (user), as the Accuracy View: a page blank / junk or a duplicate (Yes) on both
+    sides matches on Page Type / Subtype whatever its type; on one side only, it does not."""
+    fields = ["Page Type", "Page Subtype"]
+
+    def result(gt, algo):
+        out = compare_fields(gt, algo, fields)
+        return out["Page Type"]["match"], out["Page Subtype"]["match"]
+
+    # Both duplicates (Yes): Not Found on the algo side against the ground truth's own type.
+    assert result({"Duplicate": "Yes", "Page Type": "Progress Note", "Page Subtype": "Office Visit"},
+                  {"Duplicate": "Yes", "Page Type": "Not Found", "Page Subtype": "Not Found"}) == (True, True)
+    # Ground truth blank / junk, algo a duplicate.
+    assert result({"Is Blank or Junk?": "Yes (Junk)", "Page Type": "Fax"},
+                  {"Duplicate": "Yes", "Page Type": "Not Found"}) == (True, True)
+    # Ground truth duplicate, algo a normal page with the same type: No Match.
+    assert result({"Duplicate": "Yes", "Page Type": "Progress Note"},
+                  {"Duplicate": "No", "Page Type": "Progress Note"}) == (False, False)
+    # Algo duplicate, ground truth a typed normal page: No Match; Partial is not a duplicate.
+    assert result({"Duplicate": "No", "Page Type": "Progress Note"},
+                  {"Duplicate": "Yes", "Page Type": "Not Found"})[0] is False
+    assert result({"Duplicate": "Partial", "Page Type": "Progress Note"},
+                  {"Duplicate": "Partial (to page 4)", "Page Type": "Progress Note"})[0] is True
+    # Ground truth blank / junk, algo a normal typed page: No Match.
+    assert result({"Is Blank or Junk?": "Yes (Junk)", "Page Type": "Letter/Fax"},
+                  {"Is Blank or Junk?": "No", "Page Type": "Letter/Fax"})[0] is False
 
 
 def test_algo_duplicate_reads_yes_partial_no():

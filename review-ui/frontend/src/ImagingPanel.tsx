@@ -495,6 +495,11 @@ type CompareRow = {
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 
+/** The pipeline's junk page types (blank_junk SUBTYPE_DB), folded: a Junk pick keeps one. */
+const JUNK_PAGE_TYPES = new Set(
+  ["Others", "Letter/Fax", "Cover Page", "Invoice", "Instructions", "Record Request/Transmittal"].map((t) => t.toLowerCase()),
+);
+
 /** Blank / Junk on the page view, as the accuracy report scores it: any Yes against any
  * Yes is a tick (Yes (Junk) against Yes (Blank) included), No against No a tick; Final
  * wrong but Extracted right is "!"; otherwise a cross. */
@@ -2031,7 +2036,6 @@ function PageDetails({
   // 2026-11-16 (user): only a duplicate (Yes, not Partial) shows its Page Type and Subtype as
   // Not Found; a Blank / Junk page keeps its type (Letter/Fax, Others ...) on both sides.
   const pipelineDup = page.isDuplicate === true && pageTypeKnown;
-  const gtDup = duplicateSide(page.groundTruth?.isDuplicate) === "yes";
   // Final: the document's first-page type; a page outside any document keeps its own.
   const finalParts = splitPageType(page.finalPageType || page.pageType);
   const codeableKnown =
@@ -2060,6 +2064,9 @@ function PageDetails({
   // Pipeline values the untouched cells offer (filled as the cells render).
   const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
+  // The ground truth's Duplicate as entered (saved or not): Yes shows Page Type / Subtype as
+  // Not Found.
+  const gtDup = duplicateSide(values.duplicate ?? page.groundTruth?.isDuplicate) === "yes";
   // 2026-11-06 (user): nothing is checked across fields; Save never waits.
   const problems: Record<string, string> = {};
   const dirty =
@@ -2157,8 +2164,36 @@ function PageDetails({
    * mark would offer the Final subtype again (and take it on Save). */
   function setField(id: string, next: string, how: "accept" | "enter") {
     const clearSubtype = id === "page_type" && next !== shownPageType();
-    setVerdicts((current) => ({ ...current, [id]: how, ...(clearSubtype ? { page_subtype: "enter" as const } : {}) }));
-    setEdits((current) => ({ ...current, [id]: next, ...(clearSubtype ? { page_subtype: "" } : {}) }));
+    const typed = typeFor(id, next);
+    setVerdicts((current) => ({
+      ...current,
+      [id]: how,
+      ...(clearSubtype || typed ? { page_subtype: "enter" as const } : {}),
+      ...(typed ? { page_type: "enter" as const } : {}),
+    }));
+    setEdits((current) => ({
+      ...current,
+      [id]: next,
+      ...(clearSubtype ? { page_subtype: "" } : {}),
+      ...(typed ? { page_type: typed.type, page_subtype: typed.subtype } : {}),
+    }));
+  }
+  /** 2026-11-16 (user): picking Blank / Junk or Duplicate sets the Page Type and Subtype to
+   * match, still editable: Yes (Blank) -> Blank, Yes (Junk) -> Others (the pipeline's junk
+   * default; change it to Letter/Fax, Cover Page ...), Duplicate Yes -> none (shown Not
+   * Found). Back to No clears a type that was set this way. null: leave them alone. */
+  function typeFor(id: string, next: string): { type: string; subtype: string } | null {
+    const value = next.trim().toLowerCase();
+    const current = shownPageType().trim().toLowerCase();
+    if (id === "blank_junk") {
+      if (value.startsWith("yes (blank")) return { type: "Blank", subtype: "" };
+      // A junk type already there (Letter/Fax, Cover Page ...) is kept.
+      if (value.startsWith("yes (junk")) return JUNK_PAGE_TYPES.has(current) ? null : { type: "Others", subtype: "" };
+      if (value === "no" && (current === "blank" || current === "others")) return { type: "", subtype: "" };
+      return null;
+    }
+    if (id === "duplicate" && value === "yes") return { type: "", subtype: "" };
+    return null;
   }
   // The Page Type the reviewer sees: the ground truth, else the Final value offered.
   const shownPageType = () => (values.page_type ?? "").trim() || (offered.current.page_type ?? "");
@@ -2357,7 +2392,8 @@ function PageDetails({
             processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.family, pageTypeKnown),
             // A page Blank / Junk or Duplicate (Yes) on both sides is a Match whatever its type;
             // on one side only, a No Match (pageTypeOut).
-            truthShown: gtDup ? NOT_FOUND : undefined,
+            // Not Found only while empty: the reviewer can still type a type over it.
+            truthShown: gtDup && !(values.page_type ?? "").trim() ? NOT_FOUND : undefined,
             blankIsNone: gtDup && pageTypeKnown,
             // Our L1 (an older client label still scores, gtPageTypeCanon.json), with
             // the accuracy report's rules: the better of Final and Extracted. Page
@@ -2383,7 +2419,7 @@ function PageDetails({
               noMark: true,
             }),
             processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.subtype, pageTypeKnown),
-            truthShown: gtDup ? NOT_FOUND : undefined,
+            truthShown: gtDup && !(values.page_subtype ?? "").trim() ? NOT_FOUND : undefined,
             l2Of: "page_type",
           },
           {

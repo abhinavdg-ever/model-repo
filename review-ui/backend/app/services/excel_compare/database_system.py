@@ -127,6 +127,10 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
             dos_to = _final_date(_date(page.finalDosTo) or _date(page.finalDosFrom), own_to) or own_to
             page_type, page_subtype = _page_type(page.finalPageType or page.pageType)
             own_type, own_subtype = _page_type(page.pageType)
+            if page.isDuplicate is True:
+                # A duplicate (Yes) has no type of its own (2026-11-16, user): Not Found. A
+                # blank / junk page keeps its type (Letter/Fax, Others ...).
+                page_type = page_subtype = own_type = own_subtype = NOT_FOUND
             writer.writerow(
                 {
                     "PDF ID": chart_name,

@@ -313,6 +313,20 @@ def mutual_blank_or_junk(gt_row, system_row):
     return classify_blank_or_junk(gt_row) or classify_blank_or_junk(system_row) or "junk"
 
 
+def says_duplicate(row):
+    """The row calls the page a duplicate: Duplicate = Yes ("Yes (to page 4)", "Duplicate of
+    4"); Partial is not one (2026-11-16, user)."""
+
+    return normalize_labelled_yes_no(_raw_value(row, "Duplicate")) == "yes"
+
+
+def page_type_out(row):
+    """The row gives the page no type of its own (2026-11-16, user, as accuracy.ts
+    pageTypeOut): it calls the page blank / junk, or a duplicate (Yes, not Partial)."""
+
+    return says_blank_or_junk(row) or says_duplicate(row)
+
+
 def _alternate(row, field_name):
     """The algo row's second value for a field ("" when none)."""
 
@@ -407,6 +421,10 @@ def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=
 
     field_results = {}
     system_skipped = says_blank_or_junk(system_row)
+    # Page Type / Subtype (2026-11-16, user, as the Accuracy View): a page blank / junk or a
+    # duplicate (Yes) on both sides matches whatever its type; on one side only, it does not.
+    gt_out = page_type_out(gt_row)
+    system_out = page_type_out(system_row)
     # Both sides blank / junk: the page agrees, every field with it (2026-10-29, user).
     both_skipped = system_skipped and says_blank_or_junk(gt_row)
 
@@ -429,6 +447,17 @@ def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=
         if second_is_ground and (not gt_raw or not system_raw or both_skipped):
             # Either sheet left the field unlabelled: nothing to score.
             is_match = True
+        elif field_name in TEXT_CLASSIFICATION_FIELDS and gt_out:
+            is_match = system_out
+        elif (
+            field_name in TEXT_CLASSIFICATION_FIELDS
+            and system_out
+            and gt_raw
+            and clean_text(gt_raw) not in _UNSCORED_TYPE_LABELS
+            and clean_text(gt_raw) != SKIPPED
+        ):
+            # The ground truth gives a type; the algo calls the page blank / junk / duplicate.
+            is_match = False
         elif second_is_ground and clean_text(system_raw) == SKIPPED:
             # The second reviewer skipped the page as blank / junk: right when the first did too.
             is_match = clean_text(gt_raw) == SKIPPED or says_blank_or_junk(gt_row)
