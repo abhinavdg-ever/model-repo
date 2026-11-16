@@ -624,8 +624,8 @@ function AdditionalMetrics({ extra }: { extra: ExtraCounts }) {
                 <h4>Duplicate</h4>
                 <PrecisionRecallTable tp={dup.tp} fn={dup.fn} fp={dup.fp} />
                 <p className="accuracy-extra-rule">
-                  Pages where the ground truth or the pipeline says Duplicate (Yes or Partial, both count as
-                  a duplicate), on pages with a ground-truth Is Duplicate.
+                  Pages where the ground truth or the pipeline says Duplicate = Yes, on pages with a
+                  ground-truth Is Duplicate. Partial counts as No on both sides.
                 </p>
               </section>
             </div>,
@@ -1028,7 +1028,7 @@ function yesMatchPercent(rates: ClassRates | undefined): number | null {
 }
 
 /** Beside B/J (2026-11-14, user): sliders for Invoice and Duplicate Match, e.g. to list the
- * files under 100%. Duplicate = Yes or Partial. */
+ * files under 100%. Duplicate = Yes only (Partial counts as No). */
 const BJ_EXTRA_MEASURES = [
   { key: "invoiceMatch", label: "Invoice Match", percent: (row: ChartAccuracy) => yesMatchPercent(row.invoiceRates) },
   { key: "duplicateMatch", label: "Duplicate Match", percent: (row: ChartAccuracy) => yesMatchPercent(row.duplicateRates) },

@@ -62,7 +62,7 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. Blank / Junk is a type of its own: a page both call Blank / Junk is a Match; only one side calling it Blank / Junk is No Match.",
+    rule: "The client label mapped to our L1 > L2 > L3. Match = our Final or Extracted path starts with it; Partial (0.5) = same L1 or a listed neighbour. A page Blank / Junk or Duplicate = Yes (not Partial) on both sides is a Match whatever its type; on one side only, No Match.",
   },
   {
     id: "codeable",
@@ -206,6 +206,19 @@ export function notScoredForPeople(page: ImagingPageResult): boolean {
   return pipelineBlankJunk || gtBlankJunk || duplicate;
 }
 
+/** Page Type (2026-11-16, user): a page Blank / Junk = Yes or Duplicate = Yes (not Partial) on
+ * both sides is a Match whatever type each gives (a Blank / Junk page keeps its type, e.g.
+ * Letter/Fax; a duplicate shows Not Found); on one side only, a No Match. */
+export function pageTypeOut(page: ImagingPageResult): { gt: boolean; pipeline: boolean } {
+  const gt = page.groundTruth;
+  const gtBlankJunk = gt ? (blankJunkTruth(gt) ?? "").toLowerCase().startsWith("yes") : false;
+  const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  return {
+    gt: gtBlankJunk || gtDuplicate(gt?.isDuplicate) === "yes",
+    pipeline: pipelineBlankJunk || page.isDuplicate === true,
+  };
+}
+
 function gtDuplicate(value: string | null | undefined): DupState | null {
   const folded = (value ?? "").trim().toLowerCase();
   if (folded === "1" || folded.startsWith("yes") || folded === "y" || folded === "true") return "yes";
@@ -271,14 +284,14 @@ export function binaryScores(tp: number, fp: number, fn: number, tn: number): Bi
   return { precision, recall, f1, accuracy: total ? (tp + tn) / total : null };
 }
 
-/** Duplicate as a yes / no call (2026-11-13, user): Yes and Partial are both a duplicate,
- * on either side. */
+/** Duplicate as a yes / no call: only Yes is a duplicate, on either side; Partial counts as
+ * No (2026-11-16, user: Duplicate accuracy shows only the Yes ones, not Partial). */
 export function duplicateScores(counts: Record<string, number>): BinaryScores & { tp: number; fp: number; fn: number; tn: number } {
   let tp = 0, fp = 0, fn = 0, tn = 0;
   for (const [key, n] of Object.entries(counts)) {
     const [truth, algo] = key.split("|");
-    const t = truth !== "no";
-    const a = algo !== "no";
+    const t = truth === "yes";
+    const a = algo === "yes";
     if (t && a) tp += n;
     else if (a) fp += n;
     else if (t) fn += n;
@@ -719,6 +732,7 @@ function pageScores(
   // Page type on every labelled page. Blank / junk is a type of its own (Blank/Junk) on
   // both sides.
   const pageTypeLabelled = labeled(bits.pageType) || labeled(finalBits.pageType);
+  const typeOut = pageTypeOut(page);
 
   // Codability on every labelled page; Discharge is Codable. A page the
   // pipeline called blank / junk carries no codability: it is Non-Codable.
@@ -779,13 +793,13 @@ function pageScores(
       blankJunk: blankJunkCalls
         ? blankJunkCalls.expected === blankJunkCalls.predicted ? "yes" : "no"
         : null,
-      // A page the ground truth calls blank / junk has the type Blank/Junk: the pipeline
-      // calling it blank / junk too is a Match, anything else a No Match.
-      pageType: blankOrJunk
-        ? pipelineBlankJunk ? "yes" : "no"
+      // Blank / Junk or Duplicate = Yes makes the page type Not Found on that side
+      // (pageTypeOut): both Not Found is a Match, one side only a No Match.
+      pageType: typeOut.gt
+        ? typeOut.pipeline ? "yes" : "no"
         : !pageTypeLabelled
           ? null
-          : pipelineBlankJunk
+          : typeOut.pipeline
             ? "no"
             : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable,
@@ -795,8 +809,8 @@ function pageScores(
       orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
     },
     invoiceCall: page.groundTruth ? { expected: gtInvoice(page), predicted: algoInvoice(page) } : null,
-    dupCell: dupTruth ? `dup|${dupTruth === "no" ? "no" : "yes"}|${dupAlgo}` : null,
-    dupCall: dupTruth ? { expected: dupTruth !== "no", predicted: dupAlgo !== "no" } : null,
+    dupCell: dupTruth ? `dup|${dupTruth === "yes" ? "yes" : "no"}|${dupAlgo === "yes" ? "yes" : "no"}` : null,
+    dupCall: dupTruth ? { expected: dupTruth === "yes", predicted: dupAlgo === "yes" } : null,
     blankJunk: blankJunkCalls,
     rotation: bits.rotation,
     applicable: OVERALL_METRICS,

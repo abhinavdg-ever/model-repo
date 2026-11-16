@@ -18,7 +18,7 @@ import {
   type StagedEncounter,
   savePageSequences,
 } from "./api";
-import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue } from "./accuracy";
+import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue, pageTypeOut } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -488,6 +488,9 @@ type CompareRow = {
   /** A blank (or NA) label expects no value: no Extracted value is a tick, one is a cross,
    * as in the accuracy report. Set on DOS rows of a page whose ground truth has no date. */
   blankIsNone?: boolean;
+  /** Shown in place of the ground truth (Page Type on a Blank / Junk or duplicate page:
+   * Not Found). */
+  truthShown?: string;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
@@ -1173,7 +1176,7 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot">
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
-          {stored || emptyLabel(row.id)}
+          {row.truthShown ?? (stored || emptyLabel(row.id))}
         </span>
         {(stored || blankCross || memberBlank) && !row.noMark ? mark : null}
       </span>
@@ -1215,7 +1218,7 @@ function GroundTruthCell({
     </button>
   );
   if (!editing) {
-    const raw = stored || (offer ? copied : "") || emptyLabel(row.id);
+    const raw = row.truthShown ?? (stored || (offer ? copied : "") || emptyLabel(row.id));
     // Provider Name / Credentials: several values show 1. / 2. / 3., also right after an edit.
     const shown = MULTI_ENTRY_FIELDS.has(row.id) ? numberedList(signerList(raw) || raw) : raw;
     const dim = !stored && !row.key;
@@ -2024,6 +2027,11 @@ function PageDetails({
     (page.encounterType != null && String(page.encounterType).trim() !== "");
   const pageTypeKnown = Boolean(sections.junk || sections.codeable);
   const pageParts = splitPageType(page.pageType);
+  const typeOut = pageTypeOut(page);
+  // 2026-11-16 (user): only a duplicate (Yes, not Partial) shows its Page Type and Subtype as
+  // Not Found; a Blank / Junk page keeps its type (Letter/Fax, Others ...) on both sides.
+  const pipelineDup = page.isDuplicate === true && pageTypeKnown;
+  const gtDup = duplicateSide(page.groundTruth?.isDuplicate) === "yes";
   // Final: the document's first-page type; a page outside any document keeps its own.
   const finalParts = splitPageType(page.finalPageType || page.pageType);
   const codeableKnown =
@@ -2329,30 +2337,36 @@ function PageDetails({
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
-            // 2026-11-13 (user): Yes and Partial both match a ground truth of Yes (or Partial);
-            // No matches No.
+            // 2026-11-16 (user): only Yes is a duplicate, as in the accuracy report; Partial
+            // counts as No on both sides.
             compare: (truth: string) => {
               const expected = duplicateSide(truth);
               const actual = duplicateSide(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate, page.isDuplicateContent));
               if (!expected || !actual) return null;
-              return (expected === "no") === (actual === "no") ? "match" : "mismatch";
+              return (expected === "yes") === (actual === "yes") ? "match" : "mismatch";
             },
           }),
           {
-            ...sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(finalOr(page, "page_type", page.pageTypeConfidence), pageTypeKnown), {
+            ...sameValue(pipelineDup ? NOT_FOUND : fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(finalOr(page, "page_type", page.pageTypeConfidence), pageTypeKnown), {
               id: "page_type",
               label: "Page Type",
               truth: bits.pageType,
               choices: PAGE_L1_CHOICES,
               key: true,
             }),
-            processed: fmtPageType(finalParts.family, pageTypeKnown),
+            processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.family, pageTypeKnown),
+            // A page Blank / Junk or Duplicate (Yes) on both sides is a Match whatever its type;
+            // on one side only, a No Match (pageTypeOut).
+            truthShown: gtDup ? NOT_FOUND : undefined,
+            blankIsNone: gtDup && pageTypeKnown,
             // Our L1 (an older client label still scores, gtPageTypeCanon.json), with
             // the accuracy report's rules: the better of Final and Extracted. Page
             // Subtype lists the L2s of the L1 picked, not saved yet; Specialty has no
             // entry yet (2026-10-26, user).
             compare: (truth: string) => {
+              if (typeOut.gt && pageTypeKnown) return typeOut.pipeline ? "match" : "mismatch";
               if (!truth.trim() || !pageTypeKnown) return null;
+              if (typeOut.pipeline) return "mismatch";
               const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
               if (scoreFinalOnly()) return final === "match" || final === "partial" || final === "mismatch" ? final : null;
               const own = pageTypeVerdict(truth, pageParts.family, pageParts.subtype, page.pageTypeSemantic);
@@ -2362,13 +2376,14 @@ function PageDetails({
             },
           },
           {
-            ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(page.subtypeConfidence, pageTypeKnown), {
+            ...sameValue(pipelineDup ? NOT_FOUND : fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(page.subtypeConfidence, pageTypeKnown), {
               id: "page_subtype",
               label: "Page Subtype",
               choices: PAGE_L2_ALL,
               noMark: true,
             }),
-            processed: fmtPageType(finalParts.subtype, pageTypeKnown),
+            processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.subtype, pageTypeKnown),
+            truthShown: gtDup ? NOT_FOUND : undefined,
             l2Of: "page_type",
           },
           {
