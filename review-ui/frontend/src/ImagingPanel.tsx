@@ -494,9 +494,6 @@ type CompareRow = {
   /** Display only: how a value in this row reads on screen (Extracted, Final and the
    * ground truth). Scoring and saving use the value itself. */
   shown?: (value: string) => string;
-  /** 2026-11-16 (user): an empty ground-truth cell reads Not Found; the pipeline's value is not
-   * offered (no Accept, not taken on Save). Page Type and Page Subtype. */
-  noOffer?: boolean;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
@@ -1133,12 +1130,12 @@ function GroundTruthCell({
   // "Carl Rogers (Yes)" / "Trelegy Ellipta (No)": the bracket says whether it is the member.
   const memberSide = /\((yes|no)\)$/i.exec(row.processed.trim())?.[1];
   const processedSide = memberSide ? yesNo(memberSide) : yesNo(row.processed);
-  const copied = !suggest || row.noOffer
+  const copied = !suggest
     ? ""
     : row.presence
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
-  const offer = suggest && !stored && !verdict && !row.noOffer;
+  const offer = suggest && !stored && !verdict;
   // 2026-11-04 / 11-05 (user): a field with no ground truth and no change takes its Final
   // value when the reviewer saves another field, instead of an empty (Not Found) entry --
   // also on a page that already has ground truth for other fields.
@@ -1146,7 +1143,7 @@ function GroundTruthCell({
     const fallback = row.presence
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
-    if (!stored && !verdict && fallback && !row.noOffer) offered.current[row.id] = fallback;
+    if (!stored && !verdict && fallback) offered.current[row.id] = fallback;
     else delete offered.current[row.id];
   }
   const fromStore = !verdict && Boolean(stored);
@@ -2342,6 +2339,8 @@ function PageDetails({
             id: "orientation",
             label: "Text Orientation",
             truth: bits.rotation,
+            // Shown solid like DOS / Member Name (2026-11-16, user).
+            key: true,
           }),
           sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(page.measuredConfidences?.tilt, sections.rotation), {
             id: "tilt",
@@ -2411,9 +2410,9 @@ function PageDetails({
             // A page Blank / Junk or Duplicate (Yes) on both sides is a Match whatever its type;
             // on one side only, a No Match (pageTypeOut).
             // Not Found only while empty: the reviewer can still type a type over it.
-            // 2026-11-16 (user): no ground-truth type saved reads Not Found, Blank / Junk or not.
-            truthShown: !(values.page_type ?? "").trim() ? NOT_FOUND : undefined,
-            noOffer: true,
+            // Page Type / Subtype offer the Final value like every other row (2026-11-16, user);
+            // a duplicate (Yes) reads Not Found while empty.
+            truthShown: gtDup && !(values.page_type ?? "").trim() ? NOT_FOUND : undefined,
             blankIsNone: gtDup && pageTypeKnown,
             // Our L1 (an older client label still scores, gtPageTypeCanon.json), with
             // the accuracy report's rules: the better of Final and Extracted. Page
@@ -2439,8 +2438,7 @@ function PageDetails({
               noMark: true,
             }),
             processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.subtype, pageTypeKnown),
-            truthShown: !(values.page_subtype ?? "").trim() ? NOT_FOUND : undefined,
-            noOffer: true,
+            truthShown: gtDup && !(values.page_subtype ?? "").trim() ? NOT_FOUND : undefined,
             l2Of: "page_type",
           },
           {
@@ -2458,6 +2456,7 @@ function PageDetails({
               label: "Is Codable Or Non-Codable",
               truth: bits.codeable,
               choices: CODEABLE_CHOICES,
+              key: true,
             }),
             ...(page.finalCodeable ? { processed: displayCodeable(page.finalCodeable) } : {}),
           },
@@ -2496,6 +2495,7 @@ function PageDetails({
               id: "electronic_signature",
               label: "Provider Signature",
               presence: true,
+              key: true,
             },
           ),
         ]}
