@@ -1366,12 +1366,8 @@ function PageAccuracyDownloadDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
   const choices: [boolean, string, string][] = [
-    [false, "Match only", "One row per scored page: Match / Partial / No Match for each metric, Overall and Streams Matched."],
-    [
-      true,
-      "Along with values",
-      "Adds, after those, what each metric compared: GT_ (ground truth) and Algo_ (pipeline Final) columns, plus Algo_Extracted for DOS, Page Type, Subtype and Codability. Member Name / DOB show Yes / No / Not Found, not the name or date of birth.",
-    ],
+    [false, "Match only", "Match / No Match per metric."],
+    [true, "Along with values", "Adds GT_ and Algo_ value columns."],
   ];
   return createPortal(
     <div className="modal-backdrop" role="presentation" onClick={onCancel}>
