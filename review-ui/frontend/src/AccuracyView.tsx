@@ -15,6 +15,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import { formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
@@ -1343,6 +1344,93 @@ function scoringKey(): string {
   return `${readGroundTruthSource()}|${scoreFinalOnly() ? "final" : "better"}`;
 }
 
+/** Download Page Level Accuracy (2026-11-16, user): verdicts only (the default), or with the
+ * values each metric compared, as GT_ / Algo_ columns after the verdicts. Always a CSV. */
+function PageAccuracyDownloadDialog({
+  charts,
+  pages,
+  onCancel,
+  onDownload,
+}: {
+  charts: number;
+  pages: number;
+  onCancel: () => void;
+  onDownload: (withValues: boolean) => void;
+}) {
+  const [withValues, setWithValues] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  const choices: [boolean, string, string][] = [
+    [false, "Match only", "One row per scored page: Match / Partial / No Match for each metric, Overall and Streams Matched."],
+    [
+      true,
+      "Along with values",
+      "Adds, after those, what each metric compared: GT_ (ground truth) and Algo_ (pipeline Final) columns, plus Algo_Extracted for DOS, Page Type, Subtype and Codability. Member Name / DOB show Yes / No / Not Found, not the name or date of birth.",
+    ],
+  ];
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onClick={onCancel}>
+      <div
+        className="modal-card accuracy-download-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="page-accuracy-download-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-card-header">
+          <div className="blob-auth-title-row">
+            <Download size={18} aria-hidden="true" />
+            <h2 id="page-accuracy-download-title">Download Page Level Accuracy</h2>
+          </div>
+          <button type="button" className="modal-close" onClick={onCancel} aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
+        <p className="blob-auth-copy">
+          {pages.toLocaleString()} scored page{pages === 1 ? "" : "s"} from {charts.toLocaleString()} chart
+          {charts === 1 ? "" : "s"} (filters applied), as a CSV.
+        </p>
+        <div className="download-results-choice" role="radiogroup" aria-label="What to include">
+          {choices.map(([value, title, detail]) => (
+            <label key={title} className={withValues === value ? "active" : undefined}>
+              <input
+                type="radio"
+                name="page-accuracy-download"
+                checked={withValues === value}
+                onChange={() => setWithValues(value)}
+              />
+              <span>
+                <strong>{title}</strong>
+                <span>{detail}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="download-results-actions">
+          <button type="button" className="landing-file-viewer-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="landing-file-viewer-btn landing-file-viewer-btn-primary"
+            onClick={() => onDownload(withValues)}
+            autoFocus
+          >
+            <Download size={14} aria-hidden="true" />
+            Download CSV
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
   const cached = lastRows?.source === scoringKey() ? lastRows.rows : null;
   const [allRows, setRows] = useState<ChartAccuracy[]>(cached ?? []);
@@ -1350,6 +1438,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const [loading, setLoading] = useState(cached === null);
   const [refreshing, setRefreshing] = useState(false);
   const [reloads, setReloads] = useState(0);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Search, column filters, sort and page survive opening a chart and coming Back.
   // Newest run first, like the home page.
@@ -1622,18 +1711,29 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             ? "Date = Yes"
             : "Blank/Junk = Yes";
 
-  function downloadPageAccuracy() {
-    const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered)], { type: "text/csv;charset=utf-8" });
+  function downloadPageAccuracy(withValues: boolean) {
+    const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered, withValues)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `page_level_accuracy_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `page_level_accuracy${withValues ? "_with_values" : ""}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
     <div className="workspace accuracy-view">
+      {downloadOpen ? (
+        <PageAccuracyDownloadDialog
+          charts={filtered.length}
+          pages={filtered.reduce((sum, chart) => sum + chart.pages.length, 0)}
+          onCancel={() => setDownloadOpen(false)}
+          onDownload={(withValues) => {
+            downloadPageAccuracy(withValues);
+            setDownloadOpen(false);
+          }}
+        />
+      ) : null}
       <div className="workspace-header">
         <div className="workspace-header-start">
           <button type="button" className="back-btn" onClick={onBack}>
@@ -1657,7 +1757,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               className="back-btn"
               disabled={refreshing || filtered.length === 0}
               title="Every scored page of the charts shown (filters applied): Match / No Match per metric, as a CSV"
-              onClick={downloadPageAccuracy}
+              onClick={() => setDownloadOpen(true)}
             >
               <Download size={14} aria-hidden="true" />
               Download Page Level Accuracy

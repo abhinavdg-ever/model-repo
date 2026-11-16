@@ -325,7 +325,91 @@ export type PageAccuracy = {
   scores: Record<MetricId, Verdict | null>;
   overall: Verdict | null;
   matches: number | null;
+  /** The values each metric compared, ground truth and pipeline, for the download's "with
+   * values" option (2026-11-16, user). */
+  values?: Record<string, string>;
 };
+
+/** The value columns of the page-level download, in order: [name, ground truth, pipeline
+ * (Final), pipeline Extracted when the score also takes it]. Member is Yes / No / Not Found
+ * on both sides (the member's own name / DOB found or not), never the name or DOB itself. */
+const VALUE_COLUMNS: { name: string; extracted?: boolean }[] = [
+  { name: "Member Name" },
+  { name: "Member DOB" },
+  { name: "DOS From", extracted: true },
+  { name: "DOS To", extracted: true },
+  { name: "Blank/Junk" },
+  { name: "Duplicate" },
+  { name: "Invoice" },
+  { name: "Page Type", extracted: true },
+  { name: "Page Subtype", extracted: true },
+  { name: "Codability", extracted: true },
+  { name: "Provider Signature" },
+  { name: "Provider Credentials" },
+  { name: "Orientation" },
+];
+
+const MEMBER_SIDE_TEXT: Record<MemberSide, string> = {
+  yes: "Yes", no: "No (another person)", not_found: "Not Found", skipped: "Skipped",
+};
+
+function pageValues(
+  raw: ImagingPageResult,
+  manifest?: ImagingManifestDetails | null,
+): Record<string, string> {
+  const gt = raw.groundTruth;
+  const nameIsMember = !manifest?.member || nameMatchesManifest(raw.memberName, manifest.member);
+  const dobIsMember = !manifest?.dob || dobMatchesManifest(raw.memberDob, manifest.dob);
+  const gtMember = (value: string | null | undefined) => {
+    const side = memberTruth(value);
+    return side ? MEMBER_SIDE_TEXT[side] : text(value);
+  };
+  const finalType = splitPageType(text(raw.finalPageType) || text(raw.pageType));
+  const ownType = splitPageType(raw.pageType);
+  const gtDup = gtDuplicate(gt?.isDuplicate);
+  const algoDup = algoDuplicate(raw);
+  const turns = orientationTurns(raw);
+  const out: Record<string, string> = {
+    "GT_Member Name": gtMember(gt?.memberName),
+    "Algo_Member Name": MEMBER_SIDE_TEXT[memberPipeline(raw.memberName, nameIsMember)],
+    "GT_Member DOB": gtMember(gt?.memberDob),
+    "Algo_Member DOB": MEMBER_SIDE_TEXT[memberPipeline(raw.memberDob, dobIsMember)],
+    "GT_DOS From": text(gt?.dosFrom),
+    "Algo_DOS From": pipelineDate(raw.finalDosFrom) || pipelineDate(raw.dosFrom),
+    "Algo_Extracted DOS From": pipelineDate(raw.dosFrom),
+    "GT_DOS To": text(gt?.dosTo),
+    "Algo_DOS To": pipelineDate(raw.finalDosTo) || pipelineDate(raw.dosTo),
+    "Algo_Extracted DOS To": pipelineDate(raw.dosTo),
+    "GT_Blank/Junk": gt ? blankJunkTruth(gt) ?? "" : "",
+    "Algo_Blank/Junk": text(raw.blankOrJunk),
+    "GT_Duplicate": gtDup ? gtDup[0].toUpperCase() + gtDup.slice(1) : "",
+    "Algo_Duplicate": algoDup[0].toUpperCase() + algoDup.slice(1),
+    "GT_Invoice": gt ? (gtInvoice(raw) ? "Yes" : "No") : "",
+    "Algo_Invoice": algoInvoice(raw) ? "Yes" : "No",
+    "GT_Page Type": text(gt ? gtPageTypeLabel(gt) : null),
+    "Algo_Page Type": text(finalType.family),
+    "Algo_Extracted Page Type": text(ownType.family),
+    "GT_Page Subtype": text(gt?.pageSubtype),
+    "Algo_Page Subtype": text(finalType.subtype),
+    "Algo_Extracted Page Subtype": text(ownType.subtype),
+    "GT_Codability": text(gt?.codeable),
+    "Algo_Codability": text(raw.finalCodeable) || text(raw.isCodeable),
+    "Algo_Extracted Codability": text(raw.isCodeable),
+    "GT_Provider Signature": gtSignature(gt) ?? "",
+    "Algo_Provider Signature": yesNo(raw.providerSignature) === "yes" ? "Yes" : yesNo(raw.providerSignature) === "no" ? "No" : "",
+    "GT_Provider Credentials": text(gtCredentials(gt)),
+    "Algo_Provider Credentials": text(raw.providerCredentials),
+    "GT_Orientation": `${turns.expected}`,
+    "Algo_Orientation": `${turns.actual}`,
+  };
+  return out;
+}
+
+/** The value headers, in VALUE_COLUMNS order. */
+function valueHeaders(): string[] {
+  return VALUE_COLUMNS.flatMap(({ name, extracted }) =>
+    [`GT_${name}`, `Algo_${name}`, ...(extracted ? [`Algo_Extracted ${name}`] : [])]);
+}
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -980,6 +1064,7 @@ export function scoreChart(
       scores: scored.scores,
       overall: pageOverall ? (pageOverall.verdict === "yes" ? "yes" : "no") : null,
       matches: pageOverall ? pageOverall.matches : null,
+      values: pageValues(raw, doc.manifest),
     });
     if (pageOverall) {
       add(overall, pageOverall.verdict);
@@ -1033,10 +1118,13 @@ function csvCell(value: string | number | null | undefined): string {
 /** The page-level accuracy CSV (2026-11-08, client): one row per scored page of ``charts``,
  * each metric Match / No Match (Page Type may be Partial), Not Scored where the metric does
  * not apply, and the overall (Match = all seven streams match). */
-export function pageAccuracyCsv(charts: ChartAccuracy[]): string {
+export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): string {
   const live = METRICS.filter((metric) => !metric.comingSoon);
+  // With values (2026-11-16, user; off by default): after the verdicts, each metric's ground
+  // truth (GT_) and pipeline (Algo_) values.
+  const values = withValues ? valueHeaders() : [];
   const header = ["Chart Name", "Run", "Batch", "Page Number", "File Name",
-    ...live.map((metric) => metric.label), "Overall", "Streams Matched"];
+    ...live.map((metric) => metric.label), "Overall", "Streams Matched", ...values];
   const lines = [header.map(csvCell).join(",")];
   for (const chart of charts) {
     for (const page of [...chart.pages].sort((a, b) => a.pageNumber - b.pageNumber)) {
@@ -1053,6 +1141,7 @@ export function pageAccuracyCsv(charts: ChartAccuracy[]): string {
         page.overall ? VERDICT_TEXT[page.overall] : "Not Scored",
         // "6 of 7", not "6/7": Excel reads that as a date (2026-11-09, user).
         page.matches == null ? "" : `${page.matches} of ${OVERALL_STREAMS}`,
+        ...values.map((column) => page.values?.[column] ?? ""),
       ].map(csvCell).join(","));
     }
   }

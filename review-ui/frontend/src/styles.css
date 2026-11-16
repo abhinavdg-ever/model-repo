@@ -6923,3 +6923,8 @@ input {
   display: flex;
   justify-content: flex-end;
 }
+
+/* Download Page Level Accuracy dialog (2026-11-16). */
+.accuracy-download-card {
+  width: min(500px, 100%);
+}
