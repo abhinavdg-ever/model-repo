@@ -327,6 +327,23 @@ def page_type_out(row):
     return says_blank_or_junk(row) or says_duplicate(row)
 
 
+def _page_type_canon(gt_raw, system_row):
+    """The Accuracy View's Page Type verdict (page_type_canon): the better of the algo's
+    Final and Extracted path; None when the canon does not know the label."""
+    from .page_type_canon import verdict
+
+    sides = [
+        (_raw_value(system_row, "Page Type"), _raw_value(system_row, "Page Subtype")),
+        (_alternate(system_row, "Page Type"), _alternate(system_row, "Page Subtype")),
+    ]
+    found = [verdict(gt_raw, family, sub) for family, sub in sides if family]
+    found = [v for v in found if v]
+    if not found:
+        return None
+    order = {"match": 3, "partial": 2, "mismatch": 1}
+    return max(found, key=order.get)
+
+
 def _alternate(row, field_name):
     """The algo row's second value for a field ("" when none)."""
 
@@ -430,6 +447,7 @@ def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=
 
     for field_name in fields_to_compare:
 
+        partial = False
         gt_raw = _raw_value(gt_row, field_name)
         system_raw = _raw_value(system_row, field_name)
 
@@ -501,6 +519,15 @@ def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=
         elif field_name in PRESENCE_FIELDS and clean_text(gt_raw) == "not found":
             # Not Found: none on the page.
             is_match = not has_value(system_raw)
+        elif (
+            field_name == "Page Type"
+            and not second_is_ground
+            and (canon := _page_type_canon(gt_raw, system_row)) is not None
+        ):
+            # The client label scored as on the Accuracy View (2026-11-16, user). Partial is
+            # not a match here (Manual Review is match / no match) but is marked "!".
+            is_match = canon == "match"
+            partial = canon == "partial"
         else:
             is_match = _values_match(field_name, gt_raw, system_raw, gt_normalized, system_normalized)
             if is_match and field_name == "Member ID" and len(_parts(system_raw)) > 1:
@@ -548,6 +575,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None, second_is_ground=
             "display": display_value,
             "gt_raw": gt_raw,
             "system_raw": system_raw,
+            # Only on a Partial Page Type (the Accuracy View's 0.5): shown "!".
+            **({"partial": True} if partial else {}),
         }
 
     return field_results

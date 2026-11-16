@@ -1413,10 +1413,12 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                           {span ? shortSides[side] : shortSides.join(" = ")}
                         </td>
                         {result.fields.map((field) => {
-                          const mismatched = row.mismatched.includes(field);
+                          const partial = (row.partial ?? []).includes(field);
+                          const mismatched = row.mismatched.includes(field) && !partial;
                           // A value both sides agree on is shown once, across both rows.
                           const agreed =
                             !mismatched &&
+                            !partial &&
                             span !== undefined &&
                             (row.status === "ERROR" || row.status === "CORRECT") &&
                             !splitDisplay(row.values[field] ?? "", tokens);
@@ -1425,9 +1427,11 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                             <td
                               key={field}
                               rowSpan={agreed ? span : undefined}
-                              className={mismatched ? "excel-compare-mismatch" : undefined}
+                              className={mismatched ? "excel-compare-mismatch" : partial ? "excel-compare-partial" : undefined}
+                              title={partial ? "Partial match: same type, less or other detail (0.5 on the Accuracy View)" : undefined}
                             >
                               {sideValue(row, field, side, tokens) || "—"}
+                              {partial && side === 0 ? <span className="excel-compare-partial-mark" aria-label="Partial">!</span> : null}
                             </td>
                           );
                         })}

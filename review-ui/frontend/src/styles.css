@@ -6928,3 +6928,18 @@ input {
 .accuracy-download-card {
   width: min(500px, 100%);
 }
+
+/* Manual Review: Page Type a Partial match (2026-11-16). */
+.excel-compare-table td.excel-compare-partial {
+  background: var(--status-warning-bg);
+}
+
+.excel-compare-table tr.excel-compare-row-gt td.excel-compare-partial {
+  color: var(--status-warning-fg);
+}
+
+.excel-compare-partial-mark {
+  margin-left: 0.35rem;
+  font-weight: 700;
+  color: var(--status-warning-fg);
+}

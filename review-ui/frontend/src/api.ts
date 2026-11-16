@@ -909,6 +909,8 @@ export type ManualReviewRow = {
   /** Field -> the value, or "GT: … | Algo: …" when the two differ. */
   values: Record<string, string>;
   mismatched: string[];
+  /** Page Type a Partial match (the Accuracy View's 0.5): counted as a mismatch, shown "!". */
+  partial?: string[];
   status: ManualReviewStatus;
   reason: string;
 };

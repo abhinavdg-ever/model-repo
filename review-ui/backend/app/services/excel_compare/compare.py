@@ -224,6 +224,10 @@ def compare_frames(ground, system, fields_to_compare, second_is_ground=False):
             for field_name, field_result in field_results.items()
             if not field_result["match"]
         ]
+        # Page Type a Partial match (the Accuracy View's 0.5): shown "!" on the screen.
+        row["Partial"] = [
+            field_name for field_name, field_result in field_results.items() if field_result.get("partial")
+        ]
         row["Evidence"] = [
             {
                 "field": field_name,

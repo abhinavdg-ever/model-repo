@@ -74,6 +74,7 @@ def _row(row: dict, fields: list[str]) -> dict[str, Any]:
         "pageNumber": _text(row.get("Page Number")),
         "values": {field: _text(row.get(field, "")) for field in fields},
         "mismatched": list(row.get("Mismatched", [])),
+        "partial": list(row.get("Partial", [])),
         "status": row["Status"],
         "reason": row["Reason"],
     }
