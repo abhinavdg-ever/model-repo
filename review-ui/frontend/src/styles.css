@@ -6943,3 +6943,12 @@ input {
   font-weight: 700;
   color: var(--status-warning-fg);
 }
+
+/* Search: the end of a lazily loaded result (2026-11-16). */
+.search-more {
+  display: flex;
+  justify-content: center;
+  padding: 0.85rem 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

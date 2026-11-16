@@ -1,9 +1,16 @@
-import { Fragment, useState, type FormEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { formatIstShort } from "./istTime";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Search, X } from "lucide-react";
 import PageMessage from "./PageMessage";
 import ValueSearchPanel from "./ValueSearchPanel";
-import { errorDetail, searchOcr, type OcrSearchChart, type OcrSearchResult, type OcrSearchSnippet } from "./api";
+import {
+  errorDetail,
+  searchOcr,
+  type OcrSearchBatch,
+  type OcrSearchChart,
+  type OcrSearchResult,
+  type OcrSearchSnippet,
+} from "./api";
 
 type Props = {
   onBack: () => void;
@@ -58,6 +65,47 @@ function sameSearch(a: Pick<Searched, "q" | "wholeWord" | "run" | "batch">, b: t
   return a.q.toLowerCase() === b.q.toLowerCase() && a.wholeWord === b.wholeWord && a.run === b.run && a.batch === b.batch;
 }
 
+/** The next chunk merged into what is shown: its pages join their chart (a new chart is
+ * added), and the totals and run / batch chips are counted again. */
+function mergeChunk(shown: OcrSearchResult, chunk: OcrSearchResult): OcrSearchResult {
+  const charts = new Map(shown.charts.map((c) => [c.chart, { ...c, pages: [...c.pages] }]));
+  for (const c of chunk.charts) {
+    const have = charts.get(c.chart);
+    if (!have) {
+      charts.set(c.chart, { ...c, pages: [...c.pages] });
+      continue;
+    }
+    const seen = new Set(have.pages.map((p) => p.page_name));
+    for (const page of c.pages) {
+      if (seen.has(page.page_name)) continue;
+      have.pages.push(page);
+      have.hits += page.hits;
+    }
+    if (have.total_pages == null) have.total_pages = c.total_pages;
+  }
+  const ordered = [...charts.values()];
+  const batches = new Map<string, OcrSearchBatch>();
+  for (const c of ordered) {
+    const key = `${c.run}|${c.batch}`;
+    const b = batches.get(key) ?? { run: c.run, batch: c.batch, charts: 0, pages: 0, hits: 0, header_hits: 0 };
+    b.charts += 1;
+    b.pages += c.pages.length;
+    b.hits += c.hits;
+    b.header_hits += c.header_hits;
+    batches.set(key, b);
+  }
+  return {
+    ...shown,
+    charts: ordered,
+    batches: [...batches.values()],
+    total_charts: ordered.length,
+    total_pages: ordered.reduce((n, c) => n + c.pages.length, 0),
+    total_hits: ordered.reduce((n, c) => n + c.hits, 0),
+    total_header_hits: ordered.reduce((n, c) => n + c.header_hits, 0),
+    next_offset: chunk.next_offset ?? null,
+  };
+}
+
 function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 }
@@ -104,6 +152,47 @@ export default function SearchView({ onBack, chartHref }: Props) {
 
   const current = selected ? history.find((h) => h.id === selected) ?? null : null;
   const result = selected ? answers.get(selected) ?? null : null;
+  // Lazy loading (2026-11-16, user): the next chunk when the end of the table comes into view.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [, setLoadedChunks] = useState(0);
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  const loading = useRef(false);
+
+  async function loadMore() {
+    if (!selected || !current || loading.current) return;
+    const shown = answers.get(selected);
+    if (!shown || shown.next_offset == null) return;
+    const id = selected;
+    loading.current = true;
+    setLoadingMore(true);
+    try {
+      const chunk = await searchOcr({
+        q: current.q, wholeWord: current.wholeWord, run: current.run, batch: current.batch, offset: shown.next_offset,
+      });
+      const latest = answers.get(id);
+      if (latest) answers.set(id, mergeChunk(latest, chunk));
+      setLoadedChunks((n) => n + 1);
+    } catch (err) {
+      setError(errorDetail(err, "Could not load more results"));
+    } finally {
+      loading.current = false;
+      setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !result || result.next_offset == null) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, result, result?.next_offset]);
 
   async function runSearch(asked: Pick<Searched, "q" | "wholeWord" | "run" | "batch">) {
     setBusy(true);
@@ -303,9 +392,16 @@ export default function SearchView({ onBack, chartHref }: Props) {
                 `${plural(result.total_header_hits, "header hit")}, in ${plural(result.total_charts, "chart")}`
               : `No page's Tesseract text or section header has “${result.query}”`}
           </h2>
+          {result.next_offset != null ? (
+            <p className="accuracy-note">
+              Showing {plural(result.total_pages, "page")}
+              {result.matching_pages != null ? ` of ${result.matching_pages.toLocaleString()}` : ""}: more load as you
+              scroll.
+            </p>
+          ) : null}
           {result.truncated ? (
             <p className="accuracy-note">
-              Showing the first {result.max_pages} pages. Narrow it by run or batch to see the rest.
+              Section headers: the first 2,000 shown. Narrow it by run or batch to see the rest.
             </p>
           ) : null}
 
@@ -356,6 +452,17 @@ export default function SearchView({ onBack, chartHref }: Props) {
                 ))}
               </tbody>
             </table>
+          ) : null}
+          {result.next_offset != null ? (
+            <div ref={sentinel} className="search-more" aria-live="polite">
+              {loadingMore ? (
+                "Loading more…"
+              ) : (
+                <button type="button" className="back-btn" onClick={() => void loadMore()}>
+                  Load more
+                </button>
+              )}
+            </div>
           ) : null}
         </section>
       ) : null}

@@ -162,3 +162,22 @@ def test_a_page_with_no_blob_says_why():
     assert repo.no_blob_reason("c1", 2) == "not in imaging-pipeline/Processed/R1/c1/pages/2.jpg"
     assert repo.no_blob_reason("c1", 3) == "no page_list row for this page"
     assert repo.no_blob_reason("c1", 4) is None
+
+
+def test_results_come_in_chunks_with_a_next_offset(monkeypatch):
+    """2026-11-16 (user): lazy loading. Each answer is max_pages pages from offset; the first
+    also carries the headers and the total number of matching pages."""
+    rows = [("c1", "R1", "B1", n, f"{n}.jpg", "pain") for n in range(1, 4)]
+    fake = _patch(monkeypatch, rows, headers=[("c1", "R1", "B1", 1, "1.jpg", "Pain")])
+    fake.fetchone = lambda: (7,)
+    first = ocr_search.search_tesseract("db", "public", "pain", max_pages=2)
+    assert fake.calls[0][1][-2:] == [3, 0]  # LIMIT max_pages + 1, OFFSET 0
+    assert (first["offset"], first["next_offset"], first["matching_pages"]) == (0, 2, 7)
+    assert first["total_pages"] == 2 and first["total_header_hits"] == 1
+
+    fake.calls.clear()
+    fake.answers["text"] = rows[2:]
+    second = ocr_search.search_tesseract("db", "public", "pain", max_pages=2, offset=2)
+    assert fake.calls[0][1][-2:] == [3, 2]
+    assert [kind for kind, _ in fake.calls if kind in ("headers", "json")] == []  # headers come once
+    assert (second["next_offset"], second["matching_pages"], second["total_pages"]) == (None, None, 1)

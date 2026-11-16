@@ -19,14 +19,17 @@ def search_ocr(
     whole_word: bool = Query(True, description="Match whole words only (pain, not painful)"),
     run: str | None = Query(None, description="Only this run (chart_list.run_id)"),
     batch: str | None = Query(None, description="Only this batch (chart_list.batch_id)"),
+    offset: int = Query(0, ge=0, description="The next chunk: next_offset of the previous answer"),
     settings: Settings = Depends(get_settings),
     user: SignedInUser | None = Depends(current_user),
 ) -> dict:
-    """Admins only: pages whose Tesseract text has the word, grouped by batch and chart."""
+    """Admins only: pages whose Tesseract text has the word, grouped by batch and chart, one
+    chunk at a time (``next_offset`` asks for the next)."""
     admin = _admin_with_db(user, settings, "search the OCR", "The OCR text is kept")
     try:
         found = ocr_search.search_tesseract(
-            settings.database_url, settings.db_schema, q, whole_word=whole_word, run_id=run, batch_id=batch
+            settings.database_url, settings.db_schema, q, whole_word=whole_word, run_id=run, batch_id=batch,
+            offset=offset,
         )
     except ocr_search.SearchError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc

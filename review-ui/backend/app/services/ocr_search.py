@@ -21,7 +21,9 @@ from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import connection
 
 MIN_QUERY = 2
-MAX_PAGES = 500
+# Pages per answer: the screen asks for the next ``offset`` as the reader scrolls
+# (2026-11-16, user: lazy loading, so a search can reach hundreds of charts / thousands of pages).
+MAX_PAGES = 200
 MAX_HEADERS = 2000
 SNIPPETS_PER_PAGE = 3
 SNIPPET_CONTEXT = 60  # characters either side of a hit
@@ -120,7 +122,11 @@ def search_tesseract(
     run_id: str | None = None,
     batch_id: str | None = None,
     max_pages: int = MAX_PAGES,
+    offset: int = 0,
 ) -> dict[str, Any]:
+    """One chunk of the answer: ``max_pages`` pages from ``offset`` (run / batch / chart /
+    page order). Section headers and the total page count come with the first chunk only."""
+    offset = max(0, int(offset or 0))
     query = " ".join(_words(query))
     if len(query) < MIN_QUERY:
         raise SearchError(400, f"Search for at least {MIN_QUERY} characters")
@@ -128,7 +134,7 @@ def search_tesseract(
     if backend.reads_cosmos():
         return _search_cosmos(query, whole_word, pattern, max(_words(query), key=len),
                               run_id=(run_id or "").strip() or None, batch_id=(batch_id or "").strip() or None,
-                              max_pages=max_pages)
+                              max_pages=max_pages, offset=offset)
 
     filters, filter_params = "", []
     if (run_id or "").strip():
@@ -137,36 +143,51 @@ def search_tesseract(
     if (batch_id or "").strip():
         filters += " AND c.batch_id = %s"
         filter_params.append(batch_id.strip())
-    sql = [
-        "SELECT c.chart_name, c.run_id, c.batch_id, p.page_number, p.page_name, o.raw_text",
+    where = [
         "  FROM ocr_results o",
         "  JOIN page_list p ON p.id = o.page_id",
         "  JOIN chart_list c ON c.id = o.chart_id",
         " WHERE o.ocr_type = 'tesseract' AND o.raw_text ILIKE %s AND o.raw_text ~* %s" + filters,
-        " ORDER BY c.run_id NULLS LAST, c.batch_id NULLS LAST, c.chart_name, p.page_number",
-        " LIMIT %s",
     ]
+    sql = [
+        "SELECT c.chart_name, c.run_id, c.batch_id, p.page_number, p.page_name, o.raw_text",
+        *where,
+        " ORDER BY c.run_id NULLS LAST, c.batch_id NULLS LAST, c.chart_name, p.page_number, p.id",
+        " LIMIT %s OFFSET %s",
+    ]
+    header_rows: list = []
+    matching_pages = None
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
-        cur.execute("\n".join(sql), [like, regex, *filter_params, max_pages + 1])
+        cur.execute("\n".join(sql), [like, regex, *filter_params, max_pages + 1, offset])
         rows = cur.fetchall()
-        cur.execute(_HEADERS_SQL.replace("{filters}", filters), [regex, *filter_params, MAX_HEADERS + 1])
-        header_rows = list(cur.fetchall())
-    try:  # older pages: headers only in the OCR JSON, which may not all parse as JSON
-        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
-            cur.execute(_OCR_JSON_HEADERS_SQL.replace("{filters}", filters),
-                        [like, regex, *filter_params, MAX_HEADERS + 1])
-            header_rows += cur.fetchall()
-    except Exception as exc:  # noqa: BLE001 — the words and the stored headers still answer
-        logger.warning("OCR search: headers from the OCR JSON skipped: %s", exc)
+        if offset == 0:
+            if len(rows) > max_pages:
+                cur.execute("SELECT count(*)\n" + "\n".join(where), [like, regex, *filter_params])
+                matching_pages = int(cur.fetchone()[0])
+            else:
+                matching_pages = len(rows)
+            cur.execute(_HEADERS_SQL.replace("{filters}", filters), [regex, *filter_params, MAX_HEADERS + 1])
+            header_rows = list(cur.fetchall())
+    if offset == 0:
+        try:  # older pages: headers only in the OCR JSON, which may not all parse as JSON
+            with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+                cur.execute(_OCR_JSON_HEADERS_SQL.replace("{filters}", filters),
+                            [like, regex, *filter_params, MAX_HEADERS + 1])
+                header_rows += cur.fetchall()
+        except Exception as exc:  # noqa: BLE001 — the words and the stored headers still answer
+            logger.warning("OCR search: headers from the OCR JSON skipped: %s", exc)
 
-    truncated = len(rows) > max_pages or len(header_rows) > MAX_HEADERS
+    more = len(rows) > max_pages
+    truncated = len(header_rows) > MAX_HEADERS
 
     def page_counts(names: list[str]) -> dict[str, int]:
         with connection(database_url, db_schema) as conn, conn.cursor() as cur:
             cur.execute(_PAGE_COUNT_SQL, [names])
             return {chart_name: int(total) for chart_name, total in cur.fetchall()}
 
-    return _assemble(query, whole_word, pattern, rows, header_rows, truncated, max_pages, page_counts)
+    found = _assemble(query, whole_word, pattern, rows, header_rows, truncated, max_pages, page_counts)
+    return {**found, "offset": offset, "next_offset": offset + max_pages if more else None,
+            "matching_pages": matching_pages}
 
 
 def _assemble(query: str, whole_word: bool, pattern: re.Pattern[str], rows: list, header_rows: list,
@@ -243,38 +264,43 @@ def _assemble(query: str, whole_word: bool, pattern: re.Pattern[str], rows: list
 
 
 def _search_cosmos(query: str, whole_word: bool, pattern: re.Pattern[str], word: str, *,
-                   run_id: str | None, batch_id: str | None, max_pages: int) -> dict[str, Any]:
+                   run_id: str | None, batch_id: str | None, max_pages: int, offset: int = 0) -> dict[str, Any]:
     """The same search over the page documents: CONTAINS (case-insensitive) on the query's
     longest word as the prefilter, the Python pattern as the judge. Cross-partition and a full
     scan of the page documents' Tesseract text, so each search costs RU in proportion to the
-    pages stored; capped by TOP. Headers come from additional_details.section_headers only
-    (not the older Final OCR JSON headers). Without ORDER BY, a truncated search keeps an
-    arbitrary max_pages pages, not the first ones in run / batch / chart order."""
+    pages stored. Headers come from additional_details.section_headers only (not the older
+    Final OCR JSON headers). Paged by OFFSET / LIMIT in document id order (a single-property
+    ORDER BY needs no composite index); each chunk is sorted by chart and page."""
     store = backend.cosmos()
     scoped = store.chart_runs(run_id=run_id, batch_id=batch_id) if (run_id or batch_id) else None
     if scoped is not None and not scoped:
-        return _assemble(query, whole_word, pattern, [], [], False, max_pages, lambda names: {})
+        return {**_assemble(query, whole_word, pattern, [], [], False, max_pages, lambda names: {}),
+                "offset": offset, "next_offset": None, "matching_pages": 0}
     scope_sql = " AND ARRAY_CONTAINS(@names, c.chart_name)" if scoped is not None else ""
-    params = [{"name": "@w", "value": word}, {"name": "@n", "value": max_pages + 1}]
+    params = [{"name": "@w", "value": word}, {"name": "@n", "value": max_pages + 1},
+              {"name": "@o", "value": offset}]
     header_params = [{"name": "@w", "value": word}, {"name": "@n", "value": MAX_HEADERS + 1}]
     if scoped is not None:
         params.append({"name": "@names", "value": sorted(scoped)})
         header_params.append({"name": "@names", "value": sorted(scoped)})
     pages = store.query_all(
         "pages",
-        "SELECT TOP @n c.chart_name, c.page.page_number AS page_number, c.page.page_name AS page_name, "
+        "SELECT c.chart_name, c.page.page_number AS page_number, c.page.page_name AS page_name, "
         "c.ocr.tesseract.raw_text AS text FROM c "
-        f"WHERE CONTAINS(c.ocr.tesseract.raw_text, @w, true){scope_sql}",
+        f"WHERE CONTAINS(c.ocr.tesseract.raw_text, @w, true){scope_sql} "
+        "ORDER BY c.id OFFSET @o LIMIT @n",
         params,
     )
-    headers = store.query_all(
+    headers = [] if offset else store.query_all(
         "pages",
         "SELECT TOP @n c.chart_name, c.page.page_number AS page_number, c.page.page_name AS page_name, "
         "h.text AS text FROM c JOIN h IN c.additional_details.section_headers "
         f"WHERE IS_STRING(h.text) AND CONTAINS(h.text, @w, true){scope_sql}",
         header_params,
     )
-    truncated = len(pages) > max_pages or len(headers) > MAX_HEADERS
+    more = len(pages) > max_pages
+    pages = pages[:max_pages]  # the look-ahead row belongs to the next chunk (id order)
+    truncated = len(headers) > MAX_HEADERS
     names = sorted({str(d["chart_name"]) for d in pages + headers})
     runs = scoped if scoped is not None else (store.chart_runs(names) if names else {})
     key = lambda d: (str(d["chart_name"]), d.get("page_number") is None, d.get("page_number") or 0)  # noqa: E731
@@ -283,5 +309,8 @@ def _search_cosmos(query: str, whole_word: bool, pattern: re.Pattern[str], word:
         return [(str(d["chart_name"]), *runs.get(str(d["chart_name"]), (None, None)), d.get("page_number"),
                  d.get("page_name"), d.get("text")) for d in sorted(docs, key=key)[:limit]]
 
-    return _assemble(query, whole_word, pattern, as_rows(pages, max_pages), as_rows(headers, MAX_HEADERS),
-                     truncated, max_pages, lambda found: {n: store.page_count(n) for n in found})
+    found = _assemble(query, whole_word, pattern, as_rows(pages, max_pages), as_rows(headers, MAX_HEADERS),
+                      truncated, max_pages, lambda found: {n: store.page_count(n) for n in found})
+    # No total on Cosmos (a COUNT is another full scan): the screen shows what has loaded.
+    return {**found, "offset": offset, "next_offset": offset + max_pages if more else None,
+            "matching_pages": None if more or offset else len(pages)}

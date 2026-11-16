@@ -536,13 +536,21 @@ export type OcrSearchResult = {
   total_pages: number;
   total_hits: number;
   total_header_hits: number;
+  /** Section headers past the cap were left out. */
   truncated: boolean;
+  /** Pages per chunk. */
   max_pages: number;
+  /** Lazy loading (2026-11-16): this chunk's first page, the next chunk's (null: no more),
+   * and every matching page (the first chunk only; null when unknown). */
+  offset?: number;
+  next_offset?: number | null;
+  matching_pages?: number | null;
 };
 
-/** Admins only: pages whose Tesseract text has the word or phrase. */
-export function searchOcr(params: { q: string; wholeWord: boolean; run?: string; batch?: string }): Promise<OcrSearchResult> {
+/** Admins only: pages whose Tesseract text has the word or phrase, a chunk at a time. */
+export function searchOcr(params: { q: string; wholeWord: boolean; run?: string; batch?: string; offset?: number }): Promise<OcrSearchResult> {
   const qs = new URLSearchParams({ q: params.q, whole_word: String(params.wholeWord) });
+  if (params.offset) qs.set("offset", String(params.offset));
   if (params.run?.trim()) qs.set("run", params.run.trim());
   if (params.batch?.trim()) qs.set("batch", params.batch.trim());
   return api(`/api/search/ocr?${qs.toString()}`);

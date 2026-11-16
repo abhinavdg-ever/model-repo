@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ChevronDown, ChevronRight, Plus, Search, X } from "lucide-react";
 import PageMessage from "./PageMessage";
 import {
@@ -24,6 +24,32 @@ let kept: { conditions: ValueCondition[]; run: string; batch: string; result: Va
 
 function blankCondition(column = "page_type"): ValueCondition {
   return { column, side: "prediction", op: "is", value: "" };
+}
+
+/** Charts drawn at first, and added each time the end of the table comes into view
+ * (2026-11-16, user: lazy loading for searches of hundreds of charts). */
+const CHART_STEP = 100;
+
+/** Draws ``CHART_STEP`` more each time ``ref``'s element nears the viewport; back to the
+ * first step whenever ``reset`` changes (a new search). */
+function useShownCount(total: number, reset: unknown): [number, (node: HTMLDivElement | null) => void] {
+  const [shown, setShown] = useState(CHART_STEP);
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const totalRef = useRef(total);
+  totalRef.current = total;
+  useEffect(() => setShown(CHART_STEP), [reset]);
+  useEffect(() => {
+    if (!node || shown >= total) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShown((n) => Math.min(totalRef.current, n + CHART_STEP));
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node, shown, total]);
+  return [shown, setNode];
 }
 
 function plural(n: number, word: string): string {
@@ -89,6 +115,7 @@ export default function ValueSearchPanel({ chartHref }: Props) {
   }
 
   const allOpen = Boolean(result?.charts.length) && result!.charts.every((c) => open.has(c.chart));
+  const [shownCharts, setEnd] = useShownCount(result?.charts.length ?? 0, result);
 
   return (
     <>
@@ -197,7 +224,7 @@ export default function ValueSearchPanel({ chartHref }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {result.charts.map((chart) => (
+                {result.charts.slice(0, shownCharts).map((chart) => (
                   <ChartRows key={chart.chart} chart={chart} columns={result.columns} open={open.has(chart.chart)}
                              chartHref={chartHref}
                              onToggle={() => setOpen((prev) => {
@@ -209,6 +236,11 @@ export default function ValueSearchPanel({ chartHref }: Props) {
                 ))}
               </tbody>
             </table>
+          ) : null}
+          {result.charts.length > shownCharts ? (
+            <div ref={setEnd} className="search-more">
+              Showing {shownCharts.toLocaleString()} of {plural(result.charts.length, "chart")}: more as you scroll.
+            </div>
           ) : null}
         </section>
       ) : null}
