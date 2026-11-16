@@ -1310,8 +1310,21 @@ function MultiEntry({
     return list ? list.split(",").map((part) => part.trim()).filter(Boolean) : [""];
   })();
   const [entries, setEntries] = useState<string[]>(initial);
+  // The box being typed in: its matches drop down as in the single-value menu (2026-11-16,
+  // user: the same searchable list as Page Type, not the browser's own suggestions).
+  const [active, setActive] = useState<number | null>(null);
   const joined = (list: string[]) => list.map((entry) => entry.trim()).filter(Boolean).join(", ");
-  const listId = `gt-options-${fieldId}`;
+  const minChars = ENTRY_RULES[fieldId]?.minChars ?? 2;
+  const matchesFor = (typed: string): string[] => {
+    const folded = typed.trim().toLowerCase();
+    if (!options.length || folded.length < minChars) return [];
+    return [
+      ...options.filter((option) => option.toLowerCase().startsWith(folded)),
+      ...options.filter((option) => !option.toLowerCase().startsWith(folded) && option.toLowerCase().includes(folded)),
+    ]
+      .filter((option) => option.toLowerCase() !== folded)
+      .slice(0, 30);
+  };
   function update(next: string[]) {
     setEntries(next);
     onDraft(joined(next));
@@ -1339,10 +1352,12 @@ function MultiEntry({
             aria-label={`${label} ${index + 1} ground truth`}
             type="text"
             value={entry}
-            list={options.length ? listId : undefined}
             placeholder={index === 0 ? emptyLabel(fieldId) : "Another"}
             autoFocus={index === entries.length - 1}
-            onChange={(event) => update(entries.map((old, i) => (i === index ? event.target.value : old)))}
+            onChange={(event) => {
+              setActive(index);
+              update(entries.map((old, i) => (i === index ? event.target.value : old)));
+            }}
           />
           {entries.length > 1 ? (
             <button
@@ -1358,12 +1373,24 @@ function MultiEntry({
           ) : null}
         </span>
       ))}
-      {options.length ? (
-        <datalist id={listId}>
-          {options.map((option) => (
-            <option key={option} value={option} />
+      {active != null && matchesFor(entries[active] ?? "").length > 0 ? (
+        <ul className="imaging-gt-menu" role="listbox" aria-label={label}>
+          {matchesFor(entries[active] ?? "").map((option) => (
+            <li key={option}>
+              <button
+                type="button"
+                role="option"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  update(entries.map((old, i) => (i === active ? option : old)));
+                  setActive(null);
+                }}
+              >
+                {option}
+              </button>
+            </li>
           ))}
-        </datalist>
+        </ul>
       ) : null}
       <span className="imaging-gt-multi-actions">
         <button
