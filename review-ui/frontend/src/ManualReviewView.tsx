@@ -136,7 +136,7 @@ function InputCard({
   );
 }
 
-/** Database / Upload file / Not used toggle in a card's title row. */
+/** Database / Upload file / Skip toggle in a card's title row. */
 function SourceToggle({
   label,
   value,
@@ -152,7 +152,7 @@ function SourceToggle({
         [
           ["db", "Database", Database],
           ["upload", "Upload file", Upload],
-          ["none", "Not used", Ban],
+          ["none", "Skip", Ban],
         ] as const
       ).map(([id, text, Icon]) => (
         <button
@@ -193,7 +193,7 @@ function NotUsedPick() {
     <div className="excel-compare-pick has-file excel-compare-db excel-compare-unused">
       <span className="excel-compare-pick-file">
         <Ban size={14} aria-hidden="true" />
-        Not used
+        Skip
       </span>
       <span className="excel-compare-pick-hint">Left out of the comparison</span>
     </div>
