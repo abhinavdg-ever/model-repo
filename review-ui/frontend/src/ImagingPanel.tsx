@@ -494,6 +494,9 @@ type CompareRow = {
   /** Display only: how a value in this row reads on screen (Extracted, Final and the
    * ground truth). Scoring and saving use the value itself. */
   shown?: (value: string) => string;
+  /** 2026-11-16 (user): an empty ground-truth cell reads Not Found; the pipeline's value is not
+   * offered (no Accept, not taken on Save). Page Type and Page Subtype. */
+  noOffer?: boolean;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
@@ -1130,12 +1133,12 @@ function GroundTruthCell({
   // "Carl Rogers (Yes)" / "Trelegy Ellipta (No)": the bracket says whether it is the member.
   const memberSide = /\((yes|no)\)$/i.exec(row.processed.trim())?.[1];
   const processedSide = memberSide ? yesNo(memberSide) : yesNo(row.processed);
-  const copied = !suggest
+  const copied = !suggest || row.noOffer
     ? ""
     : row.presence
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
-  const offer = suggest && !stored && !verdict;
+  const offer = suggest && !stored && !verdict && !row.noOffer;
   // 2026-11-04 / 11-05 (user): a field with no ground truth and no change takes its Final
   // value when the reviewer saves another field, instead of an empty (Not Found) entry --
   // also on a page that already has ground truth for other fields.
@@ -1143,7 +1146,7 @@ function GroundTruthCell({
     const fallback = row.presence
       ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
       : confirmedValue(row.processed);
-    if (!stored && !verdict && fallback) offered.current[row.id] = fallback;
+    if (!stored && !verdict && fallback && !row.noOffer) offered.current[row.id] = fallback;
     else delete offered.current[row.id];
   }
   const fromStore = !verdict && Boolean(stored);
@@ -1867,6 +1870,7 @@ function sameValue(
     key: extra.key,
     note: extra.note,
     compare: extra.compare,
+    shown: extra.shown,
     id: extra.id,
     label: extra.label,
     extracted: value,
@@ -2046,10 +2050,9 @@ function PageDetails({
   const pageTypeKnown = Boolean(sections.junk || sections.codeable);
   const pageParts = splitPageType(page.pageType);
   const typeOut = pageTypeOut(page);
-  // 2026-11-16 (user): a duplicate (Yes, not Partial) or a Blank / Junk page shows its Page
-  // Type and Subtype as Not Found. Display only: the stored type (Letter/Fax, Others ...) and
-  // the scoring are unchanged.
-  const pipelineDup = typeOut.pipeline && pageTypeKnown;
+  // 2026-11-16 (user): only a duplicate (Yes, not Partial) shows its Page Type and Subtype as
+  // Not Found on the pipeline side; a Blank / Junk page shows its type (Letter/Fax, Others ...).
+  const pipelineDup = page.isDuplicate === true && pageTypeKnown;
   // Final: the document's first-page type; a page outside any document keeps its own.
   const finalParts = splitPageType(page.finalPageType || page.pageType);
   const codeableKnown =
@@ -2081,9 +2084,6 @@ function PageDetails({
   // The ground truth's Duplicate as entered (saved or not): Yes shows Page Type / Subtype as
   // Not Found.
   const gtDup = duplicateSide(values.duplicate ?? page.groundTruth?.isDuplicate) === "yes";
-  // The ground truth's Blank / Junk as entered: Yes shows Page Type / Subtype as Not Found
-  // (the type set with it, Blank / Others ..., is still saved and scored).
-  const gtBlankJunk = (values.blank_junk ?? "").trim().toLowerCase().startsWith("yes");
   // 2026-11-06 (user): nothing is checked across fields; Save never waits.
   const problems: Record<string, string> = {};
   const dirty =
@@ -2411,7 +2411,9 @@ function PageDetails({
             // A page Blank / Junk or Duplicate (Yes) on both sides is a Match whatever its type;
             // on one side only, a No Match (pageTypeOut).
             // Not Found only while empty: the reviewer can still type a type over it.
-            truthShown: gtBlankJunk || (gtDup && !(values.page_type ?? "").trim()) ? NOT_FOUND : undefined,
+            // 2026-11-16 (user): no ground-truth type saved reads Not Found, Blank / Junk or not.
+            truthShown: !(values.page_type ?? "").trim() ? NOT_FOUND : undefined,
+            noOffer: true,
             blankIsNone: gtDup && pageTypeKnown,
             // Our L1 (an older client label still scores, gtPageTypeCanon.json), with
             // the accuracy report's rules: the better of Final and Extracted. Page
@@ -2437,7 +2439,8 @@ function PageDetails({
               noMark: true,
             }),
             processed: pipelineDup ? NOT_FOUND : fmtPageType(finalParts.subtype, pageTypeKnown),
-            truthShown: gtBlankJunk || (gtDup && !(values.page_subtype ?? "").trim()) ? NOT_FOUND : undefined,
+            truthShown: !(values.page_subtype ?? "").trim() ? NOT_FOUND : undefined,
+            noOffer: true,
             l2Of: "page_type",
           },
           {
@@ -3201,8 +3204,8 @@ function DocSummary({
             const bits = pageBits(p, sections);
             const pageParts = splitPageType(p.pageType);
             const typeKnown = Boolean(sections.junk || sections.codeable);
-            // Blank / Junk or a duplicate: Page Type / Subtype read Not Found (display only).
-            const typeOutShown = typeKnown && pageTypeOut(p).pipeline;
+            // A duplicate: Page Type / Subtype read Not Found (display only).
+            const typeOutShown = typeKnown && p.isDuplicate === true;
             return (
             <tr key={`${p.pageNumber}-${p.fileName}`} id={pageRowId(p.fileName)}>
               <td>{p.pageNumber}</td>
