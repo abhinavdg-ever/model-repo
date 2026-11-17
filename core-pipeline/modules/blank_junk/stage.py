@@ -555,9 +555,13 @@ def _classify(
             if prev_sig and _repeated_signature(prev_id) is not None:
                 prev_sig = None
             if prev_sig and signature_ends_page(prev_sig, texts.get(prev_id) or ""):
+                # Only what this page adds counts (2026-11-17, user): a running header repeated
+                # from the page before (Patient Name, Date of Birth, Encounter Date) carries no
+                # signature on, so its dates and names are left out.
+                added = new_lines(texts.get(pid) or "", _words(prev_id))
                 carried = method.provider_or_date(
-                    texts.get(pid) or "", bool(getattr((inputs or {}).get(pid), "provider", False)),
-                    signer=prev_sig.get("provider_name") or "")
+                    added, bool(added.strip()) and bool(getattr((inputs or {}).get(pid), "provider", False)),
+                    signer=prev_sig.get("provider_name") or "") if added.strip() else None
                 if carried:
                     _keep(pid, "signature_continued",
                           f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its Electronic "
@@ -623,6 +627,13 @@ def signature_details(chart_name: str) -> dict[str, dict[str, str]]:
         return {str(row.get("page_name") or "").strip(): {k: str(row.get(k) or "") for k in keep}
                 for row in csv.DictReader(handle)
                 if str(row.get("signature_present") or "").strip().casefold() == "y"}
+
+
+def new_lines(text: str, before: frozenset[str]) -> str:
+    """The page's lines with a word not on the page before (``before``: its unique_words);
+    a line repeated from it -- a running header or footer -- is left out."""
+    return "\n".join(line for line in (text or "").splitlines()
+                     if unique_words(line) - before)
 
 
 def signature_ends_page(signature: dict[str, str], text: str, share: float = 0.6) -> bool:

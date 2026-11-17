@@ -38,7 +38,7 @@ The first rule that matches decides.
 
 | # | Rule | Check | Verdict |
 |---|---|---|---|
-| 1 | Blank | The pass 1 rules 1–5 again | as in pass 1 |
+| 1 | Blank | The pass 1 rules 1–5 again; also stage 1 says blank and all the text is in the top 15% header band with no ink below (a running header only, 2026-11-17) | as in pass 1 |
 | 2 | Visual | A visual page under 20 words that is not a card | Main |
 | 3 | Handwritten | More than 30% handwritten | Main |
 | 3b | Fax cover sheet | The word **Fax** and 2+ of its routing boxes: **Urgent, For (Your) Review, Please Comment, Please Reply / Reply ASAP, Please Recycle, As Requested** — even when signed (a cover sheet lists doctors) (2026-11-15) | Junk / Letter/Fax |
@@ -48,6 +48,7 @@ The first rule that matches decides.
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
 | 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
+| 8b | **Stage 1 Blank fallback** | Stage 1 typed the page Blank and none of the rules above kept it (applied after the contents-page check, before the short page and the classifier); confidence the backup 0.40 (2026-11-17) | Blank |
 | 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers **or dates** ("Encounter: 4/14/2026 9:15 AM", 2026-11-15). The next page carrying the list on (2+ entry lines, ≤ 120 distinct words, nothing kept it earlier) is junk too | Junk / Others |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
 | 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
@@ -67,7 +68,7 @@ clinical rules is never junked here. The first check that matches decides.
 
 | # | Check | Verdict |
 |---|---|---|
-| a | **The signature carries on from the page before.** The previous page ends in its Electronic Signature (kv_extract places it in the footer, or its signature sentence is in that page's last paragraph). This page has the provider's name or credentials (kv_extract), the signer's name, credentials (MD, DO, NP…), or a date | Main |
+| a | **The signature carries on from the page before.** The previous page ends in its Electronic Signature (kv_extract places it in the footer, or its signature sentence is in that page's last paragraph). This page has the provider's name or credentials (kv_extract), the signer's name, credentials (MD, DO, NP…), or a date, **in lines not repeated from the page before** (a running header's Date of Birth / Encounter Date does not count, 2026-11-17) | Main |
 | b | **Only a section header differs**: every word not on the previous or next page belongs to this page's own section header(s), "Visit Diagnosis" included (2026-11-15) | Junk / Others |
 | c | **The section carries on from the page before.** Fewer than 5 new words, some of them not header words, and the **previous page's last section header** is Visit Diagnosis, Encounter, Summary, or any standard Progress Note header (the `clinical` list of `section_header_classes.json`: Chief Complaint, HPI, Medications, Assessment, Plan, Vitals …). Canon `contained_page.continue_after_headers` + `use_clinical_headers`, editable (2026-11-15) | Main |
 | d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |

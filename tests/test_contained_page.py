@@ -111,6 +111,11 @@ def test_a_signature_carried_on_from_the_page_before_keeps_the_page(monkeypatch)
     assert _run({1: before, 2: HEADER + FOOTER + " MD"}, signed={1}, signatures=early)[2]["flag"] == "junk"
     # no Electronic Signature on the page before (the wording alone): judged on its words.
     assert _run({1: before, 2: HEADER + FOOTER + " MD"}, signatures=footer)[2]["flag"] == "junk"
+    # a date only in a running header repeated from the page before carries nothing on
+    # (2026-11-17, user): judged on its words.
+    head = "Patient Watson Date of Birth 01/31/1944 Encounter Date April 27, 2026\n"
+    assert _run({1: head + before, 2: head + FOOTER}, signed={1}, signatures=footer)[2]["flag"] == "junk"
+    assert stage.new_lines(head + "new line 01/02/2024", stage.unique_words(head)) == "new line 01/02/2024"
     # nothing of the signature here (no name, credentials or date): judged on its words.
     assert _run({1: before, 2: HEADER + FOOTER}, signed={1}, signatures=footer)[2]["flag"] == "junk"
 

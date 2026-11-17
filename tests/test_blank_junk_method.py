@@ -256,6 +256,25 @@ class TestBlankFromStage1AndLabKeep:
         v = run(text, pass_no=1, document_type="blank")
         assert v.code != method.CODE_BLANK and v.votes.get("stage1_blank_overruled")
 
+    def test_stage_1_blank_with_only_a_header_line_is_blank(self):
+        """2026-11-17 (user): text only in the top header band, no ink below -> Blank (pass 2)."""
+        text = "Patient Name: X Date of Birth: 01/31/1944 Sex: F Encounter Date: April 27, 2026"
+        v = run(text, pass_no=2, document_type="blank", content_bottom=0.03, body_ink=False, bert=bert(0.99))
+        assert (v.code, v.rule) == (method.CODE_BLANK, "R1") and "header band" in v.reason
+        # ink below the header band, or not measured: not header-only (the fallback decides).
+        for ink in (True, None):
+            v = run(text, pass_no=2, document_type="blank", content_bottom=0.03, body_ink=ink)
+            assert "header band" not in v.reason
+
+    def test_stage_1_blank_is_the_fallback(self):
+        """2026-11-17 (user): stage 1 Blank and no content rule kept it -> Blank, whatever the
+        classifier says; a content rule (signature) still keeps it."""
+        text = "Outside Labs: Ameripath Quest. In-House Tests OK? YES - AON Lab / YES - AON Path"
+        v = run(text, pass_no=2, document_type="blank", bert=bert(0.99))
+        assert v.code == method.CODE_BLANK and "fallback" in v.reason
+        v = run(text, pass_no=2, document_type="blank", signed=True, bert=bert(0.1))
+        assert v.code == method.CODE_MAIN and v.rule == "R4"
+
 
     def test_all_three_words_are_needed(self):
         no_range = "Lab report. Test Value Units. Invoice number 4411 amount due now. " + FILLER

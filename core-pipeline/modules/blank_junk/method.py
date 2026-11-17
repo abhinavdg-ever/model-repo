@@ -665,6 +665,14 @@ def _cover_mark(text: str) -> Optional[str]:
     return next((w for w in re.findall(r"[A-Za-z]+", text or "") if w.casefold() in COVER_MARKS), None)
 
 
+def header_only(inputs: PageInputs) -> bool:
+    """Pass 2: the page's content ends in the top header band and the band below is measured
+    free of ink. Not measured (no word boxes, no image) is never header-only."""
+    if inputs.pass_no != 2 or inputs.content_bottom is None or inputs.body_ink is not False:
+        return False
+    return inputs.content_bottom <= float(canon().raw["zones"]["header_band"])
+
+
 def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict (2026-11-04, user: the simplified ladder; first rule that fires wins).
 
@@ -729,6 +737,13 @@ def decide(inputs: PageInputs) -> Verdict:
     # user: a page typed blank with two lines of text came out Blank).
     if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
+    # ... except when that text is only a header line: stage 1's Blank, every line in the top
+    # header band and no ink below it (pass 2, measured; 2026-11-17, user: a page with only the
+    # EMR's running header is Blank).
+    if inputs.document_type == "blank" and header_only(inputs):
+        return ruled(CODE_BLANK, "R1", f"R1 blank: stage 1 page type blank, text only in the top "
+                                       f"{float(prof.raw['zones']['header_band']):.0%} header band",
+                     confidence=conf.measured())
     if inputs.document_type == "blank":
         votes["stage1_blank_overruled"] = f"{chars} characters of text"
     if not visual and chars == 0:
@@ -822,6 +837,13 @@ def decide(inputs: PageInputs) -> Verdict:
     if index is not None:
         votes["index_page"] = index
         return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
+    # 6a2. stage 1's Blank as the fallback (2026-11-17, user: "if Type (Printed/HW) gives Blank,
+    # it should be Yes (Blank)"): a page stage 1 typed Blank that no content rule above kept
+    # (handwriting, signature, lab, medications, clinical content, card, fax, contents) is Blank;
+    # neither the short-page check nor the classifier decides it.
+    if inputs.document_type == "blank":
+        return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank, no rule kept it (fallback)",
+                     confidence=conf.backup())
     # 6b. the contained page (stage._classify) decides here, before the classifier: it needs the
     # neighbours, so the stage applies it to every page that reached this point (2026-11-05, user).
     votes["reached_classifier"] = True
