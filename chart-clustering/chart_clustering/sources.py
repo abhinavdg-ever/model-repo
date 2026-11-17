@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -46,6 +47,12 @@ SELECT c.chart_name, p.page_name, p.page_number,
  ORDER BY c.chart_name, p.page_number
 """
 DB_CHARTS_SQL = "SELECT chart_name FROM chart_list ORDER BY chart_name"
+# Where each chart's page images are: blob_path is the Raw_Input chart folder
+# (Raw_Input/Run1/Batch1/DEID_PNGs/<chart>), output_path the Processed one.
+DB_PATHS_SQL = """
+SELECT chart_name, COALESCE(blob_container, ''), COALESCE(blob_path, ''), COALESCE(output_path, '')
+  FROM chart_list WHERE chart_name = ANY(%(names)s)
+"""
 
 
 def _connect(database_url: str, schema: str):
@@ -83,6 +90,8 @@ def from_db(database_url: Optional[str] = None, schema: str = "public",
             with conn.cursor() as cur:
                 cur.execute(DB_PAGES_SQL, {"names": part})
                 rows = cur.fetchall()
+                cur.execute(DB_PATHS_SQL, {"names": part})
+                where = {str(r[0]): (str(r[1]), str(r[2]), str(r[3])) for r in cur.fetchall()}
             by_chart: dict[str, list[tuple]] = {}
             for row in rows:
                 by_chart.setdefault(str(row[0]), []).append(row)
@@ -100,34 +109,125 @@ def from_db(database_url: Optional[str] = None, schema: str = "public",
                 }
                 # Labels only when imaging_final has rows for the chart.
                 has_labels = any(r[4] or r[5] for r in pages)
-                yield chart_from_pages(name, texts, labels if has_labels else {})
+                chart = chart_from_pages(name, texts, labels if has_labels else {})
+                chart.blob_container, chart.blob_path, chart.output_path = where.get(name, ("", "", ""))
+                yield chart
     finally:
         conn.close()
 
 
 # ---- blob ---------------------------------------------------------------------------------
 
-def _container_client(container: str):
-    """AZURE_STORAGE_CONNECTION_STRING, else AZURE_STORAGE_ACCOUNT_NAME + _KEY, else the
-    account name with DefaultAzureCredential (managed identity / az login)."""
-    from azure.storage.blob import BlobServiceClient
+# AZURE_STORAGE_AUTH as in core-pipeline (common/db/blob_store.py): a connection string always
+# wins; then managed_identity / entra_interactive / entra / key.
+MANAGED_IDENTITY_MODES = {"managed_identity", "managed-identity", "mi", "msi"}
+ENTRA_INTERACTIVE_MODES = {"entra_interactive", "entra-interactive", "browser"}
+ENTRA_MODES = {"entra", "aad", "azuread"}
+# Same token cache and sign-in record as core-pipeline: one browser prompt per machine.
+AUTH_RECORD_PATH = Path.home() / ".advantmed" / "azure_auth_record.json"
+TOKEN_SCOPE = "https://storage.azure.com/.default"
+_SERVICES: dict[str, object] = {}
+_SERVICE_LOCK = threading.Lock()
 
-    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-    if conn_str:
-        service = BlobServiceClient.from_connection_string(conn_str)
-    else:
-        account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or ""
-        if not account:
-            raise SystemExit("Set AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME (in .env)")
-        key = os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
-        if key:
-            credential = key
+
+class _RememberedBrowser:
+    """InteractiveBrowserCredential that reuses core-pipeline's saved sign-in (no prompt when
+    the machine has signed in before), and saves it after the first prompt."""
+
+    def __init__(self, cache) -> None:
+        from azure.identity import AuthenticationRecord, InteractiveBrowserCredential
+
+        record = None
+        try:
+            if AUTH_RECORD_PATH.is_file():
+                record = AuthenticationRecord.deserialize(AUTH_RECORD_PATH.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 - an unreadable record: sign in again
+            logger.warning("unreadable %s; signing in again", AUTH_RECORD_PATH)
+        self._known = record is not None
+        self._inner = InteractiveBrowserCredential(cache_persistence_options=cache, authentication_record=record)
+        self._lock = threading.Lock()
+
+    def _remember(self, scopes) -> None:
+        with self._lock:
+            if self._known:
+                return
+            record = self._inner.authenticate(scopes=list(scopes) or [TOKEN_SCOPE])
+            try:
+                AUTH_RECORD_PATH.parent.mkdir(parents=True, exist_ok=True)
+                AUTH_RECORD_PATH.write_text(record.serialize(), encoding="utf-8")
+            except OSError:
+                logger.warning("could not save %s", AUTH_RECORD_PATH)
+            self._known = True
+
+    def get_token(self, *scopes, **kwargs):
+        self._remember(scopes)
+        return self._inner.get_token(*scopes, **kwargs)
+
+    def get_token_info(self, *scopes, options=None):
+        self._remember(scopes)
+        return self._inner.get_token_info(*scopes, options=options)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def _credential(auth: str, client_id: Optional[str], key: Optional[str]):
+    if auth in MANAGED_IDENTITY_MODES:
+        from azure.identity import ManagedIdentityCredential
+
+        return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    if auth in ENTRA_INTERACTIVE_MODES:
+        # Managed identity, then az login, then a browser prompt (once per machine).
+        from azure.identity import (AzureCliCredential, ChainedTokenCredential, ManagedIdentityCredential,
+                                    TokenCachePersistenceOptions)
+
+        cache = TokenCachePersistenceOptions(name="advantmed_blob_storage", allow_unencrypted_storage=True)
+        mi = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+        return ChainedTokenCredential(mi, AzureCliCredential(process_timeout=30), _RememberedBrowser(cache))
+    if auth == "key" or (auth not in ENTRA_MODES and key):
+        if not key:
+            raise SystemExit("AZURE_STORAGE_AUTH=key needs AZURE_STORAGE_ACCOUNT_KEY (in .env)")
+        return key
+    from azure.identity import DefaultAzureCredential
+
+    return DefaultAzureCredential(**({"managed_identity_client_id": client_id} if client_id else {}))
+
+
+def _service():
+    """One BlobServiceClient per process (thread-safe), with a connection pool of
+    AZURE_BLOB_CONNECTION_POOL_SIZE for the parallel image downloads."""
+    with _SERVICE_LOCK:
+        if "service" in _SERVICES:
+            return _SERVICES["service"]
+        from azure.storage.blob import BlobServiceClient
+
+        kwargs: dict = {"max_single_get_size": 64 * 1024 * 1024, "connection_timeout": 20, "read_timeout": 120}
+        pool = int(os.environ.get("AZURE_BLOB_CONNECTION_POOL_SIZE") or 0)
+        if pool > 0:
+            from azure.core.pipeline.transport import RequestsTransport
+
+            kwargs["transport"] = RequestsTransport(connection_pool_maxsize=pool)
+        conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+        if conn_str:
+            service = BlobServiceClient.from_connection_string(conn_str, **kwargs)
         else:
-            from azure.identity import DefaultAzureCredential
+            account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or ""
+            if not account:
+                raise SystemExit("Set AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME (in .env)")
+            auth = (os.environ.get("AZURE_STORAGE_AUTH") or "").strip().casefold()
+            credential = _credential(auth, os.environ.get("AZURE_CLIENT_ID") or None,
+                                     os.environ.get("AZURE_STORAGE_ACCOUNT_KEY") or None)
+            service = BlobServiceClient(f"https://{account}.blob.core.windows.net", credential=credential, **kwargs)
+        _SERVICES["service"] = service
+        return service
 
-            credential = DefaultAzureCredential()
-        service = BlobServiceClient(f"https://{account}.blob.core.windows.net", credential=credential)
-    return service.get_container_client(container)
+
+def _container_client(container: str):
+    """A container on the account in .env (see _service for the sign-in)."""
+    name = (container or os.environ.get("AZURE_STORAGE_CONTAINER") or "").strip()
+    if not name:
+        raise SystemExit("No blob container: pass --container or set AZURE_STORAGE_CONTAINER (in .env)")
+    return _service().get_container_client(name)
 
 
 def _download_text(client, name: str) -> Optional[str]:

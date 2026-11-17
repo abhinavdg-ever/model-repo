@@ -1,22 +1,35 @@
-# chart-clustering (first cut)
+# chart-clustering
 
-Unsupervised segments of a set of charts (about 550) from each chart's **first Progress Note
-page** and **last page**: TF-IDF on template words → LSA → HDBSCAN; charts that fit no group are
-one **Others** cluster. Standalone: it reads charts from the database, Azure Blob or a local
-folder and imports nothing from core-pipeline. The why and how: [APPROACH.md](APPROACH.md).
+Unsupervised grouping of charts (about 550) into clusters `C01`, `C02` … plus `Others`, from each
+chart's anchor pages: their **text** (Tesseract template words + layout) and their **look**
+(page images from Blob Raw_Input), fused by default. Standalone: it reads what the imaging
+pipeline wrote (Postgres, Blob) and imports none of its code. How it works: [METHODOLOGY.md](METHODOLOGY.md).
 
-## Set up
+**Default (2026-11-17):** `--track mix` (text + visual, `--visual-weight 0.5`), clustered with
+HDBSCAN, which decides how many clusters there are (no forced count).
 
-Windows Command Prompt:
+| `--track` | Clusters on |
+|---|---|
+| `mix` (default) | text + visual, fused |
+| `text` | text only (no images downloaded) |
+| `visual` | page images only |
+| `both` | text and visual run apart: `out/text`, `out/visual` |
+
+No page text, names, DOBs or member ids are written anywhere: only generic template words,
+numbers and chart ids.
+
+---
+
+## 1. Set up (once)
+
+Windows Command Prompt, from the folder above this one:
 
 ```
 cd chart-clustering
 py -3.12 -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
-pip install "psycopg[binary]"                 (only for --source db)
-pip install azure-storage-blob azure-identity (only for --source blob)
-copy .env.example .env                        (then fill in .env)
+copy .env.example .env
 ```
 
 Ubuntu VM:
@@ -25,96 +38,158 @@ Ubuntu VM:
 cd chart-clustering
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pip install "psycopg[binary]" azure-storage-blob azure-identity
-cp .env.example .env                          # then fill in .env
+cp .env.example .env
 ```
 
-## Run
+Fill in `.env` (ask a teammate for the values; `.env` is never committed). The names are
+core-pipeline's:
 
-From the database (Tesseract text + the pipeline's page labels):
+| Key | For |
+|---|---|
+| `DATABASE_URL` | `--source db`: Tesseract text, page labels, each chart's Raw_Input folder |
+| `AZURE_STORAGE_AUTH` | `entra_interactive` on a laptop (managed identity → `az login` → a browser prompt once), `managed_identity` on the VM, `key` with `AZURE_STORAGE_ACCOUNT_KEY` |
+| `AZURE_STORAGE_ACCOUNT_NAME` | the storage account |
+| `AZURE_STORAGE_CONTAINER` | `imaging-pipeline` when `chart_list.blob_container` is empty |
+| `AZURE_CLIENT_ID` | a user-assigned managed identity (same as core-pipeline) |
+| `AZURE_BLOB_CONNECTION_POOL_SIZE` | parallel image downloads, e.g. `32` |
 
-```
-python -m chart_clustering --source db --out out\run1
-python -m chart_clustering --source db --chart-list charts.txt --out out\run1
-```
+The browser sign-in is shared with core-pipeline (`%USERPROFILE%\.advantmed\` on Windows,
+`~/.advantmed/` on Ubuntu), so a machine that signed in for core-pipeline is not asked again.
+Optional: `az login` before the first visual or mix run.
 
-From Blob (the chart output folders, e.g. `Processed/Run1/<chart>/ocr/<chart>_prelim.txt`):
+## 2. The chart list
 
-```
-python -m chart_clustering --source blob --container imaging-pipeline --prefix Processed/Run1 --out out\run1
-```
+`charts.txt`: one chart name per line (blank lines and `#` comments ignored). It is git-ignored
+(chart names stay out of git); keep it in this folder. Charts may come from any runs and batches:
+`--source db` looks each one up by name in `chart_list`.
 
-**A set of charts across runs / batches** (`charts.txt`, one chart name per line):
+## 3. Run
 
-```
-python -m chart_clustering --source db --chart-list charts.txt --out out\run1
-python -m chart_clustering --source blob --container imaging-pipeline --chart-list charts.txt --paths-from-db --out out\run1
-python -m chart_clustering --source blob --container imaging-pipeline --chart-list charts.txt --prefix Processed/Run1 --prefix Processed/Run2 --out out\run1
-```
-
-- `db` looks every chart up by name, whatever run or batch it came from.
-- `blob` fetches each listed chart directly (no listing): first at its own output path from
-  `chart_list` (`--paths-from-db`, needs DATABASE_URL), then under each `--prefix` in turn.
-- Listed charts that are not found are written to `missing_charts.txt` in the output folder.
-
-From a local folder (`core-pipeline/outputs/charts` shape):
+Windows Command Prompt, from `chart-clustering` with the venv active:
 
 ```
+python -m chart_clustering --source db --chart-list charts.txt --out out\run_mix --image-cache out\image_cache
+```
+
+Ubuntu VM:
+
+```
+python -m chart_clustering --source db --chart-list charts.txt --out out/run_mix --image-cache out/image_cache
+```
+
+The first mix or visual run downloads the anchor pages' images into `--image-cache`. Re-runs
+reuse the cache and are much faster. Keep one cache for all runs.
+
+Variants (Command Prompt shown; on Ubuntu use `/` in the paths):
+
+```
+REM text only (no images downloaded) / visual only / both apart
+python -m chart_clustering --source db --chart-list charts.txt --out out\run_text --track text
+python -m chart_clustering --source db --chart-list charts.txt --out out\run_visual --track visual --image-cache out\image_cache
+python -m chart_clustering --source db --chart-list charts.txt --out out\run_both --track both --image-cache out\image_cache
+
+REM quick visual smoke test: one Progress Note first page per chart
+python -m chart_clustering --source db --chart-list charts.txt --out out\smoke --track visual --notes 1 --image-cache out\image_cache
+
+REM write the labels to chart_list.chart_cluster for review-ui's Cluster filter
+python -m chart_clustering --source db --chart-list charts.txt --out out\run_mix --image-cache out\image_cache --write-db
+```
+
+`--write-db` writes the run's labels; with `--track both` the text ones.
+
+### Where the page images come from
+
+From Postgres `chart_list`:
+
+| Column | Role |
+|---|---|
+| `blob_container` | usually `imaging-pipeline` (else `AZURE_STORAGE_CONTAINER`) |
+| `blob_path` | the **Raw_Input** chart folder, e.g. `Raw_Input/Demotest/DEID_Images/<chart>` or `Raw_Input/Run2/Batch3/DEID_PNGs/<chart>` |
+| `output_path` | the Processed folder; used only with `--processed-fallback` |
+
+Order: `{blob_path}/{page name}` → a listing of the Raw_Input folder (sub-folders too) →
+with `--processed-fallback`, `{output_path}/<chart>/pages/{page name}`. If downloads fail,
+check `AZURE_STORAGE_AUTH`, and that `blob_path` points at the Raw_Input `DEID_Images` /
+`DEID_PNGs` folder, not Processed.
+
+### Other sources
+
+```
+REM text from Blob chart output folders (no images: use --track text)
+python -m chart_clustering --source blob --container imaging-pipeline --chart-list charts.txt --paths-from-db --track text --out out\run1
+python -m chart_clustering --source blob --container imaging-pipeline --prefix Processed/Run1 --prefix Processed/Run2 --track text --out out\run1
+
+REM a local folder (core-pipeline/outputs/charts shape; images from <chart>\pages\ when present)
 python -m chart_clustering --source folder --root ..\core-pipeline\outputs\charts --out out\run1
 ```
 
-(Ubuntu: same commands with `/` in paths.)
+Tuning options: `--visual-weight 0.5`, `--notes 3`, `--anchors first_pn|last|both`,
+`--min-cluster-size 5` (the fewest charts a cluster may have, **not** the number of clusters; do
+not shrink it to get more clusters: that once gave 121 micro-clusters), `--min-samples 3`,
+`--min-charts 3`, `--layout-weight 0.35`, `--stability-runs 5`, `--seed 42`, `--image-workers N`.
 
-Useful options: `--notes 3` (first pages of up to 3 Progress Notes per chart), `--anchors first_pn|last|both` (default both), `--min-cluster-size 5`,
-`--min-samples 3`, `--min-charts 3`, `--layout-weight 0.35`, `--stability-runs 5`, `--seed 42`.
+## 4. Read the result
 
-## Read the result
+| File | Use |
+|---|---|
+| `run_manifest.json` | track, settings, cluster sizes, silhouette, stability (target ≥ 0.8), images found |
+| `cluster_cards.md` | for a person: name each cluster |
+| `chart_clusters.csv` | every chart's cluster and membership |
+| `cluster_summary.csv` | per-cluster aggregates |
+| `features.npz` | the clustered matrix (plots, re-use) |
+| `missing_charts.txt` | listed charts not found (if any) |
 
-1. `out/run1/run_manifest.json`: clusters and sizes, silhouette, stability (target ≥ 0.8).
-2. `out/run1/cluster_cards.md`: per cluster its template words, layout averages and example
-   charts; write a name for each.
-3. `out/run1/chart_clusters.csv`: every chart's cluster.
+## 5. Load a CSV into chart_list later
 
-No page text, names, DOBs or member ids are written anywhere.
-
-## Load the clusters into chart_list (review-ui's Cluster filter)
-
-`chart_clusters.csv` is the chart -> cluster file. Load it into `chart_list.chart_cluster`
-(schema/migrations/2026-11-15.sql; the loader adds the column if missing). Last Run At is kept.
+This uses `utilities/load_chart_clusters.py` in the imaging-pipeline repo (commands from its root).
+Any CSV with `chart_name` and `cluster` columns (e.g. after renaming C01 to a real name) loads
+into `chart_list.chart_cluster` (schema/migrations/2026-11-15.sql; the loader adds the column if
+missing). Last Run At is kept.
 
 Windows Command Prompt:
 
 ```
 cd core-pipeline && .venv\Scripts\activate.bat
-python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run1\chart_clusters.csv --dry-run
-python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run1\chart_clusters.csv
+python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run_mix\chart_clusters.csv --dry-run
+python ..\utilities\load_chart_clusters.py ..\chart-clustering\out\run_mix\chart_clusters.csv
 ```
 
 Ubuntu VM:
 
 ```
 cd core-pipeline && source .venv/bin/activate
-python ../utilities/load_chart_clusters.py ../chart-clustering/out/run1/chart_clusters.csv --dry-run
-python ../utilities/load_chart_clusters.py ../chart-clustering/out/run1/chart_clusters.csv
+python ../utilities/load_chart_clusters.py ../chart-clustering/out/run_mix/chart_clusters.csv --dry-run
+python ../utilities/load_chart_clusters.py ../chart-clustering/out/run_mix/chart_clusters.csv
 ```
 
-Or in one go: add `--write-db` to the clustering run. Any CSV with `chart_name` and `cluster`
-columns works (e.g. after renaming C01 to a real name). Cluster numbers are per run: a new run
-can renumber them, so reload after each run you keep.
+Cluster numbers are per run: a new run can renumber them, so reload after each run you keep.
 
-## Layout
+## 6. Layout
 
 ```
 chart_clustering/
-  sources.py   folder / db / blob readers -> Chart
+  cli.py       the command line (python -m chart_clustering)
+  sources.py   db / blob / folder readers -> Chart; Blob sign-in (core-pipeline's modes)
   ingest.py    Chart and Page; the prelim.txt split; final.csv labels
-  anchors.py   first Progress Note page, last page
+  anchors.py   the Progress Notes' first pages, the last page
   features.py  template words, layout numbers
-  cluster.py   TF-IDF -> SVD -> HDBSCAN; Others; silhouette; stability
+  images.py    anchor-page images from Raw_Input into the cache
+  visual.py    the page-image fingerprint
+  cluster.py   text / visual matrices, mix fuse, HDBSCAN, Others, silhouette, stability
   report.py    the output files
+  db_write.py  --write-db (chart_list.chart_cluster)
   vocab.py     the generic words a card may show
-  cli.py       the command line
 ```
 
-Test: `python -m pytest ../tests/test_chart_clustering.py -q` (from this folder, with the
-repo's test environment).
+Tests (from this folder, venv active): `pip install pytest`, then `python -m pytest tests -q`.
+No database, Blob or images needed: the tests build synthetic charts and pages.
+
+## 7. First run checklist
+
+1. [ ] venv + `pip install -r requirements.txt`
+2. [ ] `.env` filled in (database, storage account, `AZURE_STORAGE_AUTH`)
+3. [ ] `az login` if needed
+4. [ ] `charts.txt` in this folder
+5. [ ] the mix run above, with `--image-cache`
+6. [ ] open `out/run_mix/cluster_cards.md` and name the clusters
+7. [ ] optional: `--write-db` for review-ui's Cluster filter

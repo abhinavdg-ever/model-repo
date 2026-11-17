@@ -47,7 +47,8 @@ def _display_terms(terms: list[str], limit: int = 12) -> list[str]:
     return out
 
 
-def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settings, source: str) -> dict[str, Any]:
+def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settings, source: str,
+          extra: dict[str, Any] | None = None) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     for row, label, p in zip(rows, result.labels, result.probability):
         row["cluster"] = label
@@ -55,6 +56,8 @@ def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settin
 
     fields = ["chart_name", "cluster", "membership", "first_pn_page", "first_pn_how", "notes_used", "last_page", "last_how",
               "pages", "kept_pages", "handwritten_share", "progress_note_share", "has_pipeline_labels"]
+    if any("images_used" in r for r in rows):
+        fields.append("images_used")
     with (out_dir / "chart_clusters.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
@@ -82,12 +85,12 @@ def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settin
         writer.writeheader()
         writer.writerows(summary)
 
-    lines = ["# Chart clusters (first cut)", "",
+    lines = [f"# Chart clusters ({cfg.track} track)", "",
              f"{len(rows)} charts, {len([c for c in counts if c != OTHERS])} clusters, "
              f"{counts.get(OTHERS, 0)} in Others. Name each cluster from its words and examples.", ""]
     for s in summary:
         lines += [f"## {s['cluster']} -- {s['charts']} charts ({s['share']:.0%})", "",
-                  f"- Template words: {s['top_words'] or '(none on the display list)'}",
+                  f"- Template words: {s['top_words'] or ('(visual track: no words)' if cfg.track == 'visual' else '(none on the display list)')}",
                   f"- Anchor found by: {s['anchor_found_by']}",
                   f"- Avg lines {s['avg_lines']:.0f}, words {s['avg_words']:.0f}, label lines "
                   f"{s['avg_label_line_share']:.0%}, fax header {s['avg_fax_header']:.0%}, handwritten "
@@ -107,6 +110,7 @@ def write(out_dir: Path, rows: list[dict[str, Any]], result: Result, cfg: Settin
         "silhouette": None if result.silhouette is None else round(result.silhouette, 4),
         "stability_ari": None if result.stability_ari is None else round(result.stability_ari, 4),
         "data_hash": data_hash(rows),
+        **(extra or {}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest

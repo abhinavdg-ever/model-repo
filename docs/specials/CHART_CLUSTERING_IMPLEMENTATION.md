@@ -5,6 +5,13 @@ the chart types are and how a chart gets its answer. This note says **how it is 
 repo**, **how every number is computed**, and **how the model is refreshed**. Section numbers
 in brackets (§) point to the concept note.*
 
+> **Built (2026-11-17):** `chart-clustering/` (also the standalone repo
+> abhinavdg-ever/chart-clustering) clusters charts unsupervised from their anchor pages' text
+> and page images (mix by default), with free HDBSCAN. How it works:
+> [`chart-clustering/METHODOLOGY.md`](../../chart-clustering/METHODOLOGY.md); how to run it:
+> [`chart-clustering/README.md`](../../chart-clustering/README.md). This note remains the full
+> proposal (catalogue, matcher, stage 16), not yet built.
+
 ---
 
 ## 1. In one paragraph

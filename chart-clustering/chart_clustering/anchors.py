@@ -1,4 +1,4 @@
-"""The anchor pages a chart is described by (first cut, 2026-11-15).
+"""The anchor pages a chart is described by (2026-11-15).
 
 - ``first_pn``: the first page of each of the chart's first 2-3 Progress Notes (--notes, default 3;
   their words pooled). With the pipeline's

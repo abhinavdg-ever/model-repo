@@ -1,13 +1,23 @@
 """Unsupervised segmentation of charts from their anchor pages.
 
+Text block (``build_matrix``):
 1. Template words -> TF-IDF (a word must be on >= min_charts charts and <= 95% of them),
-   one vectoriser per anchor (first Progress Note page, last page), stacked.
+   one vectoriser per anchor (first Progress Note pages, last page), stacked.
 2. TF-IDF -> TruncatedSVD (LSA, up to 50 dimensions) -> unit length.
 3. Layout numbers -> standardised, scaled by ``layout_weight`` and appended.
-4. HDBSCAN (min_cluster_size, min_samples). Its noise, and charts with no usable anchor page,
-   make ONE cluster: **Others** (2026-11-15, user).
+
+Visual block (``visual_matrix``, 2026-11-17): the chart's image fingerprint (visual.py) ->
+standardised -> PCA (up to 50 dimensions) -> unit length.
+
+Tracks: ``text``, ``visual``, or ``mix`` (the default): each block L2-normalised per chart, the
+visual one scaled by ``visual_weight`` (0.5), and the two concatenated (``fuse``).
+
+Clustering (``run``):
+4. HDBSCAN, free: the data decides how many groups (min_cluster_size = the fewest charts a
+   group may have, NOT the number of groups; min_samples). Its noise, and charts with no usable
+   anchor, make ONE cluster: **Others** (2026-11-15, user).
 5. Quality without labels: silhouette on the clustered charts, and stability as the mean
-   adjusted Rand index over ``stability_runs`` re-clusterings of 80% samples.
+   adjusted Rand index over ``stability_runs`` re-clusterings of 80% samples (target >= 0.8).
 """
 from __future__ import annotations
 
@@ -19,8 +29,13 @@ import numpy as np
 OTHERS = "Others"
 
 
+TRACKS = ("text", "visual", "mix", "both")
+
+
 @dataclass
 class Settings:
+    track: str = "mix"               # text | visual | mix (| both: text and visual, run apart)
+    visual_weight: float = 0.5       # mix: the visual block's weight against text's 1.0
     anchors: str = "both"            # first_pn | last | both
     min_charts: int = 3              # a template word must be on this many charts
     max_share: float = 0.95          # ... and on at most this share of them
@@ -80,6 +95,33 @@ def build_matrix(token_sets: dict[str, list[list[str]]], layout_rows: list[list[
     return dense, tfidf, names
 
 
+def visual_matrix(vectors: list[Optional[np.ndarray]], cfg: Settings) -> np.ndarray:
+    """Chart image fingerprints -> standardised -> PCA -> unit length. A chart with no image is
+    a row of zeros (and is not usable on the visual track)."""
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler, normalize
+
+    have = [i for i, v in enumerate(vectors) if v is not None]
+    if not have:
+        return np.zeros((len(vectors), 0))
+    x = StandardScaler().fit_transform(np.vstack([vectors[i] for i in have]))
+    dims = max(1, min(cfg.svd_dims, len(have) - 1, x.shape[1]))
+    reduced = normalize(PCA(n_components=dims, random_state=cfg.seed).fit_transform(x) if len(have) > 1 else x)
+    out = np.zeros((len(vectors), reduced.shape[1]))
+    out[have] = reduced
+    return out
+
+
+def fuse(text: np.ndarray, visual: np.ndarray, weight: float) -> np.ndarray:
+    """mix: each block unit length per chart, visual times ``weight``, side by side. A chart with
+    no image keeps a zero visual block."""
+    from sklearn.preprocessing import normalize
+
+    if visual is None or visual.shape[1] == 0 or not visual.any():
+        return text  # no images at all: exactly the text track
+    return np.hstack([normalize(text), normalize(visual) * weight])
+
+
 def _hdbscan(x: np.ndarray, cfg: Settings) -> tuple[np.ndarray, np.ndarray]:
     from sklearn.cluster import HDBSCAN
 
@@ -94,7 +136,8 @@ def _hdbscan(x: np.ndarray, cfg: Settings) -> tuple[np.ndarray, np.ndarray]:
 
 
 def run(dense: np.ndarray, tfidf, names: list[str], usable: list[bool], cfg: Settings) -> Result:
-    """Cluster the charts with a usable anchor; every other chart is Others."""
+    """Cluster the usable charts; every other chart is Others. ``tfidf`` is None on the visual
+    track (the cards then have no words)."""
     idx = [i for i, ok in enumerate(usable) if ok]
     raw = np.full(len(usable), -1)
     prob = np.zeros(len(usable))
@@ -111,6 +154,8 @@ def run(dense: np.ndarray, tfidf, names: list[str], usable: list[bool], cfg: Set
 
     top_terms: dict[str, list[str]] = {}
     for c, label in name_of.items():
+        if tfidf is None:
+            break
         rows = np.where(raw == c)[0]
         mean = np.asarray(tfidf[rows].mean(axis=0)).ravel()
         top_terms[label] = [names[j] for j in np.argsort(-mean)[:40] if mean[j] > 0]

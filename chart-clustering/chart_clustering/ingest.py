@@ -44,6 +44,11 @@ class Chart:
     name: str
     pages: list[Page] = field(default_factory=list)
     has_pipeline_csv: bool = False
+    # Where the page images are (chart_list, --source db): the Raw_Input folder (blob_path) and
+    # the Processed folder (output_path). The visual track reads them.
+    blob_container: str = ""
+    blob_path: str = ""
+    output_path: str = ""
 
 
 def _page_number(name: str, fallback: int) -> int:
