@@ -106,7 +106,12 @@ export default function ChartDetails({
           <div className="modal-card chart-details-card" role="dialog" aria-modal="true"
                aria-labelledby="chart-details-title" onClick={(event) => event.stopPropagation()}>
             <div className="modal-card-header">
-              <h2 id="chart-details-title">Analysis · {folder?.name ?? doc.folder_id}</h2>
+              <div>
+                <h2 id="chart-details-title">{folder?.name ?? doc.folder_id}</h2>
+                <p className="chart-details-sub">
+                  {doc.pages.length} page{doc.pages.length === 1 ? "" : "s"} · {scored.pages.length} with ground truth
+                </p>
+              </div>
               <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">
                 <X size={16} />
               </button>
@@ -121,7 +126,6 @@ export default function ChartDetails({
                 <dt>Measure</dt><dd>{text(folder?.measure)}</dd>
                 <dt>Source</dt><dd>{text(folder?.source_name)}</dd>
                 <dt>Retrieval</dt><dd>{text(folder?.rr_method)}</dd>
-                <dt>Pages</dt><dd>{doc.pages.length} ({scored.pages.length} with ground truth)</dd>
               </dl>
             </section>
 
