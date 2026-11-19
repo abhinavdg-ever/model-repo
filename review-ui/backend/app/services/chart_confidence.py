@@ -6,10 +6,10 @@ The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
   Member DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation -- each
   from ``imaging_final.confidences``. A Blank / Junk or duplicate page counts Blank / Junk and
   Codability only. High >= 0.80, Medium 0.50-0.80, Low < 0.50.
-* Page: High when every feature is High; Low when a key feature (Member Verification, DOS,
-  Page Type, Blank / Junk) is Low or two or more are Low; else Medium.
+* Page: High when every feature is High; Low when any feature is Low; else Medium.
 * Chart: High when every page is High; Low when Low pages are 10% of the pages or more; else
   Medium. Its value is the mean of its pages' means.
+* A % is capped by its level: Medium at most 79%, Low at most 49% (LEVEL_CAP).
 """
 
 from __future__ import annotations
@@ -20,9 +20,10 @@ from typing import Any, Iterable, Optional
 HIGH_AT = 0.8
 LOW_BELOW = 0.5
 LOW_SHARE = 0.1
+# The % never contradicts the level (2026-11-19, user): Medium at most 79%, Low at most 49%.
+LEVEL_CAP = {"high": 1.0, "medium": 0.79, "low": 0.49}
 
 FEATURES = ["member", "dos", "blank_junk", "page_type", "codability", "provider", "orientation"]
-KEY_FEATURES = {"member", "dos", "page_type", "blank_junk"}
 BLANK_JUNK_FEATURES = {"blank_junk", "codability"}
 
 
@@ -62,14 +63,10 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool) -> Optional[tupl
     if not values:
         return None
     levels = {key: band(v) for key, v in values.items()}
-    lows = sum(1 for lv in levels.values() if lv == "low")
-    if all(lv == "high" for lv in levels.values()):
-        level = "high"
-    elif lows >= 2 or any(lv == "low" and key in KEY_FEATURES for key, lv in levels.items()):
-        level = "low"
-    else:
-        level = "medium"
-    return level, sum(values.values()) / len(values)
+    # 2026-11-19 (user): every feature matters, so any Low feature makes the page Low.
+    found = set(levels.values())
+    level = "low" if "low" in found else "medium" if "medium" in found else "high"
+    return level, min(sum(values.values()) / len(values), LEVEL_CAP[level])
 
 
 def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
@@ -86,7 +83,7 @@ def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
     if not n:
         return {"level": None, "value": None, "counts": counts}
     level = "high" if counts["high"] == n else "low" if counts["low"] / n >= LOW_SHARE else "medium"
-    return {"level": level, "value": round(total / n, 4), "counts": counts}
+    return {"level": level, "value": round(min(total / n, LEVEL_CAP[level]), 4), "counts": counts}
 
 
 _PAGES_SQL = """

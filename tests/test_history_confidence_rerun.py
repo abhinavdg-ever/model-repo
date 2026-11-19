@@ -13,8 +13,9 @@ def test_page_level_uses_the_seven_features():
     assert page_level(high, False)[0] == "high"
     # Member Verification = the lower of name and DOB: a Low DOB is a Low key feature.
     assert page_level({**high, "member_dob": 0.3}, False)[0] == "low"
-    # One Low non-key feature: Medium; two: Low.
-    assert page_level({**high, "provider": 0.3}, False)[0] == "medium"
+    # Any Low feature: Low (2026-11-19, user: every feature matters); a Medium one: Medium.
+    assert page_level({**high, "provider": 0.3}, False)[0] == "low"
+    assert page_level({**high, "provider": 0.6}, False)[0] == "medium"
     assert page_level({**high, "provider": 0.3, "orientation": 0.2}, False)[0] == "low"
     # Member ID is not a feature.
     assert page_level({**high, "member_id": 0.1}, False)[0] == "high"
@@ -44,3 +45,16 @@ def test_rerun_source_cuts_the_chart_folder():
     assert rerun_source("c1", (None, "Raw/x", None), "default") == ("default", "Raw/x", "")
     assert rerun_source("c1", ("box", None, None)) is None
     assert rerun_source("c1", None) is None
+
+
+def test_the_percent_is_capped_by_the_level():
+    """2026-11-19 (user): all fields 100% but one Low: the page reads Low, so its % is at most 49%;
+    a Medium page or chart at most 79%."""
+    from app.services.chart_confidence import chart_level, page_level
+
+    page = {"member_name": 1.0, "member_dob": 1.0, "dos": 0.2, "page_type": 1.0, "codability": 1.0,
+            "provider": 1.0, "orientation": 1.0}
+    assert page_level(page, False) == ("low", 0.49)
+    assert page_level({**page, "dos": 1.0, "provider": 0.6}, False) == ("medium", 0.79)
+    assert chart_level([("high", 1.0)] * 19 + [("medium", 0.79)])["value"] == 0.79
+    assert chart_level([("high", 1.0)] * 9 + [("low", 0.49)])["value"] == 0.49

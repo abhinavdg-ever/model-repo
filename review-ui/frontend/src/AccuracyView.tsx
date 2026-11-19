@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { CONFIDENCE_FIELDS, LOW_SHARE, levelLabel, type Level } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, LOW_SHARE, capToLevel, levelLabel, type Level } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1045,7 +1045,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
     const level: Level | null = !total ? null
       : pageLevels.high === total ? "high" : pageLevels.low / total >= LOW_SHARE ? "low" : "medium";
-    return { pageLevels, total, level, mean: total ? Math.round((100 * sum) / total) : null, perFeature, cross, byMetric };
+    return { pageLevels, total, level, mean: total && level ? Math.round(100 * capToLevel(level, sum / total)) : null, perFeature, cross, byMetric };
   }, [open, rows]);
 
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
@@ -1070,8 +1070,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 </div>
                 <p className="chart-details-note">
                   {rows.length.toLocaleString()} charts, {data.total.toLocaleString()} pages with ground truth (the filters apply).
-                  Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: High when every field is High; Low when Member
-                  Verification, DOS, Page Type or Blank / Junk is Low, or 2+ fields are Low; else Medium.
+                  Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: High when every field is High; Low when any
+                  field is Low; else Medium.
                 </p>
 
                 <section>
