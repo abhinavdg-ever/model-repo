@@ -1077,22 +1077,12 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </td>
                       <td className="accuracy-col-confidence">
                         {confidence[folder.id]?.level ? (
-                          <div className="accuracy-cell">
-                            <strong>
-                              {Math.round((confidence[folder.id].value ?? 0) * 100)}%{" "}
-                              <span className={`chart-glance-pill level-${confidence[folder.id].level}`}>
-                                {levelLabel(confidence[folder.id].level)}
-                              </span>
-                            </strong>
-                            <dl className="accuracy-class-grid">
-                              {(["high", "medium", "low"] as const).map((lv) => (
-                                <div key={lv}>
-                                  <dt>{levelLabel(lv)}</dt>
-                                  <dd>{confidence[folder.id].counts[lv]}</dd>
-                                </div>
-                              ))}
-                            </dl>
-                          </div>
+                          <span
+                            className={`history-conf level-text-${confidence[folder.id].level}`}
+                            title={`${levelLabel(confidence[folder.id].level)} confidence · pages High ${confidence[folder.id].counts.high} · Medium ${confidence[folder.id].counts.medium} · Low ${confidence[folder.id].counts.low}`}
+                          >
+                            {Math.round((confidence[folder.id].value ?? 0) * 100)}%
+                          </span>
                         ) : (
                           <span className="accuracy-conf-counts">-</span>
                         )}

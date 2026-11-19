@@ -7045,6 +7045,7 @@ input {
 .accuracy-extra-links { display: inline-flex; gap: 0.9rem; align-items: baseline; }
 .confidence-metrics-card { width: min(52rem, calc(100vw - 2rem)); }
 .confidence-metrics-card h2 { display: flex; align-items: center; gap: 0.4rem; }
+.history-conf { font-weight: 600; font-variant-numeric: tabular-nums; }
 .rerun-field { display: block; margin: 0.6rem 0 0; font-size: 0.88rem; }
 .rerun-field select { margin-left: 0.4rem; }
 .accuracy-col-confidence .chart-glance-pill { font-size: 0.75rem; margin-right: 0.35rem; }
