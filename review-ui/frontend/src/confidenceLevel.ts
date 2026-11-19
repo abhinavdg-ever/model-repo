@@ -1,12 +1,14 @@
 /** Page and chart confidence levels (2026-11-19, user): High pages can skip review, Low pages
  * are looked at carefully.
  *
- * Each field the accuracy scores has its own Final confidence, banded as everywhere:
- * High >= 0.80, Medium 0.50-0.80, Low < 0.50. A field with no confidence (nothing read,
- * a default value) is not counted.
+ * Only the features of the final accuracy list count (2026-11-19, user): Member Verification,
+ * DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. Each has its Final
+ * confidence (Member Verification: the lower of Member Name and Member DOB), banded as
+ * everywhere: High >= 0.80, Medium 0.50-0.80, Low < 0.50. A feature with no confidence
+ * (nothing read, a default value) is not counted.
  *
- * Page: **High** when every counted field is High; **Low** when a key field (Member Name,
- * Member DOB, DOS, Page Type, Blank / Junk) is Low or two or more fields are Low; else
+ * Page: **High** when every counted feature is High; **Low** when a key feature (Member
+ * Verification, DOS, Page Type, Blank / Junk) is Low or two or more features are Low; else
  * **Medium**. A Blank / Junk or duplicate page counts only what matters for it: Blank / Junk
  * and Codability. Its number is the mean of the counted fields.
  *
@@ -21,18 +23,17 @@ export const HIGH_AT = 0.8;
 export const LOW_BELOW = 0.5;
 export const LOW_SHARE = 0.1;
 
-/** The fields counted, in display order: [key in finalConfidences, label]. */
+/** The features counted, in the accuracy list's order: [key, label]. */
 export const CONFIDENCE_FIELDS: [string, string][] = [
-  ["member_name", "Member Name"],
-  ["member_dob", "Member DOB"],
+  ["member", "Member Verification"],
   ["dos", "DOS"],
   ["blank_junk", "Blank / Junk"],
   ["page_type", "Page Type"],
   ["codability", "Codability"],
   ["provider", "Provider Signature"],
-  ["orientation", "Text Orientation"],
+  ["orientation", "Orientation"],
 ];
-const KEY_FIELDS = new Set(["member_name", "member_dob", "dos", "page_type", "blank_junk"]);
+const KEY_FIELDS = new Set(["member", "dos", "page_type", "blank_junk"]);
 const BLANK_JUNK_FIELDS = new Set(["blank_junk", "codability"]);
 
 export function band(value: number): Level {
@@ -52,6 +53,14 @@ function num(value: unknown): number | null {
 }
 
 function fieldValue(page: ImagingPageResult, key: string): number | null {
+  if (key === "member") {
+    const parts = [rawValue(page, "member_name"), rawValue(page, "member_dob")].filter((v): v is number => v != null);
+    return parts.length ? Math.min(...parts) : null;
+  }
+  return rawValue(page, key);
+}
+
+function rawValue(page: ImagingPageResult, key: string): number | null {
   const stored = num(page.finalConfidences?.[key]);
   if (stored != null) return stored;
   // Rows written before the Final confidences: the stage's own number.

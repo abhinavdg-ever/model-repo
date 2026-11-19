@@ -3342,22 +3342,20 @@ function DocSummary({
 /** Page Confidence (2026-11-19, user): the page's level from its fields' High / Medium / Low
  * (confidenceLevel.ts), at the top of Page Details. High pages can skip review. */
 function PageConfidenceStrip({ page }: { page: ImagingPageResult }) {
+  // 2026-11-19 (user): a small strip like the member bar above it; no "check" hint.
+  const finalOnly = useContext(ClientViewContext);
   const pc = pageConfidence(page);
   if (!pc.level) return null;
   const detail = pc.fields.map((f) => `${f.label}: ${Math.round(f.value * 100)}% (${levelLabel(f.level)})`).join("\n");
   return (
-    <div className={`confidence-strip level-${pc.level}`} title={detail}>
-      <strong>Page Confidence: {levelLabel(pc.level)}</strong>
-      {pc.value != null ? <span> ({Math.round(pc.value * 100)}%)</span> : null}
-      <span className="confidence-counts">
-        High {pc.counts.high} · Medium {pc.counts.medium} · Low {pc.counts.low} fields
+    <div className={`confidence-strip level-${pc.level}${finalOnly ? " is-final-only" : ""}`} title={detail}>
+      <span>
+        <strong>Page Confidence:</strong> {levelLabel(pc.level)}
+        {pc.value != null ? ` (${Math.round(pc.value * 100)}%)` : ""}
       </span>
-      {pc.level === "high" ? <span className="confidence-hint">can skip review</span> : null}
-      {pc.level === "low" ? (
-        <span className="confidence-hint">
-          check: {pc.fields.filter((f) => f.level === "low").map((f) => f.label).join(", ")}
-        </span>
-      ) : null}
+      <span>
+        <strong>Fields:</strong> High {pc.counts.high} · Medium {pc.counts.medium} · Low {pc.counts.low}
+      </span>
     </div>
   );
 }
