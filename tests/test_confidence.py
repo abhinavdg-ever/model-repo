@@ -262,3 +262,17 @@ def test_a_rule_score_of_zero_uses_the_model_score_alone():
     assert conf.kv_row(0, 0.95) == 0.95 and conf.kv_row(0.0, 0.9975) == 0.9975
     assert row_confidence({"score": 0, "model_score": 0.97}) == 0.97
     assert conf.kv_row(0.8, 0.9) == 0.72
+
+
+def test_member_confidence_is_the_winning_rows_even_when_its_text_differs():
+    """2026-11-20 (user): name / DOB come from KV Extract's winning row (accepted + selected); its
+    confidence stands even when its text is written differently; no winner: 0.60."""
+    from modules.member.stage import member_field_confidences
+
+    staged = _Staged({"dob": [
+        {"value": "", "sentence": "Date of Birth: 06/07/1986", "score": 0, "model_score": 0.0007},
+        {"value": "6-7-86", "score": 0.7, "model_score": 0.987, **CHOSEN},
+    ]})
+    page = _member_page("verified", detected_dob="1986-06-07", detection_source_dob="rule based")
+    assert member_field_confidences(page, staged)["dob"] == round(0.7 * 0.987, 4)
+    assert member_field_confidences(page, _Staged({"dob": []}))["dob"] == 0.6

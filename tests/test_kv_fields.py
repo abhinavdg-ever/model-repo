@@ -164,7 +164,7 @@ def test_a_key_value_date_carries_the_models_score_as_its_confidence():
 
 def test_the_edge_label_is_used_only_without_a_key_value_date():
     hit = _dos("Date of Service: 01/02/2024")
-    assert (hit["dos_from_iso"], hit["page_source"], hit["confidence"]) == ("2024-01-02", "edge", 0.4)  # rules only: a backup
+    assert (hit["dos_from_iso"], hit["page_source"], hit["confidence"]) == ("2024-01-02", "edge", 0.6)  # a label backup: 60% (2026-11-20)
     assert _dos("No date anywhere.")["page_source"] == ""
 
 

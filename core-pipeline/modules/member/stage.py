@@ -170,7 +170,8 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
     """The staged key / value row the member value comes from (2026-11-19, user: the member's
     confidence is its KV row's score x model_score). Only rows KV Extract accepted and selected
     (2026-11-20, user); of those, the ones whose value reads it, else whose sentence does; the
-    highest confidence. None when no such row reads it (the rules' whole-page find)."""
+    highest confidence; none reads it: the winning (accepted + selected) row all the same. None
+    when the field has no winning row (the rules' whole-page find, 0.60)."""
     if staged_page is None:
         return None
     want = _norm(field_id, value)
@@ -186,7 +187,11 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
         scored = [(c, row) for c, row in scored if c is not None]
         if scored:
             return max(scored, key=lambda pair: pair[0])[1]
-    return None
+    # 2026-11-20 (user): the member value is taken from KV Extract's winning row; when its text
+    # differs from the value shown, that winner's confidence still stands.
+    scored = [(row_confidence(row), row) for row in rows]
+    scored = [(c, row) for c, row in scored if c is not None]
+    return max(scored, key=lambda pair: pair[0])[1] if scored else None
 
 
 def _chosen(row: dict[str, Any]) -> bool:

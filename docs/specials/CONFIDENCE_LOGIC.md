@@ -15,63 +15,57 @@ sections 0-11 and 12.6 disagree about a Final value's confidence, 12.6 is the co
 
 ---
 
-## Current rule in one page (as of 2026-11-19)
-
-**2026-11-19 change (user):** a key / value row's confidence is its **rule score × LightGBM
-model_score** (`conf.kv_row`; model only, or a rule score of 0: its p). A value **only the rules found** (a key / value
-row LightGBM did not score, credentials not beside a scored provider name, or a member value
-found by searching the whole page with the rules or GLiNER) is a fixed **0.60** (`rules_find`).
-The 0.30 "model and rules disagree on the row" value is gone for key / value rows.
-
-**2026-11-19, floor (user):** no confidence, on any field, is below **0.20** (`conf.floor`,
-canon `floor`): every engine value is raised to it, and `imaging_final.confidences` applies it
-again. A Blank / Junk page's Final **Codability is Non-Codable** with the Blank / Junk confidence.
-Member ID = the mean of the ID rows KV Extract chose; several signers = their mean.
+## Current rule in one page (as of 2026-11-20)
 
 **Read this first.** Sections 0–11 describe the numbers **before** 2026-11-14 and are kept as
-history. What runs today is this page, with the detail in section 12.
+history; section 12 is the 2026-11-14 rule. Where they differ from this page, **this page is the
+code** (2026-11-19 / 11-20 changes, user).
 
 **Confidence = how sure we are that the value shown is correct.** One scale everywhere:
-**≥ 0.80 good (green), 0.50–0.80 passable (amber), < 0.50 flagged for review (red)**.
-Every Final value under 0.50 is listed in `imaging_final.review_fields` and makes the page
-`needs_review`.
+**≥ 0.80 High (green), 0.50–0.80 Medium (amber), < 0.50 Low (red)**. Every Final value under
+0.50 is listed in `imaging_final.review_fields`.
+
+### The fixed values
 
 | Case | Confidence | Name in code / canon |
 |---|---|---|
-| A model decided, and the value is the model's top answer | **the model's own probability** for that value, unchanged (no keyword lift, no penalties) | `conf.chosen(p)` |
-| A backup technique decided (rules only, keywords only, NER, the manifest text search, a neighbour's value, a default, no model available) | **0.40** | `backup_low`, `conf.backup()` |
-| The value goes against the model's top answer (a rule or veto overrode it) | **0.30** | `flipped_low`, `conf.flipped()` |
-| A measured fact no model guesses (no ink, no OCR text, stage 1 Blank on an empty page) | **1.0** | `measured`, `conf.measured()` |
-| A blank / junk pass-1 text-pattern rule (the word "blank", "intentionally left blank", a cover mark, End of Report, < 15 characters) | **0.95** | `pass1_rule` |
-| A page takes its Final value from its document's anchor page (page type, sub-type, codable, DOS, encounter type, specialty) | **anchor's confidence × 0.90** (the anchor keeps its own) | `carried_factor`, `conf.carried()` |
-| No value, or a default value (no DOS: 2222-02-02; non-visit document: 2222-02-22; nothing extracted) | **none (NA)** | |
+| A model decided (its own top answer) | **the model's own probability** | `conf.chosen(p)` |
+| A key / value row (KV Extract) | **rule score × LightGBM model_score**; rule score **0** → **model_score alone**; no model_score → **0.60** | `conf.kv_row` |
+| A value the rules / labels found with no model behind it (whole-page member find, a DOS label backup, credentials not beside a scored provider name) | **0.60** | `rules_find` |
+| A backup that is not a label (DOS signature date, no model available) | **0.40** | `backup_low` |
+| Blank / Junk: a hard-coded rule **flipping the model** (Keep → Junk / Blank, or Junk / Blank → Main) | **0.40** | `backup_low` |
+| A value post-processing dropped (a DOB far from the manifest's, a clinic read as the provider) | **0.30** | `flipped_low`, `conf.dropped` |
+| A measured fact (no ink, no text) | **1.0** | `measured` |
+| A value carried from its anchor page (page type, codable, DOS, encounter type, specialty) or from agreeing neighbours (DOS) | **the anchor's × 0.90** | `carried_factor` |
+| **Floor** | **no confidence, any field, below 0.20** | `floor` |
 
 All numbers live in `core-pipeline/resources/canon/confidence_canon.json` and reload on change.
-Both fixed lows sit under 0.50, so every backup or flipped value is always flagged.
 
 ### Per field
 
-| Field | Model case | Backup 0.40 | Flipped 0.30 | Other |
-|---|---|---|---|---|
-| **Member name / DOB / member ID** (three separate numbers) | the key / value row the value came from (its value, or the member found in its sentence): **rule score × model_score** | found by searching the whole page (rules, GLiNER), no row: **0.60** | | nothing read: none. `member_extraction_results.confidence` = the lowest of the three |
-| Member verification (chart) | not a confidence: **agreement rate** = pages agreeing with the decision / pages checked | | | |
-| Provider name | rule score × KV `model_score`; rules only: 0.60 | | | |
-| Credentials | the same person's provider-name confidence | credentials found anywhere else | | |
-| Signature present (Yes) | rule score × KV `model_score` (rules only: 0.60); several signers: the mean (2026-11-19, was the lowest) | | | |
-| Signature absent (No) | 1 − the best model-scored candidate; KV read the page and offered no candidate at all: **1.0** | candidates from rules only | | |
-| **Blank / Junk / Main** | DistilBERT service p for the verdict's class (Main p(keep), Blank p(blank), Junk p(junk)), when it is the model's top class | pass-1 page deferred to pass 2; classifier unavailable; short-page rule; **stage 1 Blank fallback (2026-11-17)** | the verdict is not the model's top class (signed page kept while p(junk) was top, card near-miss turning Invoice into Cards, terms page) | no ink / no text / stage-1 Blank on an empty page / header-band-only stage-1 Blank: 1.0; pass-1 text rules: 0.95 |
-| Duplicate **Yes / Partial** | from the match score s to the original: max(0.30, 1 − 10 × (1 − s)): exact 1.0, 0.98 → 0.80, 0.95 → 0.50 | | | Partial (a blocked 100% match) is 1.0 |
-| Duplicate **No** | from the best match s to any compared page: < 0.80 → 1.0; 0.80–0.90 → 1.0 falling to 0.80; 0.90–1.00 → 0.80 falling to 0.30 (0.95 → 0.55, 0.98 → 0.40) | | | nothing to compare: 1.0 |
-| Page type / sub-type (Extracted) | leaf model p | keywords only, Others, no model | a Deciding keyword moved the page to **another L1** than the model's top (same L1: the model's p for that L1) | |
-| Page type / sub-type (Final) | anchor page (first page of the Final L1): its Extracted confidence; other pages × 0.90 | | rules 7 / 8 re-placed the page (continuation / embedded) | |
-| Codable | the page type's confidence | | | |
-| Specialty | specialty model p on the encounter's first page; carried × 0.90 | General fallback, keywords only | keywords name another specialty than the model's top | |
-| DOS | the chosen pair's KV confidence on the dated page; carried × 0.90 | edge keyword, keyword pass, dictation / signature date, neighbour's date, rules-only admit / discharge side (a pair: the weaker side) | the rules' priority chose another date than the model's best | no DOS / default date: none |
-| Encounter type | encounter model p for the chosen setting (first page decides); carried × 0.90 | no model, family rule (Discharge Summary → Inpatient, lab → Not Applicable), defaults | the first page's model top is another setting | |
-| Printed / Handwritten / Form / Visual | page-tag model softmax | faint marks, 2-class ink upgrade, crash | handwritten-share rule changed the model's type | no ink: 1.0 |
-| Visibility | page-tag model's visibility p | | | |
-| Quality | a **measurement** (score / 100), not a confidence; shown outside the colours | | | |
-| Rotation, continuity, page sequence | unchanged older scores (section 12.3): OSD score, gap-points curve, marker share | | | |
+| Field | Confidence |
+|---|---|
+| **Member Name / DOB** | KV Extract's **winning row** (`accepted` and `selected`; no other row counts): the one reading the value, else the winner all the same: score × model_score (score 0: model_score). No winning row (found by the rules / GLiNER): **0.60**. A DOB the post-processing dropped: 0.30 |
+| **Member ID** | the **mean** of every ID row KV Extract accepted and selected |
+| Member verification (chart) | not a confidence: the agreement rate |
+| **Provider Signature** | the signature row's score × model_score (rules only: 0.60); several signers: their **mean**. A facility read as the provider: 0.30 |
+| **DOS** | **KV date:** its winning row's score × model_score (score 0: model_score); no "flipped" cut. **Label backups** (edge label on Final OCR or Tesseract, keyword pass, dictated / transcribed date, an edge label filling an admit / discharge side): **0.60**. Signature date: 0.40. Neighbours' agreed date and the document's carried date: **the source's × 0.90**. No DOS: none |
+| **Blank / Junk** | DistilBERT's p for the class filed (Main p(keep), Blank p(blank), Junk p(junk)). A rule flipping the model: **0.40**. A short page decided by the short-page rules: **0.60**. No ink: 1.0; pass-1 text rules: 0.95 |
+| **Codability** | the page type's confidence; a **Blank / Junk page is Non-Codable** with the Blank / Junk confidence |
+| Page type / sub-type | leaf model p (anchor page); other pages of the document × 0.90 |
+| Orientation | stage 1's measured confidence |
+| Specialty, encounter type | the model's p on the encounter's first page; carried × 0.90 |
+
+### Page and chart levels (review-ui `confidenceLevel.ts`, History: `chart_confidence.py`)
+
+- **Features:** the 7 accuracy metrics: Member Verification (the lower of Name and DOB), DOS,
+  Blank / Junk, Page Type, Codability, Provider Signature, Orientation. A Blank / Junk or
+  duplicate page counts Blank / Junk and Codability only.
+- **Page:** **High** when every feature is High; **Low** when **any** feature is Low; else
+  **Medium**. Its % = the mean of its features, capped by its level (Medium ≤ 79%, Low ≤ 49%).
+- **Chart:** **High** when **80%+** of its pages are High; **Low** when **20%+** are Low (Low wins
+  when both hold); else **Medium**. Its % = the mean of its pages' %, capped the same way.
+- Client note: `docs/specials/CONFIDENCE_LEVELS_NOTE.md`.
 
 **Not done yet:** calibration. A raw 0.80 does not yet mean "right 8 times in 10"; the
 `calibration` slot in the canon is empty until it is fitted on ground truth.

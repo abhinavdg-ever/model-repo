@@ -370,6 +370,12 @@ class PageDate:
         return self.reported if self.reported is not None else conf.backup()
 
 
+def LABEL_FIND() -> float:  # noqa: N802 -- reads as the constant it stands for
+    """A DOS a label backup found (an edge label, the keyword pass, the dictated / transcribed
+    date): the rules-find 60% (2026-11-20, user; was the 40% backup)."""
+    return conf.rules_find()
+
+
 def edge_page_date(
     page_text: str,
     prof: Optional[DosProfile] = None,
@@ -391,7 +397,7 @@ def edge_page_date(
         encounter.chosen = True
         end = _range_end(page_text, encounter)
         return PageDate(encounter.iso, end or encounter.iso, confidence(encounter), encounter.label,
-                        "edge", is_pair=bool(end))
+                        "edge", is_pair=bool(end), reported=LABEL_FIND())
     admit = next((h for h in hits if h.label_class == "admit"), None)
     discharge = next(
         (h for h in hits if h.label_class == "discharge" and (admit is None or h.iso >= admit.iso)),
@@ -402,11 +408,12 @@ def edge_page_date(
         if discharge is not None:
             discharge.chosen = True
             return PageDate(admit.iso, discharge.iso, confidence(admit, discharge),
-                            f"{admit.label}+{discharge.label}", "edge", is_pair=True)
-        return PageDate(admit.iso, admit.iso, confidence(admit), admit.label, "edge")
+                            f"{admit.label}+{discharge.label}", "edge", is_pair=True, reported=LABEL_FIND())
+        return PageDate(admit.iso, admit.iso, confidence(admit), admit.label, "edge", reported=LABEL_FIND())
     if discharge is not None:
         discharge.chosen = True
-        return PageDate(discharge.iso, discharge.iso, confidence(discharge), discharge.label, "edge")
+        return PageDate(discharge.iso, discharge.iso, confidence(discharge), discharge.label, "edge",
+                        reported=LABEL_FIND())
     return None
 
 
@@ -538,20 +545,16 @@ def kv_page_date(
 
 
 def kv_reported(item: dict[str, Any], dated: Optional[list[dict[str, Any]]] = None) -> float:
-    """A key/value date's stored confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the
-    KV model's score for it (``kv_confidence`` from staging: model_score, flipped when the
-    model and the rules disagree about the row); ``confidence.flipped`` when the rules'
-    priority picked another date than the model's best of ``dated``;
-    ``confidence.backup`` when no model scored it."""
-    if item.get("confidence") is None or not item.get("model_scored", True):
-        return conf.backup()
-    scored = [it for it in dated or [] if it.get("confidence") is not None and it.get("model_scored", True)]
-    if scored:
-        best = max(scored, key=lambda it: float(it["confidence"]))
-        if str(best.get("iso")) != str(item.get("iso")):
-            return conf.flipped()
+    """A key/value date's stored confidence: the row's own (``kv_confidence`` from staging:
+    rule score x model_score, model_score alone when the score is 0, 0.60 with rules only;
+    2026-11-20, user: the winning row's, no longer cut to ``flipped`` when the rules' priority
+    picked another date than the model's best); ``confidence.backup`` when the row has none."""
     value = item.get("kv_confidence")
-    return float(value) if value is not None else conf.chosen(float(item["confidence"]), module="dos")
+    if value is not None:
+        return float(value)
+    if item.get("confidence") is None:
+        return conf.backup()
+    return conf.chosen(float(item["confidence"]), module="dos")
 
 
 def kv_confidence(item: dict[str, Any], prof: Optional[DosProfile] = None, *, conflict: bool = False) -> float:
@@ -600,7 +603,7 @@ def dictation_page_date(page_text: str, prof: Optional[DosProfile] = None) -> Op
             if iso and not amended_before(page_text, found.end(), prof):
                 # A dictation date is often not the visit's: a fallback, flagged.
                 return PageDate(iso, iso, conf.score(prof.confidence["dictation"], "no_model", "fallback", module="dos"),
-                                label, "dictation")
+                                label, "dictation", reported=LABEL_FIND())
     return None
 
 
@@ -627,7 +630,7 @@ def admit_discharge_date(
             return str(item["iso"]), kv_confidence(item, prof), str(item.get("keyword") or cls)
         hit = edge_side[cls]
         if hit:
-            reported[cls] = conf.backup()  # an edge label: rules only
+            reported[cls] = LABEL_FIND()  # an edge label: a label backup, 60% (2026-11-20, user)
         return (hit.iso, None, hit.label) if hit else None
 
     admit, discharge = side("admit"), side("discharge")
@@ -679,7 +682,7 @@ def keyword_pass_date(
         return None
     found.confidence = conf.score(prof.confidence.get("keyword_pass", 0.7), "no_model", module="dos")
     found.source = "keyword_pass"
-    found.reported = conf.backup()
+    found.reported = LABEL_FIND()  # a label backup, 60% (2026-11-20, user)
     return found
 
 
@@ -733,7 +736,8 @@ def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str]
             a = sides[0]
             out[i] = PageDate(a.dos_from, a.dos_to, round(min(s.confidence for s in sides) * factor, 4),
                               f"pages {before + 1} and {after + 1}", "neighbours", is_pair=a.is_pair,
-                              reported=conf.backup())
+                              # 2026-11-20 (user): a date carried from neighbours: the weaker x 0.90.
+                              reported=conf.carried(min(x.stored_confidence for x in sides)))
             continue
         if page is not None:
             lo = min(s.dos_from for s in sides)
