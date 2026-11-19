@@ -63,3 +63,11 @@ def test_two_providers_with_the_same_credential_are_both_selected():
     words = _line("Jane Smith, NP", 0) + _line("Ann Lee, NP", 20, start=10) + _line("Ann Lee, NP", 40, start=20)
     hits = [hit for hit in extract_page(words) if hit.selected]
     assert [(hit.provider_name, hit.value) for hit in hits] == [("Jane Smith", "NP"), ("Ann Lee", "NP")]
+
+
+def test_eye_notation_is_not_a_credential():
+    """2026-11-20 (user): "Conjunctiva OD OS" is right eye / left eye, not a Doctor of Optometry."""
+    words = [_word(0, "Conjunctiva", 0), _word(1, "OD", 0), _word(2, "OS", 0)]
+    assert extract_page(words) == []
+    kept = [_word(0, "Amy", 0), _word(1, "Lowe,", 0), _word(2, "OD", 0)]
+    assert [hit.value for hit in extract_page(kept)] == ["OD"]

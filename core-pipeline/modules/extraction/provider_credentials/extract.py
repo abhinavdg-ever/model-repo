@@ -3,7 +3,7 @@
 The list is ``resources/canon/provider_credentials_canon.json``. A token counts
 when it matches that list and sits after a name on the same line. A two-letter
 form that is also a state (MD, PA) is kept only when it is not followed by a
-ZIP code.
+ZIP code. OD beside OS / OU is eye notation, not a credential (2026-11-20).
 
 The provider is the words before the credential on its line, back to a colon or
 the start of the line, at most four words ('CC Provider: Jacqueline M Gomez, NP'
@@ -24,6 +24,9 @@ _ZIP = re.compile(r"\d{5}(?:-\d{4})?$")
 # These letters are also USPS state abbreviations.
 _STATE_LIKE = frozenset({"md", "pa", "ma", "dc"})
 _NAME_MAX_WORDS = 4
+# 2026-11-20 (user): eye notation -- OD / OS / OU (right / left / both eyes) beside each other
+# ("Conjunctiva OD OS") is not a Doctor of Optometry.
+_EYE = frozenset({"od", "os", "ou"})
 
 
 def _norm(text: str) -> str:
@@ -110,6 +113,8 @@ def extract_page(words: list[Word]) -> list[CredentialHit]:
             if not _name_before(previous):
                 continue
             if key in _STATE_LIKE and _ZIP.match(nxt.strip(" ,")):
+                continue
+            if key in _EYE and (_norm(nxt.strip(" ,;:")) in _EYE or _norm(previous.strip(" ,;:")) in _EYE):
                 continue
             provider = provider_before([item.content for item in line], index, catalog)
             pair = f"{provider.casefold()}|{display.casefold()}"

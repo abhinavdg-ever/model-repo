@@ -87,15 +87,17 @@ def test_member_name_dob_and_id_each_have_their_own_confidence():
     staged = _Staged({
         "name": [{"value": "Carl Rogers", "accepted": True, "selected": True, "model_score": 0.93,
                   "rule_accepted": True, "score": 0.8, "key": "Patient Name"},
-                 {"value": "", "key": "Patient", "sentence": "Patient: Carl Rogers", "model_score": 0.5, "score": 0.5}],
+                 {"value": "", "key": "Patient", "sentence": "Patient: Carl Rogers", "model_score": 0.5, "score": 0.5,
+                  "accepted": True, "selected": True}],
+        # 2026-11-20 (user): a row not accepted / selected never counts -> the whole-page 0.60.
         "dob": [{"value": "01/02/1950", "accepted": False, "model_score": 0.2, "rule_accepted": True, "score": 0.9}],
-        "member_id": [{"value": "X123", "accepted": True, "score": 0.9}],  # rules only, no model
+        "member_id": [{"value": "X123", "accepted": True, "selected": True, "score": 0.9}],  # rules only, no model
     })
     page = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                         detected_dob="01/02/1950", detection_source_dob="rule based",
                         detected_member_id="X123", detection_source_member_id="rule based")
-    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.2, "member_id": 0.6}  # rules only: 0.60; 0.18 -> floor 0.20
-    assert _page_confidence(page, staged) == 0.2  # the lowest of the three
+    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.6, "member_id": 0.6}  # rules only: 0.60
+    assert _page_confidence(page, staged) == 0.6  # the lowest of the three
     # the member found in a row's sentence: that row's score x model_score
     searched = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                             ner_key_source_name="sentence: Patient")
@@ -197,16 +199,19 @@ def test_review_ui_subtype_confidence_is_the_deepest_named_level():
     assert subtype_confidence("Others", 0.9, None, None) is None
 
 
+CHOSEN = {"accepted": True, "selected": True}
+
+
 def test_member_confidence_comes_from_the_kv_row_reading_it():
     """2026-11-19 (user): the member value's confidence is the KV row that reads it (score x
     model_score): a name in any order, a DOB written in the row's sentence; the best such row."""
     from modules.member.stage import member_field_confidences
 
     staged = _Staged({
-        "name": [{"value": "PHILLIPS, BENJAMIN J", "model_score": 0.9, "score": 0.9, "key": "Patient"},
-                 {"value": "Benjamin Phillips", "model_score": 0.5, "score": 0.5, "key": "Name"},
-                 {"value": "Jane Doe", "model_score": 0.99, "score": 1.0, "key": "Provider"}],
-        "dob": [{"value": "", "sentence": "DOB: 03/29/1946 Age 78", "model_score": 0.95, "score": 0.9, "key": "DOB"}],
+        "name": [{"value": "PHILLIPS, BENJAMIN J", "model_score": 0.9, "score": 0.9, "key": "Patient", **CHOSEN},
+                 {"value": "Benjamin Phillips", "model_score": 0.5, "score": 0.5, "key": "Name", **CHOSEN},
+                 {"value": "Jane Doe", "model_score": 0.99, "score": 1.0, "key": "Provider", **CHOSEN}],
+        "dob": [{"value": "", "sentence": "DOB: 03/29/1946 Age 78", "model_score": 0.95, "score": 0.9, "key": "DOB", **CHOSEN}],
     })
     page = _member_page("verified", detected_name="Benjamin Phillips", detection_source_name="rule based",
                         detected_dob="1946-03-29", detection_source_dob="rule based")

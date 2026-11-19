@@ -168,10 +168,9 @@ def _reads(field_id: str, want: str, text: Any) -> bool:
 
 def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str, Any]]:
     """The staged key / value row the member value comes from (2026-11-19, user: the member's
-    confidence is its KV row's score x model_score). Rows whose value reads it, else rows whose
-    sentence does; of those, KV Extract's own pick first (``selected``), then the rows it stands
-    behind (``accepted``), then any; within that, the highest confidence. None when no row reads
-    it (the rules' whole-page find)."""
+    confidence is its KV row's score x model_score). Only rows KV Extract accepted and selected
+    (2026-11-20, user); of those, the ones whose value reads it, else whose sentence does; the
+    highest confidence. None when no such row reads it (the rules' whole-page find)."""
     if staged_page is None:
         return None
     want = _norm(field_id, value)
@@ -179,15 +178,20 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
         return None
     from modules.extraction.results import row_confidence
 
-    rows = [row for row in staged_page.rows(field_id) if isinstance(row, dict)]
+    # 2026-11-20 (user): only the rows KV Extract accepted AND selected; the others never count.
+    rows = [row for row in staged_page.rows(field_id) if isinstance(row, dict) and _chosen(row)]
     for part in ("value", "sentence"):
         hits = [row for row in rows if _reads(field_id, want, row.get(part))]
         scored = [(row_confidence(row), row) for row in hits]
         scored = [(c, row) for c, row in scored if c is not None]
         if scored:
-            return max(scored, key=lambda pair: (bool(pair[1].get("selected")),
-                                                 bool(pair[1].get("accepted")), pair[0]))[1]
+            return max(scored, key=lambda pair: pair[0])[1]
     return None
+
+
+def _chosen(row: dict[str, Any]) -> bool:
+    """A row KV Extract stands behind and chose: ``accepted`` and ``selected`` both true."""
+    return bool(row.get("accepted")) and bool(row.get("selected"))
 
 
 def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, staged_page: Any) -> Optional[float]:
@@ -196,7 +200,7 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
     * read from a key / value row (its value, or the member found in its sentence, key
       source "sentence: <key>"): that row's rule score x model_score (``row_confidence``);
     * found by searching the whole page (the rules, GLiNER): ``confidence.whole_page`` (0.60);
-    * Member ID: the mean of every ID row KV Extract chose (selected, else accepted);
+    * Member ID: the mean of every ID row KV Extract accepted and selected;
     * nothing read: None."""
     value = _clean(value)
     if not value:
@@ -206,17 +210,17 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
 
     if field_id == "member_id" and staged_page is not None:
         # 2026-11-19 (user): the Member ID cell lists every ID KV Extract chose (FIN, MRN, ...);
-        # its confidence is the mean of those rows (selected, else accepted).
+        # its confidence is the mean of those rows (accepted and selected).
         rows = [r for r in staged_page.rows("member_id") if isinstance(r, dict) and str(r.get("value") or "").strip()]
-        chosen = [r for r in rows if r.get("selected")] or [r for r in rows if r.get("accepted")]
-        found = conf.mean(row_confidence(r) for r in chosen)
+        found = conf.mean(row_confidence(r) for r in rows if _chosen(r))
         if found is not None:
             return found
     key_source = str(key_source or "")
     row = None
     if key_source.startswith("sentence:") and staged_page is not None:
         key = key_source.split(":", 1)[1].strip()
-        rows = [r for r in staged_page.rows(field_id) if isinstance(r, dict) and str(r.get("key") or "").strip() == key]
+        rows = [r for r in staged_page.rows(field_id)
+                if isinstance(r, dict) and str(r.get("key") or "").strip() == key and _chosen(r)]
         scored = [(row_confidence(r), r) for r in rows]
         scored = [(c, r) for c, r in scored if c is not None]
         row = max(scored, key=lambda pair: pair[0])[1] if scored else None
