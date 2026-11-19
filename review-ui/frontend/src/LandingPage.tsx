@@ -1115,26 +1115,24 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           {isAdmin ? (
                             <button
                               type="button"
-                              className="action-icon-btn"
+                              className="action-icon-btn action-icon-only"
                               onClick={() => askRerun(folder.id, folder.name)}
                               title="Run this chart again (admin)"
                               aria-label={`Rerun ${folder.name}`}
                             >
                               <RotateCcw size={16} aria-hidden="true" />
-                              Rerun
                             </button>
                           ) : null}
                           {isAdmin ? (
                             <button
                               type="button"
-                              className="action-icon-btn action-delete-btn"
+                              className="action-icon-btn action-icon-only action-delete-btn"
                               disabled={deleting === folder.id}
                               onClick={() => askDelete(folder.id, folder.name, folder.page_count)}
                               title="Delete this chart's pipeline results (admin)"
                               aria-label={`Delete ${folder.name}`}
                             >
                               <Trash2 size={16} aria-hidden="true" />
-                              Delete
                             </button>
                           ) : null}
                         </div>
