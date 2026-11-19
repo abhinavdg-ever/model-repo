@@ -1084,9 +1084,14 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                                 {levelLabel(confidence[folder.id].level)}
                               </span>
                             </strong>
-                            <p className="accuracy-distribution">
-                              High {confidence[folder.id].counts.high} · Medium {confidence[folder.id].counts.medium} · Low {confidence[folder.id].counts.low}
-                            </p>
+                            <dl className="accuracy-class-grid">
+                              {(["high", "medium", "low"] as const).map((lv) => (
+                                <div key={lv}>
+                                  <dt>{levelLabel(lv)}</dt>
+                                  <dd>{confidence[folder.id].counts[lv]}</dd>
+                                </div>
+                              ))}
+                            </dl>
                           </div>
                         ) : (
                           <span className="accuracy-conf-counts">-</span>

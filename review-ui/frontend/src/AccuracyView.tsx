@@ -2090,9 +2090,14 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                               {levelLabel(row.confidence.level)}
                             </span>
                           </strong>
-                          <p className="accuracy-distribution">
-                            High {row.confidence.counts.high} · Medium {row.confidence.counts.medium} · Low {row.confidence.counts.low}
-                          </p>
+                          <dl className="accuracy-class-grid">
+                            {(["high", "medium", "low"] as const).map((lv) => (
+                              <div key={lv}>
+                                <dt>{levelLabel(lv)}</dt>
+                                <dd>{row.confidence?.counts[lv] ?? 0}</dd>
+                              </div>
+                            ))}
+                          </dl>
                         </div>
                       ) : "—"}
                     </td>
