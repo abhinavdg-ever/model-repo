@@ -623,10 +623,15 @@ def _containers() -> dict[str, Any]:
 #                          COSMOS_CLIENT_ID, COSMOS_CLIENT_SECRET (else the AZURE_* ones)
 #   entra                  Entra ID through DefaultAzureCredential (2026-11-14, user): environment
 #                          variables, the managed identity, or `az login` on a laptop
+#   entra_interactive      (2026-11-19, user) the managed identity, then `az login`, then a browser
+#                          prompt as the last resort: the VM answers with its identity and never
+#                          sees a prompt; a laptop signs in once (remembered in ~/.advantmed/,
+#                          shared with Blob's entra_interactive)
 # Every Entra ID sign-in needs the data-plane role "Cosmos DB Built-in Data Contributor".
 COSMOS_MANAGED_IDENTITY = frozenset({"managed_identity", "managed-identity", "managed_entity", "mi", "msi"})
 COSMOS_SERVICE_PRINCIPAL = frozenset({"service_principal", "service-principal", "sp", "client_secret", "app"})
 COSMOS_ENTRA = frozenset({"entra", "entra_id", "entra-id", "aad", "azure_ad", "default"})
+COSMOS_ENTRA_INTERACTIVE = frozenset({"entra_interactive", "entra-interactive", "interactive", "browser"})
 
 
 def _env(*names: str) -> str:
@@ -645,6 +650,8 @@ def cosmos_auth() -> str:
         return "service_principal"
     if auth in COSMOS_ENTRA:
         return "entra"
+    if auth in COSMOS_ENTRA_INTERACTIVE:
+        return "entra_interactive"
     return "key"
 
 
@@ -666,6 +673,12 @@ def cosmos_credential(where: str = ".env") -> Any:
         from azure.identity import ClientSecretCredential
 
         return ClientSecretCredential(tenant_id=tenant, client_id=client_id, client_secret=secret)
+    if auth == "entra_interactive":
+        # Blob's chain (common/db/blob_store.py): managed identity -> az CLI -> a remembered
+        # browser sign-in, one token per scope shared by every thread.
+        from common.db.blob_store import _interactive_credential
+
+        return _interactive_credential()
     if auth == "entra":
         from azure.identity import DefaultAzureCredential
 
@@ -675,5 +688,5 @@ def cosmos_credential(where: str = ".env") -> Any:
         return DefaultAzureCredential(**kwargs)
     key = (os.environ.get("COSMOS_KEY") or "").strip()
     if not key:
-        raise RuntimeError(f"Cosmos needs COSMOS_KEY (or COSMOS_AUTH=managed_identity / service_principal / entra) in {where}")
+        raise RuntimeError(f"Cosmos needs COSMOS_KEY (or COSMOS_AUTH=managed_identity / service_principal / entra / entra_interactive) in {where}")
     return key

@@ -90,3 +90,48 @@ def test_review_ui_entra_id(monkeypatch):
     credential.credential("", "service_principal", "app", "t", "s")
     credential.credential("", "entra", "")
     assert made == [("sp", "t", "app", True), ("default", None)]
+
+
+def test_entra_interactive_chains_managed_identity_cli_then_browser(monkeypatch, tmp_path):
+    """2026-11-19 (user): managed identity first (the VM never prompts), then az login, then a
+    remembered browser sign-in (a laptop); core-pipeline reuses Blob's chain."""
+    chain = []
+
+    class Fake:
+        def __init__(self, *args, **kwargs):
+            chain.append((type(self).__name__, kwargs.get("client_id")))
+
+    names = ("ManagedIdentityCredential", "AzureCliCredential", "InteractiveBrowserCredential",
+             "TokenCachePersistenceOptions")
+    module = types.ModuleType("azure.identity")
+    for name in names:
+        setattr(module, name, type(name, (Fake,), {}))
+
+    class ChainedTokenCredential:
+        def __init__(self, *parts):
+            self.parts = [type(p).__name__ for p in parts]
+
+    class AuthenticationRecord:
+        @staticmethod
+        def deserialize(text):
+            return text
+
+    module.ChainedTokenCredential = ChainedTokenCredential
+    module.AuthenticationRecord = AuthenticationRecord
+    monkeypatch.setitem(sys.modules, "azure.identity", module)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from app.store.cosmos import credential
+
+    assert credential.mode("entra_interactive") == "entra_interactive" and credential.mode("browser") == "entra_interactive"
+    assert credential.configured("https://x", "", "entra_interactive")
+    made = credential.credential("", "entra_interactive", "cid")
+    assert made.parts == ["ManagedIdentityCredential", "AzureCliCredential", "InteractiveBrowserCredential"]
+    assert ("ManagedIdentityCredential", "cid") in chain
+
+    from common.db import blob_store
+
+    monkeypatch.setattr(blob_store, "_interactive_credential", lambda: "blob-chain")
+    monkeypatch.setenv("COSMOS_AUTH", "entra_interactive")
+    assert cosmos_store.cosmos_auth() == "entra_interactive"
+    assert cosmos_store.cosmos_credential() == "blob-chain"

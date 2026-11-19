@@ -9,7 +9,8 @@
     python utilities\\cosmos_containers.py check                    # Windows (Command Prompt)
 
 Settings come from core-pipeline/.env (``--env`` for another file; the environment wins):
-COSMOS_ENDPOINT, COSMOS_DATABASE, COSMOS_AUTH (key | managed_identity | service_principal | entra),
+COSMOS_ENDPOINT, COSMOS_DATABASE, COSMOS_AUTH (key | managed_identity | service_principal | entra |
+entra_interactive: managed identity, then `az login`, then a browser prompt once per machine),
 COSMOS_KEY, COSMOS_CLIENT_ID / COSMOS_TENANT_ID / COSMOS_CLIENT_SECRET (each else its AZURE_*
 setting). No value is ever printed.
 

@@ -7,6 +7,9 @@
                       COSMOS_CLIENT_ID, COSMOS_CLIENT_SECRET (else the AZURE_* ones)
   entra               Entra ID through DefaultAzureCredential (2026-11-14, user): environment
                       variables, the managed identity, or `az login`
+  entra_interactive   (2026-11-19, user) the managed identity, then `az login`, then a browser
+                      prompt as the last resort; the sign-in is remembered in ~/.advantmed/ and
+                      shared with core-pipeline (the same token cache and record)
 
 Every Entra ID sign-in needs the Cosmos data-plane role "Cosmos DB Built-in Data Contributor"."""
 from __future__ import annotations
@@ -16,6 +19,10 @@ from typing import Any
 MANAGED_IDENTITY = frozenset({"managed_identity", "managed-identity", "managed_entity", "mi", "msi"})
 SERVICE_PRINCIPAL = frozenset({"service_principal", "service-principal", "sp", "client_secret", "app"})
 ENTRA = frozenset({"entra", "entra_id", "entra-id", "aad", "azure_ad", "default"})
+ENTRA_INTERACTIVE = frozenset({"entra_interactive", "entra-interactive", "interactive", "browser"})
+# core-pipeline's names (common/db/blob_store.py): one sign-in per machine for both services.
+TOKEN_CACHE = "advantmed_blob_storage"
+AUTH_RECORD = ".advantmed/azure_auth_record.json"
 
 
 def mode(auth: str | None) -> str:
@@ -26,6 +33,8 @@ def mode(auth: str | None) -> str:
         return "service_principal"
     if value in ENTRA:
         return "entra"
+    if value in ENTRA_INTERACTIVE:
+        return "entra_interactive"
     return "key"
 
 
@@ -40,7 +49,7 @@ def configured(endpoint: str | None, key: str | None, auth: str | None,
     if not (endpoint or "").strip():
         return False
     kind = mode(auth)
-    if kind in {"managed_identity", "entra"}:
+    if kind in {"managed_identity", "entra", "entra_interactive"}:
         return True
     if kind == "service_principal":
         return all((v or "").strip() for v in (tenant_id, client_id, client_secret))
@@ -61,6 +70,8 @@ def credential(key: str | None, auth: str | None, client_id: str | None = None,
 
         return ClientSecretCredential(tenant_id=(tenant_id or "").strip(), client_id=cid,
                                       client_secret=(client_secret or "").strip())
+    if kind == "entra_interactive":
+        return interactive_chain(cid)
     if kind == "entra":
         from azure.identity import DefaultAzureCredential
 
@@ -69,3 +80,34 @@ def credential(key: str | None, auth: str | None, client_id: str | None = None,
             kwargs["managed_identity_client_id"] = cid
         return DefaultAzureCredential(**kwargs)
     return (key or "").strip()
+
+
+def interactive_chain(client_id: str = "") -> Any:
+    """Managed identity, then the Azure CLI, then a browser prompt (2026-11-19, user). The silent
+    ones first, so a VM never prompts. The browser sign-in is remembered (token cache + record)
+    so a laptop is asked once, for review-ui and core-pipeline alike."""
+    from pathlib import Path
+
+    from azure.identity import (
+        AuthenticationRecord,
+        AzureCliCredential,
+        ChainedTokenCredential,
+        InteractiveBrowserCredential,
+        ManagedIdentityCredential,
+        TokenCachePersistenceOptions,
+    )
+
+    record_path = Path.home() / AUTH_RECORD
+    record = None
+    try:
+        if record_path.is_file():
+            record = AuthenticationRecord.deserialize(record_path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - a broken record only means one more prompt
+        record = None
+    cache = TokenCachePersistenceOptions(name=TOKEN_CACHE, allow_unencrypted_storage=True)
+    mi = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    return ChainedTokenCredential(
+        mi,
+        AzureCliCredential(process_timeout=30),
+        InteractiveBrowserCredential(cache_persistence_options=cache, authentication_record=record),
+    )
