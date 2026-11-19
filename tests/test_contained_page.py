@@ -215,3 +215,19 @@ def test_pass_1_rules_rerun_only_on_handwritten_or_low_quality_pages():
     assert not rerun({"document_type": "form", "handwritten_area_pct": 2})
     assert not rerun({"document_type": "visual", "handwritten_area_pct": 1})
     assert not rerun({"document_type": "printed", "handwritten_area_pct": 2, "quality_tag": "high"})
+
+
+def test_sf_a_short_fax_routing_page_is_junk_even_with_a_provider(monkeypatch):
+    """2026-11-19 (user): "To: Dr ... Fax: (555) ..." on a short page is Junk / Letter/Fax, even
+    though it names a provider (S3 would keep it); note content still keeps it."""
+    _keep(monkeypatch)
+    routing = "To: Dr Jane Roe MD\nFax: (330) 555-0142\nFrom: Records Dept"
+    texts = {1: HEADER + BODY + FOOTER, 2: routing}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
+    inputs[2].provider, inputs[2].provider_spot = True, ("header", frozenset({"jane", "roe"}))
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+    assert rows[2]["flag"] == "junk" and "SF" in rows[2]["reason"]
+    assert method.fax_routing("Fax: 330-555-0142") is None                      # no To / From line
+    assert method.fax_routing("To: Dr Roe\nFax # 330.555.0142") is not None

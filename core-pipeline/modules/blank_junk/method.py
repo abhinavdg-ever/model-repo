@@ -785,8 +785,10 @@ def decide(inputs: PageInputs) -> Verdict:
     if index is not None:
         votes["index_page"] = index
         return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
-    # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed.
-    cover = fax_cover_sheet(text)
+    # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed. On a page that
+    # is not short, Fax must be a section header (2026-11-19, user: a mention of Fax, or a fax
+    # number in a letter, is not junk).
+    cover = fax_cover_sheet(text) if (inputs.short_verdict or fax_heading(inputs)) else None
     if cover is not None:
         votes["fax_cover"] = cover
         return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
@@ -934,6 +936,21 @@ def fax_cover_sheet(text: str) -> Optional[str]:
     return f"Fax + {', '.join(boxes)}" if len(boxes) >= 2 else None
 
 
+FAX_NUMBER = re.compile(
+    r"(?<![A-Za-z])(?:fax|facsimile)(?:\s*(?:no\.?|number|#|ph(?:one)?))?\s*[:#.]?\s*"
+    r"(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}", re.IGNORECASE)
+FAX_ROUTING = re.compile(r"(?im)^\W*(?:to|attn|attention|recipient|from|sender)\s*[:\-]")
+
+
+def fax_routing(text: str) -> Optional[str]:
+    """A fax routing block (2026-11-19, user: a short "To: ... Fax: (555) 123-4567" page is Junk
+    even when it names a provider): a fax number and a To / Attn / From line, or None."""
+    number = FAX_NUMBER.search(text or "")
+    if number is None or not FAX_ROUTING.search(text or ""):
+        return None
+    return "To / From + fax number"
+
+
 def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     """2026-11-02 (user): the fax word the page's header band prints when the page has no
     signature at all (canon ``fax_unsigned``); None otherwise or outside pass 2."""
@@ -971,11 +988,21 @@ def note_content(inputs: PageInputs) -> Optional[str]:
     return f"medications ({meds})" if meds else None
 
 
+def fax_heading(inputs: PageInputs) -> Optional[str]:
+    """Fax as one of the page's section headers (stage 6), or None (2026-11-19, user: on a page
+    that is not short only a Fax header counts, never Fax mentioned in the text)."""
+    for heading in inputs.headings or ():
+        if FAX_WORD.search(str(heading)):
+            return str(heading)
+    return None
+
+
 def fax_letter(inputs: PageInputs) -> Optional[str]:
-    """A fax letter (2026-11-19, user): the word Fax, a letter's closing (Sincerely, Yours truly,
-    Regards ...) and no Electronic Signature on the page, and no note content; else None."""
+    """A fax letter (2026-11-19, user): Fax as a section header (not just mentioned, not a fax
+    number), a letter's closing (Sincerely, Yours truly, Regards ...), no Electronic Signature on
+    the page and no note content; else None."""
     text = inputs.text or ""
-    if inputs.signed or not FAX_WORD.search(text):
+    if inputs.signed or not fax_heading(inputs):
         return None
     closing = LETTER_CLOSING.search(text)
     if closing is None or note_content(inputs):

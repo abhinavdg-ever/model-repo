@@ -566,6 +566,8 @@ def short_verdict(
       S1 the previous page ends in a Progress Note header: in its bottom third, one of its last
          3 headers -> Main (this page carries that section on)
       S2 a Progress Note header and 3+ other words on the page -> Main
+      SF a fax routing block (a fax number and a To / Attn / From line), no note content ->
+         Junk / Letter/Fax, even with a provider on it (2026-11-19, user)
       S3 an Electronic Signature, or a provider, not repeated on the previous / next page -> Main
       S4 its content is measurements, doses or ICD codes -> Main
       S5 98% of its words, in order, on the previous or next page -> Junk / Others
@@ -609,6 +611,11 @@ def short_verdict(
                  if len(w) > 1 and w not in pn_headers.header_words(text, own.headings)]
         if len(other) >= NOTE_HEADER_EXTRA_WORDS:
             return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main")
+    # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
+    # with the provider it names; a page with note content (header, ICD codes, doses) is not.
+    routing = method.fax_routing(text)
+    if routing and not method.note_content(own):
+        return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax")
     # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
     if pid in signed and not repeated:
         return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main")

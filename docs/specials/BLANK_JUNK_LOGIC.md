@@ -54,11 +54,11 @@ Then, the first rule that matches decides:
 |---|---|---|---|
 | 0 | Stage 1 Blank, header only | Stage 1 says Blank, all text in the top 15% header band, no ink below (2026-11-17) | Blank |
 | 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading plus 3+ lines with page numbers or dates. Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
-| 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed) | Junk / Letter/Fax |
+| 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed). On a page that is not short, "Fax" must be a **section header** (2026-11-19) | Junk / Letter/Fax |
 | 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
 | 4 | Keeps | Visual page under 20 words that is not a card; > 30% handwritten; Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |
 | 5 | **Card** | on a printed, visual or uncertain page; see below | Junk / Cards |
-| 6 | **Fax letter** | "Fax" + a letter's closing (Sincerely, Yours truly, Regards, Respectfully …) and no Electronic Signature; or "Fax" in a section header and no signature. **Never** on a page with note content (a Progress Note header, an ICD-10 code or a medication list): "Fax to:" inside a note is not junk (2026-11-19) | Junk / Letter/Fax |
+| 6 | **Fax letter** | "Fax" as a **section header** (2026-11-19, user: a mention of Fax, or a fax number in a letter, is not junk) + a letter's closing (Sincerely, Yours truly, Regards, Respectfully …) and no Electronic Signature; or "Fax" in a section header and no signature. **Never** on a page with note content (a Progress Note header, an ICD-10 code or a medication list): "Fax to:" inside a note is not junk (2026-11-19) | Junk / Letter/Fax |
 | 7 | Stage 1 Blank fallback | Stage 1 typed it Blank and nothing above kept it (2026-11-17) | Blank |
 | 8 | **Classifier** | The DistilBERT service: JUNK with p(keep) < 0.99 → Junk / its subtype; BLANK → Junk / Others; else Main. A model Invoice is a card only on a card near miss that no form / letter / length guard stopped and no note content (2026-11-19: an anesthesia note read as an invoice was becoming Cards) | its verdict |
 | 9 | Invoice post-processing | unchanged: a dollar table or invoice wording → Main (Invoice page); a terms page → Junk / Others; a care provider's page with no invoice wording → Main, not an invoice | |
@@ -76,6 +76,7 @@ The first that matches decides:
 |---|---|---|
 | S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on | Main |
 | S2 | The page has a **Progress Note header and 3+ other words** | Main |
+| SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
 | S4 | Its content is **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
 | S5 | **98%+ of its words, in the same order**, are on the previous or next page | Junk / Others |
