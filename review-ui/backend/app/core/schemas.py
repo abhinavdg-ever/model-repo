@@ -320,6 +320,8 @@ class ImagingPageResult(BaseModel):
     # The subtype's own confidence (the deepest named level, conditional on its parent).
     subtypeConfidence: float | None = None
     pageQualityTag: str | None = None
+    # The OCR match rate the routing ended on, 0-1 (2026-11-19, user): Rejection Rules.
+    ocrMatchRate: float | None = None
     pageQualityConfidence: float | None = None
     dosFrom: str | None = None
     dosTo: str | None = None

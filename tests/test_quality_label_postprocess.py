@@ -92,7 +92,8 @@ def test_routing_table_rows():
     half = "alpha beta gamma delta epsilon zeta eta theta iota other"  # 90% overlap
     assert r(_row(hw=2), "high") == (1, "high", False)
     assert r(_row(hw=2), "high", tess=half) == (1, "high", False)
-    assert r(_row(hw=2), "high", tess="alpha beta gamma") == (2, "medium", True)
+    assert r(_row(hw=2), "high", tess="alpha beta gamma") == (2, "low", True)  # 30%: under 50% is Low
+    assert r(_row(hw=2), "high", tess="alpha beta gamma delta epsilon zeta eta") == (2, "medium", True)
     assert r(_row(hw=2), "medium") == (3, "high", False)
     assert r(_row(hw=2), "medium", tess=half) == (4, "medium", True)
     assert r(_row(hw=2), "low") == (5, "low", True)
@@ -131,11 +132,38 @@ def test_three_engine_regrade_after_doc_intel():
     """Rows 6, 7, 8, 11: < 50% average overlap one level down, < 10% Low; other rows unchanged."""
     from modules.ocr.routing import after_docintel
 
-    d = {"row": 7, "quality_before": "high", "final_quality": "high"}
+    d = {"row": 7, "quality_before": "high", "final_quality": "high", "docintel": True}
     assert after_docintel(d, [SAME, SAME, SAME])["final_quality"] == "high"
     assert after_docintel(d, [SAME, SAME, "zzz"])["final_quality"] == "medium"
     assert after_docintel(d, ["aaa", "bbb", "ccc"])["final_quality"] == "low"
-    assert after_docintel({"row": 2, "final_quality": "medium"}, ["a", "b", "c"])["final_quality"] == "medium"
+    assert after_docintel({"row": 2, "final_quality": "medium", "docintel": True}, ["a", "b", "c"])["final_quality"] == "medium"
+
+
+def test_low_page_upgraded_after_doc_intel_and_final_match_rate():
+    """2026-11-19 (user): after the three OCRs, a Low page at 50%+ three-way agreement is Medium."""
+    from modules.ocr.routing import after_docintel, final_match_rate
+
+    low = {"row": 5, "quality_before": "low", "final_quality": "low", "docintel": True, "overlap": 0.3}
+    up = after_docintel(low, [SAME, SAME, SAME])
+    assert up["final_quality"] == "medium" and up["low_upgraded"] and final_match_rate(up) == 1.0
+    stay = after_docintel(low, ["aaa", "bbb", "ccc"])
+    assert stay["final_quality"] == "low" and final_match_rate(stay) == 0.0
+    assert final_match_rate({"overlap": 0.4}) == 0.4
+    # a page Doc Intel did not read is left alone
+    assert after_docintel({"row": 1, "final_quality": "high", "docintel": False}, ["a", "b", "c"])["final_quality"] == "high"
+
+
+def test_a_missing_top_row_caps_the_match_rate():
+    """2026-11-19 (user): Docling missing Tesseract's top / bottom row -> match rate under 90%."""
+    from modules.ocr.routing import route
+
+    d = route(_row(hw=2), quality="high", settled=False, docling=SAME, tesseract=SAME,
+              edges={"top": "missing", "bottom": "match"})
+    assert (d["row"], d["final_quality"], d["docintel"]) == (2, "medium", True)
+    assert d["overlap"] < 0.90 and d["overlap_before_edge"] == 1.0
+    d = route(_row(hw=2), quality="high", settled=False, docling=SAME, tesseract=SAME,
+              edges={"top": "spacing_fixed", "bottom": "match"})
+    assert d["row"] == 1
 
 
 def test_pass_1_skips_rows_5_to_10():
@@ -158,7 +186,7 @@ def test_route_pages_stores_the_row_and_never_regrades_twice():
     from modules.ocr.stage_final2 import route_pages
 
     store = MemoryStore()
-    for page_id, tess in ((1, SAME), (2, "alpha beta")):
+    for page_id, tess in ((1, SAME), (2, "alpha beta gamma delta epsilon zeta eta")):
         store.upsert_quality(chart_id=1, page_id=page_id, printed_or_handwritten="printed",
                              quality_tag="high", document_type="printed", review_required=False)
         store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="docling", raw_text=json.dumps({"content": SAME}))

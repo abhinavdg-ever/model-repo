@@ -34,6 +34,7 @@ from apps.worker.stages._support import (
     mark_failed,
     mark_processing,
     stage_run,
+    unwrap_ocr_content,
 )
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 )
 
         with connect() as conn:
+            # Docling's first / last row against Tesseract's (2026-11-19, user): a row only
+            # split or run together differently takes Tesseract's line; a missing one is
+            # recorded for the routing (modules/ocr/edge_check.py). Trusted Tesseract only.
+            from common.db import get_quality_map, page_blocks_prelim
+            from modules.ocr.edge_check import check as edge_check, fix_text
+
+            tesseract = get_ocr_texts(conn, chart_id, "tesseract") if results else {}
+            quality = get_quality_map(conn, chart_id) if results else {}
             for item in results:
                 if item.get("error"):
                     mark_failed(
@@ -274,6 +283,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     or [],
                     "section_headers": item.get("section_headers") or [],
                 }
+                tess = unwrap_ocr_content(tesseract.get(item["page_id"]))
+                if tess.strip() and page_doc["content"].strip() and not page_blocks_prelim(quality.get(item["page_id"])):
+                    fixed, edges = edge_check(page_doc["content"], tess)
+                    page_doc["edge_check"] = edges
+                    if fixed != page_doc["content"]:
+                        page_doc["content"] = fixed
+                        page_doc["markdown"] = fix_text(page_doc["markdown"], tess)
                 page_doc["words"] = list(item.get("words") or [])
                 if item.get("width"):
                     page_doc["width"] = item["width"]

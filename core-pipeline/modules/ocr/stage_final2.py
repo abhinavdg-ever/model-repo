@@ -436,9 +436,19 @@ def _docling_content(raw: str) -> str:
     return str(parsed.get("content") or "") if isinstance(parsed, dict) else str(parsed)
 
 
+def _docling_edges(raw: str) -> Optional[dict[str, str]]:
+    """Docling's top / bottom row check against Tesseract (stage 4, modules/ocr/edge_check.py)."""
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    edges = parsed.get("edge_check") if isinstance(parsed, dict) else None
+    return edges if isinstance(edges, dict) else None
+
+
 ROUTING_CSV_COLUMNS = [
     "chart_name", "page_name", "row", "type", "hw_pct", "quality", "tesseract", "docling",
-    "overlap_ocr", "overlap_3", "final_quality", "doc_intel", "final_ocr",
+    "overlap_ocr", "overlap_3", "final_quality", "doc_intel", "final_ocr", "edge_top", "edge_bottom",
 ]
 
 
@@ -474,6 +484,7 @@ def route_pages(conn: Any, chart_id: int, settled: set[int]) -> dict[int, dict[s
         decision = route(
             row, quality=grade, settled=page_id in settled,
             docling=_docling_content(docling.get(page_id) or ""), tesseract=tesseract.get(page_id),
+            edges=_docling_edges(docling.get(page_id) or ""),
         )
         decisions[page_id] = decision
         _store_route(conn, page_id, row, detail, decision)
@@ -519,6 +530,7 @@ def _routing_csv(chart_name: str, pages: list[dict[str, Any]], decisions: dict[i
                 "overlap_ocr": pct(d.get("overlap")), "overlap_3": pct(d.get("overlap_3")),
                 "final_quality": (d.get("final_quality") or "").capitalize(),
                 "doc_intel": yes(d.get("docintel")), "final_ocr": d.get("final_ocr", ""),
+                "edge_top": (d.get("edges") or {}).get("top", ""), "edge_bottom": (d.get("edges") or {}).get("bottom", ""),
             })
     return out
 

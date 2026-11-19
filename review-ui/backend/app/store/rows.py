@@ -385,7 +385,7 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
         with _skip_on_error("quality", folder_id):
             for (
                 page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
-                doc_type, visible, hw_area, measured,
+                doc_type, visible, hw_area, measured, *more,
             ) in rows.get("quality") or []:
                 fields = _ensure(str(page_name))
                 if hw:
@@ -414,6 +414,18 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                 if mirrored is not None:
                     fields["mirrored"] = bool(mirrored)
                 fields.update(page_type_fields(doc_type, visible, hw_area))
+                # The OCR match rate the routing ended on (2026-11-19, user): the three engines'
+                # when Doc Intel read the page, else Docling vs Tesseract; 0-1.
+                routing = more[0] if more else None
+                if isinstance(routing, str):
+                    try:
+                        routing = json.loads(routing)
+                    except ValueError:
+                        routing = None
+                if isinstance(routing, dict):
+                    rate = routing.get("overlap_3") if routing.get("overlap_3") is not None else routing.get("overlap")
+                    if isinstance(rate, (int, float)):
+                        fields["ocrMatchRate"] = float(rate)
                 if isinstance(measured, dict) and measured:
                     fields["measuredConfidences"] = {
                         k: float(v) for k, v in measured.items() if isinstance(v, (int, float))

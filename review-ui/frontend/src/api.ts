@@ -181,6 +181,8 @@ export type ImagingPageResult = {
   /** The subtype's own confidence (the deepest named level), apart from the page type's. */
   subtypeConfidence?: number | null;
   pageQualityTag?: string | null;
+  /** The OCR match rate the routing ended on, 0-1 (2026-11-19, user). */
+  ocrMatchRate?: number | null;
   pageQualityConfidence: number | null;
   /** Encounter classification — logic TBD; UI shows Yet to Process when absent. */
   encounterType?: string | null;

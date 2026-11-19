@@ -2717,14 +2717,23 @@ export function algorithmQuality(score: number | null | undefined): string | nul
 
 type QualityRow = { page: ImagingPageResult; quality: string | null; reasons: string[] };
 
-/** Pages the page-tag model calls not visible, or the algorithm grades Low. */
+/** A Low page is listed when its final OCR match rate is under this (2026-11-19, user). */
+export const REJECT_MATCH_BELOW = 0.2;
+
+/** Pages the page-tag model calls not visible, or Low quality with an OCR match rate under
+ * 20% (2026-11-19, user: the three engines' rate when Doc Intel read the page, else Docling vs
+ * Tesseract). A page routed before the match rate was stored: the algorithm's Low, as before. */
 export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
   const out: QualityRow[] = [];
   for (const page of pages) {
     const quality = algorithmQuality(page.pageQualityConfidence);
     const reasons: string[] = [];
     if (page.isVisible === false) reasons.push("Not visible");
-    if (quality === "Low") reasons.push("Low quality");
+    const rate = page.ocrMatchRate;
+    const finalLow = (page.pageQualityTag ?? "").trim().toLowerCase() === "low";
+    if (rate != null) {
+      if (finalLow && rate < REJECT_MATCH_BELOW) reasons.push(`Low quality, match rate ${Math.round(rate * 100)}%`);
+    } else if (quality === "Low") reasons.push("Low quality");
     if (reasons.length) out.push({ page, quality, reasons });
   }
   return out;
@@ -2738,8 +2747,9 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
   return (
     <div className="member-rejection">
       <p className="rejection-note">
-        Pages the page-tag model calls not visible, or the algorithm grades Low (score under 40%, before the
-        handwritten / OCR downgrades): <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
+        Pages the page-tag model calls not visible, or Low quality with an OCR match rate under 20% (three
+        engines when Doc Intel read the page, else Docling vs Tesseract):{" "}
+        <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
       </p>
       <table className="imaging-summary-table imaging-rejection-table">
         <thead>
@@ -2748,6 +2758,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
             <th scope="col">Printed / HW</th>
             <th scope="col">Quality</th>
             <th scope="col">Visible</th>
+            <th scope="col">Match rate</th>
             <th scope="col">Why</th>
           </tr>
         </thead>
@@ -2756,8 +2767,14 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
             <tr key={`${page.pageNumber}-${page.fileName}`}>
               <td>{page.pageNumber}</td>
               <td>{page.handwrittenOrPrinted || page.documentType || NOT_FOUND}</td>
-              <td>{quality ? `${quality} (${fmtMeasurement(page.pageQualityConfidence)})` : NOT_FOUND}</td>
+              {/* The Final Quality (after routing), the algorithm's score beside it. */}
+              <td>{(() => {
+                const tag = (page.pageQualityTag ?? "").trim();
+                const shown = tag ? tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase() : quality;
+                return shown ? `${shown} (${fmtMeasurement(page.pageQualityConfidence)})` : NOT_FOUND;
+              })()}</td>
               <td>{page.isVisible == null ? NOT_FOUND : page.isVisible ? "Yes" : "No"}</td>
+              <td>{page.ocrMatchRate == null ? NOT_FOUND : `${Math.round(page.ocrMatchRate * 100)}%`}</td>
               <td>{reasons.join(", ")}</td>
             </tr>
           ))}

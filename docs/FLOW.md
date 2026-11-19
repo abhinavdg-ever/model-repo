@@ -115,9 +115,9 @@ Overlap: Docling (Final OCR 1) vs Tesseract shared words.
 | # | Type | Quality | Overlap | Final Quality | Azure |
 |---|---|---|---|---|---|
 | 1 | Printed | High | >= 90% | High | No |
-| 2 | Printed | High | < 90% | Medium | Yes |
+| 2 | Printed | High | < 90% (< 50%: Low) | Medium (Low) | Yes |
 | 3 | Printed | Medium | >= 95% | High | No |
-| 4 | Printed | Medium | < 95% | Medium | Yes |
+| 4 | Printed | Medium | < 95% (< 50%: Low) | Medium (Low) | Yes |
 | 5 | Printed | Low | | Low | Yes |
 | 6 / 7 / 8 | Mixed / Handwritten / Form | any | | 3-engine re-grade | Yes |
 | 9 | Visual (< 10% handwriting) | High / Medium | >= 90%, or < 25 Docling words | High | No |
@@ -128,6 +128,20 @@ Overlap: Docling (Final OCR 1) vs Tesseract shared words.
 The 3-engine re-grade runs after Azure: the average overlap of Tesseract, Docling and Azure;
 under 50% one level down, under 10% Low. Rows 5-10 are never decided in pass 1. Each run
 writes `imaging/<chart>_ocr_routing.csv` and logs the count per row and the pages sent.
+
+2026-11-19 (user), on top of the table:
+
+- **Top / bottom row check** (stage 4, `modules/ocr/edge_check.py`): Docling's first and last row
+  against Tesseract's first and last line, on pages whose Tesseract is trusted (printed, not
+  Low). Letter for letter the same but split or run together differently ("PaulDate of Birth")
+  -> Tesseract's line replaces Docling's span in the stored Docling text (content and markdown;
+  the word boxes stay Docling's). Not there at all -> **missing**: the overlap is cut to just
+  under 90%, so a Printed page cannot be row 1 / 3 for it: Medium and Azure. Stored as
+  `edge_check` in the Docling JSON and `edge_top` / `edge_bottom` in the routing CSV.
+- **Under 50%** overlap a Printed High / Medium page is Low (rows 2 / 4), still to Azure.
+- **After Azure**, any Low page it read whose three engines agree on 50% or more is Medium.
+- **Rejection Rules** (review-ui, Image Quality): a Low page whose final match rate (three
+  engines when Azure read it, else Docling vs Tesseract) is under 20%.
 
 **Blank / junk pass 2, in order** (full logic: [`specials/BLANK_JUNK_LOGIC.md`](specials/BLANK_JUNK_LOGIC.md)):
 
