@@ -18,7 +18,7 @@ sections 0-11 and 12.6 disagree about a Final value's confidence, 12.6 is the co
 ## Current rule in one page (as of 2026-11-19)
 
 **2026-11-19 change (user):** a key / value row's confidence is its **rule score × LightGBM
-model_score** (`conf.kv_row`; model only: its p). A value **only the rules found** (a key / value
+model_score** (`conf.kv_row`; model only, or a rule score of 0: its p). A value **only the rules found** (a key / value
 row LightGBM did not score, credentials not beside a scored provider name, or a member value
 found by searching the whole page with the rules or GLiNER) is a fixed **0.60** (`rules_find`).
 The 0.30 "model and rules disagree on the row" value is gone for key / value rows.

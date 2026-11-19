@@ -205,10 +205,13 @@ def whole_page() -> float:
 
 def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
     """A key / value row (2026-11-19, user): its rule score x the LightGBM model_score, both
-    0-1, clipped. Model only: the model's p; rule score only: ``rules_find`` (0.60); neither: None."""
+    0-1, clipped. Model only, or a rule score of 0: the model's p; rule score only: ``rules_find``
+    (0.60); neither: None."""
     if model is None:
         return None if score is None else rules_find()
-    if score is None:
+    if score is None or float(score) <= 0:
+        # 2026-11-19 (user): a rule score of 0 (DOS and the other KV fields) is no score: the
+        # model's own p.
         return chosen(model, module="extraction")
     return _out(float(score) * float(model))
 

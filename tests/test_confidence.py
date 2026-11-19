@@ -248,3 +248,12 @@ def test_no_confidence_below_the_floor():
     """2026-11-19 (user): no confidence below 20%, any field."""
     assert conf.chosen(0.007) == 0.2 and conf.kv_row(0.5, 0.1) == 0.2 and conf.at_least_floor(0.05) == 0.2
     assert conf.at_least_floor(None) is None and conf.chosen(0.9) == 0.9
+
+
+def test_a_rule_score_of_zero_uses_the_model_score_alone():
+    """2026-11-19 (user): DOS and the other KV fields: score 0 -> model_score only."""
+    from modules.extraction.results import row_confidence
+
+    assert conf.kv_row(0, 0.95) == 0.95 and conf.kv_row(0.0, 0.9975) == 0.9975
+    assert row_confidence({"score": 0, "model_score": 0.97}) == 0.97
+    assert conf.kv_row(0.8, 0.9) == 0.72
