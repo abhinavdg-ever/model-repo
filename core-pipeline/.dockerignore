@@ -16,6 +16,11 @@ __pycache__/
 models/
 !models/README.md
 
+# Chart working folders and metadata CSVs (scratch, mounted at /data/outputs by compose).
+# Copied in, they made every rebuild a new multi-GB layer and filled the builder cache.
+outputs/
+!outputs/README.md
+
 # Runtime daily logs (mounted in compose); never bake into the image.
 logs/
 !logs/README.md

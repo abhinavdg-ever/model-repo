@@ -30,7 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # in the image. Weight files are not baked in. Copy them onto the host under
 # ./models; compose mounts that folder.
 COPY requirements-basic.txt requirements-models.txt ./
-RUN pip install --no-cache-dir -r requirements-basic.txt \
+# torch from PyTorch's CPU index first (2026-11-19): the containers have no GPU, and the default
+# Linux wheel brings ~4-5 GB of NVIDIA CUDA libraries. The pins in requirements-models.txt
+# (torch==2.14.0) are then already met by 2.14.0+cpu, so pip keeps it.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.14.0 torchvision==0.29.0 \
+ && pip install --no-cache-dir -r requirements-basic.txt \
  && pip install --no-cache-dir -r requirements-models.txt
 
 COPY . /app/core-pipeline
