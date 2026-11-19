@@ -1,6 +1,6 @@
 # Blank / Junk Logic
 
-As built on 2026-11-15. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
+As built on 2026-11-17. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
 `stage.py` the short page and duplicates). Numbers: `resources/canon/blank_junk_context_canon.json`.
 
 Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype**. The subtypes are
@@ -48,8 +48,8 @@ The first rule that matches decides.
 | 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
 | 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
 | 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
-| 8b | **Stage 1 Blank fallback** | Stage 1 typed the page Blank and none of the rules above kept it (applied after the contents-page check, before the short page and the classifier); confidence the backup 0.40 (2026-11-17) | Blank |
 | 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers **or dates** ("Encounter: 4/14/2026 9:15 AM", 2026-11-15). The next page carrying the list on (2+ entry lines, ≤ 120 distinct words, nothing kept it earlier) is junk too | Junk / Others |
+| 9b | **Stage 1 Blank fallback** | Stage 1 typed the page Blank and none of the rules above kept it (after the contents page, before the short page and the classifier); confidence the backup 0.40 (2026-11-17) | Blank |
 | 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
 | 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
 |    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label). Not a near miss on a hospital / clinic page without the word "card" (a Patient Abstract: Account Number, copay), which goes on to the invoice checks (2026-11-15) | Junk / Cards |
@@ -63,7 +63,7 @@ The first rule that matches decides.
 
 ### Rule 10: the short page
 
-Rule 10 applies only to a page that got past rules 1–9. A page kept by the signature, lab or
+Rule 10 applies only to a page that got past rules 1–9b (a page stage 1 typed Blank never reaches it). A page kept by the signature, lab or
 clinical rules is never junked here. The first check that matches decides.
 
 | # | Check | Verdict |
