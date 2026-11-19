@@ -17,6 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { levelLabel } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1318,7 +1319,12 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
 /** The number a column sorts on: a time, a page count or an accuracy percent. */
 function sortValue(row: ChartAccuracy, key: Exclude<SortKey, "name">): number | null {
   if (key === "run") return timeOf(row.lastUpdatedAt);
-  if (key === "verified") return timeOf(row.lastVerifiedAt);
+  // 2026-11-19 (user): the Confidence column (was Last Verified At): High > Medium > Low, then the %.
+  if (key === "verified") {
+    const cc = row.confidence;
+    if (!cc?.level) return null;
+    return ({ high: 3, medium: 2, low: 1 } as const)[cc.level] * 1000 + Math.round((cc.value ?? 0) * 100);
+  }
   if (key === "pages") return row.overall.scored;
   return accuracyPercent(columnTally(row, key));
 }
@@ -1910,7 +1916,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                 <tr>
                   {SortHeader({ sort: "name", label: "Chart" })}
                   {SortHeader({ sort: "run", label: "Last Run At", runFilter: true })}
-                  {SortHeader({ sort: "verified", label: "Last Verified At" })}
+                  {SortHeader({ sort: "verified", label: "Confidence" })}
                   {SortHeader({ sort: "pages", label: "Pages" })}
                   {LIVE_METRICS.map((metric) => (
                     <Fragment key={metric.id}>
@@ -1970,8 +1976,18 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                     <td className="landing-col-updated accuracy-col-date">
                       <DateLines iso={row.lastUpdatedAt} />
                     </td>
-                    <td className="landing-col-updated accuracy-col-date">
-                      <DateLines iso={row.lastVerifiedAt} />
+                    <td className="accuracy-col-confidence"
+                        title="Pages by confidence: High = every field 80%+, Low = a key field under 50%">
+                      {row.confidence?.level ? (
+                        <>
+                          <span className={`chart-glance-pill level-${row.confidence.level}`}>
+                            {levelLabel(row.confidence.level)}
+                          </span>
+                          <span className="accuracy-conf-counts">
+                            H {row.confidence.counts.high} · M {row.confidence.counts.medium} · L {row.confidence.counts.low}
+                          </span>
+                        </>
+                      ) : "-"}
                     </td>
                     <td className="landing-col-num">{row.overall.scored}</td>
                     {LIVE_METRICS.map((metric) => (
