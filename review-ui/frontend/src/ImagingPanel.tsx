@@ -956,9 +956,12 @@ function CompareSection({
   readOnly = false,
   offered,
   problems,
+  marksOff = false,
 }: {
   title: string;
   rows: CompareRow[];
+  /** The page is Blank / Junk on both sides: no marks but on the Blank / Junk row. */
+  marksOff?: boolean;
   editingId: string | null;
   values: Record<string, string>;
   onCommit: (id: string, value: string) => void;
@@ -1033,7 +1036,7 @@ function CompareSection({
           )}
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((each) => (marksOff && each.id !== "blank_junk" ? { ...each, noMark: true } : each)).map((row) => (
             <tr key={row.id}>
               <th scope="row">{row.label}</th>
               {finalOnly ? null : (
@@ -2057,7 +2060,13 @@ function PageDetails({
     (page.isCodeable != null && String(page.isCodeable).trim() !== "");
   const qualityKnown = sections.quality ?? sections.hw;
   const stagedMemberIds = stagedField(extraction, "member_id")?.value;
-  const memberIdShown = stagedMemberIds ? memberIdList(stagedMemberIds, manifest?.memberId, page.memberId) : page.memberId;
+  // No staged list: the member stage's own ID, still marked against the manifest's
+  // (2026-11-19, user: a matching Member ID showed no "(Yes)").
+  const memberIdShown = stagedMemberIds
+    ? memberIdList(stagedMemberIds, manifest?.memberId, page.memberId)
+    : text(page.memberId) && idKey(manifest?.memberId ?? "")
+      ? `${text(page.memberId)} (${sameIdKey(idKey(text(page.memberId) ?? ""), idKey(manifest?.memberId ?? "")) ? "Yes" : "No"})`
+      : page.memberId;
   // Member and provider rows show the stages' own results (member_extraction_results /
   // the member CSV; imaging_final / provider_signature.csv), never the key/value
   // extractor's raw pick in staging — that stays in the extraction pane.
@@ -2211,7 +2220,14 @@ function PageDetails({
   }
   // The Page Type the reviewer sees: the ground truth, else the Final value offered.
   const shownPageType = () => (values.page_type ?? "").trim() || (offered.current.page_type ?? "");
+  // 2026-11-19 (user): a page both the ground truth and the pipeline call Blank / Junk is not
+  // compared: no tick or cross on any row but Is Blank or Junk itself.
+  const bothBlankJunk =
+    page.isDuplicate !== true &&
+    (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes") &&
+    (page.groundTruth ? (blankJunkTruth(page.groundTruth) ?? "").toLowerCase().startsWith("yes") : false);
   const sectionProps = {
+    marksOff: bothBlankJunk,
     compact,
     withTruth,
     offered,
