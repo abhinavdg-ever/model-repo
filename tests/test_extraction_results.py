@@ -414,3 +414,24 @@ def test_heading_candidates_keep_every_heading_row_with_the_page_size():
     assert heading_candidates_of(None) == {}
     assert heading_candidates_of(staging.StagedPage("2.jpg", {"fields": {}})) == {}
     assert additional_fields(None, [], heading_candidates_of(page))["heading_candidates"]["fields"][field_id] == rows
+
+
+def test_a_facility_is_never_the_provider_2026_11_19():
+    """2026-11-19 (user): Clinic / Hospital / Facility and the like in the name -> dropped; the
+    next candidate is tried; nothing left -> Not Found with a confidence."""
+    from modules.names import is_facility_name, trim_provider_name
+
+    assert is_facility_name("Valley Family Clinic") and is_facility_name("St Mary Hospital")
+    assert is_facility_name("ABC Medical Group LLC") and not is_facility_name("Jane Centerwall")
+    assert trim_provider_name("Sunrise Health Center") is None
+    only = signature_fields([{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "score": 0.8,
+                              "accepted": True, "model_score": 0.9}])
+    assert only["provider_name"] is None and only["provider_dropped"] == "facility"
+    assert only["confidence"] == 0.95
+    fallback = signature_fields(
+        [{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "designation": "MD", "score": 0.8,
+          "accepted": True, "model_score": 0.9}],
+        [{"value": "Mercy Hospital", "score": 0.9, "accepted": True},
+         {"value": "Jane Roe, MD", "score": 0.8, "accepted": True}],
+    )
+    assert fallback["provider_name"] == "Jane Roe"

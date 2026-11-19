@@ -311,21 +311,29 @@ def signature_fields(
     primary = _best([row for row in rows if row.get("selected")]) or _best(rows)
     ordered = [primary, *sorted((row for row in rows if row is not primary), key=lambda row: -(_score(row) or 0.0))]
 
+    from modules.names import is_facility_name
+
     several = len(ordered) > 1
     signers: list[dict[str, Any]] = []
+    dropped_facility = False
     for row in ordered:
         name, creds = _signer(row)
+        # 2026-11-19 (user): a clinic / hospital / facility read as the name is no provider.
+        if name and is_facility_name(name):
+            name, dropped_facility = None, True
         if not several:
             counted_creds = [item for item in _as_hits(credential_hits) if _counts(item) and _text(item, "value")]
             if not name:
                 # A credential row that names its provider ('Meghan Newman' + 'FNP'), then the
                 # page's provider_name rows.
-                named = _best([item for item in counted_creds if _text(item, "provider_name")])
+                named = _best([item for item in counted_creds if _text(item, "provider_name")
+                               and not is_facility_name(_text(item, "provider_name"))])
                 if named is not None:
                     name = split_name_credentials(_text(named, "provider_name"))[0]
                     creds = creds or _text(named, "value")
             if not name:
-                best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
+                best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")
+                              and not is_facility_name(split_name_credentials(_text(item, "value"))[0])])
                 if best is not None:
                     name, from_name = split_name_credentials(_text(best, "value"))
                     creds = creds or from_name
@@ -355,6 +363,10 @@ def signature_fields(
 
     if not signers:
         # A signature with no name and no credentials anywhere is not a provider signature.
+        # Only a facility's name there (2026-11-19, user): Not Found, as sure as the word rule.
+        if dropped_facility:
+            return {**empty, "signature_present": False, "provider_dropped": "facility",
+                    "confidence": conf.pass1_rule()}
         return {**empty, "signature_present": False}
     lead = signers[0]
     # One signer: its confidence. Several: the lowest of the listed signers (2026-11-14).
@@ -373,6 +385,7 @@ def signature_fields(
         "confidence": page_confidence,
         "source": _text(primary, "source"),
         "signers": signers,
+        **({"provider_dropped": "facility"} if dropped_facility else {}),
     }
 
 

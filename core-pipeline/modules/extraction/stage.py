@@ -18,6 +18,8 @@ document, so the pages are extracted together, not one by one.
 """
 from __future__ import annotations
 
+from modules import confidence as conf
+
 import json
 import logging
 from pathlib import Path
@@ -406,6 +408,11 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     if fields.get("confidence") is None:
         # No signature and no provider: how sure the page has none (2026-10-25, user).
         fields["confidence"] = staged_page.absent.get("electronic_signature")
+    if fields.get("confidence") is None:
+        # 2026-11-19 (user): a Not Found always has a confidence: a signature row was there but
+        # gave no name or credentials -> how sure there is no provider name (1 - the best
+        # turned-down candidate's p), else the backup.
+        fields["confidence"] = staged_page.absent.get("provider_name", conf.backup())
     # 2026-11-01 (user): a signature block's role words are never part of the name.
     from modules.names import trim_provider_name, trim_signers
 
