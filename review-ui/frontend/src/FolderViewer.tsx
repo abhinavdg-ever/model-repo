@@ -1247,7 +1247,7 @@ export default function FolderViewer({
           </div>
         </div>
 
-        {/* 2026-11-19 (user): the chart's confidence and a Details card, left of OCR. */}
+        {/* 2026-11-19 (user): a Details button like OCR / Imaging, opening the chart card. */}
         <ChartDetails doc={imagingDoc} folder={folder} />
         <div className="mode-icon-group" role="group" aria-label="Output mode">
           <button
