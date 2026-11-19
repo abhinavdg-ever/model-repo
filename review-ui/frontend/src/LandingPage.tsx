@@ -1077,14 +1077,17 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </td>
                       <td className="accuracy-col-confidence">
                         {confidence[folder.id]?.level ? (
-                          <>
-                            <span className={`chart-glance-pill level-${confidence[folder.id].level}`}>
-                              {levelLabel(confidence[folder.id].level)}
-                            </span>
-                            <span className="accuracy-conf-counts">
-                              H {confidence[folder.id].counts.high} · M {confidence[folder.id].counts.medium} · L {confidence[folder.id].counts.low}
-                            </span>
-                          </>
+                          <div className="accuracy-cell">
+                            <strong>
+                              {Math.round((confidence[folder.id].value ?? 0) * 100)}%{" "}
+                              <span className={`chart-glance-pill level-${confidence[folder.id].level}`}>
+                                {levelLabel(confidence[folder.id].level)}
+                              </span>
+                            </strong>
+                            <p className="accuracy-distribution">
+                              High {confidence[folder.id].counts.high} · Medium {confidence[folder.id].counts.medium} · Low {confidence[folder.id].counts.low}
+                            </p>
+                          </div>
                         ) : (
                           <span className="accuracy-conf-counts">-</span>
                         )}
