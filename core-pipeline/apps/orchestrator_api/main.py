@@ -595,9 +595,10 @@ def _page_counts(requests: list[RunRequest], chart_ids: dict[str, Any]) -> dict[
     ids = [cid for cid in chart_ids.values() if cid is not None]
     if ids:
         try:
-            with connect() as conn, conn.cursor() as cur:
-                cur.execute("SELECT chart_name, page_count FROM chart_list WHERE id = ANY(%s)", (ids,))
-                known = {name: count for name, count in cur.fetchall() if count}
+            from common.db import chart_page_counts
+
+            with connect() as conn:
+                known = dict(chart_page_counts(conn, ids))
         except Exception as exc:  # noqa: BLE001 - the queue choice must not stop a run
             logger.warning("page counts not read (%s): unknown charts stay on the normal queue", type(exc).__name__)
     out: dict[str, Optional[int]] = {}

@@ -1912,6 +1912,18 @@ def get_member_summary(conn: Any, chart_id: int) -> Optional[dict[str, Any]]:
 
 
 @_dispatch
+def chart_page_counts(conn: Any, chart_ids: list[int]) -> dict[str, int]:
+    """chart_name -> page_count for the given chart ids, where an earlier run recorded one
+    (the large-chart queue choice, 2026-11-19)."""
+    if not chart_ids:
+        return {}
+    rows = conn.execute(
+        "SELECT chart_name, page_count FROM chart_list WHERE id = ANY(%s)", (list(chart_ids),)
+    ).fetchall()
+    return {row["chart_name"]: int(row["page_count"]) for row in rows if row["page_count"]}
+
+
+@_dispatch
 def list_manifest_members(
     conn: Any,
     *,

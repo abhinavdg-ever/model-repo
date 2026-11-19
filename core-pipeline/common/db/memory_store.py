@@ -1270,6 +1270,11 @@ class MemoryStore(StoreBackend):
         with self._lock:
             return self._copy(self.member_summaries.get(chart_id))
 
+    def chart_page_counts(self, chart_ids: list[int]) -> dict[str, int]:
+        with self._lock:
+            return {row["chart_name"]: int(row["page_count"]) for cid, row in self.charts.items()
+                    if cid in set(chart_ids) and row.get("page_count")}
+
     # -- manifest ------------------------------------------------------------
 
     def list_manifest_members(
