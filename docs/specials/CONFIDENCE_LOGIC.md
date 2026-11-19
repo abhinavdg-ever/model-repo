@@ -689,7 +689,7 @@ chart's Details card, the Accuracy View and History Confidence columns, and the 
 | Features | only the accuracy list's 7: **Member Verification** (the lower of Member Name and Member DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. Each uses its Final confidence (`imaging_final.confidences`). A feature with no confidence is not counted. A Blank / Junk or duplicate page counts only Blank / Junk and Codability |
 | Feature band | High >= 80%, Medium 50-80%, Low < 50% |
 | **Page** | **High**: every counted feature High. **Low**: any feature Low (every feature matters, 2026-11-19, user). Otherwise **Medium**. Its % = the mean of its features |
-| **Chart** | **High**: every page High. **Low**: Low pages are 10% of the pages or more. Otherwise **Medium**. Its % = the mean of its pages' % |
+| **Chart** | **High**: 80% or more of the pages High. **Low**: 20% or more of the pages Low (Low wins when both hold). Otherwise **Medium**. Its % = the mean of its pages' % |
 | **% cap** (2026-11-19, user) | a page's or chart's % never contradicts its level: **Medium** shows at most **79%**, **Low** at most **49%** (e.g. all fields 100% but DOS 20%: Low, 49%). High is the plain mean |
 
 ---

@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { CONFIDENCE_FIELDS, LOW_SHARE, capToLevel, levelLabel, type Level } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, capToLevel, chartLevel, levelLabel, type Level } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1044,7 +1044,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     }
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
     const level: Level | null = !total ? null
-      : pageLevels.high === total ? "high" : pageLevels.low / total >= LOW_SHARE ? "low" : "medium";
+      : chartLevel(pageLevels, total);
     return { pageLevels, total, level, mean: total && level ? Math.round(100 * capToLevel(level, sum / total)) : null, perFeature, cross, byMetric };
   }, [open, rows]);
 
@@ -2166,7 +2166,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                       <DateLines iso={row.lastUpdatedAt} />
                     </td>
                     <td className="accuracy-col-confidence"
-                        title="Chart confidence: High = every page High; Low = 10% or more of pages Low; else Medium">
+                        title="Chart confidence: High = 80%+ of pages High; Low = 20%+ of pages Low; else Medium">
                       {row.confidence?.level ? (
                         <div className="accuracy-cell">
                           <strong>

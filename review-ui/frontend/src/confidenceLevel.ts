@@ -11,7 +11,7 @@
  * feature matters, 2026-11-19, user); else **Medium**. A Blank / Junk or duplicate page counts only what matters for it: Blank / Junk
  * and Codability. Its number is the mean of the counted fields, capped by its level (LEVEL_CAP).
  *
- * Chart: **High** when every page is High; **Low** when Low pages are LOW_SHARE (10%) of the
+ * Chart: **High** when HIGH_SHARE (80%) of the pages are High; **Low** when LOW_SHARE (20%) of the
  * pages or more; else **Medium**. Its number is the mean of its pages' numbers, capped by its level.
  */
 import type { ImagingPageResult } from "./api";
@@ -20,7 +20,14 @@ export type Level = "high" | "medium" | "low";
 
 export const HIGH_AT = 0.8;
 export const LOW_BELOW = 0.5;
-export const LOW_SHARE = 0.1;
+/** Chart (2026-11-19, user): High when HIGH_SHARE of its pages are High, Low when LOW_SHARE
+ * are Low (Low wins when both hold), else Medium. */
+export const HIGH_SHARE = 0.8;
+export const LOW_SHARE = 0.2;
+
+export function chartLevel(counts: Record<Level, number>, n: number): Level {
+  return counts.low / n >= LOW_SHARE ? "low" : counts.high / n >= HIGH_SHARE ? "high" : "medium";
+}
 /** The % never contradicts the level (2026-11-19, user): a Medium page / chart shows at most
  * 79%, a Low one at most 49%, whatever the plain average. */
 export const LEVEL_CAP: Record<Level, number> = { high: 1, medium: 0.79, low: 0.49 };
@@ -123,7 +130,7 @@ export function chartConfidence(pages: ImagingPageResult[]): ChartConfidence {
     n += 1;
   }
   if (!n) return { level: null, value: null, counts, pages: byLevel };
-  const level: Level = counts.high === n ? "high" : counts.low / n >= LOW_SHARE ? "low" : "medium";
+  const level: Level = chartLevel(counts, n);
   return { level, value: capToLevel(level, sum / n), counts, pages: byLevel };
 }
 

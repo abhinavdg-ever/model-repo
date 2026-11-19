@@ -7,7 +7,7 @@ The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
   from ``imaging_final.confidences``. A Blank / Junk or duplicate page counts Blank / Junk and
   Codability only. High >= 0.80, Medium 0.50-0.80, Low < 0.50.
 * Page: High when every feature is High; Low when any feature is Low; else Medium.
-* Chart: High when every page is High; Low when Low pages are 10% of the pages or more; else
+* Chart: High when 80%+ of the pages are High; Low when 20%+ are Low (Low wins); else
   Medium. Its value is the mean of its pages' means.
 * A % is capped by its level: Medium at most 79%, Low at most 49% (LEVEL_CAP).
 """
@@ -19,7 +19,8 @@ from typing import Any, Iterable, Optional
 
 HIGH_AT = 0.8
 LOW_BELOW = 0.5
-LOW_SHARE = 0.1
+HIGH_SHARE = 0.8
+LOW_SHARE = 0.2
 # The % never contradicts the level (2026-11-19, user): Medium at most 79%, Low at most 49%.
 LEVEL_CAP = {"high": 1.0, "medium": 0.79, "low": 0.49}
 
@@ -82,7 +83,8 @@ def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
         n += 1
     if not n:
         return {"level": None, "value": None, "counts": counts}
-    level = "high" if counts["high"] == n else "low" if counts["low"] / n >= LOW_SHARE else "medium"
+    # 2026-11-19 (user): Low when 20%+ of the pages are Low (it wins), High when 80%+ are High.
+    level = "low" if counts["low"] / n >= LOW_SHARE else "high" if counts["high"] / n >= HIGH_SHARE else "medium"
     return {"level": level, "value": round(min(total / n, LEVEL_CAP[level]), 4), "counts": counts}
 
 

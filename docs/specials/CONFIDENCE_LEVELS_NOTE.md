@@ -44,14 +44,17 @@ a Medium page shows at most 79%, a Low page at most 49%.
 
 | Level | When |
 |---|---|
-| **High** | every page is High |
-| **Low** | 10% or more of the pages are Low |
+| **High** | 80% or more of the pages are High |
+| **Low** | 20% or more of the pages are Low |
 | **Medium** | otherwise |
+
+A chart that meets both (exactly 80% High and 20% Low) is Low.
 
 **Chart confidence %** = the average of its pages' confidence %, with the same limits: a Medium
 chart shows at most 79%, a Low chart at most 49%.
 
 ## Example
 
-A 20-page chart: 17 pages High, 2 Medium, 1 Low. 1 of 20 pages (5%) is Low, under 10%, and not
-every page is High, so the chart is **Medium**, and its % is at most 79%.
+A 20-page chart: 17 pages High (85%), 2 Medium, 1 Low (5%). Fewer than 20% are Low and 80% or more
+are High, so the chart is **High**. With 15 High (75%), 3 Medium, 2 Low (10%) it is **Medium**, at
+most 79%. With 4 or more Low pages (20%) it is **Low**, at most 49%.

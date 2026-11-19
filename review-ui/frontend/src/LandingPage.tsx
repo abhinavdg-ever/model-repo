@@ -961,7 +961,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </ColumnFilterButton>
                     </span>
                   </th>
-                  <th title="Chart confidence: High = every page High; Low = 10% or more of pages Low; else Medium">
+                  <th title="Chart confidence: High = 80%+ of pages High; Low = 20%+ of pages Low; else Medium">
                     Confidence
                   </th>
                   <th className={runAfter ? "is-filtered" : undefined}>
