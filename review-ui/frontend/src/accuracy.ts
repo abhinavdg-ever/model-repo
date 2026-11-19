@@ -1,3 +1,4 @@
+import { chartConfidence, type ChartConfidence } from "./confidenceLevel";
 import type { ImagingManifestDetails,
   ImagingDocumentResponse,
   ImagingPageResult,
@@ -168,6 +169,8 @@ export type ChartAccuracy = {
   pages: PageAccuracy[];
   /** Additional Metrics: Visibility and Invoice (not in the seven streams). */
   extra: ExtraCounts;
+  /** The chart's confidence level (2026-11-19, user; confidenceLevel.ts): shades its row. */
+  confidence?: ChartConfidence;
 };
 
 /** Additional Metrics (2026-11-12, user), shown behind the Accuracy View's link.
@@ -1105,6 +1108,7 @@ export function scoreChart(
     dosRates,
     pages,
     extra,
+    confidence: chartConfidence(doc.pages ?? []),
   };
 }
 

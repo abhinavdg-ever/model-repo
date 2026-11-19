@@ -1912,7 +1912,14 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   </tr>
                 ) : null}
                 {pageRows.map((row) => (
-                  <tr key={row.chartId}>
+                  // A light shade by the chart's confidence (2026-11-19, user): High / Medium / Low.
+                  <tr
+                    key={row.chartId}
+                    className={row.confidence?.level ? `conf-row-${row.confidence.level}` : undefined}
+                    title={row.confidence?.level
+                      ? `Confidence ${row.confidence.level}: pages High ${row.confidence.counts.high} · Medium ${row.confidence.counts.medium} · Low ${row.confidence.counts.low}`
+                      : undefined}
+                  >
                     <th scope="row">
                       <a
                         className="accuracy-chart-link"

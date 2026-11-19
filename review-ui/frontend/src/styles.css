@@ -6973,3 +6973,36 @@ input {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* Page / chart confidence (2026-11-19, user; confidenceLevel.ts). */
+.confidence-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  margin: 0.4rem 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border-left: 4px solid var(--status-warning-fg);
+  background: var(--status-warning-bg);
+}
+.confidence-strip.level-high { border-left-color: var(--status-success-fg); background: var(--status-success-bg); }
+.confidence-strip.level-low { border-left-color: var(--status-error-fg); background: var(--status-error-bg); }
+.confidence-counts, .confidence-hint { font-size: 0.85em; opacity: 0.85; }
+.chart-panel {
+  margin: 0.4rem 0;
+  border: 1px solid var(--border, #d0d7de);
+  border-left: 4px solid var(--status-warning-fg);
+  border-radius: 6px;
+}
+.chart-panel.level-high { border-left-color: var(--status-success-fg); }
+.chart-panel.level-low { border-left-color: var(--status-error-fg); }
+.chart-panel > summary { cursor: pointer; padding: 0.35rem 0.6rem; }
+.chart-panel-body { display: flex; flex-wrap: wrap; gap: 1rem; padding: 0 0.6rem 0.6rem; }
+.chart-panel-body > div { flex: 1 1 16rem; min-width: 0; }
+.chart-panel-body h4 { margin: 0.3rem 0; }
+.chart-panel-body p { margin: 0.2rem 0; font-size: 0.9em; }
+.chart-panel-table td { padding: 0.15rem 0.5rem; }
+.conf-row-high > * { background-color: color-mix(in srgb, var(--status-success-bg) 55%, transparent); }
+.conf-row-medium > * { background-color: color-mix(in srgb, var(--status-warning-bg) 45%, transparent); }
+.conf-row-low > * { background-color: color-mix(in srgb, var(--status-error-bg) 55%, transparent); }
