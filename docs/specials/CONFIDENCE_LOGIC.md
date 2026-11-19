@@ -49,7 +49,7 @@ All numbers live in `core-pipeline/resources/canon/confidence_canon.json` and re
 | **Member ID** | the **mean** of every ID row KV Extract accepted and selected |
 | Member verification (chart) | not a confidence: the agreement rate |
 | **Provider Signature** | the signature row's score × model_score (rules only: 0.60); several signers: their **mean**. A facility read as the provider: 0.30 |
-| **DOS** | **KV date:** its winning row's score × model_score (score 0: model_score); no "flipped" cut. **Label backups** (edge label on Final OCR or Tesseract, keyword pass, dictated / transcribed date, an edge label filling an admit / discharge side): **0.60**. Signature date: 0.40. Neighbours' agreed date and the document's carried date: **the source's × 0.90**. No DOS: none |
+| **DOS** | **KV date:** the row the **shown date came from** (2026-11-20, user; several rows with that date: KV Extract's `selected` + `accepted` one): its score × model_score (score 0: model_score); no "flipped" cut. **Label backups** (edge label on Final OCR or Tesseract, keyword pass, dictated / transcribed date, an edge label filling an admit / discharge side): **0.60**. Signature date: 0.40. Neighbours' agreed date and the document's carried date: **the source's × 0.90**. No DOS: none |
 | **Blank / Junk** | DistilBERT's p for the class filed (Main p(keep), Blank p(blank), Junk p(junk)). A rule flipping the model: **0.40**. A short page decided by the short-page rules: **0.60**. No ink: 1.0; pass-1 text rules: 0.95 |
 | **Codability** | the page type's confidence; a **Blank / Junk page is Non-Codable** with the Blank / Junk confidence |
 | Page type / sub-type | leaf model p (anchor page); other pages of the document × 0.90 |

@@ -567,3 +567,15 @@ class TestExtractionDrop20261105:
         tiers = load_key_tiers("dos")
         assert tiers["encounter info"] == tiers["encounter information"] == "weak"
         assert {"encounter info", "encounter information"} == set(dos._WEAK_LINE_KEYS)
+
+
+def test_dos_confidence_is_the_selected_row_of_the_shown_date():
+    """2026-11-20 (user): the shown DOS's confidence is the row it came from; when two rows hold
+    that date, KV Extract's selected one (Encounter Date 10/07/2024 and 10/7/2024)."""
+    rows = [
+        {**_kv("2024-10-07", "service", 0.9990, "Encounter Date"), "kv_confidence": 0.7992},
+        {**_kv("2024-10-07", "service", 0.9975, "Encounter Date"), "kv_confidence": 0.798, "selected": True},
+    ]
+    assert _dos_page("Progress Notes", rows)[:4] == ("2024-10-07", "2024-10-07", "kv", 0.798)
+    rows[1]["selected"] = False
+    assert _dos_page("Progress Notes", rows)[3] == 0.7992  # no selected row: the source row

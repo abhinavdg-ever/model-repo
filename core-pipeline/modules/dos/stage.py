@@ -179,6 +179,8 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 # The row's own confidence (2026-11-14: model_score, flipped when model and
                 # rules disagree, backup with rules only): what a chosen KV date stores.
                 "kv_confidence": row_confidence(row),
+                # KV Extract's own pick (accepted and selected): credited when rows share a date.
+                "selected": bool(row.get("accepted") and row.get("selected")),
             }
         )
     return found

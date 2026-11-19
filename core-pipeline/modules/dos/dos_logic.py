@@ -540,8 +540,12 @@ def kv_page_date(
     group = _group(item, prof, rank)
     rivals = [it for it in dated if _group(it, prof, rank) == group and str(it["iso"]) != iso
               and score(it) >= 0.8 * score(item)]
+    # 2026-11-20 (user): the confidence is the row the shown date came from; when several rows
+    # hold that same date, KV Extract's selected (accepted) one.
+    source = next((it for it in dated if it.get("selected") and str(it["iso"]) == iso
+                   and str(it.get("iso_to") or "") == iso_to), item)
     return PageDate(iso, iso_to if is_pair else iso, kv_confidence(item, prof, conflict=bool(rivals)),
-                    str(item.get("keyword") or ""), "kv", is_pair=is_pair, reported=kv_reported(item, dated))
+                    str(item.get("keyword") or ""), "kv", is_pair=is_pair, reported=kv_reported(source, dated))
 
 
 def kv_reported(item: dict[str, Any], dated: Optional[list[dict[str, Any]]] = None) -> float:
