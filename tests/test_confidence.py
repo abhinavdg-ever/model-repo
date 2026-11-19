@@ -195,3 +195,20 @@ def test_review_ui_subtype_confidence_is_the_deepest_named_level():
     assert subtype_confidence("Lab Result", "0.9", "Chemistry Report", "0.6") == 0.6
     assert subtype_confidence("Physical Exam", 0.24, None, None) == 0.24
     assert subtype_confidence("Others", 0.9, None, None) is None
+
+
+def test_member_confidence_comes_from_the_kv_row_reading_it():
+    """2026-11-19 (user): the member value's confidence is the KV row that reads it (score x
+    model_score): a name in any order, a DOB written in the row's sentence; the best such row."""
+    from modules.member.stage import member_field_confidences
+
+    staged = _Staged({
+        "name": [{"value": "PHILLIPS, BENJAMIN J", "model_score": 0.9, "score": 0.9, "key": "Patient"},
+                 {"value": "Benjamin Phillips", "model_score": 0.5, "score": 0.5, "key": "Name"},
+                 {"value": "Jane Doe", "model_score": 0.99, "score": 1.0, "key": "Provider"}],
+        "dob": [{"value": "", "sentence": "DOB: 03/29/1946 Age 78", "model_score": 0.95, "score": 0.9, "key": "DOB"}],
+    })
+    page = _member_page("verified", detected_name="Benjamin Phillips", detection_source_name="rule based",
+                        detected_dob="1946-03-29", detection_source_dob="rule based")
+    got = member_field_confidences(page, staged)
+    assert got["name"] == 0.81 and got["dob"] == 0.855

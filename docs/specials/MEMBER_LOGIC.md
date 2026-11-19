@@ -183,8 +183,8 @@ Three separate numbers, name / DOB / ID (2026-11-19, user):
 
 | Case | Confidence |
 |---|---|
-| read from a key / value row: its value, or the member found in its sentence (`sentence: <key>`) | that row's **rule score × LightGBM model_score** (rule score only: 0.60) |
-| found by searching the whole page (the rules, GLiNER), no row reads it | **0.60** (`rules_find`) |
+| a key / value row reads the member value: its value (a name: every word, any order; a DOB: the same date), else its sentence; the best such row | that row's **rule score × LightGBM model_score** (rule score only: 0.60) |
+| found by searching the whole page (the rules, GLiNER) and no KV row reads it | **0.60** (`rules_find`) |
 | nothing read | none |
 
 The page column `member_extraction_results.confidence` is the lowest of the three. Under 0.50 →

@@ -147,23 +147,44 @@ def _norm(field_id: str, value: Any) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text.casefold()))
 
 
+def _reads(field_id: str, want: str, text: Any) -> bool:
+    """Does ``text`` (a row's value or sentence) read the member value ``want`` (normalised)?
+    A name: every word of it, any order ("Phillips Benjamin" = "BENJAMIN J PHILLIPS"); a DOB:
+    the same date, or the date written in the text; an ID: the same letters and digits."""
+    if field_id == "dob":
+        if _norm("dob", text) == want:
+            return True
+        from modules.extraction.util.dates import canonical_date
+
+        return any(canonical_date(m) == want
+                   for m in re.findall(r"\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}", str(text or "")))
+    got = _norm(field_id, text)
+    if not got:
+        return False
+    if field_id == "name":
+        return set(want.split()) <= set(got.split())
+    return want == got or want in got.split()
+
+
 def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str, Any]]:
-    """The staged extraction row the value was taken from: same value (a name: the value
-    contains it), the selected / accepted rows first. None when no row reads it (the rules'
-    whole-page find)."""
+    """The staged key / value row the member value comes from (2026-11-19, user: the member's
+    confidence is its KV row's score x model_score): the rows whose value reads it, else the
+    rows whose sentence does; of those, the one with the highest confidence. None when no row
+    reads it (the rules' whole-page find)."""
     if staged_page is None:
         return None
     want = _norm(field_id, value)
     if not want:
         return None
-    rows = sorted(
-        (row for row in staged_page.rows(field_id) if isinstance(row, dict) and str(row.get("value") or "").strip()),
-        key=lambda row: (not row.get("selected"), not row.get("accepted")),
-    )
-    for row in rows:
-        got = _norm(field_id, row.get("value"))
-        if got == want or (field_id == "name" and want in got):
-            return row
+    from modules.extraction.results import row_confidence
+
+    rows = [row for row in staged_page.rows(field_id) if isinstance(row, dict)]
+    for part in ("value", "sentence"):
+        hits = [row for row in rows if _reads(field_id, want, row.get(part))]
+        scored = [(row_confidence(row), row) for row in hits]
+        scored = [(c, row) for c, row in scored if c is not None]
+        if scored:
+            return max(scored, key=lambda pair: pair[0])[1]
     return None
 
 
