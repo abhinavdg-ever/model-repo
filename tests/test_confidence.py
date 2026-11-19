@@ -94,7 +94,7 @@ def test_member_name_dob_and_id_each_have_their_own_confidence():
     page = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                         detected_dob="01/02/1950", detection_source_dob="rule based",
                         detected_member_id="X123", detection_source_member_id="rule based")
-    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.18, "member_id": 0.4}
+    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.18, "member_id": 0.6}  # rules only: 0.60
     assert _page_confidence(page, staged) == 0.18  # the lowest of the three
     # the member found in a row's sentence: that row's score x model_score
     searched = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",

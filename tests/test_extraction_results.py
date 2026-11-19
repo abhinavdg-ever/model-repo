@@ -35,7 +35,7 @@ def test_signature_row_keeps_the_extractor_fields():
     assert fields["signature_key"] == "Electronically signed by"
     assert fields["provider_name"] == "A. Patel"
     assert fields["signature_date"] == "2024-03-15"
-    assert fields["confidence"] == 0.4  # rules only, no model score: a backup (2026-11-14)
+    assert fields["confidence"] == 0.6  # rules only, no model score: a rules find (2026-11-19)
     assert fields["source"] == "ner"
     row = signature_csv_row("chart8841", "1.jpg", 1, fields)
     assert set(row) == set(SIGNATURE_CSV_COLS)
@@ -316,7 +316,7 @@ def test_credentials_must_be_in_capitals():
 def test_confidence_is_the_signature_rows_model_score_and_the_lowest_signer():
     """2026-11-14 (user; CONFIDENCE_LOGIC.md section 12): the 0.75 / 0.9 factors are gone."""
     own = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True}])
-    assert own["confidence"] == 0.4  # rules only: a backup
+    assert own["confidence"] == 0.6  # rules only: a rules find (2026-11-19)
     outside = signature_fields(
         [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.8, "accepted": True,
           "rule_accepted": True, "model_score": 0.88}],
@@ -346,13 +346,13 @@ def test_row_and_credentials_confidence_2026_11_14():
     from modules.extraction.results import _named_confidence, row_confidence
 
     assert row_confidence({"score": 0.9, "model_score": 0.77, "rule_accepted": True, "accepted": True}) == 0.693
-    assert row_confidence({"score": 0.9}) == 0.4  # rules only
+    assert row_confidence({"score": 0.9}) == 0.6  # rules only (2026-11-19)
     assert row_confidence({"score": 0.9, "model_score": 0.2, "rule_accepted": True, "accepted": False}) == 0.18
     assert row_confidence({}) is None
     named = {"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9}
     # The provider_name row for the same person carries the model's probability.
     assert _named_confidence(named, [{"value": "Meghan Newman, FNP", "model_score": 0.83, "accepted": True}]) == 0.83
-    assert _named_confidence(named, [{"value": "Other Doctor", "model_score": 0.83}]) == 0.4  # elsewhere: backup
+    assert _named_confidence(named, [{"value": "Other Doctor", "model_score": 0.83}]) == 0.6  # elsewhere: a rules find
 
 
 def test_a_row_counts_when_accepted_or_scored_above_0_7():
@@ -369,7 +369,7 @@ def test_a_missing_name_comes_from_a_credential_row_that_names_its_provider():
         [{"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9, "accepted": False}],  # counts: > 0.7
     )
     assert (fields["provider_name"], fields["provider_credentials"]) == ("Meghan Newman", "FNP")
-    assert fields["confidence"] == 0.4  # the signature row's: rules only, a backup
+    assert fields["confidence"] == 0.6  # the signature row's: rules only (2026-11-19)
 
 
 def test_a_signature_with_no_name_and_no_credentials_anywhere_is_no():

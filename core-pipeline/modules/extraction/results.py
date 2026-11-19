@@ -53,7 +53,7 @@ def _model_score(hit: Optional[dict[str, Any]]) -> Optional[float]:
 def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
     """A row's confidence (2026-11-19, user; was the model_score alone, 2026-11-14): the
     row's rule ``score`` x the LightGBM ``model_score`` (``confidence.kv_row``). Model only:
-    its p; rule score only: ``confidence.backup``. None when neither scored it."""
+    its p; rule score only: ``confidence.rules_find`` (0.60). None when neither scored it."""
     if not hit:
         return None
     return conf.kv_row(_score(hit), _model_score(hit))
@@ -71,7 +71,8 @@ def _name_key(name: Optional[str]) -> frozenset[str]:
 def _named_confidence(named: dict[str, Any], provider_hits: Optional[list[dict[str, Any]]]) -> Optional[float]:
     """Credentials (2026-11-14, user): the KV model never scores a credentials row. When
     the credentials sit with a provider_name row for the same person, that row's model
-    probability (``_confidence``); otherwise ``confidence.backup``."""
+    probability (``_confidence``); otherwise found by the rules: ``confidence.rules_find`` (0.60,
+    2026-11-19, user)."""
     want = _name_key(split_name_credentials(_text(named, "provider_name"))[0])
     same = [
         item for item in _as_hits(provider_hits)
@@ -79,7 +80,7 @@ def _named_confidence(named: dict[str, Any], provider_hits: Optional[list[dict[s
         and len(want & _name_key(split_name_credentials(caps_credentials_only(_text(item, "value")))[0])) >= min(2, len(want))
     ]
     if not same:
-        return conf.backup()
+        return conf.rules_find()
     best = max(same, key=lambda item: float(item["model_score"]))
     return _confidence(best)
 

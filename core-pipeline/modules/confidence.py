@@ -64,9 +64,10 @@ DEFAULTS: dict[str, Any] = {
     "carried_factor": 0.9,
     "pass1_rule": 0.95,
     "measured": 1.0,
-    # 2026-11-19 (user): a member value found by searching the whole page (rules, GLiNER),
-    # not from a key / value row.
-    "whole_page_find": 0.6,
+    # 2026-11-19 (user): a value the rules found and scored with no LightGBM score: a member
+    # value found by searching the whole page (rules, GLiNER), or a key / value row only the
+    # rules scored.
+    "rules_find": 0.6,
     "duplicate": {
         "match_slope": 10.0, "floor": 0.3,
         "clear_below": 0.8, "good_until": 0.9, "good_slope": 2.0, "near_slope": 5.0,
@@ -188,17 +189,23 @@ def backup() -> float:
     return round(float(settings()["backup_low"]), 4)
 
 
+def rules_find() -> float:
+    """A value the rules found with no LightGBM score (2026-11-19, user): a key / value row only
+    the rules scored, or a member value found by searching the whole page (rules, GLiNER):
+    the fixed ``rules_find`` (0.60)."""
+    return round(float(settings()["rules_find"]), 4)
+
+
 def whole_page() -> float:
-    """A member name / DOB / ID found by searching the whole page (rules or GLiNER), not
-    read from a key / value row: the fixed ``whole_page_find`` (0.60, 2026-11-19, user)."""
-    return round(float(settings()["whole_page_find"]), 4)
+    """A member value found by searching the whole page: the same fixed value as any rules find."""
+    return rules_find()
 
 
 def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
     """A key / value row (2026-11-19, user): its rule score x the LightGBM model_score, both
-    0-1, clipped. Model only: the model's p; rule score only: backup; neither: None."""
+    0-1, clipped. Model only: the model's p; rule score only: ``rules_find`` (0.60); neither: None."""
     if model is None:
-        return None if score is None else backup()
+        return None if score is None else rules_find()
     if score is None:
         return chosen(model, module="extraction")
     return round(_clip(float(score) * float(model)), 4)
