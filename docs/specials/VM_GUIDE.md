@@ -153,6 +153,24 @@ Off again: empty `SERVICEBUS_QUEUE_LARGE` in `.env`, `docker compose up -d api`,
 `docker compose --profile large stop worker-large` once its queue is empty. A chart already
 waiting on `chart-runs-large` stays there until a `worker-large` runs it.
 
+**Stopping and emptying the queue** (2026-11-19). `utilities/purge_queue.py` deletes every waiting
+message (each chart's session in turn) and the dead letters on `chart-runs` (and
+`chart-runs-large` when set), then marks the `pipeline_jobs` still queued / running / retrying on
+them as failed ("cancelled: queue purged by operator"). It prints counts only.
+
+```bash
+cd core-pipeline && source .venv/bin/activate      # or inside a container: docker compose run --rm api ...
+docker compose stop worker                          # finish the current chart first (kill: at once)
+python ../utilities/purge_queue.py --dry-run        # counts, nothing changed
+python ../utilities/purge_queue.py                  # asks, then empties and marks the jobs
+docker compose up -d --scale worker=3               # when ready
+```
+
+Options: `--queue NAME` (one queue), `--yes` (no question), `--keep-dead-letters`, `--keep-jobs`.
+Windows Command Prompt, in `core-pipeline\` with `.venv\Scripts\activate.bat`:
+`python ..\utilities\purge_queue.py --dry-run`. The counts need a key with Manage rights; without
+them the purge still works.
+
 **Turning on the API key** (after review-ui's Playground sends it): `API_KEY_REQUIRED=true` in
 `.env`, `docker compose up -d api`. Every POST then needs `X-API-Key`:
 

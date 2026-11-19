@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
+import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
 import {
@@ -55,6 +55,8 @@ import {
   matchCounts,
   OVERALL_STREAMS,
   pageAccuracyCsv,
+  pageAccuracyTable,
+  chartAccuracyTable,
   scoreChart,
   duplicateScores,
   sumExtras,
@@ -1381,7 +1383,7 @@ function PageAccuracyDownloadDialog({
         <div className="modal-card-header">
           <div className="blob-auth-title-row">
             <Download size={18} aria-hidden="true" />
-            <h2 id="page-accuracy-download-title">Download Page Level Accuracy</h2>
+            <h2 id="page-accuracy-download-title">Download Accuracy</h2>
           </div>
           <button type="button" className="modal-close" onClick={onCancel} aria-label="Close">
             <X size={16} />
@@ -1389,7 +1391,8 @@ function PageAccuracyDownloadDialog({
         </div>
         <p className="blob-auth-copy">
           {pages.toLocaleString()} scored page{pages === 1 ? "" : "s"} from {charts.toLocaleString()} chart
-          {charts === 1 ? "" : "s"} (filters applied), as a CSV.
+          {charts === 1 ? "" : "s"} (filters applied), as an Excel file with two tabs: Pages (page level,
+          with each page's confidence) and Charts (chart level accuracy and confidence).
         </p>
         <div className="download-results-choice" role="radiogroup" aria-label="What to include">
           {choices.map(([value, title, detail]) => (
@@ -1709,14 +1712,30 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             ? "Date = Yes"
             : "Blank/Junk = Yes";
 
-  function downloadPageAccuracy(withValues: boolean) {
-    const blob = new Blob(["\ufeff" + pageAccuracyCsv(filtered, withValues)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `page_level_accuracy${withValues ? "_with_values" : ""}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // 2026-11-19 (user): one .xlsx, two tabs: Pages (page level) and Charts (chart level). If
+  // the server cannot build it, the page-level CSV as before.
+  async function downloadPageAccuracy(withValues: boolean) {
+    const day = new Date().toISOString().slice(0, 10);
+    const save = (blob: Blob, name: string) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    try {
+      const pages = pageAccuracyTable(filtered, withValues);
+      const charts = chartAccuracyTable(filtered);
+      const blob = await downloadXlsx([
+        { name: "Pages", header: pages.header, rows: pages.rows },
+        { name: "Charts", header: charts.header, rows: charts.rows },
+      ]);
+      save(blob, `accuracy${withValues ? "_with_values" : ""}_${day}.xlsx`);
+    } catch {
+      save(new Blob(["\ufeff" + pageAccuracyCsv(filtered, withValues)], { type: "text/csv;charset=utf-8" }),
+        `page_level_accuracy${withValues ? "_with_values" : ""}_${day}.csv`);
+    }
   }
 
   return (

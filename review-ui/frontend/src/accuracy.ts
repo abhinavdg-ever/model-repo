@@ -1125,23 +1125,25 @@ function csvCell(value: string | number | null | undefined): string {
 /** The page-level accuracy CSV (2026-11-08, client): one row per scored page of ``charts``,
  * each metric Match / No Match (Page Type may be Partial), Not Scored where the metric does
  * not apply, and the overall (Match = all seven streams match). */
-export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): string {
+export type Table = { header: string[]; rows: (string | number)[][] };
+
+/** One row per scored page (2026-11-19, user: no chart-level columns here; the chart sheet has
+ * them): its verdicts, its confidence level and each metric's confidence, then the values. */
+export function pageAccuracyTable(charts: ChartAccuracy[], withValues = false): Table {
   const live = METRICS.filter((metric) => !metric.comingSoon);
   // With values (2026-11-16, user; off by default): after the verdicts, each metric's ground
   // truth (GT_) and pipeline (Algo_) values.
   const values = withValues ? valueHeaders() : [];
-  const header = ["Chart Name", "Run", "Batch", "Page Number", "File Name",
+  const header = ["Chart Name", "Page Number", "File Name",
     ...live.map((metric) => metric.label), "Overall", "Streams Matched",
-    // Confidence (2026-11-19, user): the chart's and the page's level, then each metric's.
-    "Chart Confidence", "Page Confidence", "Page Confidence %",
+    // Confidence (2026-11-19, user): the page's level and %, then each metric's.
+    "Page Confidence", "Page Confidence %",
     ...CONFIDENCE_FIELDS.map(([, label]) => `Conf ${label}`), ...values];
-  const lines = [header.map(csvCell).join(",")];
+  const rows: (string | number)[][] = [];
   for (const chart of charts) {
     for (const page of [...chart.pages].sort((a, b) => a.pageNumber - b.pageNumber)) {
-      lines.push([
+      rows.push([
         chart.chartName,
-        chart.runId ?? "",
-        chart.batchId ?? "",
         page.pageNumber,
         page.fileName,
         ...live.map((metric) => {
@@ -1151,7 +1153,6 @@ export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): st
         page.overall ? VERDICT_TEXT[page.overall] : "Not Scored",
         // "6 of 7", not "6/7": Excel reads that as a date (2026-11-09, user).
         page.matches == null ? "" : `${page.matches} of ${OVERALL_STREAMS}`,
-        chart.confidence ? levelLabel(chart.confidence.level) : "",
         page.confidence ? levelLabel(page.confidence.level) : "",
         page.confidence?.value == null ? "" : `${Math.round(page.confidence.value * 100)}%`,
         ...CONFIDENCE_FIELDS.map(([key]) => {
@@ -1159,10 +1160,36 @@ export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): st
           return field ? `${Math.round(field.value * 100)}%` : "";
         }),
         ...values.map((column) => page.values?.[column] ?? ""),
-      ].map(csvCell).join(","));
+      ]);
     }
   }
-  return lines.join("\r\n");
+  return { header, rows };
+}
+
+/** One row per chart (2026-11-19, user): its run / batch / cluster, each metric's accuracy, the
+ * overall, and its confidence (level, %, pages High / Medium / Low). */
+export function chartAccuracyTable(charts: ChartAccuracy[]): Table {
+  const live = METRICS.filter((metric) => !metric.comingSoon);
+  const header = ["Chart Name", "Run", "Batch", "Cluster", "Pages Scored",
+    ...live.map((metric) => `${metric.label} Accuracy`), "Overall Accuracy",
+    "Chart Confidence", "Chart Confidence %", "Pages High", "Pages Medium", "Pages Low"];
+  const rows = charts.map((chart) => {
+    const pct = (value: number | null) => (value == null ? "" : `${Math.round(value)}%`);
+    const cc = chart.confidence;
+    return [
+      chart.chartName, chart.runId ?? "", chart.batchId ?? "", chart.chartCluster ?? "", chart.pages.length,
+      ...live.map((metric) => pct(accuracyPercent(chart.metrics[metric.id]))),
+      pct(accuracyPercent(chart.overall)),
+      cc ? levelLabel(cc.level) : "", cc?.value == null ? "" : `${Math.round(cc.value * 100)}%`,
+      cc ? cc.counts.high : "", cc ? cc.counts.medium : "", cc ? cc.counts.low : "",
+    ];
+  });
+  return { header, rows };
+}
+
+export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): string {
+  const { header, rows } = pageAccuracyTable(charts, withValues);
+  return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
 }
 
 export function sumRates(rows: ClassRates[]): ClassRates {

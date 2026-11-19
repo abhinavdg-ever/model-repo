@@ -1128,6 +1128,19 @@ export async function downloadManualReviewSummary(input: ManualReviewInput, repo
   return res.blob();
 }
 
+/** Tables as an .xlsx, one sheet each (2026-11-19, user: the Accuracy download, Pages + Charts). */
+export async function downloadXlsx(
+  sheets: { name: string; header: string[]; rows: (string | number)[][] }[],
+): Promise<Blob> {
+  const res = await fetch("/api/accuracy/xlsx", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheets }),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+  return res.blob();
+}
+
 /** A chart marked Reviewed: its ground truth is frozen until an admin clears the mark. */
 export type ChartReview = {
   reviewed: boolean;
