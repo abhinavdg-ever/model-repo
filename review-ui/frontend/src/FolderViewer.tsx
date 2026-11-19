@@ -57,6 +57,7 @@ import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
 import ChartDetails from "./ChartDetails";
+import { levelLabel, pageConfidence, type Level } from "./confidenceLevel";
 import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
@@ -244,6 +245,10 @@ export default function FolderViewer({
   const [showCorrected, setShowCorrected] = useState(false);
   const [highlightBlankJunk, setHighlightBlankJunk] = useState(false);
   const [highlightDuplicate, setHighlightDuplicate] = useState(false);
+  // 2026-11-19 (user): the ☰ menu can colour the thumbnails by page confidence, and show only
+  // the pages of one confidence level (the arrows then step between those pages).
+  const [colorByConfidence, setColorByConfidence] = useState(false);
+  const [confidenceFilter, setConfidenceFilter] = useState<Level | "all">("all");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
@@ -458,9 +463,34 @@ export default function FolderViewer({
     };
   }, [folderId]);
 
+  /** Each page's confidence level, in folder order (null: nothing to score). */
+  const pageLevels = useMemo<(Level | null)[]>(
+    () => (folder?.pages ?? []).map((p) => {
+      const imaging = findImagingPage(imagingDoc, p);
+      return imaging ? pageConfidence(imaging).level : null;
+    }),
+    [folder, imagingDoc],
+  );
+  const shownPage = (idx: number) => confidenceFilter === "all" || pageLevels[idx] === confidenceFilter;
+  // Choosing a level opens its first page when the page on screen is not one of them.
+  useEffect(() => {
+    if (confidenceFilter === "all" || pageLevels[pageIndexRef.current] === confidenceFilter) return;
+    const first = pageLevels.findIndex((lv) => lv === confidenceFilter);
+    if (first >= 0) goToPage(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confidenceFilter]);
+
   function goToPage(idx: number | ((i: number) => number)) {
     const current = pageIndexRef.current;
-    const next = typeof idx === "function" ? idx(current) : idx;
+    let next = typeof idx === "function" ? idx(current) : idx;
+    // A step (arrows, keys) under a confidence filter goes to the next page of that level.
+    if (typeof idx === "function" && confidenceFilter !== "all" && next !== current) {
+      const dir = next > current ? 1 : -1;
+      let at = current + dir;
+      while (at >= 0 && at < pageLevels.length && !shownPage(at)) at += dir;
+      if (at < 0 || at >= pageLevels.length) return;
+      next = at;
+    }
     if (next === current) return;
     guardLeave(() => {
       setPageIndex(next);
@@ -1401,6 +1431,35 @@ export default function FolderViewer({
                       <label>
                         <input
                           type="checkbox"
+                          checked={colorByConfidence}
+                          onChange={() => setColorByConfidence((on) => !on)}
+                        />
+                        Colour by Confidence
+                      </label>
+                      {colorByConfidence ? (
+                        <div className="viewer-menu-key" aria-label="Confidence colours">
+                          <span><i className="key-swatch key-conf-high" /> High</span>
+                          <span><i className="key-swatch key-conf-medium" /> Medium</span>
+                          <span><i className="key-swatch key-conf-low" /> Low</span>
+                        </div>
+                      ) : null}
+                      <label className="viewer-menu-select">
+                        Show pages
+                        <select
+                          value={confidenceFilter}
+                          onChange={(e) => setConfidenceFilter(e.target.value as Level | "all")}
+                        >
+                          <option value="all">All</option>
+                          {(["high", "medium", "low"] as const).map((lv) => (
+                            <option key={lv} value={lv}>
+                              {levelLabel(lv)} confidence ({pageLevels.filter((x) => x === lv).length})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
                           checked={highlightDuplicate}
                           onChange={() => setHighlightDuplicate((on) => !on)}
                         />
@@ -1546,7 +1605,12 @@ export default function FolderViewer({
             {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
                 {folder.pages.map((p, idx) => {
-                  const marks = pageMarkClass(findImagingPage(displayImagingDoc, p));
+                  if (!shownPage(idx) && idx !== pageIndex) return null;
+                  const level = pageLevels[idx];
+                  const marks = [
+                    pageMarkClass(findImagingPage(displayImagingDoc, p)),
+                    colorByConfidence && level ? `mark-conf mark-conf-${level}` : "",
+                  ].filter(Boolean).join(" ");
                   return (
                   <button
                     key={p.filename}
@@ -1555,7 +1619,7 @@ export default function FolderViewer({
                     onClick={() => goToPage(idx)}
                     aria-label={`Go to ${p.filename}`}
                     aria-selected={idx === pageIndex}
-                    title={p.filename}
+                    title={colorByConfidence && level ? `${p.filename} · ${levelLabel(level)} confidence` : p.filename}
                   >
                     <img
                       src={pageImageUrl(folderId, p.page_number, {

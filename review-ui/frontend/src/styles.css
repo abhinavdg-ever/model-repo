@@ -1820,6 +1820,23 @@ input {
   background: var(--mark-wash);
 }
 
+/* Colour by Confidence (2026-11-19, user): a bar across the thumbnail's top. */
+.filmstrip-thumb.mark-conf { position: relative; }
+.filmstrip-thumb.mark-conf::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 4px 4px 0 0;
+}
+.filmstrip-thumb.mark-conf-high::before { background: var(--status-success-fg); }
+.filmstrip-thumb.mark-conf-medium::before { background: var(--status-warning-fg); }
+.filmstrip-thumb.mark-conf-low::before { background: var(--status-error-fg); }
+
 .filmstrip-thumb:hover:not(.active) {
   border-color: var(--brand-300);
 }
@@ -5309,6 +5326,12 @@ input {
   border-color: var(--status-error-fg);
   background: rgba(192, 57, 43, 0.2);
 }
+
+.key-conf-high { border-color: var(--status-success-fg); background: var(--status-success-fg); }
+.key-conf-medium { border-color: var(--status-warning-fg); background: var(--status-warning-fg); }
+.key-conf-low { border-color: var(--status-error-fg); background: var(--status-error-fg); }
+.viewer-menu-select { display: flex; align-items: center; gap: 0.4rem; }
+.viewer-menu-select select { font-size: 0.8rem; }
 
 .key-duplicate {
   border-color: #2f6fb0;
