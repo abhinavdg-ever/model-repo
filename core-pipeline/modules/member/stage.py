@@ -166,12 +166,15 @@ def _reads(field_id: str, want: str, text: Any) -> bool:
     return want == got or want in got.split()
 
 
-def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str, Any]]:
-    """The staged key / value row the member value comes from (2026-11-19, user: the member's
-    confidence is its KV row's score x model_score). Only rows KV Extract accepted and selected
-    (2026-11-20, user); of those, the ones whose value reads it, else whose sentence does; the
-    highest confidence; none reads it: the winning (accepted + selected) row all the same. None
-    when the field has no winning row (the rules' whole-page find, 0.60)."""
+def _field_row(field_id: str, value: str, staged_page: Any, key: str = "") -> Optional[dict[str, Any]]:
+    """The staged key / value row the shown member value came from (2026-11-20, user: the
+    confidence of the value on screen, never another row's). Only rows that read the value
+    (their value, else their sentence) count:
+      1. the row the member stage took it from (``key``, from its key source);
+      2. else a row KV Extract accepted and selected (by its value, then by its sentence);
+      3. else any row (the same order).
+    The highest confidence within the first group that has one. None when no row reads it (the
+    rules' whole-page find, 0.60)."""
     if staged_page is None:
         return None
     want = _norm(field_id, value)
@@ -179,19 +182,22 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
         return None
     from modules.extraction.results import row_confidence
 
-    # 2026-11-20 (user): only the rows KV Extract accepted AND selected; the others never count.
-    rows = [row for row in staged_page.rows(field_id) if isinstance(row, dict) and _chosen(row)]
-    for part in ("value", "sentence"):
-        hits = [row for row in rows if _reads(field_id, want, row.get(part))]
-        scored = [(row_confidence(row), row) for row in hits]
+    rows = [row for row in staged_page.rows(field_id) if isinstance(row, dict)]
+    by_value = [row for row in rows if _reads(field_id, want, row.get("value"))]
+    by_sentence = [row for row in rows if row not in by_value and _reads(field_id, want, row.get("sentence"))]
+    groups = (
+        [row for row in by_value + by_sentence if key and str(row.get("key") or "").strip() == key],
+        [row for row in by_value if _chosen(row)],
+        [row for row in by_sentence if _chosen(row)],
+        by_value,
+        by_sentence,
+    )
+    for group in groups:
+        scored = [(row_confidence(row), row) for row in group]
         scored = [(c, row) for c, row in scored if c is not None]
         if scored:
             return max(scored, key=lambda pair: pair[0])[1]
-    # 2026-11-20 (user): the member value is taken from KV Extract's winning row; when its text
-    # differs from the value shown, that winner's confidence still stands.
-    scored = [(row_confidence(row), row) for row in rows]
-    scored = [(c, row) for c, row in scored if c is not None]
-    return max(scored, key=lambda pair: pair[0])[1] if scored else None
+    return None
 
 
 def _chosen(row: dict[str, Any]) -> bool:
@@ -203,7 +209,8 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
     """One member identifier's confidence (2026-11-19, user):
 
     * read from a key / value row (its value, or the member found in its sentence, key
-      source "sentence: <key>"): that row's rule score x model_score (``row_confidence``);
+      source "sentence: <key>"): THAT row's rule score x model_score (``row_confidence``),
+      never another row's (2026-11-20, user; ``_field_row``);
     * found by searching the whole page (the rules, GLiNER): ``confidence.whole_page`` (0.60);
     * Member ID: the mean of every ID row KV Extract accepted and selected;
     * nothing read: None."""
@@ -220,17 +227,11 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
         found = conf.mean(row_confidence(r) for r in rows if _chosen(r))
         if found is not None:
             return found
-    key_source = str(key_source or "")
-    row = None
-    if key_source.startswith("sentence:") and staged_page is not None:
-        key = key_source.split(":", 1)[1].strip()
-        rows = [r for r in staged_page.rows(field_id)
-                if isinstance(r, dict) and str(r.get("key") or "").strip() == key and _chosen(r)]
-        scored = [(row_confidence(r), r) for r in rows]
-        scored = [(c, r) for c, r in scored if c is not None]
-        row = max(scored, key=lambda pair: pair[0])[1] if scored else None
-    if row is None:
-        row = _field_row(field_id, value, staged_page)
+    # The row the member stage took the value from: its key ("Patient Name", or
+    # "sentence: Patient Name" when the member was found in that row's sentence).
+    key = str(key_source or "").split(":", 1)[1].strip() if str(key_source or "").startswith("sentence:") \
+        else str(key_source or "").strip()
+    row = _field_row(field_id, value, staged_page, key)
     found = row_confidence(row) if row is not None else None
     return conf.whole_page() if found is None else found
 

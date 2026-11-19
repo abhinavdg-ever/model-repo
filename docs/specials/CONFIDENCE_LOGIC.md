@@ -45,7 +45,7 @@ All numbers live in `core-pipeline/resources/canon/confidence_canon.json` and re
 
 | Field | Confidence |
 |---|---|
-| **Member Name / DOB** | KV Extract's **winning row** (`accepted` and `selected`; no other row counts): the one reading the value, else the winner all the same: score × model_score (score 0: model_score). No winning row (found by the rules / GLiNER): **0.60**. A DOB the post-processing dropped: 0.30 |
+| **Member Name / DOB** | the KV row the **shown value came from** (2026-11-20, user): the row the member stage took it from (its key source), else KV Extract's `selected` + `accepted` row holding that value, else any row holding it: score × model_score (score 0: model_score). A row that does not hold the shown value is never used. No row holds it (found by the rules / GLiNER): **0.60**. When the member's DOB / ID is found in a row's sentence, KV Extract's selected rows are searched first. A DOB the post-processing dropped: 0.30 |
 | **Member ID** | the **mean** of every ID row KV Extract accepted and selected |
 | Member verification (chart) | not a confidence: the agreement rate |
 | **Provider Signature** | the signature row's score × model_score (rules only: 0.60); several signers: their **mean**. A facility read as the provider: 0.30 |

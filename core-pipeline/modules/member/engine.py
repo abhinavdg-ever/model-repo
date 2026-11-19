@@ -485,7 +485,12 @@ def overlay_staged_fields(
     # DOB and member ID: the manifest's value in the sentences of their own field first
     # (2026-11-01, user: each field searches its own rows only).
     def own_sentences(field_id: str) -> list[dict[str, Any]]:
-        return [row for row in staged.rows(field_id) if str(row.get("sentence") or "").strip()]
+        # KV Extract's accepted + selected rows first (2026-11-20, user): the member's date or ID
+        # is credited to the row KV Extract chose, not a rejected row with the same sentence.
+        return sorted(
+            (row for row in staged.rows(field_id) if str(row.get("sentence") or "").strip()),
+            key=lambda row: (not (row.get("accepted") and row.get("selected")), not row.get("accepted")),
+        )
 
     dob_expected = expected.get("DummyDOB", "")
     dob_sentence = next((row for row in own_sentences("dob") if date_parts_match(str(row["sentence"]), dob_expected)), None)
