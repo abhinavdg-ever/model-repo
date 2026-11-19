@@ -177,3 +177,41 @@ def test_a_short_page_no_rule_decides_goes_to_the_classifier(monkeypatch):
                                                   "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + " alpha beta gamma delta epsilon zeta eta"})
     assert rows[2]["reason"].startswith("R5") and rows[2]["flag"] == "junk"
+
+
+def test_s3_a_provider_in_the_same_spot_on_a_neighbour_does_not_keep(monkeypatch):
+    """2026-11-19 (user): like the signature, a provider printed in the same spot (region and name)
+    on the previous / next page is a running line; elsewhere or another name keeps the page."""
+    _keep(monkeypatch)
+    texts = {1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+
+    def run(spot_1, spot_2):
+        inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+        inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
+        for i, spot in ((1, spot_1), (2, spot_2)):
+            inputs[i].provider, inputs[i].provider_spot = spot is not None, spot
+        return {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+
+    name = frozenset({"jane", "roe"})
+    assert run(("footer", name), ("footer", name))[2]["flag"] == "junk"           # running provider line
+    assert "S3" in run(("header", name), ("footer", name))[2]["reason"]            # another spot
+    assert "S3" in run(("footer", frozenset({"amit", "patel"})), ("footer", name))[2]["reason"]  # another name
+    assert "S3" in run(None, ("footer", name))[2]["reason"]                        # none nearby
+
+
+def test_pass_1_rules_rerun_only_on_handwritten_or_low_quality_pages():
+    """2026-11-19 (user): pass 2 reruns pass 1's text rules only on a handwritten / mixed or Low
+    page pass 1 never judged; a form or visual page is not."""
+
+    from modules.ocr.routing import judged_in_pass2, page_kind
+
+    def rerun(q):
+        return judged_in_pass2(q) and (page_kind(q) in {"handwritten", "mixed"}
+                                       or str(q.get("quality_tag") or "").lower() == "low")
+
+    assert rerun({"document_type": "handwritten", "handwritten_area_pct": 60})
+    assert rerun({"document_type": "printed", "handwritten_area_pct": 2, "quality_tag": "low"})
+    assert not rerun({"document_type": "form", "handwritten_area_pct": 2})
+    assert not rerun({"document_type": "visual", "handwritten_area_pct": 1})
+    assert not rerun({"document_type": "printed", "handwritten_area_pct": 2, "quality_tag": "high"})

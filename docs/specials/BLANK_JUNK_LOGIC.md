@@ -44,9 +44,9 @@ The first rule that matches decides.
 ## Pass 2: on the best Final OCR text
 
 **Carried forward.** A page pass 1 called Blank or Junk keeps it; pass 2 does **not** run pass 1's
-text rules again (2026-11-19). Exception, so nothing is missed: a page pass 1 never judged
-(handwritten, mixed, form, visual, printed Low) gets pass 1's rules once here, on the Final OCR.
-Measured blanks (no ink, no text) are always checked.
+text rules again (2026-11-19). Exception: a **handwritten (or mixed) page or a bad-quality (Low)
+page** that pass 1 never judged gets pass 1's rules once here, on the Final OCR (Tesseract could not
+read it). Form and visual pages do not. Measured blanks (no ink, no text) are always checked.
 
 Then, the first rule that matches decides:
 
@@ -76,7 +76,7 @@ The first that matches decides:
 |---|---|---|
 | S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on | Main |
 | S2 | The page has a **Progress Note header and 3+ other words** | Main |
-| S3 | An **Electronic Signature** not in the same spot as the previous / next page's, or a **provider name / credentials** (kv_extract) the previous / next page does not have | Main |
+| S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
 | S4 | Its content is **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
 | S5 | **98%+ of its words, in the same order**, are on the previous or next page | Junk / Others |
 | S6 | **5 new words or fewer** (not on the previous / next page): all header words → Junk / Others; otherwise → Main | Junk / Main |

@@ -491,12 +491,14 @@ class PageInputs:
     signature_known: bool = False  # the KV signature output was there to read
     provider: bool = False  # provider details extracted (kv_extract's provider name / credentials); pass 2
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
-    # 2026-11-19 (user): pass 1 never judged the page (handwritten, mixed, form, visual, printed
-    # Low): pass 2 runs pass 1's text rules on it once.
+    # 2026-11-19 (user): a handwritten / mixed or bad-quality (Low) page pass 1 never judged:
+    # pass 2 runs pass 1's text rules on it once (form and visual pages: no).
     pass1_skipped: bool = False
     # The short page's outcome (stage._classify): {"code": CODE_* or None (to the classifier),
     # "rule": "S1".., "why": "..."}; None when the page is not short.
     short_verdict: Optional[dict[str, Any]] = None
+    # kv_extract's provider on the page: (region, name words), for the short page's S3.
+    provider_spot: Optional[tuple[str, frozenset[str]]] = None
     # A barcode on the page image (zxing-cpp format name), read for card candidates.
     barcode: Optional[str] = None
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured

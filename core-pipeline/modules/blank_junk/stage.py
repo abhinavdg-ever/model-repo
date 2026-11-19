@@ -612,9 +612,18 @@ def short_verdict(
     # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
     if pid in signed and not repeated:
         return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main")
-    neighbours_provider = any(getattr(inputs.get(n), "provider", False) for n in (prev_id, next_id) if n is not None)
-    if own.provider and not neighbours_provider:
-        return out(CODE_MAIN, "S3", "provider name / credentials, not on the previous / next page -> Main")
+    # The provider: 2026-11-19 (user), like the signature -- a provider printed in the same spot
+    # (region and name) on the previous / next page is a running line, not this page's own.
+    # Without a provider position, a provider the neighbours do not have at all.
+    neighbours = [inputs.get(n) for n in (prev_id, next_id) if n is not None]
+    if own.provider:
+        if own.provider_spot is not None:
+            repeated_provider = any(same_spot(own.provider_spot, getattr(n, "provider_spot", None)) for n in neighbours)
+        else:
+            repeated_provider = any(getattr(n, "provider", False) for n in neighbours)
+        if not repeated_provider:
+            return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
+                                        "next page -> Main")
     # S4: measurements, doses or ICD codes.
     found = (method.medication_doses(text)
              or (" / ".join(method.lab_result_words(own) or []) or None)
@@ -818,6 +827,34 @@ def extracted_page_names(chart_name: str, *fields: str) -> set[str]:
     return {page.name for page in staged if any(page.selected(field) for field in fields)}
 
 
+def provider_spots(chart_name: str) -> dict[str, tuple[str, frozenset[str]]]:
+    """Page name -> (region, name words) of kv_extract's selected provider name on it: where the
+    provider is printed, so the short page can tell a running provider line (same spot on the
+    previous / next page) from the page's own (2026-11-19, user)."""
+    from modules.extraction import staging
+
+    staged = staging.read(chart_name)
+    if staged is None:
+        return {}
+    out: dict[str, tuple[str, frozenset[str]]] = {}
+    for page in staged:
+        rows = page.selected("provider_name")
+        if rows:
+            row = rows[0]
+            words = frozenset(w for w in re.findall(r"[a-z]+", str(row.get("value") or "").lower()) if len(w) > 1)
+            out[page.name] = (str(row.get("region") or "").strip().casefold(), words)
+    return out
+
+
+def same_spot(a: Optional[tuple[str, frozenset[str]]], b: Optional[tuple[str, frozenset[str]]]) -> bool:
+    """Two provider spots are one running line: the same region and (nearly) the same name."""
+    if not a or not b or a[0] != b[0]:
+        return False
+    if not a[1] or not b[1]:
+        return not a[1] and not b[1]
+    return len(a[1] & b[1]) >= 0.8 * max(len(a[1]), len(b[1]))
+
+
 def extracted_dos(chart_name: str) -> dict[str, frozenset[str]]:
     """Page name -> the dates of kv_extract's selected DOS on it (from and to, ISO form)."""
     from modules.extraction import staging
@@ -848,6 +885,7 @@ def _page_inputs(
     signed: set[str] = set()
     with_provider: set[str] = set()
     with_name: set[str] = set()
+    spots: dict[str, tuple[str, frozenset[str]]] = {}
     signature_known = False
     if pass_no == 2:
         from common.db.paths import imaging_csv
@@ -856,13 +894,14 @@ def _page_inputs(
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
+        spots = provider_spots(ctx.chart_name)
         with_name = extracted_page_names(ctx.chart_name, "name")
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
     header_canon = section_heading_canon(ctx.chart_name) if pass_no == 2 else {}
     top = float(method.canon().raw["zones"]["header_band"])
     # 2026-11-19 (user): the short page reaches 25% of the page (canon contained_page.top_fraction).
     short_top = float((method.canon().raw.get("contained_page") or {}).get("top_fraction", 0.25))
-    from modules.ocr.routing import judged_in_pass2
+    from modules.ocr.routing import judged_in_pass2, page_kind
 
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
@@ -882,9 +921,13 @@ def _page_inputs(
             provider=page["page_name"] in with_provider,
             member_name_found=page["page_name"] in with_name,
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
-            pass1_skipped=pass_no == 2 and judged_in_pass2(q),
+            # 2026-11-19 (user): pass 1's rules run again in pass 2 only on a handwritten (or
+            # mixed) page or a bad-quality (Low) one, where Tesseract could not read it.
+            pass1_skipped=pass_no == 2 and judged_in_pass2(q) and (
+                page_kind(q) in {"handwritten", "mixed"} or str(q.get("quality_tag") or "").strip().lower() == "low"),
         )
         if pass_no == 2:
+            inputs.provider_spot = spots.get(page["page_name"])
             inputs.headings = headings.get(page["page_name"], ())
             inputs.header_canon = header_canon.get(page["page_name"], ())
             inputs.lines, inputs.text_area = _page_lines(
