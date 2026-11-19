@@ -211,6 +211,13 @@ def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
     return round(_clip(float(score) * float(model)), 4)
 
 
+def dropped(value: Optional[float] = None) -> float:
+    """A value post-processing dropped as wrong (a clinic read as the provider, a DOB far from
+    the manifest's; 2026-11-19, user): capped at ``flipped_low`` (0.30), always flagged."""
+    cap = flipped()
+    return cap if value is None else round(min(float(value), cap), 4)
+
+
 def flipped() -> float:
     """The value goes against the model's top answer (a rule or a veto turned it round):
     the fixed ``flipped_low`` (0.30), under a backup value so it sorts first in review."""

@@ -176,7 +176,8 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
     * nothing read: None."""
     value = _clean(value)
     if not value:
-        return None
+        # A DOB post-processing dropped (dob_filter.py, 2026-11-19, user): Not Found, 0.30.
+        return conf.dropped() if str(key_source or "").startswith("dropped:") else None
     from modules.extraction.results import row_confidence
 
     key_source = str(key_source or "")

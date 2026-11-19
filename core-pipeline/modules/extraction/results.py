@@ -320,8 +320,9 @@ def signature_fields(
     for row in ordered:
         name, creds = _signer(row)
         # 2026-11-19 (user): a clinic / hospital / facility read as the name is no provider.
+        row_dropped = False
         if name and is_facility_name(name):
-            name, dropped_facility = None, True
+            name, dropped_facility, row_dropped = None, True, True
         if not several:
             counted_creds = [item for item in _as_hits(credential_hits) if _counts(item) and _text(item, "value")]
             if not name:
@@ -348,15 +349,21 @@ def signature_fields(
                 chosen = (same or accepted)[:1]
                 if chosen:
                     creds = _text(chosen[0], "value")
-        elif not (name and creds):
+        elif not (name and creds) and not row_dropped:
             continue  # several signatures: one without a name and credentials is removed
-        if not name and not creds:
+        if not name and not creds and not row_dropped:
             continue
-        twin = next((s for s in signers if name and s["name"] and s["name"].casefold() == name.casefold()), None)
+        from modules.names import same_person
+
+        twin = next((s for s in signers if name and s["name"] and (s["name"].casefold() == name.casefold()
+                                                                    or same_person(s["name"], name))), None)
         if twin is not None:
             twin["credentials"] = twin["credentials"] or creds
             continue
         score = _confidence(row)
+        if row_dropped and not name:
+            # 2026-11-19 (user): the signature stands, its provider reads Not Found, capped at 0.30.
+            score = conf.dropped(score)
         signers.append({
             "name": name, "credentials": creds,
             "signature_date": _iso_date(_text(row, "signature_date")), "confidence": score,
@@ -364,10 +371,6 @@ def signature_fields(
 
     if not signers:
         # A signature with no name and no credentials anywhere is not a provider signature.
-        # Only a facility's name there (2026-11-19, user): Not Found, as sure as the word rule.
-        if dropped_facility:
-            return {**empty, "signature_present": False, "provider_dropped": "facility",
-                    "confidence": conf.pass1_rule()}
         return {**empty, "signature_present": False}
     lead = signers[0]
     # One signer: its confidence. Several: the lowest of the listed signers (2026-11-14).

@@ -417,7 +417,13 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     from modules.names import trim_provider_name, trim_signers
 
     if fields.get("provider_name"):
-        fields["provider_name"] = trim_provider_name(fields["provider_name"]) or None
+        trimmed = trim_provider_name(fields["provider_name"]) or None
+        if trimmed is None and fields.get("signature_present"):
+            # A clinic / hospital left after trimming (2026-11-19, user): Signature Yes, the
+            # provider Not Found, the confidence capped at 0.30.
+            fields["provider_dropped"] = "facility"
+            fields["confidence"] = conf.dropped(fields.get("confidence"))
+        fields["provider_name"] = trimmed
     if isinstance(fields.get("signers"), list):
         fields["signers"] = trim_signers(fields["signers"])
     return fields
