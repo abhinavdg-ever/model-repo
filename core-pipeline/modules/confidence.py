@@ -290,6 +290,12 @@ def level(value: Optional[float]) -> Optional[str]:
     return {GOOD: "high", PASSABLE: "medium", REVIEW: "low"}.get(band(value) or "")
 
 
+def mean(values: Iterable[Optional[float]]) -> Optional[float]:
+    """The mean of the values given (None ignored), rounded; None when there are none."""
+    found = [float(v) for v in values if v is not None]
+    return round(sum(found) / len(found), 4) if found else None
+
+
 def weakest(values: Iterable[Optional[float]]) -> Optional[float]:
     """The lowest of the values given (None ignored); None when there are none."""
     found = [float(v) for v in values if v is not None]

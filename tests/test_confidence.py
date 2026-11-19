@@ -229,3 +229,16 @@ def test_member_confidence_prefers_the_row_kv_extract_selected():
     })
     page = _member_page("verified", detected_member_id="88051948", detection_source_member_id="rule based")
     assert member_field_confidences(page, staged)["member_id"] == round(0.7073 * 0.9, 4)
+
+
+def test_member_id_confidence_is_the_mean_of_the_chosen_ids():
+    """2026-11-19 (user): Member ID = the mean of every ID row KV Extract chose."""
+    from modules.member.stage import member_field_confidences
+
+    staged = _Staged({"member_id": [
+        {"key": "FIN", "value": "AMB1", "score": 0.8, "model_score": 1.0, "selected": True, "accepted": True},
+        {"key": "MRN", "value": "000507178", "score": 0.6, "model_score": 1.0, "selected": True, "accepted": True},
+        {"key": "MRN", "value": "999", "score": 0.1, "model_score": 1.0, "accepted": True},
+    ]})
+    page = _member_page("verified", detected_member_id="000507178", detection_source_member_id="rule based")
+    assert member_field_confidences(page, staged)["member_id"] == 0.7

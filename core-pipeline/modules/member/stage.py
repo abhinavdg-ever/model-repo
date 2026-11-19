@@ -196,6 +196,7 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
     * read from a key / value row (its value, or the member found in its sentence, key
       source "sentence: <key>"): that row's rule score x model_score (``row_confidence``);
     * found by searching the whole page (the rules, GLiNER): ``confidence.whole_page`` (0.60);
+    * Member ID: the mean of every ID row KV Extract chose (selected, else accepted);
     * nothing read: None."""
     value = _clean(value)
     if not value:
@@ -203,6 +204,14 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
         return conf.dropped() if str(key_source or "").startswith("dropped:") else None
     from modules.extraction.results import row_confidence
 
+    if field_id == "member_id" and staged_page is not None:
+        # 2026-11-19 (user): the Member ID cell lists every ID KV Extract chose (FIN, MRN, ...);
+        # its confidence is the mean of those rows (selected, else accepted).
+        rows = [r for r in staged_page.rows("member_id") if isinstance(r, dict) and str(r.get("value") or "").strip()]
+        chosen = [r for r in rows if r.get("selected")] or [r for r in rows if r.get("accepted")]
+        found = conf.mean(row_confidence(r) for r in chosen)
+        if found is not None:
+            return found
     key_source = str(key_source or "")
     row = None
     if key_source.startswith("sentence:") and staged_page is not None:

@@ -313,7 +313,7 @@ def test_credentials_must_be_in_capitals():
     assert fields["provider_name"] == "Jane Doe"
 
 
-def test_confidence_is_the_signature_rows_model_score_and_the_lowest_signer():
+def test_confidence_is_the_signature_rows_model_score_and_the_mean_of_signers():
     """2026-11-14 (user; CONFIDENCE_LOGIC.md section 12): the 0.75 / 0.9 factors are gone."""
     own = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True}])
     assert own["confidence"] == 0.6  # rules only: a rules find (2026-11-19)
@@ -330,7 +330,7 @@ def test_confidence_is_the_signature_rows_model_score_and_the_lowest_signer():
          "rule_accepted": True, "model_score": 0.71},
     ])
     assert [s["confidence"] for s in several["signers"]] == [0.736, 0.355]  # score x model_score
-    assert several["confidence"] == 0.355  # several signers: the lowest
+    assert several["confidence"] == 0.5455  # several signers: the mean (2026-11-19, user; was the lowest)
 
 
 def test_the_models_score_is_the_base_and_the_rules_back_it():

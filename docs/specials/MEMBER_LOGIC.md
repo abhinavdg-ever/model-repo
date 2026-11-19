@@ -185,6 +185,7 @@ Three separate numbers, name / DOB / ID (2026-11-19, user):
 |---|---|
 | a key / value row reads the member value: its value (a name: every word, any order; a DOB: the same date), else its sentence; of those, KV Extract's `selected` row, then `accepted`, then the highest | that row's **rule score × LightGBM model_score** (rule score only: 0.60) |
 | found by searching the whole page (the rules, GLiNER) and no KV row reads it | **0.60** (`rules_find`) |
+| **Member ID** (2026-11-19, user) | the **mean** of every ID row KV Extract chose (`selected`, else `accepted`): the IDs the Member ID cell lists |
 | nothing read | none |
 
 The page column `member_extraction_results.confidence` is the lowest of the three. Under 0.50 →

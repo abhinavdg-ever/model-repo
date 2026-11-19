@@ -52,7 +52,7 @@ Both fixed lows sit under 0.50, so every backup or flipped value is always flagg
 | Member verification (chart) | not a confidence: **agreement rate** = pages agreeing with the decision / pages checked | | | |
 | Provider name | rule score × KV `model_score`; rules only: 0.60 | | | |
 | Credentials | the same person's provider-name confidence | credentials found anywhere else | | |
-| Signature present (Yes) | rule score × KV `model_score` (rules only: 0.60); several signers: the lowest | | | |
+| Signature present (Yes) | rule score × KV `model_score` (rules only: 0.60); several signers: the mean (2026-11-19, was the lowest) | | | |
 | Signature absent (No) | 1 − the best model-scored candidate; KV read the page and offered no candidate at all: **1.0** | candidates from rules only | | |
 | **Blank / Junk / Main** | DistilBERT service p for the verdict's class (Main p(keep), Blank p(blank), Junk p(junk)), when it is the model's top class | pass-1 page deferred to pass 2; classifier unavailable; short-page rule; **stage 1 Blank fallback (2026-11-17)** | the verdict is not the model's top class (signed page kept while p(junk) was top, card near-miss turning Invoice into Cards, terms page) | no ink / no text / stage-1 Blank on an empty page / header-band-only stage-1 Blank: 1.0; pass-1 text rules: 0.95 |
 | Duplicate **Yes / Partial** | from the match score s to the original: max(0.30, 1 − 10 × (1 − s)): exact 1.0, 0.98 → 0.80, 0.95 → 0.50 | | | Partial (a blocked 100% match) is 1.0 |

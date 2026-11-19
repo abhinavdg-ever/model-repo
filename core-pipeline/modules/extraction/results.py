@@ -373,8 +373,9 @@ def signature_fields(
         # A signature with no name and no credentials anywhere is not a provider signature.
         return {**empty, "signature_present": False}
     lead = signers[0]
-    # One signer: its confidence. Several: the lowest of the listed signers (2026-11-14).
-    page_confidence = conf.weakest(s["confidence"] for s in signers)
+    # One signer: its confidence. Several: the mean of the listed signers (2026-11-19, user;
+    # was the lowest).
+    page_confidence = conf.mean(s["confidence"] for s in signers)
     return {
         **empty,
         "signature_present": True,
