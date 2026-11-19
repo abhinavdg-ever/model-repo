@@ -938,6 +938,10 @@ function enteredMark(
   return groundTruthMark(extracted, truth, presence) === "match" ? "match" : "mismatch";
 }
 
+/** Rows still marked on a page both sides call Blank / Junk (2026-11-19, user): the verdict
+ * itself and Codability (a Blank / Junk page is Non-Codable). */
+const MARKED_ON_BLANK_JUNK = new Set(["blank_junk", "codeable"]);
+
 function CompareSection({
   title,
   rows,
@@ -1036,7 +1040,7 @@ function CompareSection({
           )}
         </thead>
         <tbody>
-          {rows.map((each) => (marksOff && each.id !== "blank_junk" ? { ...each, noMark: true } : each)).map((row) => (
+          {rows.map((each) => (marksOff && !MARKED_ON_BLANK_JUNK.has(each.id) ? { ...each, noMark: true } : each)).map((row) => (
             <tr key={row.id}>
               <th scope="row">{row.label}</th>
               {finalOnly ? null : (
@@ -2221,7 +2225,7 @@ function PageDetails({
   // The Page Type the reviewer sees: the ground truth, else the Final value offered.
   const shownPageType = () => (values.page_type ?? "").trim() || (offered.current.page_type ?? "");
   // 2026-11-19 (user): a page both the ground truth and the pipeline call Blank / Junk is not
-  // compared: no tick or cross on any row but Is Blank or Junk itself.
+  // compared: no tick or cross on any row but Is Blank or Junk and Codability.
   const bothBlankJunk =
     page.isDuplicate !== true &&
     (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes") &&
