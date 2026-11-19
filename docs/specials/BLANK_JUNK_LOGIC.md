@@ -1,93 +1,109 @@
 # Blank / Junk Logic
 
-As built on 2026-11-17. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
-`stage.py` the short page and duplicates). Numbers: `resources/canon/blank_junk_context_canon.json`.
+As built on 2026-11-19. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
+`stage.py` the short page and duplicates, `card_rules.py` cards, `pn_headers.py` Progress Note
+headers). Numbers: `resources/canon/blank_junk_context_canon.json`; the Progress Note header list:
+`resources/canon/progress_note_headers.json` (both editable, reload on change).
 
-Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype**. The subtypes are
-Cover Page, Cards, Letter/Fax, Record Request, Instructions and Others. There is no
-Junk / Invoice. Every rule is in the ladder below; nothing runs after it.
+Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype** (Cover Page, Cards,
+Letter/Fax, Record Request, Instructions, Others). An invoice is a Main page (page type Invoice).
 
-Two terms used throughout:
+Terms:
 
-- **Electronic Signature** = kv_extract found a provider signature on the page. Stage 7
-  (kv_extract) writes `staging/extraction.json`, and from the same results one signature row
-  per page (`imaging/<chart>_provider_signature.csv` and `provider_signature_results`). Blank /
-  junk reads `signature_present = y`, and the signature's region and sentence, from that row.
-  Words such as "signed" or "signature" in the text never count on their own.
-- **Previous / next page** = the nearest page before / after that is **not blank**
-  (no text, or no ink in stage 1). Blank pages in between are skipped.
+- **Electronic Signature** = kv_extract found a provider signature on the page
+  (`provider_signature_results`, `signature_present = y`). Words such as "signed" alone never count.
+- **Previous / next page** = the nearest page before / after that is not blank.
+- **Progress Note header** = a line (or stage-6 section header) of at most 6 words holding one of
+  the 36 sections' words, matched loosely: "Orders:", "Orders Placed", "Plan of Care", "Treatment
+  Plan", "Diagnosis" / "Diagnoses", "Assessment & Plan", "HPI", "ROS", "Vitals" …. A sentence that
+  only mentions a word ("we will plan …") never counts.
+
+The 36 sections (`progress_note_headers.json`): Visit details · Chief complaint · History of present
+illness · Review of systems · Past medical history · Problem list · Past surgical history · Family
+history · Social history · Social needs (SDOH) · OB/GYN history · Medications · Allergies ·
+Immunizations · Preventive care · Screening tools · Vitals · Physical exam · Mental status exam · Lab
+results · Imaging and diagnostics · Pathology · Assessment / impression · Visit diagnoses ·
+Assessment and plan (combined) · Plan · Orders · Prescriptions and refills · Medication changes ·
+Referrals · Procedures done in the visit · Medications given in the visit · Follow-up and next
+appointment · Disposition · Patient instructions and education · Medical decision making and time.
 
 ---
 
-## Pass 1: on the Tesseract text, rules only
+## Pass 1: on the Tesseract text, rules only (unchanged)
 
 The first rule that matches decides.
 
-| # | Check | Verdict |
-|---|---|---|
-| 1 | No ink; stage 1 says blank **and** the OCR has < 15 characters (a page typed blank with text on it goes on down the ladder, 2026-11-15); no text; or the word "blank" in < 30 characters | Blank |
-| 2 | "Intentionally left blank" on a page of ≤ 25 words | Blank |
-| 3 | A cover mark (Accept, Unaccept, Cover) on a page of < 10 words | Junk / Cover Page |
-| 4 | "End of Report" on a page of < 10 words | Junk / Cover Page |
-| 5 | < 15 characters | Junk / Others |
-| — | Anything else | Main for now. Pass 2 decides |
+| # | Check | Verdict | Confidence |
+|---|---|---|---|
+| 1 | No ink (stage 1); stage 1 says blank and the OCR has < 15 characters; no text | Blank | 100% |
+| 2 | The word "blank" in < 30 characters; "Intentionally left blank" on a page of ≤ 25 words | Blank | 95% |
+| 3 | A cover mark (Accept, Unaccept, Cover) or "End of Report" on a page of < 10 words | Junk / Cover Page | 95% |
+| 4 | < 15 characters | Junk / Others | 95% |
+| — | Anything else | Main for now; pass 2 decides | 40% |
 
 ## Pass 2: on the best Final OCR text
 
-The first rule that matches decides.
+**Carried forward.** A page pass 1 called Blank or Junk keeps it; pass 2 does **not** run pass 1's
+text rules again (2026-11-19). Exception, so nothing is missed: a page pass 1 never judged
+(handwritten, mixed, form, visual, printed Low) gets pass 1's rules once here, on the Final OCR.
+Measured blanks (no ink, no text) are always checked.
+
+Then, the first rule that matches decides:
 
 | # | Rule | Check | Verdict |
 |---|---|---|---|
-| 1 | Blank | The pass 1 rules 1–5 again; also stage 1 says blank and all the text is in the top 15% header band with no ink below (a running header only, 2026-11-17) | as in pass 1 |
-| 2 | Visual | A visual page under 20 words that is not a card | Main |
-| 3 | Handwritten | More than 30% handwritten | Main |
-| 3b | Fax cover sheet | The word **Fax** and 2+ of its routing boxes: **Urgent, For (Your) Review, Please Comment, Please Reply / Reply ASAP, Please Recycle, As Requested** — even when signed (a cover sheet lists doctors) (2026-11-15) | Junk / Letter/Fax |
-| 4 | **Signature** | An Electronic Signature here, **and** not the same signature in the same spot on the previous or next page (2026-11-15), **and** the model's p(junk) < 0.95 | Main |
-| 5 | Lab result | One word from each group: **Laboratory / Lab Result(s) / Lab Report / Lab Test(s)** (not "Lab" alone) · **Reference Range** (Ref Range, Reference Interval) · **Value(s)** | Main |
-| 5b | Medication list | 3+ different doses (a number + mg, mcg, mL, g, units, mEq, tablets …), or a Medications / Rx / Prescription word and 2+ (2026-11-15) | Main |
-| 6 | Clinical content | 2+ ICD-10 codes (I11.0, E11.9…), or a Social History header | Main |
-| 7 | Card | On a page typed printed, visual or uncertain (uncertain since 2026-11-15): an ID or insurance card: words from two card groups, the word "card", no form or letter words, ≤ 150 words, text over ≤ 75% of the page. A name (a Name / Cardholder label, or the name kv_extract found), not needed on strong evidence: 3+ card groups, 3+ back-of-card lines, or a Medicare / other ID card's own lines (a card's back has no name). Section headers do not block. The model's p(keep) ≥ 0.99 keeps it | Junk / Cards |
-| 8 | Fax | "Fax" in a section header, and rule 4 did not keep the page | Junk / Letter/Fax |
-| 9 | Contents page | "Index" / "Contents" / "Table of Contents" as a heading, plus 3+ lines with page numbers **or dates** ("Encounter: 4/14/2026 9:15 AM", 2026-11-15). The next page carrying the list on (2+ entry lines, ≤ 120 distinct words, nothing kept it earlier) is junk too | Junk / Others |
-| 9b | **Stage 1 Blank fallback** | Stage 1 typed the page Blank and none of the rules above kept it (after the contents page, before the short page and the classifier); confidence the backup 0.40 (2026-11-17) | Blank |
-| 10 | **Short page** | Content ends in the top 20% of the page. See below | see below |
-| 11 | Classifier | The model says JUNK, but p(keep) ≥ 0.99 | Main |
-|    |  | The model says Invoice or insurance ID, and it is a card (the card rule nearly matched, or the model's insurance-ID label). Not a near miss on a hospital / clinic page without the word "card" (a Patient Abstract: Account Number, copay), which goes on to the invoice checks (2026-11-15) | Junk / Cards |
-|    |  | Otherwise Invoice, with a **table holding a dollar amount** (Final OCR 1 / Docling markdown `\| … \| $25.00 \|`, else the Final OCR text, an HTML `<td>$…</td>` too). Terms wording cannot overrule it (2026-11-14) | Main (page type Invoice / Invoice Page) |
-|    |  | Otherwise Invoice, on a terms page: **T&C**, **Terms and Conditions**, **Payment Terms**, **Payment Instructions**, Terms of Payment / Sale / Service, General / Standard Terms, appearing **before** the first invoice wording (Invoice, Bill To, Amount / Balance Due, Total, a $ amount) or on a page with none (Final OCR text, else Tesseract's) | Junk / Others |
-|    |  | Otherwise Invoice with **no invoice wording** but a care provider's name: **Surgery Center**, Surgical Center, Ambulatory Surgery, **Hospital**, **Clinic**, Medical Center, Health Center (2026-11-15) | Main, **not** an invoice: page classification decides |
-|    |  | Otherwise Invoice (invoice wording; no terms, or the terms come after the invoice, e.g. "Please refer to the Payment Terms & Conditions on next page") | Main (page type Invoice / Invoice Page) |
-|    |  | The model says JUNK of another kind | Junk / its subtype |
-|    |  | The model says BLANK | Junk / Others |
-|    |  | Otherwise | Main |
+| 0 | Stage 1 Blank, header only | Stage 1 says Blank, all text in the top 15% header band, no ink below (2026-11-17) | Blank |
+| 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading plus 3+ lines with page numbers or dates. Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
+| 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed) | Junk / Letter/Fax |
+| 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
+| 4 | Keeps | Visual page under 20 words that is not a card; > 30% handwritten; Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |
+| 5 | **Card** | on a printed, visual or uncertain page; see below | Junk / Cards |
+| 6 | **Fax letter** | "Fax" + a letter's closing (Sincerely, Yours truly, Regards, Respectfully …) and no Electronic Signature; or "Fax" in a section header and no signature. **Never** on a page with note content (a Progress Note header, an ICD-10 code or a medication list): "Fax to:" inside a note is not junk (2026-11-19) | Junk / Letter/Fax |
+| 7 | Stage 1 Blank fallback | Stage 1 typed it Blank and nothing above kept it (2026-11-17) | Blank |
+| 8 | **Classifier** | The DistilBERT service: JUNK with p(keep) < 0.99 → Junk / its subtype; BLANK → Junk / Others; else Main. A model Invoice is a card only on a card near miss that no form / letter / length guard stopped and no note content (2026-11-19: an anesthesia note read as an invoice was becoming Cards) | its verdict |
+| 9 | Invoice post-processing | unchanged: a dollar table or invoice wording → Main (Invoice page); a terms page → Junk / Others; a care provider's page with no invoice wording → Main, not an invoice | |
 
-### Rule 10: the short page
+### Rule 3: the short page (2026-11-19)
 
-Rule 10 applies only to a page that got past rules 1–9b (a page stage 1 typed Blank never reaches it). A page kept by the signature, lab or
-clinical rules is never junked here. The first check that matches decides.
+**Short** = no text line in the middle of the page (25%–75% of the height) and no ink there when
+measured: the text sits at the top, at the bottom, or both (canon `contained_page.top_fraction`
+0.25, `bottom_fraction` 0.75). A page with no line positions is short only when its content ends in
+the top 25%. A page over 30% handwritten, or a visual page, is not judged here (its own keeps apply).
+
+The first that matches decides:
 
 | # | Check | Verdict |
 |---|---|---|
-| a | **The signature carries on from the page before.** The previous page ends in its Electronic Signature (kv_extract places it in the footer, or its signature sentence is in that page's last paragraph). This page has the provider's name or credentials (kv_extract), the signer's name, credentials (MD, DO, NP…), or a date, **in lines not repeated from the page before** (a running header's Date of Birth / Encounter Date does not count, 2026-11-17) | Main |
-| b | **Only a section header differs**: every word not on the previous or next page belongs to this page's own section header(s), "Visit Diagnosis" included (2026-11-15) | Junk / Others |
-| c | **The section carries on from the page before.** Fewer than 5 new words, some of them not header words, and the **previous page's last section header** is Visit Diagnosis, Encounter, Summary, or any standard Progress Note header (the `clinical` list of `section_header_classes.json`: Chief Complaint, HPI, Medications, Assessment, Plan, Vitals …). Canon `contained_page.continue_after_headers` + `use_clinical_headers`, editable (2026-11-15) | Main |
-| d | Otherwise **fewer than 5 distinct words** that are not on the previous or next page | Junk / Others |
-| — | Otherwise | the classifier decides (rule 11) |
+| S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on | Main |
+| S2 | The page has a **Progress Note header and 3+ other words** | Main |
+| S3 | An **Electronic Signature** not in the same spot as the previous / next page's, or a **provider name / credentials** (kv_extract) the previous / next page does not have | Main |
+| S4 | Its content is **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
+| S5 | **98%+ of its words, in the same order**, are on the previous or next page | Junk / Others |
+| S6 | **5 new words or fewer** (not on the previous / next page): all header words → Junk / Others; otherwise → Main | Junk / Main |
+| — | More than 5 new words and nothing above | the classifier (rule 8) decides |
 
-**A repeated signature does not count** (2026-11-15, every page): when its Electronic Signature sits in
-the same spot (same region: header / mid / footer, and the same signature sentence or signer) as the
-signature on the previous or next non-blank page, it is a stamp the record repeats: no signature keep
-(rule 4), and check a (signature carried on) ignores a page before whose signature is such a stamp. This
-replaces "the previous or next page is signed too" (2026-11-08): a neighbour signed elsewhere or by
-someone else no longer stops the keep.
+### Rule 5: cards (`card_rules.py`)
 
-**A page that adds nothing** (2026-11-15), short or not: every one of its distinct words (at most 100,
-canon `contained_page.repeated_only_max_words`) is on the previous or next page, e.g. page 6 of 6 holding
-only the running header and the end-of-report block page 5 also has, low on the page -> Junk / Others.
+Unchanged guards: words from two card groups; no form or letter words; ≤ 150 words; text over ≤ 75%
+of the page; the word "card" and a name, **unless the evidence is strong**. Changes on 2026-11-19:
 
-An invoice page is never junked by the short page rule.
+- **Strong evidence needs neither the word "card" nor a name**: 3+ insurance groups (Member ID,
+  Group Number, Payer ID, RxBIN / RxPCN / RxGRP, payer name, plan words such as PPO, PCP $0),
+  3+ back-of-card lines, a Medicare / SSN / passport / green card / military ID, any licence or
+  state ID, or a barcode. (A "UCard" front was missed: "card" inside "UCard" is not the word.)
+- **Licence back**: 3 of Class, Restrictions, Endorsements, Corrective Lenses, Donor, DLN, with no
+  title, is a licence's back.
+- **Back of a card**: "If found, please return", "Please return to", "Customer Service:",
+  "Pharmacist help desk / use", plus the earlier lines (For Members, Submit claims to, TTY 711 …).
+- **Barcode**: the page image is read with `zxing-cpp` (PDF417 on licences, QR and 1-D codes on
+  cards; ~1 MB, no model) on printed / visual / uncertain pages of ≤ 150 words. A barcode with any
+  card word or licence field makes it a card.
 
----
+### Confidence (2026-11-19)
+
+The model's raw probability for the verdict's class (Main p(keep), Blank p(blank), Junk p(junk)),
+**whichever rule decided** (no fixed 0.30 any more); without the model 40%. Measured blanks 100%;
+pass 1 text rules 95%.
 
 ## Duplicates (after the verdict)
 

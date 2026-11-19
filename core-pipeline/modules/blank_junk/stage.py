@@ -347,6 +347,19 @@ def _classify(
         return None
 
     page_by_number = {page["id"]: page.get("page_number") for page in pages}
+    words_of: dict[int, frozenset[str]] = {}
+
+    def _words(page_id: Optional[int]) -> frozenset[str]:
+        if page_id is None:
+            return frozenset()
+        if page_id not in words_of:
+            words_of[page_id] = frozenset(unique_words(texts.get(page_id) or ""))
+        return words_of[page_id]
+
+    def _short_verdict(pid: int) -> Optional[dict[str, Any]]:
+        return short_verdict(pid, texts=texts, inputs=inputs or {}, around=around,
+                             headers=headers_by_id or {}, signed=signed,
+                             repeated=_repeated_signature(pid) is not None, words=_words)
 
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
@@ -363,6 +376,11 @@ def _classify(
         scores = (model_scores(text, docling=(docling_pages or {}).get(page_id))
                   if text.strip() and page_inputs.pass_no == 2 else {})
         page_inputs.bert = scores.get("bert")
+        if page_inputs.pass_no == 2 and find_duplicates:
+            page_inputs.short_verdict = _short_verdict(page_id)
+            if (page_inputs.document_type in method.CARD_DOCUMENT_TYPES
+                    and len(_words(page_id)) <= CARD_BARCODE_MAX_WORDS and (image_paths or {}).get(page_id)):
+                page_inputs.barcode = read_barcode((image_paths or {})[page_id])
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
         if repeated_sig is not None:
             verdict.votes["signature_repeated"] = (
@@ -443,74 +461,11 @@ def _classify(
             )
             partial.add(page_id)
 
-    # The short page (2026-11-08, user; replaces the 2026-11-05 "contained in a page within 3"):
-    # a page whose content ends in the top 20% of the page (no line positions: never short).
-    # Candidates: every page that reached the classifier, whatever it made of it; a page an
-    # earlier rule settled (blank, visual, handwritten, signed, card, fax, contents) is not.
-    # Invoice pages stay Main. "Before" / "after" = the previous / next non-blank page.
-    # In order, the first that applies decides:
-    #   1. the page before ends in its Electronic Signature (kv_extract: footer band, or the
-    #      signature sentence in its last paragraph) and this page carries it on: the provider's
-    #      name / credentials (kv_extract), the signer's name, credentials or a date -> Main;
-    #   2. what it adds to the pages before and after (2026-11-15, user):
-    #      a. nothing but its own section header -> Junk / Others;
-    #      b. under 5 new words, and the previous page's last section header is Visit Diagnosis,
-    #         Encounter, Summary or any standard Progress Note (clinical) header -> Main: this page
-    #         carries that section on (canon contained_page.continue_after_headers +
-    #         section_header_classes.json clinical);
-    #      c. otherwise under 5 new words -> Junk / Others.
-    # Any other page that got this far (2026-11-15, user): every one of its distinct words (at most
-    # repeated_only_max_words) is on the page before or after -> Junk / Others, wherever the text sits.
+    # A contents page's next page carrying on its list (2026-11-15, user): the page before is a
+    # contents page (INDEX) and this one is 2+ entry lines (dates / page numbers), at most
+    # 120 distinct words, with nothing that kept it earlier -> Junk / Others.
     contained: set[int] = set()
     if find_duplicates:
-        cfg = method.canon().raw.get("contained_page", {})
-        top = float(cfg.get("top_fraction", 0.20))
-        junk_below = int(cfg.get("junk_below_unique_words", 5))
-        runs_on = _run_on_headers(cfg)
-        repeated_max = int(cfg.get("repeated_only_max_words", 100))
-        headers = headers_by_id or {}
-        words_of: dict[int, frozenset[str]] = {}
-
-        def _runs_on(page_id: Optional[int]) -> Optional[str]:
-            """The page's last section header when it is one that runs on to the next page."""
-            last = (headers.get(page_id) or ())[-1:] if page_id is not None else ()
-            for header in last:
-                folded = " ".join(re.findall(r"\w+", header.lower()))
-                if any(re.search(rf"(?<!\w){re.escape(' '.join(re.findall(r'[a-z0-9]+', h)))}(?!\w)", folded)
-                       for h in runs_on):
-                    return header
-            return None
-
-        def _words(page_id: Optional[int]) -> frozenset[str]:
-            if page_id is None:
-                return frozenset()
-            if page_id not in words_of:
-                words_of[page_id] = frozenset(unique_words(texts.get(page_id) or ""))
-            return words_of[page_id]
-
-        def _keep(pid: int, rule: str, why: str) -> None:
-            own = by_id.get(pid) or {}
-            note = f"{SHORT_MARK}{rule}: {why} -> Main"
-            if own.get("code") == CODE_MAIN:
-                own["votes"] = {**(own.get("votes") or {}), "short_page": note}
-                return
-            earlier = own.get("votes")
-            by_id[pid] = _row_for(page_by_id[pid], code=CODE_MAIN, reason=note, confidence=conf.backup(),
-                                  strength=CONTAINED_CONFIDENCE,
-                                  votes={**earlier, "short_page": note} if earlier else None)
-
-        def _junk(pid: int, code: int, note: str) -> None:
-            own = by_id.get(pid) or {}
-            earlier = own.get("votes")
-            by_id[pid] = _row_for(page_by_id[pid], code=code, reason=note, confidence=conf.backup(),
-                                  strength=CONTAINED_CONFIDENCE,
-                                  votes={**earlier, "short_page": note} if earlier else None)
-            partial.discard(pid)
-            contained.add(pid)
-
-        # A contents page's next page carrying on its list (2026-11-15, user): the page before is a
-        # contents page (INDEX) and this one is 2+ entry lines (dates / page numbers), at most
-        # 120 distinct words, with nothing that kept it earlier -> Junk / Others.
         for pid in order:
             own = by_id.get(pid) or {}
             if pid in dup_of or not (own.get("votes") or {}).get("reached_classifier"):
@@ -521,71 +476,16 @@ def _classify(
                 continue
             body = texts.get(pid) or ""
             if method.index_entries(body) >= 2 and len(_words(pid)) <= 120:
-                _junk(pid, CODE_OTHERS, f"INDEX continued: page {page_by_id[prev_id].get('page_number')} is a "
-                                        f"contents page and this page carries its list on "
-                                        f"({method.index_entries(body)} entry lines) -> Junk / Others")
-
-        for pid in order:
-            own = by_id.get(pid) or {}
-            votes = own.get("votes") or {}
-            if pid in dup_of or pid in contained or not (texts.get(pid) or "").strip():
-                continue
-            if not votes.get("reached_classifier"):
-                continue
-            if method.is_invoice_page(own.get("reason")):
-                continue
-            bottom = getattr((inputs or {}).get(pid), "content_bottom", None)
-            prev_id, next_id = around.get(pid, (None, None))
-            if bottom is None or bottom > top:
-                # 2026-11-15 (user): a page that adds nothing -- every word is on the page before
-                # or after (a running header and an end-of-report block, wherever on the page) --
-                # is junk however low its text sits. Small pages only: a long page is never one.
-                mine = _words(pid)
-                if (prev_id is not None or next_id is not None) and 0 < len(mine) <= repeated_max \
-                        and not (mine - _words(prev_id) - _words(next_id)):
-                    _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated_only: all {len(mine)} distinct words are on the "
-                                            f"page before or after -> Junk / Others")
-                continue
-            short = f"content ends at {bottom:.0%} <= {top:.0%} of the page"
-            # 1. the page before ends in its Electronic Signature (kv_extract: in the footer band,
-            # or its signature sentence in that page's last paragraph), carried on here.
-            prev_sig = (signatures or {}).get(prev_id) if prev_id is not None and prev_id in signed else None
-            # The page before's signature repeated in the same spot on its neighbour: a stamp, not a
-            # signing that this page carries on (2026-11-15, user).
-            if prev_sig and _repeated_signature(prev_id) is not None:
-                prev_sig = None
-            if prev_sig and signature_ends_page(prev_sig, texts.get(prev_id) or ""):
-                # Only what this page adds counts (2026-11-17, user): a running header repeated
-                # from the page before (Patient Name, Date of Birth, Encounter Date) carries no
-                # signature on, so its dates and names are left out.
-                added = new_lines(texts.get(pid) or "", _words(prev_id))
-                carried = method.provider_or_date(
-                    added, bool(added.strip()) and bool(getattr((inputs or {}).get(pid), "provider", False)),
-                    signer=prev_sig.get("provider_name") or "") if added.strip() else None
-                if carried:
-                    _keep(pid, "signature_continued",
-                          f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its Electronic "
-                          f"Signature ({prev_sig.get('region') or 'last paragraph'}), carried on here ({carried})")
-                    continue
-            # 2. what it adds to the pages before and after.
-            left = _words(pid) - _words(prev_id) - _words(next_id)
-            if len(left) >= junk_below:
-                continue
-            own_header_words = unique_words(" ".join(headers.get(pid) or ()))
-            body = left - own_header_words
-            if left and not body:
-                _junk(pid, CODE_OTHERS, f"{SHORT_MARK}header_only: {short}; the only words not on the page "
-                                        f"before or after are its section header ({', '.join(sorted(left))}) "
-                                        f"-> Junk / Others")
-                continue
-            section = _runs_on(prev_id) if body else None
-            if section is not None:
-                _keep(pid, "section_continued",
-                      f"{short}; page {page_by_id[prev_id].get('page_number')} ends in its '{section}' section, "
-                      f"carried on here ({len(body)} new word(s))")
-                continue
-            _junk(pid, CODE_OTHERS, f"{SHORT_MARK}repeated: {short}; {len(left)} distinct word(s) not on the "
-                                    f"page before or after (< {junk_below}) -> Junk / Others")
+                note = (f"INDEX continued: page {page_by_id[prev_id].get('page_number')} is a contents page and "
+                        f"this page carries its list on ({method.index_entries(body)} entry lines) -> Junk / Others")
+                earlier = own.get("votes")
+                p_keep, p_junk, p_blank = method._model_probs((inputs or {}).get(pid) or method.PageInputs(text=""))
+                by_id[pid] = _row_for(page_by_id[pid], code=CODE_OTHERS, reason=note,
+                                      confidence=method.verdict_confidence(CODE_OTHERS, p_keep, p_junk, p_blank),
+                                      strength=CONTAINED_CONFIDENCE,
+                                      votes={**earlier, "short_page": note} if earlier else None)
+                partial.discard(pid)
+                contained.add(pid)
 
     named = best
     for page_id, row in by_id.items():
@@ -610,6 +510,166 @@ def _classify(
         if pid in dup_of or pid in partial or pid in contained:
             rows.append(by_id[pid])
     return rows
+
+
+CARD_BARCODE_MAX_WORDS = 150  # a card's page is short; longer pages are never read for a barcode
+SAME_ORDER_SHARE = 0.98  # S5: this share of a short page's words, in order, on a neighbour
+FEW_NEW_WORDS = 5  # S6
+NOTE_HEADER_EXTRA_WORDS = 3  # S2
+MEASUREMENT = re.compile(
+    r"(?<![\w.])\d+(?:[.,]\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|iu/l|u/l|g/dl|meq/l|mm\s*hg|mmhg|bpm|%|kg|lbs?|°f|°c)(?![A-Za-z])"
+    r"|(?<![A-Za-z])(?:glucose|a1c|hba1c|vitamin\s*[a-z0-9]{1,3}|bmi|blood\s+pressure|bp|pulse|temp(?:erature)?|weight|spo2|o2\s+sat)"
+    r"\W{0,3}\d", re.IGNORECASE)
+
+
+def is_short(inputs: "method.PageInputs") -> bool:
+    """A short page (2026-11-19, user): text lines, none in the middle of the page
+    (contained_page.top_fraction..bottom_fraction, 25%-75%), and no ink there when measured --
+    its text sits at the top, at the bottom, or both. No line positions: never short."""
+    lines = inputs.lines or []
+    cfg = method.canon().raw.get("contained_page") or {}
+    top, bottom = float(cfg.get("top_fraction", 0.25)), float(cfg.get("bottom_fraction", 0.75))
+    if not lines:
+        # Only where the content ends is known: short when it ends in the top band.
+        if inputs.content_bottom is None:
+            return False
+        return inputs.content_bottom <= top and inputs.body_ink is not True
+    if any(line.bottom > top and line.top < bottom for line in lines):
+        return False
+    return inputs.body_ink is not True
+
+
+def _in_order_share(mine: list[str], theirs: list[str]) -> float:
+    """The share of ``mine`` (a page's words) found in the same order in ``theirs``."""
+    from difflib import SequenceMatcher
+
+    if not mine or not theirs:
+        return 0.0
+    matcher = SequenceMatcher(None, mine, theirs, autojunk=False)
+    return sum(block.size for block in matcher.get_matching_blocks()) / len(mine)
+
+
+def short_verdict(
+    pid: int,
+    *,
+    texts: dict[int, str],
+    inputs: dict[int, "method.PageInputs"],
+    around: dict[int, tuple[Optional[int], Optional[int]]],
+    headers: dict[int, tuple[str, ...]],
+    signed: set[int],
+    repeated: bool,
+    words: Any,
+) -> Optional[dict[str, Any]]:
+    """The short page's outcome (2026-11-19, user), or None when the page is not short:
+    {"code": a CODE_* (or None: on to the classifier), "rule": "S1".., "why": "..."}.
+
+      S1 the previous page ends in a Progress Note header: in its bottom third, one of its last
+         3 headers -> Main (this page carries that section on)
+      S2 a Progress Note header and 3+ other words on the page -> Main
+      S3 an Electronic Signature, or a provider, not repeated on the previous / next page -> Main
+      S4 its content is measurements, doses or ICD codes -> Main
+      S5 98% of its words, in order, on the previous or next page -> Junk / Others
+      S6 5 new words or fewer (not on the previous / next page): all header words -> Junk / Others,
+         else Main
+      otherwise the classifier decides."""
+    from modules.blank_junk import pn_headers
+
+    own = inputs.get(pid)
+    if own is None or not is_short(own):
+        return None
+    # A handwritten (> 30%) or visual page keeps its own keeps (HW, R3V): OCR words of handwriting
+    # or a picture say little about what the page adds.
+    hw_limit = float(method.canon().raw["handwritten_veto"]["min_handwritten_area_pct"])
+    if (own.hw_area_pct is not None and own.hw_area_pct > hw_limit) or own.document_type == "visual":
+        return None
+    text = texts.get(pid) or ""
+    prev_id, next_id = around.get(pid, (None, None))
+
+    def out(code: Optional[int], rule: str, why: str) -> dict[str, Any]:
+        return {"code": code, "rule": rule, "why": why}
+
+    # S1: the previous page's last headers, one of its last 3 in its bottom third.
+    if prev_id is not None:
+        prev_text = texts.get(prev_id) or ""
+        prev_lines = [line for line in prev_text.splitlines() if line.strip()]
+        found = pn_headers.header_lines(prev_text, headers.get(prev_id) or ())
+        positioned = [(i, line, section) for i, line, section in found if i >= 0][-3:]
+        prev_inputs = inputs.get(prev_id)
+        for i, line, section in positioned:
+            low = _line_position(prev_inputs, line)
+            if low is None and prev_lines:
+                low = (i + 1) / max(1, len((prev_text or "").splitlines()))
+            if low is not None and low >= 2 / 3:
+                return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
+                                            f"({low:.0%} down the page): this page carries it on -> Main")
+    # S2: its own Progress Note header and 3+ other words.
+    sections = pn_headers.sections_on(text, own.headings)
+    if sections:
+        other = [w for w in re.findall(r"[a-z]+", text.lower())
+                 if len(w) > 1 and w not in pn_headers.header_words(text, own.headings)]
+        if len(other) >= NOTE_HEADER_EXTRA_WORDS:
+            return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main")
+    # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
+    if pid in signed and not repeated:
+        return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main")
+    neighbours_provider = any(getattr(inputs.get(n), "provider", False) for n in (prev_id, next_id) if n is not None)
+    if own.provider and not neighbours_provider:
+        return out(CODE_MAIN, "S3", "provider name / credentials, not on the previous / next page -> Main")
+    # S4: measurements, doses or ICD codes.
+    found = (method.medication_doses(text)
+             or (" / ".join(method.lab_result_words(own) or []) or None)
+             or ("ICD-10 codes" if method.ICD10_CODE.search(text) else None)
+             or ("measurements" if len(MEASUREMENT.findall(text)) >= 2 else None))
+    if found:
+        return out(CODE_MAIN, "S4", f"its content is {found} -> Main")
+    # S5: the same words in the same order on a neighbour.
+    mine = re.findall(r"[a-z0-9]+", text.lower())
+    for other_id in (prev_id, next_id):
+        if other_id is None:
+            continue
+        share = _in_order_share(mine, re.findall(r"[a-z0-9]+", (texts.get(other_id) or "").lower()))
+        if share >= SAME_ORDER_SHARE:
+            return out(CODE_OTHERS, "S5", f"{share:.0%} of its words, in order, are on the page "
+                                          f"{'before' if other_id == prev_id else 'after'} -> Junk / Others")
+    # S6: what it adds.
+    new = words(pid) - words(prev_id) - words(next_id)
+    if len(new) <= FEW_NEW_WORDS:
+        header_vocab = pn_headers.header_words(text, own.headings) | set(
+            w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
+        if not new or new <= header_vocab:
+            return out(CODE_OTHERS, "S6", f"{len(new)} new word(s), all header words -> Junk / Others")
+        return out(CODE_MAIN, "S6", f"{len(new)} new word(s) of its own ({', '.join(sorted(new))}) -> Main")
+    return out(None, "S7", f"{len(new)} new words, no short-page rule: the classifier decides")
+
+
+def _line_position(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:
+    """Where ``line`` sits on its page (its top, a share of the height), from the OCR lines."""
+    want = " ".join(re.findall(r"[a-z0-9]+", (line or "").lower()))
+    if not want or page_inputs is None or not page_inputs.lines:
+        return None
+    for ocr_line in page_inputs.lines:
+        got = " ".join(re.findall(r"[a-z0-9]+", (ocr_line.text or "").lower()))
+        if got and (want in got or got in want):
+            return float(ocr_line.top)
+    return None
+
+
+def read_barcode(path: Path) -> Optional[str]:
+    """The first barcode on the page image (zxing-cpp: PDF417 on licences, 1-D and QR codes on
+    cards), as its format name; None when there is none, the image cannot be read or the
+    library is not installed (2026-11-19, user)."""
+    try:
+        import zxingcpp
+        from PIL import Image
+
+        with Image.open(path) as image:
+            found = zxingcpp.read_barcodes(image.convert("L"))
+    except Exception as exc:  # noqa: BLE001 - no barcode reader is no barcode, the rules go on
+        logger.debug("barcode not read for %s (%s)", path.name, type(exc).__name__)
+        return None
+    for barcode in found or ():
+        return str(getattr(barcode.format, "name", barcode.format))
+    return None
 
 
 def signature_details(chart_name: str) -> dict[str, dict[str, str]]:
@@ -725,9 +785,10 @@ def _page_lines(
             method.text_area(found["words"], found.get("width"), found.get("height")))
 
 
-def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional[float]]:
+def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) -> tuple[Optional[bool], Optional[float]]:
     """(ink below the short-page band, the share of that band that is ink): a picture,
-    handwriting or stamp OCR did not read. (None, None) when the image cannot be read."""
+    handwriting or stamp OCR did not read. ``start``: where the band begins (the content's
+    bottom, at least the header band). (None, None) when the image cannot be read."""
     try:
         from PIL import Image
 
@@ -735,7 +796,7 @@ def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional
 
         short = method.canon().raw["short_page"]
         zones = method.canon().raw["zones"]
-        top, bottom = float(zones["header_band"]), 1.0 - float(zones["footer_band"])
+        top, bottom = max(float(zones["header_band"]), float(start or 0.0)), 1.0 - float(zones["footer_band"])
         with Image.open(page_image_path(chart_name, page_name)) as image:
             width, height = image.size
             band = image.convert("RGB").crop((0, int(top * height), width, int(bottom * height)))
@@ -799,6 +860,10 @@ def _page_inputs(
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}
     header_canon = section_heading_canon(ctx.chart_name) if pass_no == 2 else {}
     top = float(method.canon().raw["zones"]["header_band"])
+    # 2026-11-19 (user): the short page reaches 25% of the page (canon contained_page.top_fraction).
+    short_top = float((method.canon().raw.get("contained_page") or {}).get("top_fraction", 0.25))
+    from modules.ocr.routing import judged_in_pass2
+
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
         pid = page["id"]
@@ -817,6 +882,7 @@ def _page_inputs(
             provider=page["page_name"] in with_provider,
             member_name_found=page["page_name"] in with_name,
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
+            pass1_skipped=pass_no == 2 and judged_in_pass2(q),
         )
         if pass_no == 2:
             inputs.headings = headings.get(page["page_name"], ())
@@ -826,8 +892,8 @@ def _page_inputs(
             )
             bottom = method.content_bottom(inputs.lines) if inputs.lines else None
             inputs.content_bottom = bottom
-            if bottom is not None and bottom <= top:
-                inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"])
+            if bottom is not None and bottom <= max(top, short_top):
+                inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"], start=bottom)
             # Docling markdown, for the invoice rule's dollar table (2026-11-14, user).
             inputs.final1_text = unwrap_ocr_content((final1 or {}).get(pid))
             # Tesseract's text for the junk terms the final OCR missed; only where prelim is

@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "note": "2026-11-19 (user): the Progress Note section headers, matched loosely (modules/blank_junk/pn_headers.py): a line or stage-6 header of at most max_words words holding one of a section's patterns (regex, whole words, case ignored) -- 'Orders:', 'Plan of Care', 'Diagnosis' / 'Diagnoses'. Used by blank / junk: the short page (S1 the previous page ends in one, S2 a header + 3 words) and the clinical content keep (min_note_sections, 2+, of the sections not in weak_sections). Reloads on change.",
+  "max_words": 6,
+  "weak_sections": [
+    "Visit details",
+    "Patient instructions and education",
+    "Imaging and diagnostics"
+  ],
+  "sections": {
+    "Visit details": [
+      "visit\\s+(?:details|info(?:rmation)?|summary)",
+      "encounter\\s+(?:details|info(?:rmation)?)"
+    ],
+    "Chief complaint": [
+      "chief\\s+complaints?",
+      "reasons?\\s+for\\s+(?:the\\s+)?(?:visit|appointment|consult(?:ation)?)"
+    ],
+    "History of present illness": [
+      "history\\s+of\\s+(?:the\\s+)?present(?:ing)?\\s+illness",
+      "hpi",
+      "interval\\s+history"
+    ],
+    "Review of systems": [
+      "review\\s+of\\s+systems?",
+      "ros"
+    ],
+    "Past medical history": [
+      "(?:past\\s+)?medical\\s+history",
+      "pmh",
+      "pmhx"
+    ],
+    "Problem list": [
+      "problem\\s+list",
+      "(?:active\\s+)?problems"
+    ],
+    "Past surgical history": [
+      "(?:past\\s+)?surgical\\s+history",
+      "psh",
+      "pshx"
+    ],
+    "Family history": [
+      "family\\s+history",
+      "fh",
+      "fhx"
+    ],
+    "Social history": [
+      "social\\s+history",
+      "sh",
+      "shx"
+    ],
+    "Social needs (SDOH)": [
+      "social\\s+needs",
+      "sdoh",
+      "social\\s+determinants"
+    ],
+    "OB/GYN history": [
+      "ob\\s*/?\\s*gyn(?:\\s+history)?",
+      "obstetric(?:al)?\\s+history",
+      "gyn(?:ecologic(?:al)?)?\\s+history"
+    ],
+    "Medications": [
+      "medications?",
+      "current\\s+meds",
+      "med\\s+list",
+      "meds"
+    ],
+    "Allergies": [
+      "allerg(?:y|ies)"
+    ],
+    "Immunizations": [
+      "immunizations?",
+      "vaccinations?",
+      "vaccines?"
+    ],
+    "Preventive care": [
+      "preventive\\s+care",
+      "health\\s+maintenance",
+      "preventative\\s+care"
+    ],
+    "Screening tools": [
+      "screenings?(?:\\s+tools?)?",
+      "phq-?\\s?[29]",
+      "gad-?\\s?7"
+    ],
+    "Vitals": [
+      "vitals?",
+      "vital\\s+signs"
+    ],
+    "Physical exam": [
+      "physical\\s+(?:exam(?:ination)?|eval(?:uation)?)",
+      "exam(?:ination)?",
+      "pe"
+    ],
+    "Mental status exam": [
+      "mental\\s+status(?:\\s+exam(?:ination)?)?",
+      "mse"
+    ],
+    "Lab results": [
+      "lab(?:oratory)?\\s+results?",
+      "labs",
+      "lab\\s+data"
+    ],
+    "Imaging and diagnostics": [
+      "imaging",
+      "diagnostics?",
+      "radiology"
+    ],
+    "Pathology": [
+      "pathology"
+    ],
+    "Assessment / impression": [
+      "assessments?",
+      "impressions?"
+    ],
+    "Visit diagnoses": [
+      "(?:visit\\s+|encounter\\s+)?diagnos[ie]s",
+      "dx"
+    ],
+    "Assessment and plan (combined)": [
+      "assessment\\s*(?:and|&|/)\\s*plan",
+      "a\\s*/\\s*p",
+      "a\\s*&\\s*p"
+    ],
+    "Plan": [
+      "plans?",
+      "plan\\s+of\\s+care",
+      "treatment\\s+plan"
+    ],
+    "Orders": [
+      "orders?(?:\\s+placed)?"
+    ],
+    "Prescriptions and refills": [
+      "prescriptions?",
+      "refills?"
+    ],
+    "Medication changes": [
+      "medication\\s+changes?",
+      "changes?\\s+to\\s+medications?"
+    ],
+    "Referrals": [
+      "referrals?"
+    ],
+    "Procedures done in the visit": [
+      "procedures?(?:\\s+(?:done|performed))?"
+    ],
+    "Medications given in the visit": [
+      "medications?\\s+(?:given|administered)",
+      "meds\\s+(?:given|administered)"
+    ],
+    "Follow-up and next appointment": [
+      "follow[\\s-]*ups?",
+      "next\\s+appointment",
+      "return\\s+(?:to\\s+clinic|visit)"
+    ],
+    "Disposition": [
+      "disposition"
+    ],
+    "Patient instructions and education": [
+      "(?:patient\\s+)?instructions",
+      "(?:patient\\s+)?education"
+    ],
+    "Medical decision making and time": [
+      "medical\\s+decision\\s+making",
+      "mdm",
+      "time\\s+spent"
+    ]
+  }
+}

@@ -427,7 +427,7 @@ def test_a_facility_is_never_the_provider_2026_11_19():
     only = signature_fields([{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "score": 0.8,
                               "accepted": True, "model_score": 0.9}])
     assert only["provider_name"] is None and only["provider_dropped"] == "facility"
-    assert only["confidence"] == 0.95
+    assert only["signature_present"] is True and only["confidence"] == 0.3  # capped (2026-11-19)
     fallback = signature_fields(
         [{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "designation": "MD", "score": 0.8,
           "accepted": True, "model_score": 0.9}],
@@ -435,3 +435,19 @@ def test_a_facility_is_never_the_provider_2026_11_19():
          {"value": "Jane Roe, MD", "score": 0.8, "accepted": True}],
     )
     assert fallback["provider_name"] == "Jane Roe"
+
+
+def test_one_signer_twice_is_listed_once_and_a_facility_signature_stays_yes():
+    """2026-11-19 (user): "Oliverio Freeland Gerard" and "Freeland G Oliverio October" are one
+    signer; a clinic read as the provider keeps Signature Yes, provider Not Found, conf <= 0.30."""
+    from modules.names import same_person, trim_signers
+
+    assert same_person("Oliverio Freeland Gerard", "Freeland G Oliverio October")
+    assert not same_person("John Smith", "Jane Smith")
+    merged = trim_signers([{"name": "Oliverio Freeland Gerard", "credentials": "DO"},
+                           {"name": "Freeland G Oliverio October", "credentials": "DO"}])
+    assert [s["name"] for s in merged] == ["Oliverio Freeland Gerard"]
+    clinic = signature_fields([{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "score": 0.9,
+                                "accepted": True, "model_score": 0.9}])
+    assert clinic["signature_present"] is True and clinic["provider_name"] is None
+    assert clinic["confidence"] == 0.3

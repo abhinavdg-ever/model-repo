@@ -491,6 +491,14 @@ class PageInputs:
     signature_known: bool = False  # the KV signature output was there to read
     provider: bool = False  # provider details extracted (kv_extract's provider name / credentials); pass 2
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
+    # 2026-11-19 (user): pass 1 never judged the page (handwritten, mixed, form, visual, printed
+    # Low): pass 2 runs pass 1's text rules on it once.
+    pass1_skipped: bool = False
+    # The short page's outcome (stage._classify): {"code": CODE_* or None (to the classifier),
+    # "rule": "S1".., "why": "..."}; None when the page is not short.
+    short_verdict: Optional[dict[str, Any]] = None
+    # A barcode on the page image (zxing-cpp format name), read for card candidates.
+    barcode: Optional[str] = None
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
     body_ink_fraction: Optional[float] = None  # the share of that band that is ink
     # Pass 2: the page's Tesseract text, read for junk terms only (score_text also_junk).
@@ -609,19 +617,16 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
 
 def verdict_confidence(code: int, p_keep: Optional[float], p_junk: Optional[float],
                        p_blank: Optional[float] = None, *, model_class: Optional[str] = None) -> float:
-    """How sure the verdict is (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2): the model's raw
-    probability for the verdict's class -- Main p(keep), Blank p(blank), Junk p(junk) -- when
-    that class is the model's top one; ``confidence.flipped`` when the model's top class is
-    another (a rule or a veto went against it); ``confidence.backup`` without the model.
-    ``model_class`` names the class the verdict stands for when it is not the code's own
-    (an Invoice kept Main is the model's junk call; the service's Blank filed Junk / Others
-    is its blank call)."""
+    """How sure the verdict is (2026-11-19, user: "make it real", was flipped 0.30 when the model's
+    top class was another): the model's raw probability for the verdict's class -- Main
+    p(keep), Blank p(blank), Junk p(junk) -- whichever rule decided; ``confidence.backup`` only
+    without the model. ``model_class`` names the class the verdict stands for when it is not the
+    code's own (an Invoice kept Main is the model's junk call; the service's Blank filed Junk /
+    Others is its blank call)."""
     if p_keep is None or p_junk is None:
         return conf.backup()
     probs = {"keep": float(p_keep), "junk": float(p_junk), "blank": float(p_blank or 0.0)}
     mine = model_class or ("keep" if code == CODE_MAIN else "blank" if code == CODE_BLANK else "junk")
-    if max(probs, key=probs.get) != mine:
-        return conf.flipped()
     return conf.chosen(probs[mine], module="blank_junk")
 
 
@@ -725,21 +730,16 @@ def decide(inputs: PageInputs) -> Verdict:
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
         return Verdict(code, float(value), rule, reason, votes, strength=round(float(old), 4))
 
-    # ---- blank, placeholder, cover marks, tiny: both passes (a handwritten page skips pass 1)
+    # ---- measured blanks: every pass (nothing to read, nothing missed).
     chars = len(re.sub(r"\s", "", text))
     votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
-    # Measured facts (no ink, stage-1 Blank, no text): 1.0; the text-pattern rules: pass1_rule
-    # (0.95), in either pass (2026-11-14, user, CONFIDENCE_LOGIC.md 12.4.5).
     if inputs.no_ink:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
-    # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15,
-    # user: a page typed blank with two lines of text came out Blank).
+    # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15).
     if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
-    # ... except when that text is only a header line: stage 1's Blank, every line in the top
-    # header band and no ink below it (pass 2, measured; 2026-11-17, user: a page with only the
-    # EMR's running header is Blank).
+    # ... or when that text is only a header line (2026-11-17, user): pass 2, measured.
     if inputs.document_type == "blank" and header_only(inputs):
         return ruled(CODE_BLANK, "R1", f"R1 blank: stage 1 page type blank, text only in the top "
                                        f"{float(prof.raw['zones']['header_band']):.0%} header band",
@@ -748,106 +748,118 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["stage1_blank_overruled"] = f"{chars} characters of text"
     if not visual and chars == 0:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
-    if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
-        return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters",
-                     confidence=conf.pass1_rule())
-    if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
-        return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank",
-                     confidence=conf.pass1_rule())
-    mark = _cover_mark(text)
-    if mark is not None:
-        return ruled(_junk_code("Cover Page"), "R1",
-                     f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page",
-                     confidence=conf.pass1_rule())
-    end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
-    if end is not None:
-        return ruled(_junk_code("Cover Page"), "R1E",
-                     f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
-                     confidence=conf.pass1_rule())
-    if not visual and chars < MIN_TEXT_CHARS:
-        return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
-                     confidence=conf.pass1_rule())
+
+    # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
+    # pass 2 only on a page pass 1 never judged (handwritten, mixed, form, visual, printed Low).
+    if not pass2 or inputs.pass1_skipped:
+        if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
+            return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters",
+                         confidence=conf.pass1_rule())
+        if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
+            return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank",
+                         confidence=conf.pass1_rule())
+        mark = _cover_mark(text)
+        if mark is not None:
+            return ruled(_junk_code("Cover Page"), "R1",
+                         f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page",
+                         confidence=conf.pass1_rule())
+        end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
+        if end is not None:
+            return ruled(_junk_code("Cover Page"), "R1E",
+                         f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
+                         confidence=conf.pass1_rule())
+        if not visual and chars < MIN_TEXT_CHARS:
+            return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
+                         confidence=conf.pass1_rule())
     if not pass2:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
 
-    # ---- pass 2
-    # 1. card (printed or visual): an ID / insurance card, junked at 5 below.
-    card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area,
-                        visual=inputs.document_type == "visual", name_found=inputs.member_name_found)
-            if inputs.document_type in CARD_DOCUMENT_TYPES else None)
-    # 2026-11-05 (user): card or no card (no strong / medium). A card goes through the same keeps
-    # as any other junk (more than 30% handwritten, signed, raw p(keep) >= 0.99, then LAB in
-    # post_process) before Junk / Cards.
-    found_card = None
-    if card is not None and card.is_card:
-        votes["card"] = {"type": card.card_type, "matched": card.matched}
-        found_card = card
-    elif card is not None and card.blocked_by:
-        votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
-    # 2. visual and under 20 words: a picture (an ECG strip, an X-ray print).
-    if visual and found_card is None:
-        return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
-    # 3. more than 30% handwritten.
-    hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
-    if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
-        return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
-    # 3b. a fax cover sheet (2026-11-15, user): "Fax" and its routing boxes -- Urgent / For Review /
-    # Please Comment / Please Reply -- are junk even when signed (a cover sheet lists doctors).
-    cover = fax_cover_sheet(text)
-    if cover is not None:
-        votes["fax_cover"] = cover
-        return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
-    # 4. signed (signature_keeps: Electronic Signature here, not repeated in the same spot on the
-    # previous / next page, raw p(junk) < 0.95), every page.
-    if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
-        return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby, raw p(junk) "
-                                      f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
-    if inputs.signed and inputs.neighbour_signed:
-        votes["r4_not_alone"] = "Electronic Signature, but the previous or next page has the same signature in the same spot"
-    elif inputs.signed:
-        votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
-    # 4a. a lab result: one term of every lab_keep group (Lab, Reference Range, Value) -> Main.
-    lab = lab_result_words(inputs)
-    if lab:
-        return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
-    # 4a. a medication list with doses (2026-11-15, user): "ezetimibe 10 mg tablet" ... -> Main.
-    meds = medication_doses(text)
-    if meds:
-        return ruled(CODE_MAIN, MEDS_RULE, f"{MEDS_RULE}: medication list ({meds}) -> Main")
-    # 4b. clinical content: 2+ ICD-10 codes or a Social History header -> Main.
-    clinical = clinical_content_signs(inputs)
-    if clinical:
-        return ruled(CODE_MAIN, CLINICAL_CONTENT_RULE, f"{CLINICAL_CONTENT_RULE}: {clinical} -> Main")
-    if found_card is not None:
-        found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
-        if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
-            return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
-                         conf.score(p_keep))
-        return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
-    # 6. fax in the section headers and no signature anywhere.
-    word = fax_unsigned(inputs)
-    if word is not None:
-        votes["fax_unsigned"] = word
-        return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
-    # 6a. a contents / index page: the word Index or Contents as a title and a list of page
-    # numbers (2026-11-08, user) -> Junk / Others.
+    # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
+    # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.
+    # 1. a contents / index page (before the keeps: its entries read like a medication list).
     index = index_page(text, inputs.headings)
     if index is not None:
         votes["index_page"] = index
         return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
-    # 6a2. stage 1's Blank as the fallback (2026-11-17, user: "if Type (Printed/HW) gives Blank,
-    # it should be Yes (Blank)"): a page stage 1 typed Blank that no content rule above kept
-    # (handwriting, signature, lab, medications, clinical content, card, fax, contents) is Blank;
-    # neither the short-page check nor the classifier decides it.
-    if inputs.document_type == "blank":
-        return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank, no rule kept it (fallback)",
-                     confidence=conf.backup())
-    # 6b. the contained page (stage._classify) decides here, before the classifier: it needs the
-    # neighbours, so the stage applies it to every page that reached this point (2026-11-05, user).
+    # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed.
+    cover = fax_cover_sheet(text)
+    if cover is not None:
+        votes["fax_cover"] = cover
+        return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
+
+    # 3. the short page (stage._classify measured it against the previous / next page).
+    short = inputs.short_verdict
+    if short:
+        votes["short_page"] = short["why"]
+        if short["code"] is not None:
+            return ruled(short["code"], short["rule"], f"{SHORT_RULE}{short['rule']}: {short['why']}")
+    to_classifier = bool(short)  # a short page no short rule decided goes to the classifier
+
+    card = None
+    found_card = None
+    if not to_classifier:
+        # The card is looked for first (a licence is often a visual page), and decided at 5,
+        # after the keeps.
+        card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area,
+                            visual=inputs.document_type == "visual", name_found=inputs.member_name_found,
+                            barcode=inputs.barcode)
+                if inputs.document_type in CARD_DOCUMENT_TYPES else None)
+        if card is not None and card.is_card:
+            votes["card"] = {"type": card.card_type, "matched": card.matched}
+            found_card = card
+        elif card is not None and card.blocked_by:
+            votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
+        # 4. keeps: a picture, handwriting, a signature, a lab result, medications, clinical content.
+        if visual and found_card is None:
+            return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
+        hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
+        if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
+            return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
+        if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
+            return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby, raw p(junk) "
+                                          f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
+        if inputs.signed and inputs.neighbour_signed:
+            votes["r4_not_alone"] = "Electronic Signature, but the previous or next page has the same signature in the same spot"
+        elif inputs.signed:
+            votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
+        lab = lab_result_words(inputs)
+        if lab:
+            return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
+        meds = medication_doses(text)
+        if meds:
+            return ruled(CODE_MAIN, MEDS_RULE, f"{MEDS_RULE}: medication list ({meds}) -> Main")
+        clinical = clinical_content_signs(inputs)
+        if clinical:
+            return ruled(CODE_MAIN, CLINICAL_CONTENT_RULE, f"{CLINICAL_CONTENT_RULE}: {clinical} -> Main")
+
+        # 5. card (printed / visual / uncertain): an ID, licence or insurance card.
+        if found_card is not None:
+            found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
+            if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
+                return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
+            return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
+
+        # 6. a fax letter: Fax, a letter's closing and no Electronic Signature (2026-11-19, user),
+        # or Fax in the section headers and no signature (2026-11-02); never on clinical content
+        # ("Fax to:" inside a note).
+        letter = fax_letter(inputs)
+        if letter is not None:
+            votes["fax_letter"] = letter
+            return ruled(CODE_LETTER_FAX, "FAX", f"FAX: letter ({letter}), no signature -> Junk / Letter/Fax")
+        word = fax_unsigned(inputs)
+        if word is not None and not note_content(inputs):
+            votes["fax_unsigned"] = word
+            return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
+
+        # 7. stage 1's Blank as the fallback (2026-11-17, user): no rule above kept it.
+        if inputs.document_type == "blank":
+            return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank, no rule kept it (fallback)",
+                         confidence=conf.backup())
+
+    # 8. the classifier (the teammate's service), then the invoice post-processing.
     votes["reached_classifier"] = True
-    # 7-9. the service's decision.
     if service is None:
         votes["review_required"] = True
         return ruled(CODE_MAIN, "R5", "R5: page classifier unavailable -> Main (review)", conf.score(0.5, "degraded"),
@@ -857,35 +869,28 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["review_required"] = True
     if service["flag"] == "JUNK":
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
-            return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main",
-                         conf.score(p_keep))
+            return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
         subtype = _service_subtype(service)
-        # 2026-11-07 (user): a card is Junk / Cards, never Invoice. The model files insurance
-        # cards under JUNK_INVOICE; the card rule's near miss (a card type it recognised but
-        # whose strict guards blocked it) or the service's insurance-ID audit tag says card.
-        near_card = subtype == "Invoice" and card is not None and bool(card.card_type)
-        # 2026-11-15 (user): a hospital / clinic page (a Patient Abstract: Account Number, copay)
-        # without the word "card" is not a card; it goes on to the invoice check below.
+        # 2026-11-07 (user): a card is Junk / Cards, never Invoice: the card rule's near miss or the
+        # service's insurance-ID tag says card. 2026-11-19 (user): a near miss only when nothing
+        # but the card's own guards stopped it -- never a form, letter or note page (an
+        # anesthesia note read as an invoice became Cards), never over the card length.
+        near_card = (subtype == "Invoice" and card is not None and bool(card.card_type)
+                     and not any(b.startswith(("form:", "letter / statement:", "too long")) for b in card.blocked_by)
+                     and not note_content(inputs))
         if near_card and FACILITY_WORDS.search(text) and not CARD_WORD.search(text):
             near_card = False
             votes["card_not_kept"] = "care provider's page, no 'card' on it"
         if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
             subtype = "Cards"
-        # The card rule's near miss turning the model's Invoice into Cards goes against the
-        # model (flipped); the service's own insurance-ID tag is the model's call.
         verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
-                        conf.score(float(service["confidence"])),
-                        confidence=conf.flipped() if near_card else None)
-        # An invoice: Main (Invoice page), except a terms page (T&C ...) -> Others.
+                        conf.score(float(service["confidence"])))
         return _keep_invoice(verdict, inputs)
     if service["flag"] == "BLANK":
         # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
-        # The model's blank call, filed Junk / Others: its p(blank).
         return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
                      conf.score(float(service["confidence"])),
                      confidence=verdict_confidence(CODE_OTHERS, p_keep, p_junk, p_blank, model_class="blank"))
-    # KEEP: p(keep) when the model's top class is keep; the service's vetoes (keep veto, weak
-    # JUNK -> KEEP, retention) turned the model round: flipped.
     return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(float(service["confidence"])))
 
 
@@ -942,6 +947,40 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     return found.group(0) if found else None
 
 
+LETTER_CLOSING = re.compile(
+    r"(?<![A-Za-z])(?:yours\s+(?:sincerely|truly|faithfully)|sincerely|best\s+regards|kind\s+regards|warm\s+regards"
+    r"|regards|respectfully(?:\s+yours)?|thank\s+you\s+for\s+your\s+(?:time|attention|help))(?![A-Za-z])",
+    re.IGNORECASE)
+SHORT_RULE = "short_page:"
+
+
+def note_content(inputs: PageInputs) -> Optional[str]:
+    """Why the page is part of a note (the fax rules never junk it), or None: a Progress Note
+    header, ICD-10 codes or a medication list on it (2026-11-19, user)."""
+    from modules.blank_junk.pn_headers import clinical_sections_on
+
+    sections = clinical_sections_on(inputs.text or "", inputs.headings)
+    if sections:
+        return f"Progress Note header ({sections[0]})"
+    codes = {m.group(0).upper() for m in ICD10_CODE.finditer(inputs.text or "")}
+    if codes:
+        return f"{len(codes)} ICD-10 code(s)"
+    meds = medication_doses(inputs.text or "")
+    return f"medications ({meds})" if meds else None
+
+
+def fax_letter(inputs: PageInputs) -> Optional[str]:
+    """A fax letter (2026-11-19, user): the word Fax, a letter's closing (Sincerely, Yours truly,
+    Regards ...) and no Electronic Signature on the page, and no note content; else None."""
+    text = inputs.text or ""
+    if inputs.signed or not FAX_WORD.search(text):
+        return None
+    closing = LETTER_CLOSING.search(text)
+    if closing is None or note_content(inputs):
+        return None
+    return f"Fax + '{' '.join(closing.group(0).split())}'"
+
+
 INVOICE_RULE = "INVOICE"
 
 
@@ -994,6 +1033,13 @@ def clinical_content_signs(inputs: PageInputs) -> Optional[str]:
     if len(codes) >= int(cfg.get("min_icd_codes", 2)):
         shown = ", ".join(codes[:4]) + (f" (+{len(codes) - 4})" if len(codes) > 4 else "")
         return f"{len(codes)} ICD-10 codes ({shown})"
+    # 2026-11-19 (user): two or more Progress Note sections on the page (pn_headers.py, matched
+    # loosely: "Orders", "Plan of Care", "Diagnoses") make it a note.
+    from modules.blank_junk.pn_headers import clinical_sections_on
+
+    sections = clinical_sections_on(inputs.text or "", inputs.headings)
+    if len(sections) >= int(cfg.get("min_note_sections", 2)):
+        return f"{len(sections)} Progress Note sections ({', '.join(sections[:3])})"
     headers = tuple(inputs.header_canon or ()) + tuple(inputs.headings or ())
     if cfg.get("social_history", True) and (
             any(SOCIAL_HISTORY.search(str(h)) for h in headers) or SOCIAL_HISTORY_LINE.search(inputs.text or "")):

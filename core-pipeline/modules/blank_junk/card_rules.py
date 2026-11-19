@@ -98,6 +98,11 @@ INSURANCE_GROUPS: dict[str, list[re.Pattern]] = {
         r"possession\s*of\s*this\s*card",
         r"pharmacist\s*use\s*only",
         r"\bmember\s*services\s*:",
+        # 2026-11-19 (user): the lost-card line on a card's back.
+        r"if\s*found\s*,?\s*(?:please\s*)?return",
+        r"please\s*return\s*(?:this\s*card\s*)?to",
+        r"\bcustomer\s*service\s*:",
+        r"\bpharmacist\s*(?:help\s*desk|use)",
     ),
 }
 
@@ -232,8 +237,13 @@ def word_count(text: str) -> int:
 LICENSE_KINDS = ("drivers_license", "state_id", "drivers_license_or_id")
 
 
+LICENSE_BACK_FIELDS = frozenset({"class", "endorsements", "restrictions", "corrective lenses", "donor", "dln"})
+LICENSE_BACK_MIN = 3
+
+
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
-           text_area: float | None = None, visual: bool = False, name_found: bool = False) -> CardResult:
+           text_area: float | None = None, visual: bool = False, name_found: bool = False,
+           barcode: str | None = None) -> CardResult:
     """``headings``: the page's section headers (stage 6; no longer read, kept for callers);
     ``text_area``: the share of the page
     the text covers (None = not measured, the rule is then off); ``visual``: the page-tag model
@@ -280,6 +290,20 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         matched.append(f"fields: {', '.join(fields)}")
         candidates.append((kind, matched))
 
+    # The back of a licence (2026-11-19, user): Class / Restrictions / Endorsements / Corrective
+    # Lenses / Donor / DLN with no title -- three of these are a licence's back on their own.
+    back_fields = [f for f in fields if f in LICENSE_BACK_FIELDS]
+    if not any(c[0] in LICENSE_KINDS for c in candidates) and len(back_fields) >= LICENSE_BACK_MIN:
+        candidates.append(("drivers_license_or_id", [f"licence back fields: {', '.join(back_fields)}"]))
+
+    # A barcode on the page (2026-11-19, user; PDF417 on licences, codes on card backs), read
+    # from the image by the stage: with any card word or licence field it is a card.
+    if barcode and (n_ins or fields or back or medicare) and not candidates:
+        candidates.append(("insurance" if n_ins else "drivers_license_or_id",
+                           [f"barcode: {barcode}"] + [f"{g}: {', '.join(h)}" for g, h in ins.items()]))
+    elif barcode and candidates:
+        candidates = [(k, m + [f"barcode: {barcode}"]) for k, m in candidates]
+
     for kind, h in other.items():
         candidates.append((kind, [f"{kind}: {', '.join(h)}"]))
 
@@ -295,12 +319,15 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         return CardResult(not blocked, kind, matched, blocked, words)
     if words > max_words:
         blocked.append(f"too long: {words} words")
-    if not CARD_WORD.search(text):
+    # Strong evidence (2026-11-10 / 11-19, user) needs neither a name nor the word "card": three
+    # insurance groups ("UCard", RxBIN / RxPCN, Member ID, Group, Payer ID), three back-of-card
+    # lines, a Medicare / other ID card, a licence (it prints neither), or a barcode with card words.
+    strong = (n_ins >= STRONG_GROUPS or back_lines >= STRONG_BACK_LINES
+              or kind == "medicare" or kind in OTHER_ID or kind in LICENSE_KINDS or bool(barcode))
+    if not strong and not CARD_WORD.search(text):
         blocked.append("no word 'card'")
     # A name must be on it (2026-11-05, user): a name label, or the member name kv_extract found
     # on the page -- unless the card words alone are strong evidence (2026-11-10, user).
-    strong = (n_ins >= STRONG_GROUPS or back_lines >= STRONG_BACK_LINES
-              or kind == "medicare" or kind in OTHER_ID)
     if not strong and not NAME_WORD.search(text) and not name_found:
         blocked.append("no name on it")
     # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept

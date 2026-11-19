@@ -76,11 +76,16 @@ class TestRules:
         assert run("", document_type="visual").code == classify.CODE_MAIN
 
     def test_r1_the_word_blank_under_30_characters_is_blank(self):
-        verdict = run("Intentionally left blank")
+        # 2026-11-19 (user): pass 2 does not redo pass 1's text rules, except on a page pass 1
+        # never judged (pass1_skipped).
+        verdict = run("Intentionally left blank", pass_no=1)
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+        verdict = run("Intentionally left blank", pass1_skipped=True)
         assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
     def test_r1_under_15_characters_is_junk_others(self):
-        verdict = run("Page 3 of 7")
+        assert run("Page 3 of 7").rule != "R1"  # pass 2: pass 1 already judged it
+        verdict = run("Page 3 of 7", pass1_skipped=True)
         assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R1")
 
 
@@ -181,7 +186,7 @@ class TestDistilBertLadder:
     """2026-10-20: R1-R4, then DistilBERT alone; junk only in pass 2 except R1-R3."""
 
     def test_r2_placeholder_is_blank_not_junk(self):
-        verdict = run("This page intentionally left blank", bert=bert(0.99))
+        verdict = run("This page intentionally left blank", bert=bert(0.99), pass1_skipped=True)
         assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R2")
 
 
@@ -200,7 +205,10 @@ class TestDistilBertLadder:
     def test_keywords_no_longer_decide(self):
         # Invoice wording, DistilBERT keeps: Main. Clinical wording, DistilBERT junks: Junk.
         assert run(INVOICE_TEXT, bert=bert(0.10)).code == classify.CODE_MAIN
-        assert run(CLINICAL_TEXT, bert=bert(0.95, "JUNK_LETTER_FAX")).code != classify.CODE_MAIN
+        assert run(FILLER, bert=bert(0.95, "JUNK_LETTER_FAX")).code != classify.CODE_MAIN
+        # 2026-11-19 (user): 2+ Progress Note sections keep the page, whatever the model says.
+        note = run(CLINICAL_TEXT, bert=bert(0.95, "JUNK_LETTER_FAX"))
+        assert (note.code, note.rule) == (classify.CODE_MAIN, "CLINICAL_CONTENT")
 
     def test_a_signature_keeps_the_page_unless_distilbert_is_over_95(self):
         held = run(FILLER, signed=True, bert=bert(0.94))
@@ -581,20 +589,20 @@ class TestVerdictConfidence2026_11_14:
         assert (deferred.code, deferred.rule, deferred.confidence) == (method.CODE_MAIN, "P1", 0.4)
 
     def test_the_service_verdict_is_the_models_own_probability(self):
-        keep = run(CLINICAL_TEXT, bert=bert(0.2))
+        keep = run(FILLER, bert=bert(0.2))
         assert (keep.code, keep.rule, keep.confidence) == (method.CODE_MAIN, "R5", 0.8)
         junk = run(FAX_TEXT, bert=bert(0.9, "JUNK_LETTER_FAX"))
         assert junk.code == classify.CODE_LETTER_FAX and junk.confidence == 0.9
 
-    def test_a_keep_against_the_models_top_class_is_flipped(self):
-        # The service's own keep veto: p(junk) the top class, the verdict Main.
+    def test_a_keep_against_the_models_top_class_reads_the_models_own_p(self):
+        # 2026-11-19 (user, "make it real"; was flipped 0.30): the model's raw p for the verdict.
         vetoed = bert(0.6)
         vetoed["service"] = {**vetoed["service"], "flag": "KEEP", "confidence": 0.4}
-        v = run(CLINICAL_TEXT, bert=vetoed)
-        assert (v.code, v.confidence) == (method.CODE_MAIN, 0.3)
-        # Signed (R4) while p(junk) is the top class.
+        v = run(FILLER, bert=vetoed)
+        assert (v.code, v.confidence) == (method.CODE_MAIN, 0.4)
+        # Signed (R4) while p(junk) is the top class: p(keep).
         signed = run(FILLER, bert=bert(0.8), signed=True, signature_known=True)
-        assert (signed.rule, signed.confidence) == ("R4", 0.3)
+        assert (signed.rule, signed.confidence) == ("R4", 0.2)
         assert signed.strength is not None and signed.strength != signed.confidence
 
     def test_no_model_is_a_backup(self):

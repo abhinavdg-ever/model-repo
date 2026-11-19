@@ -720,7 +720,9 @@ class TestCardRule:
     def test_a_card_needs_the_word_card_and_a_name_unless_the_evidence_is_strong(self):
         """2026-11-05 (user); 2026-11-10 (user): no name needed on strong evidence (3+ card
         groups or 3+ back-of-card lines) -- the back of a card has no name."""
-        assert self._decide(self.CARD.replace("Card ", "")).code != classify.CODE_CARDS
+        # 2026-11-19 (user): strong evidence (3+ groups) needs no word "card" either ("UCard").
+        assert self._decide(self.CARD.replace("Card ", "")).code == classify.CODE_CARDS
+        assert self._decide("Member ID: 912345678 Group Number: 70123 Name: Jane").code != classify.CODE_CARDS
         assert self._decide(self.CARD.replace("Name: Jane Q Sample ", "")).code == classify.CODE_CARDS
         weak = "Member ID Card Member ID: 912345678 Group Number: 70123"
         assert self._decide(weak).code != classify.CODE_CARDS
@@ -779,8 +781,11 @@ def test_licence_on_a_visual_page_is_a_card_without_card_or_name_words():
 
     visual = card_rules.detect(LICENCE_TEXT, visual=True, headings=("Demographics",), text_area=0.8)
     assert visual.is_card and visual.card_type == "drivers_license"
+    # 2026-11-19 (user): a licence needs neither "card" nor a name on a printed page either.
     printed = card_rules.detect(LICENCE_TEXT)
-    assert not printed.is_card and "no word 'card'" in printed.blocked_by
+    assert printed.is_card and printed.card_type == "drivers_license"
+    back = card_rules.detect("CLASS: D-1 veh less than 26,001 lb.\nRESTRICTIONS: B-Corrective Lenses\nENDORSEMENTS: NONE")
+    assert back.is_card and back.card_type == "drivers_license_or_id"
     form = card_rules.detect(LICENCE_TEXT + "\nPlease complete this form", visual=True)
     assert not form.is_card
 
