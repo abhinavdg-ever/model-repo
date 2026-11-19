@@ -583,6 +583,44 @@ def _chart_source(req: RunRequest) -> str:
     return str(Path(req.input_path) / req.chart_name)
 
 
+def _page_counts(requests: list[RunRequest], chart_ids: dict[str, Any]) -> dict[str, Optional[int]]:
+    """Each chart's page count for the queue choice (2026-11-19, user), only when a large-chart
+    queue is set: chart_list.page_count from an earlier run, else the images in its folder
+    (Blob listing, or the local folder). A count that fails stays unknown (normal queue)."""
+    from common.config import SERVICEBUS_QUEUE_LARGE
+
+    if not SERVICEBUS_QUEUE_LARGE:
+        return {}
+    known: dict[str, Optional[int]] = {}
+    ids = [cid for cid in chart_ids.values() if cid is not None]
+    if ids:
+        try:
+            with connect() as conn, conn.cursor() as cur:
+                cur.execute("SELECT chart_name, page_count FROM chart_list WHERE id = ANY(%s)", (ids,))
+                known = {name: count for name, count in cur.fetchall() if count}
+        except Exception as exc:  # noqa: BLE001 - the queue choice must not stop a run
+            logger.warning("page counts not read (%s): unknown charts stay on the normal queue", type(exc).__name__)
+    out: dict[str, Optional[int]] = {}
+    for req in requests:
+        if known.get(req.chart_name):
+            out[req.chart_name] = int(known[req.chart_name])
+            continue
+        try:
+            if req.is_blob:
+                from common.db.blob_store import list_image_blobs
+
+                out[req.chart_name] = len(list_image_blobs(req.blob_container, _chart_source(req)))
+            else:
+                from common.config import IMAGE_SUFFIXES
+
+                folder = Path(_chart_source(req))
+                out[req.chart_name] = sum(1 for f in folder.rglob("*") if f.suffix.lower() in IMAGE_SUFFIXES)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("chart %s: pages not counted (%s): normal queue", req.chart_name, type(exc).__name__)
+            out[req.chart_name] = None
+    return out
+
+
 def _enqueue_charts(
     requests: list[RunRequest],
     trigger_id: str,
@@ -617,30 +655,34 @@ def _enqueue_charts(
         local_write_path=first.local_write_path,
     )
     chart_ids = {row["chart_name"]: row["chart_id"] for row in registered}
+    pages = _page_counts(requests, chart_ids)
 
     queued: list[dict[str, Any]] = []
     with connect() as conn:
         for req in requests:
             chart_id = chart_ids.get(req.chart_name)
+            queue_name = q.queue_for(pages.get(req.chart_name))
             run_id = create_job(
                 conn, chart_id=chart_id, stage_name=job_stage or q.JOB_STAGE, status="queued",
-                queue_name=SERVICEBUS_QUEUE,
+                queue_name=queue_name,
             )
-            queued.append({"run_id": run_id, "chart_id": chart_id, "chart_name": req.chart_name, "req": req})
+            queued.append({"run_id": run_id, "chart_id": chart_id, "chart_name": req.chart_name, "req": req,
+                           "queue": queue_name, "pages": pages.get(req.chart_name)})
 
-    messages = [
-        (item["chart_name"], q.run_message(
-            item["run_id"], item["req"].model_dump(mode="json"), trigger_id, min_run_date=min_run_date
-        ))
-        for item in queued
-    ]
-    if target:
-        for _sid, body in messages:
+    by_queue: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for item in queued:
+        body = q.run_message(item["run_id"], item["req"].model_dump(mode="json"), trigger_id,
+                             min_run_date=min_run_date)
+        if target:
             body["target"] = target
+        by_queue.setdefault(item["queue"], []).append((item["chart_name"], body))
+    if len(by_queue) > 1 or SERVICEBUS_QUEUE not in by_queue:
+        logger.info("queueing: %s", ", ".join(f"{len(v)} on {k}" for k, v in by_queue.items()))
     try:
-        q.send(messages)
+        for queue_name, messages in by_queue.items():
+            q.send(messages, queue=queue_name)
     except Exception as exc:
-        error = f"could not queue on {SERVICEBUS_QUEUE}: {type(exc).__name__}: {str(exc).splitlines()[0][:300]}"
+        error = f"could not queue on {', '.join(by_queue)}: {type(exc).__name__}: {str(exc).splitlines()[0][:300]}"
         with connect() as conn:
             for item in queued:
                 update_job(conn, item["run_id"], status="failed", completed=True, error_message=error)

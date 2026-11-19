@@ -129,6 +129,30 @@ Back to inline: `sed -i 's/^RUN_MODE=.*/RUN_MODE=inline/' .env`, then
 finishes its current chart first (up to 30 minutes, `stop_grace_period`); a chart cut off
 after that comes back on the queue and another worker runs it.
 
+**Large charts on their own queue** (2026-11-19). Charts over `LARGE_CHART_PAGES` (100) pages go to
+a second queue that only `worker-large` reads, so they never hold up the normal workers. The page
+count is `chart_list.page_count` from an earlier run, else the chart's images counted in Blob when
+it is queued. Off while `SERVICEBUS_QUEUE_LARGE` is empty.
+
+1. In Azure (portal, Service Bus namespace `codingbusstd` → Queues → + Queue): create
+   `chart-runs-large` with the **same settings as `chart-runs`** (Enable sessions on, the same
+   lock duration and max delivery count). Sessions must be on: the worker reads sessions.
+2. On the VM (Ubuntu, bash, in `core-pipeline/`):
+
+```bash
+sed -i 's/^SERVICEBUS_QUEUE_LARGE=.*/SERVICEBUS_QUEUE_LARGE=chart-runs-large/' .env
+docker compose --profile large up -d --build --scale worker=3 --scale worker-large=1
+docker compose logs -f worker-large               # the big charts
+```
+
+Windows Command Prompt (a laptop running queue mode, in `core-pipeline\`): set
+`SERVICEBUS_QUEUE_LARGE=chart-runs-large` in `.env` with Notepad, then
+`docker compose --profile large up -d --build --scale worker=3 --scale worker-large=1`.
+
+Off again: empty `SERVICEBUS_QUEUE_LARGE` in `.env`, `docker compose up -d api`, and
+`docker compose --profile large stop worker-large` once its queue is empty. A chart already
+waiting on `chart-runs-large` stays there until a `worker-large` runs it.
+
 **Turning on the API key** (after review-ui's Playground sends it): `API_KEY_REQUIRED=true` in
 `.env`, `docker compose up -d api`. Every POST then needs `X-API-Key`:
 

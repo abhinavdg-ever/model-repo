@@ -80,12 +80,25 @@ def run_message(
     }
 
 
-def send(items: Iterable[tuple[str, dict[str, Any]]]) -> int:
-    """Send ``(session_id, body)`` pairs to the queue; returns how many were sent."""
+def queue_for(pages: Optional[int]) -> str:
+    """The queue a chart of ``pages`` pages goes to (2026-11-19, user): SERVICEBUS_QUEUE_LARGE
+    when it is set and the chart has more than LARGE_CHART_PAGES pages, else SERVICEBUS_QUEUE.
+    An unknown page count stays on the normal queue."""
+    from common.config import LARGE_CHART_PAGES, SERVICEBUS_QUEUE, SERVICEBUS_QUEUE_LARGE
+
+    if SERVICEBUS_QUEUE_LARGE and pages is not None and pages > LARGE_CHART_PAGES:
+        return SERVICEBUS_QUEUE_LARGE
+    return SERVICEBUS_QUEUE
+
+
+def send(items: Iterable[tuple[str, dict[str, Any]]], queue: Optional[str] = None) -> int:
+    """Send ``(session_id, body)`` pairs to ``queue`` (default SERVICEBUS_QUEUE); returns how
+    many were sent."""
     items = list(items)
     if not items:
         return 0
-    _conn, queue = settings()
+    _conn, default = settings()
+    queue = queue or default
     sent = 0
     with get_client() as client:
         with client.get_queue_sender(queue_name=queue) as sender:

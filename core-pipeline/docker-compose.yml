@@ -125,3 +125,23 @@ services:
     stop_grace_period: 30m
     healthcheck:
       disable: true
+
+  # Large charts (2026-11-19, user): charts over LARGE_CHART_PAGES pages are queued on
+  # SERVICEBUS_QUEUE_LARGE and only this service runs them, so they never hold a normal worker.
+  # Off unless asked for:  docker compose --profile large up -d --scale worker=3 --scale worker-large=1
+  worker-large:
+    profiles: ["large"]
+    image: advantmed/core-pipeline:latest
+    command: ["python", "-m", "apps.worker.queue_worker"]
+    env_file:
+      - ./.env
+    environment:
+      <<: *core-env
+      SERVICEBUS_QUEUE: ${SERVICEBUS_QUEUE_LARGE:-chart-runs-large}
+    volumes: *core-volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    stop_grace_period: 30m
+    healthcheck:
+      disable: true

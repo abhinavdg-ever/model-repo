@@ -171,6 +171,11 @@ def _run_mode() -> str:
 RUN_MODE = _run_mode()
 SERVICEBUS_CONNECTION_STRING = (os.environ.get("SERVICEBUS_CONNECTION_STRING") or "").strip()
 SERVICEBUS_QUEUE = (os.environ.get("SERVICEBUS_QUEUE") or "chart-runs").strip()
+# Large charts on their own queue (2026-11-19, user: big charts were blocking the others).
+# Set: a chart with more than LARGE_CHART_PAGES pages is queued there, and only the
+# worker-large service reads it. Empty: every chart goes to SERVICEBUS_QUEUE, as before.
+SERVICEBUS_QUEUE_LARGE = (os.environ.get("SERVICEBUS_QUEUE_LARGE") or "").strip()
+LARGE_CHART_PAGES = int((os.environ.get("LARGE_CHART_PAGES") or "100").strip() or 100)
 # A chart can take longer than one 5-minute message lock: the worker renews it up to this long.
 WORKER_LOCK_RENEW_HOURS = float(os.environ.get("WORKER_LOCK_RENEW_HOURS") or "6")
 # X-API-Key on every POST, only when both are set (review-ui's Playground does not send it yet).
