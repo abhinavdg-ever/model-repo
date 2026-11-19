@@ -51,18 +51,12 @@ def _model_score(hit: Optional[dict[str, Any]]) -> Optional[float]:
 
 
 def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
-    """A row's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md section 12): the KV
-    model's own ``model_score`` when it scored the row; ``confidence.flipped`` when the
-    model and the rules disagree about the row (``rule_accepted`` vs ``accepted``, either
-    way); ``confidence.backup`` when only the rules scored it. None when neither did."""
+    """A row's confidence (2026-11-19, user; was the model_score alone, 2026-11-14): the
+    row's rule ``score`` x the LightGBM ``model_score`` (``confidence.kv_row``). Model only:
+    its p; rule score only: ``confidence.backup``. None when neither scored it."""
     if not hit:
         return None
-    model = _model_score(hit)
-    if model is None:
-        return None if _score(hit) is None else conf.backup()
-    if "rule_accepted" in hit and bool(hit.get("rule_accepted")) != bool(hit.get("accepted", True)):
-        return conf.flipped()
-    return conf.chosen(model, module="extraction")
+    return conf.kv_row(_score(hit), _model_score(hit))
 
 
 def row_confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:

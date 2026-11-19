@@ -78,30 +78,34 @@ class _Staged:
 
 
 def test_member_name_dob_and_id_each_have_their_own_confidence():
-    """2026-11-14 (user): three separate confidences, each the KV model_score of the row it came
-    from; rules only, NER and the manifest text search are backups; a row the model turned down
-    is flipped. The page's column keeps the lowest."""
+    """2026-11-19 (user): three separate confidences. A value read from a key / value row (its
+    value, or the member in its sentence): that row's rule score x model_score; rule score only:
+    backup. Found by searching the whole page (rules, GLiNER), no row: 0.60. The page's column
+    keeps the lowest."""
     from modules.member.stage import _page_confidence, member_field_confidences
 
     staged = _Staged({
         "name": [{"value": "Carl Rogers", "accepted": True, "selected": True, "model_score": 0.93,
-                  "rule_accepted": True, "score": 0.8}],
+                  "rule_accepted": True, "score": 0.8, "key": "Patient Name"},
+                 {"value": "", "key": "Patient", "sentence": "Patient: Carl Rogers", "model_score": 0.5, "score": 0.5}],
         "dob": [{"value": "01/02/1950", "accepted": False, "model_score": 0.2, "rule_accepted": True, "score": 0.9}],
         "member_id": [{"value": "X123", "accepted": True, "score": 0.9}],  # rules only, no model
     })
     page = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                         detected_dob="01/02/1950", detection_source_dob="rule based",
                         detected_member_id="X123", detection_source_member_id="rule based")
-    assert member_field_confidences(page, staged) == {"name": 0.93, "dob": 0.3, "member_id": 0.4}
-    assert _page_confidence(page, staged) == 0.3  # the lowest of the three
-    ner = _member_page("verified", detected_name="Carl Rogers", detection_source_name="ner")
-    assert member_field_confidences(ner, staged)["name"] == 0.4
+    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.18, "member_id": 0.4}
+    assert _page_confidence(page, staged) == 0.18  # the lowest of the three
+    # the member found in a row's sentence: that row's score x model_score
     searched = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                             ner_key_source_name="sentence: Patient")
-    assert member_field_confidences(searched, staged)["name"] == 0.4
+    assert member_field_confidences(searched, staged)["name"] == 0.25
+    # found on the page with no key / value row reading it: the whole-page find, 0.60
+    whole = _member_page("verified", detected_name="Carl Rogers", detection_source_name="ner")
+    assert member_field_confidences(whole, None)["name"] == 0.6
     # A database row (rule_based / extracted_*) reads the same.
     row = {"extracted_name": "Carl Rogers", "detection_source_name": "rule_based", "extracted_dob": None}
-    assert member_field_confidences(row, staged) == {"name": 0.93, "dob": None, "member_id": None}
+    assert member_field_confidences(row, staged) == {"name": 0.744, "dob": None, "member_id": None}
     assert _page_confidence(_member_page("not_verified")) is None  # nothing read, nothing decided
 
 

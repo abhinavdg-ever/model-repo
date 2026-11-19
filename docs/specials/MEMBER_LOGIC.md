@@ -179,13 +179,12 @@ Points 1, 2 and 4 are decisions to make, not yet changed.
 
 ## 10. Confidence
 
-Three separate numbers, name / DOB / ID (2026-11-14):
+Three separate numbers, name / DOB / ID (2026-11-19, user):
 
 | Case | Confidence |
 |---|---|
-| the value came from a kv_extract row the model accepted | the row's model score |
-| the model turned the row down but the rules kept it | 0.30 |
-| GLiNER, the manifest text search (`sentence: …`), or rules with no matching row | 0.40 |
+| read from a key / value row: its value, or the member found in its sentence (`sentence: <key>`) | that row's **rule score × LightGBM model_score** (rule score only: 0.40) |
+| found by searching the whole page (the rules, GLiNER), no row reads it | **0.60** (`whole_page_find`) |
 | nothing read | none |
 
 The page column `member_extraction_results.confidence` is the lowest of the three. Under 0.50 →

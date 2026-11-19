@@ -17,6 +17,11 @@ sections 0-11 and 12.6 disagree about a Final value's confidence, 12.6 is the co
 
 ## Current rule in one page (as of 2026-11-19)
 
+**2026-11-19 change (user):** a key / value row's confidence is its **rule score × LightGBM
+model_score** (`conf.kv_row`; model only: its p; rule score only: 0.40); the 0.30 "model and
+rules disagree on the row" value is gone for key / value rows. A member value found by
+**searching the whole page** (rules, GLiNER) is a fixed **0.60** (`whole_page_find`).
+
 **Read this first.** Sections 0–11 describe the numbers **before** 2026-11-14 and are kept as
 history. What runs today is this page, with the detail in section 12.
 
@@ -42,11 +47,11 @@ Both fixed lows sit under 0.50, so every backup or flipped value is always flagg
 
 | Field | Model case | Backup 0.40 | Flipped 0.30 | Other |
 |---|---|---|---|---|
-| **Member name / DOB / member ID** (three separate numbers) | the kv_extract row's `model_score` the value came from | GLiNER (NER), the manifest name found by text search, rules with no staged row | the KV model rejected the row but the rules kept it | nothing read: none. `member_extraction_results.confidence` = the lowest of the three |
+| **Member name / DOB / member ID** (three separate numbers) | the key / value row the value came from (its value, or the member found in its sentence): **rule score × model_score** | found by searching the whole page (rules, GLiNER), no row: **0.60** | | nothing read: none. `member_extraction_results.confidence` = the lowest of the three |
 | Member verification (chart) | not a confidence: **agreement rate** = pages agreeing with the decision / pages checked | | | |
-| Provider name | KV `model_score` | rules only | rules kept a row the model rejected | |
+| Provider name | rule score × KV `model_score` | rules only | | |
 | Credentials | the same person's provider-name confidence | credentials found anywhere else | | |
-| Signature present (Yes) | KV `model_score`; several signers: the lowest | rules only | model and rules disagree on the row | |
+| Signature present (Yes) | rule score × KV `model_score`; several signers: the lowest | rules only | | |
 | Signature absent (No) | 1 − the best model-scored candidate; KV read the page and offered no candidate at all: **1.0** | candidates from rules only | | |
 | **Blank / Junk / Main** | DistilBERT service p for the verdict's class (Main p(keep), Blank p(blank), Junk p(junk)), when it is the model's top class | pass-1 page deferred to pass 2; classifier unavailable; short-page rule; **stage 1 Blank fallback (2026-11-17)** | the verdict is not the model's top class (signed page kept while p(junk) was top, card near-miss turning Invoice into Cards, terms page) | no ink / no text / stage-1 Blank on an empty page / header-band-only stage-1 Blank: 1.0; pass-1 text rules: 0.95 |
 | Duplicate **Yes / Partial** | from the match score s to the original: max(0.30, 1 − 10 × (1 − s)): exact 1.0, 0.98 → 0.80, 0.95 → 0.50 | | | Partial (a blocked 100% match) is 1.0 |

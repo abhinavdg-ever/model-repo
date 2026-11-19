@@ -168,26 +168,29 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
 
 
 def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, staged_page: Any) -> Optional[float]:
-    """One member identifier's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md 12.2):
-    the KV model_score of the extraction row it came from (``row_confidence``: rules only
-    -> backup, model vs rules -> flipped; a row the model turned down -> flipped). Read by
-    NER, by the manifest text search ("sentence: ..."), or by the rules with no staged row:
-    backup. Nothing read: None."""
+    """One member identifier's confidence (2026-11-19, user):
+
+    * read from a key / value row (its value, or the member found in its sentence, key
+      source "sentence: <key>"): that row's rule score x model_score (``row_confidence``);
+    * found by searching the whole page (the rules, GLiNER): ``confidence.whole_page`` (0.60);
+    * nothing read: None."""
     value = _clean(value)
     if not value:
         return None
-    source = str(source or "").replace("_", " ").strip()
-    if source == "ner" or str(key_source or "").startswith("sentence:"):
-        return conf.backup()
-    row = _field_row(field_id, value, staged_page)
-    if row is None:
-        return conf.backup()
     from modules.extraction.results import row_confidence
 
-    if row.get("model_score") not in (None, "") and not row.get("accepted", True):
-        return conf.flipped()  # used although the model turned it down
-    found = row_confidence(row)
-    return conf.backup() if found is None else found
+    key_source = str(key_source or "")
+    row = None
+    if key_source.startswith("sentence:") and staged_page is not None:
+        key = key_source.split(":", 1)[1].strip()
+        rows = [r for r in staged_page.rows(field_id) if isinstance(r, dict) and str(r.get("key") or "").strip() == key]
+        scored = [(row_confidence(r), r) for r in rows]
+        scored = [(c, r) for c, r in scored if c is not None]
+        row = max(scored, key=lambda pair: pair[0])[1] if scored else None
+    if row is None:
+        row = _field_row(field_id, value, staged_page)
+    found = row_confidence(row) if row is not None else None
+    return conf.whole_page() if found is None else found
 
 
 def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Optional[float]]:

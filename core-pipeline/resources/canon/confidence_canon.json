@@ -28,6 +28,7 @@
   "carried_factor": 0.9,
   "measured": 1.0,
   "pass1_rule": 0.95,
+  "whole_page_find": 0.6,
   "duplicate": {
     "match_slope": 10.0,
     "floor": 0.3,

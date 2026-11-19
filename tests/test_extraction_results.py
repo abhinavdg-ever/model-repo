@@ -322,32 +322,32 @@ def test_confidence_is_the_signature_rows_model_score_and_the_lowest_signer():
           "rule_accepted": True, "model_score": 0.88}],
         [{"value": "Daniel J Hamilton, MD", "score": 0.9, "accepted": True}],
     )
-    assert outside["confidence"] == 0.88  # the name from outside no longer lowers it
+    assert outside["confidence"] == 0.704  # 0.8 x 0.88 (2026-11-19); the name from outside does not lower it
     several = signature_fields([
         {"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True, "selected": True,
          "rule_accepted": True, "model_score": 0.92},
         {"key": "Cosigned by", "provider_name": "Jane Roe, DNP", "score": 0.5, "accepted": True,
          "rule_accepted": True, "model_score": 0.71},
     ])
-    assert [s["confidence"] for s in several["signers"]] == [0.92, 0.71]
-    assert several["confidence"] == 0.71  # several signers: the lowest
+    assert [s["confidence"] for s in several["signers"]] == [0.736, 0.355]  # score x model_score
+    assert several["confidence"] == 0.355  # several signers: the lowest
 
 
 def test_the_models_score_is_the_base_and_the_rules_back_it():
     both = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True,
                               "rule_accepted": True, "model_score": 0.6}])
-    assert both["confidence"] == 0.6  # the model's own score, no rule lift (2026-11-14)
+    assert both["confidence"] == 0.48  # rule score x model_score (2026-11-19, user)
     against = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.4, "accepted": True,
                                  "rule_accepted": False, "model_score": 0.9}])
-    assert against["confidence"] == 0.3  # the model and the rules disagree about the row: flipped
+    assert against["confidence"] == 0.36  # 2026-11-19: score x model_score, no flipped value
 
 
 def test_row_and_credentials_confidence_2026_11_14():
     from modules.extraction.results import _named_confidence, row_confidence
 
-    assert row_confidence({"score": 0.9, "model_score": 0.77, "rule_accepted": True, "accepted": True}) == 0.77
+    assert row_confidence({"score": 0.9, "model_score": 0.77, "rule_accepted": True, "accepted": True}) == 0.693
     assert row_confidence({"score": 0.9}) == 0.4  # rules only
-    assert row_confidence({"score": 0.9, "model_score": 0.2, "rule_accepted": True, "accepted": False}) == 0.3
+    assert row_confidence({"score": 0.9, "model_score": 0.2, "rule_accepted": True, "accepted": False}) == 0.18
     assert row_confidence({}) is None
     named = {"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9}
     # The provider_name row for the same person carries the model's probability.
