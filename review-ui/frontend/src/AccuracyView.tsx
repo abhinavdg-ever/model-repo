@@ -1052,7 +1052,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   return (
     <>
       <button type="button" className="accuracy-extra-link" aria-expanded={open} onClick={() => setOpen(true)}>
-        Confidence
+        Confidence Analysis
       </button>
       {open && data
         ? createPortal(
@@ -1061,7 +1061,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                    aria-labelledby="confidence-metrics-title" onClick={(event) => event.stopPropagation()}>
                 <div className="modal-card-header">
                   <h2 id="confidence-metrics-title">
-                    Confidence · {data.mean == null ? "—" : `${data.mean}%`}{" "}
+                    Confidence Analysis · {data.mean == null ? "—" : `${data.mean}%`}{" "}
                     {data.level ? <span className={`chart-glance-pill level-${data.level}`}>{levelLabel(data.level)}</span> : null}
                   </h2>
                   <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">

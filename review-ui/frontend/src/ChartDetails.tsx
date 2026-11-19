@@ -77,9 +77,9 @@ export default function ChartDetails({
   const button = (
     <div className="mode-icon-group chart-details-group">
       <button type="button" className="mode-icon-btn" onClick={() => setOpen(true)}
-              title="Chart details" aria-label="Chart details">
+              title="Chart analysis" aria-label="Chart analysis">
         <Info size={18} aria-hidden="true" />
-        <span>Details</span>
+        <span>Analysis</span>
       </button>
     </div>
   );
@@ -106,7 +106,7 @@ export default function ChartDetails({
           <div className="modal-card chart-details-card" role="dialog" aria-modal="true"
                aria-labelledby="chart-details-title" onClick={(event) => event.stopPropagation()}>
             <div className="modal-card-header">
-              <h2 id="chart-details-title">Details · {folder?.name ?? doc.folder_id}</h2>
+              <h2 id="chart-details-title">Analysis · {folder?.name ?? doc.folder_id}</h2>
               <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">
                 <X size={16} />
               </button>
