@@ -41,7 +41,7 @@ def test_backing_keywords_lift_the_model_and_penalties_multiply():
     assert conf.score(0.9, "keywords_disagree") == pytest.approx(0.63)
     assert conf.score(0.9, "conflict", "conflict") == pytest.approx(0.72)  # a reason counts once
     assert conf.score(1.0, "no_model", "fallback") == pytest.approx(0.51)
-    assert conf.score(1.7) == 1.0 and conf.score(-0.2) == 0.0 and conf.score(None) is None
+    assert conf.score(1.7) == 1.0 and conf.score(-0.2) == 0.2 and conf.score(None) is None  # floor 0.20 (2026-11-19)
 
 
 def test_under_the_modules_own_bar_reads_under_the_review_line():
@@ -94,8 +94,8 @@ def test_member_name_dob_and_id_each_have_their_own_confidence():
     page = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                         detected_dob="01/02/1950", detection_source_dob="rule based",
                         detected_member_id="X123", detection_source_member_id="rule based")
-    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.18, "member_id": 0.6}  # rules only: 0.60
-    assert _page_confidence(page, staged) == 0.18  # the lowest of the three
+    assert member_field_confidences(page, staged) == {"name": 0.744, "dob": 0.2, "member_id": 0.6}  # rules only: 0.60; 0.18 -> floor 0.20
+    assert _page_confidence(page, staged) == 0.2  # the lowest of the three
     # the member found in a row's sentence: that row's score x model_score
     searched = _member_page("verified", detected_name="Carl Rogers", detection_source_name="rule based",
                             ner_key_source_name="sentence: Patient")
@@ -242,3 +242,9 @@ def test_member_id_confidence_is_the_mean_of_the_chosen_ids():
     ]})
     page = _member_page("verified", detected_member_id="000507178", detection_source_member_id="rule based")
     assert member_field_confidences(page, staged)["member_id"] == 0.7
+
+
+def test_no_confidence_below_the_floor():
+    """2026-11-19 (user): no confidence below 20%, any field."""
+    assert conf.chosen(0.007) == 0.2 and conf.kv_row(0.5, 0.1) == 0.2 and conf.at_least_floor(0.05) == 0.2
+    assert conf.at_least_floor(None) is None and conf.chosen(0.9) == 0.9

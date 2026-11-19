@@ -347,7 +347,7 @@ def test_row_and_credentials_confidence_2026_11_14():
 
     assert row_confidence({"score": 0.9, "model_score": 0.77, "rule_accepted": True, "accepted": True}) == 0.693
     assert row_confidence({"score": 0.9}) == 0.6  # rules only (2026-11-19)
-    assert row_confidence({"score": 0.9, "model_score": 0.2, "rule_accepted": True, "accepted": False}) == 0.18
+    assert row_confidence({"score": 0.9, "model_score": 0.2, "rule_accepted": True, "accepted": False}) == 0.2  # 0.18 -> floor 0.20
     assert row_confidence({}) is None
     named = {"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9}
     # The provider_name row for the same person carries the model's probability.

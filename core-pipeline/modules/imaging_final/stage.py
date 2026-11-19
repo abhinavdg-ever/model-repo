@@ -266,7 +266,8 @@ def final_confidences(
     # Every page's verdict, Main included: a page kept Main on a weak verdict is flagged too.
     out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
     out["handwriting"] = _number((quality.get(page_id) or {}).get("hw_confidence"))
-    return {k: round(v, 4) for k, v in out.items() if v is not None}
+    # 2026-11-19 (user): no Final confidence below the floor (0.20), whichever stage gave it.
+    return {k: conf.at_least_floor(v) for k, v in out.items() if v is not None}
 
 
 def _anchor(type_pages: list[int], page_type: Optional[str], page_subtype: Optional[str],
@@ -434,6 +435,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             if downgraded:
                 codability = "Non-Codable"
                 non_codable_pages += 1
+            # 2026-11-19 (user): a Blank / Junk page is Non-Codable (its confidence below is the
+            # Blank / Junk verdict's).
+            blank_or_junk = flag in ("blank", "junk")
+            if blank_or_junk:
+                codability = "Non-Codable"
             row = {
                 "member_name": member.get("extracted_name") or None,
                 "member_dob": _iso(member.get("extracted_dob")),
@@ -510,6 +516,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 blank_junk=blank_junk,
                 quality=quality,
             )
+            if blank_or_junk and row["confidences"].get("blank_junk") is not None:
+                row["confidences"]["codability"] = row["confidences"]["blank_junk"]
             rows[page_id] = row
 
         # Duplicates are skipped by every stage after blank/junk, so they have

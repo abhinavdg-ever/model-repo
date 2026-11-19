@@ -68,6 +68,8 @@ DEFAULTS: dict[str, Any] = {
     # value found by searching the whole page (rules, GLiNER), or a key / value row only the
     # rules scored.
     "rules_find": 0.6,
+    # 2026-11-19 (user): no confidence anywhere, any field, is shown below this.
+    "floor": 0.2,
     "duplicate": {
         "match_slope": 10.0, "floor": 0.3,
         "clear_below": 0.8, "good_until": 0.9, "good_slope": 2.0, "near_slope": 5.0,
@@ -121,7 +123,7 @@ def score(base: Optional[float], *reasons: str, module: str = "") -> Optional[fl
     value = _clip(base)
     for reason in dict.fromkeys(r for r in reasons if r):
         value *= penalty(reason)
-    return round(_clip(calibrate(module, value)), 4)
+    return _out(calibrate(module, value))
 
 
 def calibrate(module: str, value: float) -> float:
@@ -180,7 +182,7 @@ def chosen(p: Optional[float], *, module: str = "") -> Optional[float]:
         value = float(p)
     except (TypeError, ValueError):
         return None
-    return round(_clip(calibrate(module, _clip(value))), 4)
+    return _out(calibrate(module, _clip(value)))
 
 
 def backup() -> float:
@@ -208,7 +210,7 @@ def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
         return None if score is None else rules_find()
     if score is None:
         return chosen(model, module="extraction")
-    return round(_clip(float(score) * float(model)), 4)
+    return _out(float(score) * float(model))
 
 
 def dropped(value: Optional[float] = None) -> float:
@@ -229,7 +231,7 @@ def carried(anchor: Optional[float]) -> Optional[float]:
     confidence x ``carried_factor`` (0.90). None when the anchor has none."""
     if anchor is None:
         return None
-    return round(_clip(float(anchor) * float(settings()["carried_factor"])), 4)
+    return _out(float(anchor) * float(settings()["carried_factor"]))
 
 
 def measured() -> float:
@@ -300,6 +302,21 @@ def weakest(values: Iterable[Optional[float]]) -> Optional[float]:
     """The lowest of the values given (None ignored); None when there are none."""
     found = [float(v) for v in values if v is not None]
     return min(found) if found else None
+
+
+def floor() -> float:
+    """The lowest confidence any field shows (2026-11-19, user): 0.20."""
+    return float(settings().get("floor", 0.2))
+
+
+def at_least_floor(value: Optional[float]) -> Optional[float]:
+    """``value`` raised to ``floor()`` (None stays None), rounded."""
+    return None if value is None else round(max(floor(), min(1.0, float(value))), 4)
+
+
+def _out(value: float) -> float:
+    """A confidence as given out: within [floor, 1], rounded."""
+    return round(max(floor(), _clip(value)), 4)
 
 
 def _clip(value: float) -> float:

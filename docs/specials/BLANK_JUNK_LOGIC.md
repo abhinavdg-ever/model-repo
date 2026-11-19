@@ -61,6 +61,7 @@ Then, the first rule that matches decides:
 | 6 | **Fax letter** | "Fax" as a **section header** (2026-11-19, user: a mention of Fax, or a fax number in a letter, is not junk) + a letter's closing (Sincerely, Yours truly, Regards, Respectfully …) and no Electronic Signature; or "Fax" in a section header and no signature. **Never** on a page with note content (a Progress Note header, an ICD-10 code or a medication list): "Fax to:" inside a note is not junk (2026-11-19) | Junk / Letter/Fax |
 | 7 | Stage 1 Blank fallback | Stage 1 typed it Blank and nothing above kept it (2026-11-17) | Blank |
 | 8 | **Classifier** | The DistilBERT service: JUNK with p(keep) < 0.99 → Junk / its subtype; BLANK → Junk / Others; else Main. A model Invoice is a card only on a card near miss that no form / letter / length guard stopped and no note content (2026-11-19: an anesthesia note read as an invoice was becoming Cards) | its verdict |
+| ✓ | **p(keep) 99% check** (2026-11-19, user) | On a page that is **not short**, a rule that would file it **Junk / Letter/Fax or Junk / Cover Page** (rules 2 and 6) stands only while DistilBERT's p(keep) is **under 99%**. At 99% or more the page stays **Main** (rule `KEEP99`). Other junk rules (contents page, cards, the short-page rules, R1 / R2 no-text rules, the classifier) are not overruled. Canon `keep_veto_at` 0.99 | Main |
 | 9 | Invoice post-processing | unchanged: a dollar table or invoice wording → Main (Invoice page); a terms page → Junk / Others; a care provider's page with no invoice wording → Main, not an invoice | |
 
 ### Rule 3: the short page (2026-11-19)
@@ -105,6 +106,16 @@ of the page; the word "card" and a name, **unless the evidence is strong**. Chan
 The model's raw probability for the verdict's class (Main p(keep), Blank p(blank), Junk p(junk)),
 **whichever rule decided** (no fixed 0.30 any more); without the model 40%. Measured blanks 100%;
 pass 1 text rules 95%.
+
+## Confidence and codability (2026-11-19)
+
+- **Confidence** = DistilBERT's probability for the class the page was filed under, whichever
+  rule decided: Main → p(keep), Blank → p(blank), Junk → p(junk). No model (pass 1): the rule's own
+  value (pass-1 rule 95%, measured blank 100%, else the 40% backup).
+- **Floor**: no confidence, on any field, is shown below **20%** (a rule that overrides a sure
+  model used to read 0.7%).
+- **Codability**: a Blank or Junk page is **Non-Codable** in Final, with the Blank / Junk
+  confidence.
 
 ## Duplicates (after the verdict)
 

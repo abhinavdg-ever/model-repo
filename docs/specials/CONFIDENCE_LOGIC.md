@@ -23,6 +23,11 @@ row LightGBM did not score, credentials not beside a scored provider name, or a 
 found by searching the whole page with the rules or GLiNER) is a fixed **0.60** (`rules_find`).
 The 0.30 "model and rules disagree on the row" value is gone for key / value rows.
 
+**2026-11-19, floor (user):** no confidence, on any field, is below **0.20** (`conf.floor`,
+canon `floor`): every engine value is raised to it, and `imaging_final.confidences` applies it
+again. A Blank / Junk page's Final **Codability is Non-Codable** with the Blank / Junk confidence.
+Member ID = the mean of the ID rows KV Extract chose; several signers = their mean.
+
 **Read this first.** Sections 0–11 describe the numbers **before** 2026-11-14 and are kept as
 history. What runs today is this page, with the detail in section 12.
 

@@ -28,6 +28,8 @@
   "carried_factor": 0.9,
   "measured": 1.0,
   "pass1_rule": 0.95,
+  "floor": 0.2,
+  "floor_note": "2026-11-19 (user): no confidence, any field, is shown below this; a lower value is raised to it.",
   "rules_find": 0.6,
   "duplicate": {
     "match_slope": 10.0,

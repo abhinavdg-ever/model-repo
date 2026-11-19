@@ -617,6 +617,16 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
     )
 
 
+# The junk verdicts KEEP_VETO_AT can overrule (2026-11-19, user: "just Fax / Cover").
+KEEP_VETO_CODES = frozenset({CODE_LETTER_FAX, CODE_COVER_PAGE})
+
+
+def keep_veto_at() -> float:
+    """DistilBERT's p(keep) at or above which no rule junks a page that is not short (canon
+    ``keep_veto_at``, 0.99; 2026-11-19, user)."""
+    return float(canon().raw.get("keep_veto_at", 0.99))
+
+
 def verdict_confidence(code: int, p_keep: Optional[float], p_junk: Optional[float],
                        p_blank: Optional[float] = None, *, model_class: Optional[str] = None) -> float:
     """How sure the verdict is (2026-11-19, user: "make it real", was flipped 0.30 when the model's
@@ -727,6 +737,18 @@ def decide(inputs: PageInputs) -> Verdict:
               confidence: Optional[float] = None) -> Verdict:
         """``strength``: the pre-2026-11-14 value (rule_strength when None); ``confidence``:
         the new one (verdict_confidence when None)."""
+        # 2026-11-19 (user): on a page that is not short, a rule may file it Junk / Letter/Fax or
+        # Junk / Cover Page only while DistilBERT's p(keep) is under KEEP_VETO_AT (99%): a page
+        # the model is that sure of stays Main. Other junk rules, the no-text rules (R1, R2), the
+        # short page's own rules and the classifier (R5) are not overruled.
+        if (code in KEEP_VETO_CODES and rule not in NO_TEXT_RULES + ("R5",) and not inputs.short_verdict
+                and p_keep is not None and p_keep >= keep_veto_at()):
+            votes["keep_veto"] = f"{rule} -> {code}: p(keep) {p_keep:.2%} >= {keep_veto_at():.0%}"
+            votes["rule"] = "KEEP99"
+            value = verdict_confidence(CODE_MAIN, p_keep, p_junk, p_blank)
+            return Verdict(CODE_MAIN, float(value), "KEEP99",
+                           f"KEEP99: {rule} would junk it, but p(keep) {p_keep:.1%} >= {keep_veto_at():.0%} -> Main",
+                           votes, strength=round(float(value), 4))
         votes["rule"] = rule
         old = rule_strength(code, rule, p_keep, p_junk) if strength is None else strength
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence

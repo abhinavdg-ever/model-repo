@@ -47,3 +47,16 @@ def test_fax_inside_a_note_is_not_junk_and_a_fax_letter_is():
     # 2026-11-19 (user): Fax only mentioned, or a fax number in a letter, is not junk.
     assert _verdict(letter, headings=()).code == m.CODE_MAIN
     assert _verdict("Dear Dr Roe,\nPlease call or fax 330-555-0142.\nSincerely,\nMary Jones", headings=()).code == m.CODE_MAIN
+
+
+def test_no_rule_junks_a_long_page_the_model_keeps_at_99():
+    """2026-11-19 (user): on a page that is not short, a Fax / Cover junk rule stands only while
+    p(keep) < 99%."""
+    letter = "Fax to: Records Dept\nPlease find the requested records enclosed.\nSincerely,\nMary Jones"
+    sure = {"flag": "KEEP", "subclass": "", "confidence": 0.995, "decision_reason": "argmax",
+            "p_keep": 0.995, "p_blank": 0.0, "p_junk": 0.005}
+    inputs = m.PageInputs(text=letter, pass_no=2, headings=("Fax",),
+                          bert={"p_keep": 0.995, "p_junk": 0.005, "p_blank": 0.0, "service": sure})
+    v = m.decide(inputs)
+    assert v.code == m.CODE_MAIN and v.rule == "KEEP99" and v.confidence == 0.995
+    assert _verdict(letter, headings=("Fax",)).code == m.CODE_LETTER_FAX  # p(keep) 0.9: the rule stands

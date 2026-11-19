@@ -851,5 +851,7 @@
     "enabled": true,
     "min_icd_codes": 2,
     "social_history": true
-  }
+  },
+  "keep_veto_at": 0.99,
+  "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled."
 }
