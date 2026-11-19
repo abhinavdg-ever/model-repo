@@ -6999,7 +6999,8 @@ input {
 .chart-glance-pill.level-high { color: var(--status-success-fg); background: var(--status-success-bg); }
 .chart-glance-pill.level-low { color: var(--status-error-fg); background: var(--status-error-bg); }
 .chart-glance-pill.level-none { color: inherit; background: transparent; opacity: 0.6; }
-.chart-details-group { margin-left: auto; margin-right: 0.4rem; }
+/* Same gap to OCR as OCR to Imaging (0.4rem): the header's 1rem gap less 0.6rem. */
+.chart-details-group { margin-left: auto; margin-right: -0.6rem; }
 .chart-details-card { width: min(42rem, calc(100vw - 2rem)); max-height: 85vh; overflow: auto; }
 .chart-details-card section { margin: 0.7rem 0 1rem; }
 .chart-details-card h3 { font-size: 0.8rem; margin: 0 0 0.4rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--neutral-600); }
