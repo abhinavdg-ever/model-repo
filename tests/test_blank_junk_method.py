@@ -600,9 +600,9 @@ class TestVerdictConfidence2026_11_14:
         vetoed["service"] = {**vetoed["service"], "flag": "KEEP", "confidence": 0.4}
         v = run(FILLER, bert=vetoed)
         assert (v.code, v.confidence) == (method.CODE_MAIN, 0.4)
-        # Signed (R4) while p(junk) is the top class: p(keep).
+        # Signed (R4) while p(junk) is the top class: a rule flipping the model, 0.40 (2026-11-19, user).
         signed = run(FILLER, bert=bert(0.8), signed=True, signature_known=True)
-        assert (signed.rule, signed.confidence) == ("R4", 0.2)
+        assert (signed.rule, signed.confidence) == ("R4", 0.4) and signed.votes.get("flipped_model")
         assert signed.strength is not None and signed.strength != signed.confidence
 
     def test_no_model_is_a_backup(self):

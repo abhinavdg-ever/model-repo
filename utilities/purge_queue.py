@@ -13,8 +13,8 @@ What it does, per queue (SERVICEBUS_QUEUE, and SERVICEBUS_QUEUE_LARGE when set; 
 one queue only):
 
   1. counts the waiting and dead-lettered messages (when the key may read them: Manage rights);
-  2. deletes every waiting message: each session (one per chart) is taken in turn and its
-     messages received-and-deleted;
+  2. deletes every waiting message: 8 sessions (one per chart) at a time, each received-and-
+     deleted (about a second per chart per thread);
   3. deletes the dead-lettered messages too (--keep-dead-letters to leave them);
   4. sets every pipeline_jobs row still queued / running / retrying on those queues to failed,
      error "cancelled: queue purged by operator" (--keep-jobs to leave them).
@@ -44,6 +44,10 @@ except ImportError:
 
 CANCEL_NOTE = "cancelled: queue purged by operator"
 SESSION_WAIT = 5  # seconds to wait for another session before the queue counts as empty
+# Inside a session (one chart, usually one message): how long to wait for more. Was 5 s per
+# chart, which made a purge of 500 charts take ~45 minutes (2026-11-19).
+MESSAGE_WAIT = 1
+PARALLEL = 8  # sessions emptied at once
 BATCH = 100
 
 
@@ -67,8 +71,9 @@ def counts(conn_str: str, queue: str) -> Optional[tuple[int, int]]:
         return None
 
 
-def purge_sessions(client: Any, queue: str) -> int:
-    """Receive-and-delete every message of every session; the number deleted."""
+def _drain_sessions(client: Any, queue: str) -> int:
+    """One thread's share: take sessions in turn, receive-and-delete their messages, until no
+    session with messages is left."""
     from azure.servicebus import NEXT_AVAILABLE_SESSION, ServiceBusReceiveMode
 
     deleted = 0
@@ -78,7 +83,7 @@ def purge_sessions(client: Any, queue: str) -> int:
                                            receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
                                            max_wait_time=SESSION_WAIT) as receiver:
                 while True:
-                    got = receiver.receive_messages(max_message_count=BATCH, max_wait_time=SESSION_WAIT)
+                    got = receiver.receive_messages(max_message_count=BATCH, max_wait_time=MESSAGE_WAIT)
                     if not got:
                         break
                     deleted += len(got)
@@ -86,6 +91,20 @@ def purge_sessions(client: Any, queue: str) -> int:
             if type(exc).__name__ in {"OperationTimeoutError", "SessionCannotBeLockedError"}:
                 return deleted  # no session left with messages
             raise
+
+
+def purge_sessions(client_factory: Any, queue: str, parallel: int = PARALLEL) -> int:
+    """Receive-and-delete every message of every session, ``parallel`` sessions at a time (one
+    client per thread); the number deleted. ``client_factory()`` makes a client (a context
+    manager)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one() -> int:
+        with client_factory() as client:
+            return _drain_sessions(client, queue)
+
+    with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+        return sum(pool.map(lambda _i: one(), range(max(1, parallel))))
 
 
 def purge_dead_letters(client: Any, queue: str) -> int:
@@ -96,7 +115,7 @@ def purge_dead_letters(client: Any, queue: str) -> int:
                                    receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
                                    max_wait_time=SESSION_WAIT) as receiver:
         while True:
-            got = receiver.receive_messages(max_message_count=BATCH, max_wait_time=SESSION_WAIT)
+            got = receiver.receive_messages(max_message_count=BATCH, max_wait_time=MESSAGE_WAIT)
             if not got:
                 return deleted
             deleted += len(got)
@@ -160,8 +179,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for name in names:
         # Each queue with its own key: SERVICEBUS_CONNECTION_STRING_LARGE for the large one when set.
+        deleted = purge_sessions(lambda name=name: q.client_for(name), name)
         with q.client_for(name) as client:
-            deleted = purge_sessions(client, name)
             dead = 0 if args.keep_dead_letters else purge_dead_letters(client, name)
         print(f"  {name}: {deleted} waiting message(s) deleted, {dead} dead letter(s) deleted")
     if db_url and not args.keep_jobs:

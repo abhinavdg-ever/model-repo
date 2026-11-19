@@ -176,14 +176,27 @@ def folders_confidence(
 
 
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
-def get_folder(folder_id: str, repo: FolderRepository = Depends(get_repository)) -> FolderDetail:
+def get_folder(
+    folder_id: str,
+    repo: FolderRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+) -> FolderDetail:
     detail = repo.get_folder(folder_id)
     logger.info(
         "get_folder id=%s pages=%d",
         folder_id,
         len(detail.pages),
     )
-    return detail
+    # 2026-11-19 (user): cluster, Scope, Source, Measure, Retrieval for the chart's Analysis card.
+    from app.services.chart_metadata import chart_facts
+
+    try:
+        facts = chart_facts(settings.database_url, folder_id, db_schema=settings.db_schema)
+    except Exception as exc:  # the card's facts must never stop the chart opening
+        logger.warning("chart facts failed: %s", type(exc).__name__)
+        facts = {}
+    missing = {k: v for k, v in facts.items() if not getattr(detail, k, None)}
+    return detail.model_copy(update=missing) if missing else detail
 
 
 @router.get("/folders/{folder_id}/manifest", response_model=ImagingManifestDetails)

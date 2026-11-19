@@ -121,6 +121,13 @@ class FolderDetail(BaseModel):
     last_updated_at: datetime | None = None
     run_id: str | None = None
     batch_id: str | None = None
+    # 2026-11-19 (user): the chart's facts for its Analysis card -- chart_list.chart_cluster and
+    # the manifest's Scope / Source / Measure / Retrieval (chart_metadata.chart_facts).
+    chart_cluster: str | None = None
+    project_scope: str | None = None
+    source_name: str | None = None
+    measure: str | None = None
+    rr_method: str | None = None
     # Expected member identity (manifest_member_list / metadata CSV) — cheap SQL
     # on folder open so the UI can show Manifest Details before /imaging loads.
     manifest: ImagingManifestDetails | None = None

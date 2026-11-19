@@ -54,9 +54,15 @@ def test_every_session_is_emptied(monkeypatch):
             return self.batches.pop(0) if self.batches else []
 
     class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
         def get_queue_receiver(self, **kw):
-            if not sessions:
-                raise OperationTimeoutError()
-            return Receiver(sessions.pop(0))
+            try:
+                return Receiver(sessions.pop(0))
+            except IndexError:  # no session left (threads race for the last one)
+                raise OperationTimeoutError() from None
 
-    assert purge.purge_sessions(Client(), "chart-runs") == 4
+    # 2026-11-19: several sessions at once, one client per thread; every message counted once.
+    assert purge.purge_sessions(Client, "chart-runs", parallel=3) == 4

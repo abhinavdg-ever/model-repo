@@ -621,6 +621,16 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
 KEEP_VETO_CODES = frozenset({CODE_LETTER_FAX, CODE_COVER_PAGE})
 
 
+def rule_flips_model(code: int, p_keep: Optional[float], p_junk: Optional[float],
+                     p_blank: Optional[float]) -> bool:
+    """Does a rule's verdict go against DistilBERT's top class, Keep vs Junk / Blank? (Junk vs
+    Blank is not a flip.) False without the model."""
+    if p_keep is None or p_junk is None:
+        return False
+    model_keeps = float(p_keep) >= max(float(p_junk), float(p_blank or 0.0))
+    return model_keeps != (code == CODE_MAIN)
+
+
 def keep_veto_at() -> float:
     """DistilBERT's p(keep) at or above which no rule junks a page that is not short (canon
     ``keep_veto_at``, 0.99; 2026-11-19, user)."""
@@ -751,6 +761,11 @@ def decide(inputs: PageInputs) -> Verdict:
                            votes, strength=round(float(value), 4))
         votes["rule"] = rule
         old = rule_strength(code, rule, p_keep, p_junk) if strength is None else strength
+        if confidence is None and rule_flips_model(code, p_keep, p_junk, p_blank):
+            # 2026-11-19 (user): a hard-coded rule that turns the model's Keep into Junk / Blank,
+            # or its Junk / Blank into Main: the backup 40%.
+            votes["flipped_model"] = True
+            confidence = conf.backup()
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
         return Verdict(code, float(value), rule, reason, votes, strength=round(float(old), 4))
 
@@ -820,7 +835,9 @@ def decide(inputs: PageInputs) -> Verdict:
     if short:
         votes["short_page"] = short["why"]
         if short["code"] is not None:
-            return ruled(short["code"], short["rule"], f"{SHORT_RULE}{short['rule']}: {short['why']}")
+            # 2026-11-19 (user): a short page the short rules decided: the rules-find 60%.
+            return ruled(short["code"], short["rule"], f"{SHORT_RULE}{short['rule']}: {short['why']}",
+                         confidence=conf.rules_find())
     to_classifier = bool(short)  # a short page no short rule decided goes to the classifier
 
     card = None

@@ -313,7 +313,8 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
             if manifest else None,
         )
         if detail is not None and detail.pages:
-            return detail
+            cluster = str((chart.row or {}).get("chart_cluster") or "").strip() if chart.chart_doc else ""
+            return detail.model_copy(update={"chart_cluster": cluster or None}) if cluster else detail
         raise HTTPException(status_code=404, detail=f"Chart not found: {folder_id}")
 
     @staticmethod

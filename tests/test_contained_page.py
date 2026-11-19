@@ -231,3 +231,10 @@ def test_sf_a_short_fax_routing_page_is_junk_even_with_a_provider(monkeypatch):
     assert rows[2]["flag"] == "junk" and "SF" in rows[2]["reason"]
     assert method.fax_routing("Fax: 330-555-0142") is None                      # no To / From line
     assert method.fax_routing("To: Dr Roe\nFax # 330.555.0142") is not None
+
+
+def test_a_short_page_rules_verdict_reads_60(monkeypatch):
+    """2026-11-19 (user): a short page the short rules decided: 0.60, whatever the model said."""
+    _keep(monkeypatch)
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
+    assert "S5" in rows[2]["reason"] and rows[2]["confidence"] == 0.6

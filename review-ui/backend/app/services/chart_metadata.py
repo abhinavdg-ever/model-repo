@@ -133,3 +133,44 @@ def chart_metadata_map(
 def _text(value: object) -> Optional[str]:
     text = "" if value is None else str(value).strip()
     return text or None
+
+
+_CHART_FACTS_SQL = """
+SELECT to_jsonb(c) ->> 'chart_cluster',
+       (SELECT to_jsonb(m) FROM manifest_member_list m
+         WHERE m.record_id = c.chart_name
+           AND COALESCE(to_jsonb(m) ->> 'source_name', to_jsonb(m) ->> 'measure',
+                        to_jsonb(m) ->> 'rr_method', to_jsonb(m) ->> 'project_scope') IS NOT NULL
+         ORDER BY m.id LIMIT 1)
+  FROM chart_list c
+ WHERE c.chart_name = %s
+"""
+
+
+def chart_facts(database_url: str | None, chart: str, *, db_schema: str = "public",
+                metadata_dir: Path | None = None) -> dict[str, Optional[str]]:
+    """One chart's cluster (chart_list.chart_cluster) and Scope / Source / Measure / Retrieval
+    (its first manifest_member_list row with any, the metadata CSVs filling gaps), for the
+    chart's Analysis card (2026-11-19, user). Missing values are left out."""
+    out: dict[str, Optional[str]] = {}
+    if backend.reads_cosmos():
+        # The cluster comes with the chart's own document (CosmosFolderRepository.get_folder).
+        out.update(cosmos_chart_metadata().get(chart) or {})
+    elif database_url and db_lookup_enabled(database_url, db_schema):
+        try:
+            with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+                cur.execute(_CHART_FACTS_SQL, (chart,))
+                found = cur.fetchone()
+        except Exception as exc:
+            logger.warning("chart facts lookup failed for a chart: %s", type(exc).__name__)
+            found = None
+        if found:
+            cluster, manifest = found
+            out["chart_cluster"] = _text(cluster)
+            manifest = manifest or {}
+            for name in FIELDS:
+                out[name] = _text(manifest.get(name))
+    for name, value in (csv_chart_metadata(metadata_dir).get(chart) or {}).items():
+        if value and not out.get(name):
+            out[name] = value
+    return {k: v for k, v in out.items() if v}

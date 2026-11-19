@@ -1005,8 +1005,16 @@ function scorePct(score: LevelScore): string {
  * pages, how confidence is spread (overall and per metric), the cross tab of page confidence
  * against the page's overall match, and each metric's accuracy at each of its confidence levels
  * -- High should be the most accurate. */
+/** Deciles, top first: [label, lowest value]. */
+const DECILES: [string, number][] = Array.from({ length: 10 }, (_, i) => {
+  const lo = (9 - i) / 10;
+  return [`${Math.round(lo * 100)}-${Math.round(lo * 100) + 10}%`, lo] as [string, number];
+});
+
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const [open, setOpen] = useState(false);
+  // 2026-11-19 (user): Overview, then one tab per metric with its accuracy by confidence decile.
+  const [tab, setTab] = useState<"overview" | MetricId>("overview");
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -1024,6 +1032,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
     for (const metric of LIVE_METRICS) byMetric.set(metric.id, { high: emptyScore(), medium: emptyScore(), low: emptyScore() });
+    // Per metric, its pages by their own confidence decile (index 0 = 0-10%, 9 = 90-100%).
+    const deciles = new Map<MetricId, LevelScore[]>();
+    for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: 10 }, emptyScore));
     for (const row of rows) {
       for (const page of row.pages) {
         const pc = page.confidence;
@@ -1038,14 +1049,17 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         addVerdict(cross[pc.level], page.overall);
         for (const metric of LIVE_METRICS) {
           const field = pc.fields.find((f) => f.key === METRIC_FEATURE[metric.id]);
-          if (field) addVerdict(byMetric.get(metric.id)![field.level], page.scores[metric.id]);
+          if (field) {
+            addVerdict(byMetric.get(metric.id)![field.level], page.scores[metric.id]);
+            addVerdict(deciles.get(metric.id)![Math.min(9, Math.max(0, Math.floor(field.value * 10)))], page.scores[metric.id]);
+          }
         }
       }
     }
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
     const level: Level | null = !total ? null
       : chartLevel(pageLevels, total);
-    return { pageLevels, total, level, mean: total && level ? Math.round(100 * capToLevel(level, sum / total)) : null, perFeature, cross, byMetric };
+    return { pageLevels, total, level, mean: total && level ? Math.round(100 * capToLevel(level, sum / total)) : null, perFeature, cross, byMetric, deciles };
   }, [open, rows]);
 
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
@@ -1073,6 +1087,62 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                   Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: High when every field is High; Low when any
                   field is Low; else Medium.
                 </p>
+                <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
+                  {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
+                    <button key={id} type="button" role="tab" aria-selected={tab === id}
+                            className={tab === id ? "active" : undefined} onClick={() => setTab(id)}>
+                      {id === "overview" ? "Overview" : (LIVE_METRICS.find((m) => m.id === id)?.tableLabel
+                        ?? LIVE_METRICS.find((m) => m.id === id)?.label)}
+                    </button>
+                  ))}
+                </div>
+                {tab !== "overview" ? (() => {
+                  const metric = LIVE_METRICS.find((m) => m.id === tab)!;
+                  const buckets = data.deciles.get(metric.id)!;
+                  const partial = buckets.some((b) => b.maybe > 0);
+                  const all = buckets.reduce((t, b) => ({ pages: t.pages + b.pages, yes: t.yes + b.yes, maybe: t.maybe + b.maybe, no: t.no + b.no }), emptyScore());
+                  return (
+                    <section>
+                      <h3>{metric.label}: accuracy by confidence decile</h3>
+                      <p className="chart-details-note">
+                        Pages with ground truth, grouped by this metric's own confidence. Accuracy should rise with
+                        confidence. No confidence is below 20%.
+                      </p>
+                      <table className="chart-details-table">
+                        <thead>
+                          <tr>
+                            <th>Confidence</th><th className="num">Pages</th><th className="num">Match</th>
+                            {partial ? <th className="num">Partial</th> : null}
+                            <th className="num">No Match</th><th className="num">Accuracy</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {DECILES.map(([label, lo], i) => {
+                            const b = buckets[9 - i];
+                            const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
+                            return (
+                              <tr key={label}>
+                                <td className={`level-text-${level}`}>{label}</td>
+                                <td className="num">{b.pages.toLocaleString()}</td>
+                                <td className="num">{b.yes.toLocaleString()}</td>
+                                {partial ? <td className="num">{b.maybe.toLocaleString()}</td> : null}
+                                <td className="num">{b.no.toLocaleString()}</td>
+                                <td className="num">{scorePct(b)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="chart-details-total">
+                            <td>Total</td><td className="num">{all.pages.toLocaleString()}</td>
+                            <td className="num">{all.yes.toLocaleString()}</td>
+                            {partial ? <td className="num">{all.maybe.toLocaleString()}</td> : null}
+                            <td className="num">{all.no.toLocaleString()}</td><td className="num">{scorePct(all)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </section>
+                  );
+                })() : (
+                <>
 
                 <section>
                   <h3>Distribution, across metrics</h3>
@@ -1161,6 +1231,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                     </tbody>
                   </table>
                 </section>
+                </>
+                )}
               </div>
             </div>,
             document.body,

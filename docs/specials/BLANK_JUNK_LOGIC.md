@@ -109,9 +109,12 @@ pass 1 text rules 95%.
 
 ## Confidence and codability (2026-11-19)
 
-- **Confidence** = DistilBERT's probability for the class the page was filed under, whichever
-  rule decided: Main → p(keep), Blank → p(blank), Junk → p(junk). No model (pass 1): the rule's own
-  value (pass-1 rule 95%, measured blank 100%, else the 40% backup).
+- **Confidence** = DistilBERT's probability for the class the page was filed under: Main →
+  p(keep), Blank → p(blank), Junk → p(junk). Except:
+  - a **rule that flips the model** (the model's top class is Keep and a rule files it Junk /
+    Blank, or the model says Junk / Blank and a rule keeps it Main): **40%**;
+  - a **short page decided by the short rules** (S1–S6, SF): **60%**;
+  - no model (pass 1): the rule's own value (pass-1 rule 95%, measured blank 100%, else 40%).
 - **Floor**: no confidence, on any field, is shown below **20%** (a rule that overrides a sure
   model used to read 0.7%).
 - **Codability**: a Blank or Junk page is **Non-Codable** in Final, with the Blank / Junk
