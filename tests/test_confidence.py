@@ -212,3 +212,20 @@ def test_member_confidence_comes_from_the_kv_row_reading_it():
                         detected_dob="1946-03-29", detection_source_dob="rule based")
     got = member_field_confidences(page, staged)
     assert got["name"] == 0.81 and got["dob"] == 0.855
+
+
+def test_member_confidence_prefers_the_row_kv_extract_selected():
+    """KV Extract's format (2026-11-19, user): its ``selected`` row first, then ``accepted``,
+    then the highest score x model_score."""
+    from modules.member.stage import member_field_confidences
+
+    staged = _Staged({
+        "member_id": [
+            {"key": "MRN", "value": "88051948", "score": 0.683, "model_score": 0.9996, "accepted": True},
+            {"key": "MRN", "value": "88051948", "score": 0.6169, "model_score": 0.9995, "accepted": True},
+            {"key": "MRN", "value": "88051948", "score": 0.7073, "model_score": 0.9, "accepted": True, "selected": True},
+            {"key": "MRN", "value": "88051948", "score": 0.99, "model_score": 0.99, "accepted": False},
+        ],
+    })
+    page = _member_page("verified", detected_member_id="88051948", detection_source_member_id="rule based")
+    assert member_field_confidences(page, staged)["member_id"] == round(0.7073 * 0.9, 4)

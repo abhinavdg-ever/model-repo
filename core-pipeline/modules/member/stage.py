@@ -168,9 +168,10 @@ def _reads(field_id: str, want: str, text: Any) -> bool:
 
 def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str, Any]]:
     """The staged key / value row the member value comes from (2026-11-19, user: the member's
-    confidence is its KV row's score x model_score): the rows whose value reads it, else the
-    rows whose sentence does; of those, the one with the highest confidence. None when no row
-    reads it (the rules' whole-page find)."""
+    confidence is its KV row's score x model_score). Rows whose value reads it, else rows whose
+    sentence does; of those, KV Extract's own pick first (``selected``), then the rows it stands
+    behind (``accepted``), then any; within that, the highest confidence. None when no row reads
+    it (the rules' whole-page find)."""
     if staged_page is None:
         return None
     want = _norm(field_id, value)
@@ -184,7 +185,8 @@ def _field_row(field_id: str, value: str, staged_page: Any) -> Optional[dict[str
         scored = [(row_confidence(row), row) for row in hits]
         scored = [(c, row) for c, row in scored if c is not None]
         if scored:
-            return max(scored, key=lambda pair: pair[0])[1]
+            return max(scored, key=lambda pair: (bool(pair[1].get("selected")),
+                                                 bool(pair[1].get("accepted")), pair[0]))[1]
     return None
 
 
