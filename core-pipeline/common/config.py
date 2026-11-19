@@ -175,6 +175,11 @@ SERVICEBUS_QUEUE = (os.environ.get("SERVICEBUS_QUEUE") or "chart-runs").strip()
 # Set: a chart with more than LARGE_CHART_PAGES pages is queued there, and only the
 # worker-large service reads it. Empty: every chart goes to SERVICEBUS_QUEUE, as before.
 SERVICEBUS_QUEUE_LARGE = (os.environ.get("SERVICEBUS_QUEUE_LARGE") or "").strip()
+# A key made for one queue (its connection string ends ";EntityPath=<queue>") reaches only that
+# queue. When SERVICEBUS_CONNECTION_STRING is such a key for SERVICEBUS_QUEUE, give the large
+# queue its own here (2026-11-19). Empty: the large queue uses SERVICEBUS_CONNECTION_STRING
+# (a namespace-level key, no EntityPath, reaches both).
+SERVICEBUS_CONNECTION_STRING_LARGE = (os.environ.get("SERVICEBUS_CONNECTION_STRING_LARGE") or "").strip()
 LARGE_CHART_PAGES = int((os.environ.get("LARGE_CHART_PAGES") or "100").strip() or 100)
 # A chart can take longer than one 5-minute message lock: the worker renews it up to this long.
 WORKER_LOCK_RENEW_HOURS = float(os.environ.get("WORKER_LOCK_RENEW_HOURS") or "6")

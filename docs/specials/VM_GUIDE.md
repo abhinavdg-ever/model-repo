@@ -137,6 +137,12 @@ it is queued. Off while `SERVICEBUS_QUEUE_LARGE` is empty.
 1. In Azure (portal, Service Bus namespace `codingbusstd` → Queues → + Queue): create
    `chart-runs-large` with the **same settings as `chart-runs`** (Enable sessions on, the same
    lock duration and max delivery count). Sessions must be on: the worker reads sessions.
+   **The key:** if `SERVICEBUS_CONNECTION_STRING` ends in `;EntityPath=chart-runs`, it is a key
+   for that one queue and cannot reach `chart-runs-large` (the worker logs "The queue name
+   provided does not match the EntityPath"). Either use a namespace-level key (namespace →
+   Shared access policies, Send + Listen; no EntityPath) for `SERVICEBUS_CONNECTION_STRING`,
+   or add a Send + Listen policy on `chart-runs-large` (the queue → Shared access policies) and
+   put its connection string in `SERVICEBUS_CONNECTION_STRING_LARGE`.
 2. On the VM (Ubuntu, bash, in `core-pipeline/`):
 
 ```bash

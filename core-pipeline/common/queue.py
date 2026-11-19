@@ -53,6 +53,26 @@ def get_client() -> Any:
     return ServiceBusClient.from_connection_string(conn_str)
 
 
+def connection_for(queue: Optional[str]) -> str:
+    """The connection string for ``queue``: SERVICEBUS_CONNECTION_STRING_LARGE for the large
+    queue when it is set (a key scoped to that queue), else SERVICEBUS_CONNECTION_STRING."""
+    from common.config import SERVICEBUS_CONNECTION_STRING_LARGE, SERVICEBUS_QUEUE_LARGE
+
+    if queue and SERVICEBUS_QUEUE_LARGE and queue == SERVICEBUS_QUEUE_LARGE and SERVICEBUS_CONNECTION_STRING_LARGE:
+        return SERVICEBUS_CONNECTION_STRING_LARGE
+    return settings()[0]
+
+
+def client_for(queue: Optional[str]) -> Any:
+    """A ``ServiceBusClient`` that may use ``queue`` (``connection_for``)."""
+    conn_str = connection_for(queue)
+    if conn_str == settings()[0]:
+        return get_client()
+    from azure.servicebus import ServiceBusClient
+
+    return ServiceBusClient.from_connection_string(conn_str)
+
+
 def new_message(body: dict[str, Any], session_id: str) -> Any:
     from azure.servicebus import ServiceBusMessage
 
@@ -100,7 +120,7 @@ def send(items: Iterable[tuple[str, dict[str, Any]]], queue: Optional[str] = Non
     _conn, default = settings()
     queue = queue or default
     sent = 0
-    with get_client() as client:
+    with client_for(queue) as client:
         with client.get_queue_sender(queue_name=queue) as sender:
             # One send per message, on one link: a batched send stamps the FIRST message's
             # session id on the batch envelope, and every chart here has its own session.

@@ -189,7 +189,7 @@ def run_forever(client_factory: Optional[Callable[[], Any]] = None, renewer_fact
 
     from azure.servicebus import NEXT_AVAILABLE_SESSION, AutoLockRenewer
 
-    client_factory = client_factory or q.get_client
+    client_factory = client_factory or (lambda: q.client_for(SERVICEBUS_QUEUE))
     renewer_factory = renewer_factory or AutoLockRenewer
 
     renew_seconds = WORKER_LOCK_RENEW_HOURS * 3600
@@ -232,7 +232,7 @@ def main() -> None:
     from common import queue as q
     from common.config import SERVICEBUS_QUEUE, WORKER_LOCK_RENEW_HOURS
 
-    conn_str, _ = q.settings()
+    conn_str = q.connection_for(SERVICEBUS_QUEUE)
     logger.info("queue worker starting (%s)", worker_id())
     logger.info("  queue       : %s on %s", SERVICEBUS_QUEUE, q.mask(conn_str))
     logger.info("  lock renew  : up to %.1f h per session", WORKER_LOCK_RENEW_HOURS)

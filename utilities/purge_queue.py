@@ -130,8 +130,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
     names = queues(args.queue)
     print(f"queues: {', '.join(names)}")
+    from common import queue as q
+
     for name in names:
-        found = counts(conn_str, name)
+        found = counts(q.connection_for(name), name)
         if found:
             print(f"  {name}: {found[0]} waiting, {found[1]} dead-lettered")
 
@@ -156,13 +158,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("nothing changed")
             return 1
 
-    from common import queue as q
-
-    with q.get_client() as client:
-        for name in names:
+    for name in names:
+        # Each queue with its own key: SERVICEBUS_CONNECTION_STRING_LARGE for the large one when set.
+        with q.client_for(name) as client:
             deleted = purge_sessions(client, name)
             dead = 0 if args.keep_dead_letters else purge_dead_letters(client, name)
-            print(f"  {name}: {deleted} waiting message(s) deleted, {dead} dead letter(s) deleted")
+        print(f"  {name}: {deleted} waiting message(s) deleted, {dead} dead letter(s) deleted")
     if db_url and not args.keep_jobs:
         import psycopg
 
