@@ -5330,8 +5330,6 @@ input {
 .key-conf-high { border-color: var(--status-success-fg); background: var(--status-success-fg); }
 .key-conf-medium { border-color: var(--status-warning-fg); background: var(--status-warning-fg); }
 .key-conf-low { border-color: var(--status-error-fg); background: var(--status-error-fg); }
-.viewer-menu-select { display: flex; align-items: center; gap: 0.4rem; }
-.viewer-menu-select select { font-size: 0.8rem; }
 
 .key-duplicate {
   border-color: #2f6fb0;

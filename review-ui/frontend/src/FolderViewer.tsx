@@ -245,10 +245,8 @@ export default function FolderViewer({
   const [showCorrected, setShowCorrected] = useState(false);
   const [highlightBlankJunk, setHighlightBlankJunk] = useState(false);
   const [highlightDuplicate, setHighlightDuplicate] = useState(false);
-  // 2026-11-19 (user): the ☰ menu can colour the thumbnails by page confidence, and show only
-  // the pages of one confidence level (the arrows then step between those pages).
+  // 2026-11-19 (user): the ☰ menu can colour the thumbnails by page confidence.
   const [colorByConfidence, setColorByConfidence] = useState(false);
-  const [confidenceFilter, setConfidenceFilter] = useState<Level | "all">("all");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
@@ -471,26 +469,10 @@ export default function FolderViewer({
     }),
     [folder, imagingDoc],
   );
-  const shownPage = (idx: number) => confidenceFilter === "all" || pageLevels[idx] === confidenceFilter;
-  // Choosing a level opens its first page when the page on screen is not one of them.
-  useEffect(() => {
-    if (confidenceFilter === "all" || pageLevels[pageIndexRef.current] === confidenceFilter) return;
-    const first = pageLevels.findIndex((lv) => lv === confidenceFilter);
-    if (first >= 0) goToPage(first);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confidenceFilter]);
 
   function goToPage(idx: number | ((i: number) => number)) {
     const current = pageIndexRef.current;
-    let next = typeof idx === "function" ? idx(current) : idx;
-    // A step (arrows, keys) under a confidence filter goes to the next page of that level.
-    if (typeof idx === "function" && confidenceFilter !== "all" && next !== current) {
-      const dir = next > current ? 1 : -1;
-      let at = current + dir;
-      while (at >= 0 && at < pageLevels.length && !shownPage(at)) at += dir;
-      if (at < 0 || at >= pageLevels.length) return;
-      next = at;
-    }
+    const next = typeof idx === "function" ? idx(current) : idx;
     if (next === current) return;
     guardLeave(() => {
       setPageIndex(next);
@@ -1443,20 +1425,6 @@ export default function FolderViewer({
                           <span><i className="key-swatch key-conf-low" /> Low</span>
                         </div>
                       ) : null}
-                      <label className="viewer-menu-select">
-                        Show pages
-                        <select
-                          value={confidenceFilter}
-                          onChange={(e) => setConfidenceFilter(e.target.value as Level | "all")}
-                        >
-                          <option value="all">All</option>
-                          {(["high", "medium", "low"] as const).map((lv) => (
-                            <option key={lv} value={lv}>
-                              {levelLabel(lv)} confidence ({pageLevels.filter((x) => x === lv).length})
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                       <label>
                         <input
                           type="checkbox"
@@ -1605,7 +1573,6 @@ export default function FolderViewer({
             {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
                 {folder.pages.map((p, idx) => {
-                  if (!shownPage(idx) && idx !== pageIndex) return null;
                   const level = pageLevels[idx];
                   const marks = [
                     pageMarkClass(findImagingPage(displayImagingDoc, p)),
