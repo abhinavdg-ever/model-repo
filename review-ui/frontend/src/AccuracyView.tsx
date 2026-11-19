@@ -982,15 +982,15 @@ function OverallDonut({ tally }: { tally: Tally }) {
   );
 }
 
-const CONF_LEVELS: { id: Level; label: string; band: string; tone: string }[] = [
-  { id: "high", label: "High", band: "good", tone: "80%+" },
-  { id: "medium", label: "Medium", band: "fair", tone: "50–80%" },
-  { id: "low", label: "Low", band: "bad", tone: "under 50%" },
+const CONF_LEVELS: { id: Level; short: string; label: string; band: string; tone: string }[] = [
+  { id: "high", short: "H", label: "High", band: "good", tone: ">80%" },
+  { id: "medium", short: "M", label: "Medium", band: "fair", tone: "50-80%" },
+  { id: "low", short: "L", label: "Low", band: "bad", tone: "<50%" },
 ];
 
-/** Confidence (2026-11-19, user): laid out like Overall. The ring splits the pages by their
- * confidence level; its centre is the mean page confidence and the level the chart rule gives
- * all those pages together. */
+/** Confidence (2026-11-19, user), last in the row: a donut like the metrics'. The ring splits
+ * the pages by confidence level; its centre is the mean page confidence and the level the chart
+ * rule gives all those pages together; below, each level's share of the pages. */
 function ConfidenceDonut({ rows }: { rows: ChartAccuracy[] }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -1019,69 +1019,53 @@ function ConfidenceDonut({ rows }: { rows: ChartAccuracy[] }) {
     return [slice];
   });
   return (
-    <figure className="accuracy-donut-card accuracy-overall-card">
+    <figure className="accuracy-donut-card">
+      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img"
+           aria-label={`Confidence ${mean ?? "-"}% ${levelLabel(level)}: High ${counts.high}, Medium ${counts.medium}, Low ${counts.low} pages`}>
+        <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
+        {slices.map((slice) => (
+          <circle
+            key={slice.id}
+            className={`accuracy-donut-seg accuracy-match-${slice.band}`}
+            cx="50"
+            cy="50"
+            r={radius}
+            strokeDasharray={slice.length >= circumference - 0.01 ? undefined : `${slice.length} ${circumference - slice.length}`}
+            strokeDashoffset={-slice.start}
+          >
+            <title>{`${slice.label}: ${slice.pages.toLocaleString()} pages (${pct(slice.pages, total)})`}</title>
+          </circle>
+        ))}
+        <text className="accuracy-donut-pct" x="50" y={total ? 51 : 54}>{mean == null ? "—" : `${mean}%`}</text>
+        {level ? (
+          <text className={`accuracy-donut-caption level-text-${level}`} x="50" y="64">{levelLabel(level)}</text>
+        ) : null}
+      </svg>
       <InfoTip
         className="accuracy-info-corner"
         text={[
           { title: "Confidence", lines: [
-            "Each field: High 80%+, Medium 50–80%, Low under 50%.",
+            "Each field: High 80%+, Medium 50-80%, Low under 50%.",
             "Page: High when every field is High; Low when Member Verification, DOS, Page Type or Blank / Junk is Low, or 2+ fields are Low; else Medium.",
-            "Chart (and this card): High when every page is High; Low when 10% or more of the pages are Low; else Medium.",
-            "Centre: the mean page confidence.",
+            "Overall: High when every page is High; Low when 10% or more of the pages are Low; else Medium.",
+            "Centre: the mean page confidence. Below: each level's share of the pages.",
           ] },
         ]}
       />
-      <div className="accuracy-overall-body">
-        <div className="accuracy-overall-ring">
-          <svg className="accuracy-donut accuracy-overall-donut" viewBox="0 0 100 100" role="img"
-               aria-label={`Confidence ${mean ?? "-"}% ${levelLabel(level)}: High ${counts.high}, Medium ${counts.medium}, Low ${counts.low} pages`}>
-            <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
-            {slices.map((slice) => (
-              <circle
-                key={slice.id}
-                className={`accuracy-donut-seg accuracy-match-${slice.band}`}
-                cx="50"
-                cy="50"
-                r={radius}
-                strokeDasharray={slice.length >= circumference - 0.01 ? undefined : `${slice.length} ${circumference - slice.length}`}
-                strokeDashoffset={-slice.start}
-              >
-                <title>{`${slice.label}: ${slice.pages.toLocaleString()} pages (${pct(slice.pages, total)})`}</title>
-              </circle>
-            ))}
-            <text className="accuracy-donut-pct" x="50" y={total ? 51 : 54}>{mean == null ? "—" : `${mean}%`}</text>
-            {level ? (
-              <text className={`accuracy-donut-caption level-text-${level}`} x="50" y="64">{levelLabel(level)}</text>
-            ) : null}
-          </svg>
-          <figcaption>Confidence</figcaption>
-        </div>
-        <table className="accuracy-overall-legend">
-          <thead>
-            <tr><th scope="col">Level</th><th scope="col">Pages</th><th scope="col">%</th></tr>
-          </thead>
-          <tbody>
-            {CONF_LEVELS.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <span className={`accuracy-overall-chip accuracy-match-${item.band}`} aria-hidden="true" />
-                  {item.label}
-                </td>
-                <td>{counts[item.id].toLocaleString()}</td>
-                <td>{pct(counts[item.id], total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="accuracy-overall-bands">
-        {CONF_LEVELS.map((item) => (
-          <div key={item.id} className={`accuracy-overall-band accuracy-band-${item.band}`} title={`${item.label}: ${item.tone}`}>
-            <span>{item.label} ({item.tone})</span>
-            <strong>{pct(counts[item.id], total)}</strong>
-            <small>{counts[item.id].toLocaleString()} pages</small>
-          </div>
-        ))}
+      <figcaption>Confidence</figcaption>
+      <p className="accuracy-distribution">
+        High {counts.high.toLocaleString()} · Medium {counts.medium.toLocaleString()} · Low {counts.low.toLocaleString()}
+      </p>
+      <div className="accuracy-class">
+        <div className="accuracy-class-head">Pages by confidence ({total.toLocaleString()})</div>
+        <dl className="accuracy-class-grid">
+          {CONF_LEVELS.map((item) => (
+            <div key={item.id} title={`${item.label}: ${counts[item.id].toLocaleString()} pages`}>
+              <dt>{item.short} ({item.tone})</dt>
+              <dd>{pct(counts[item.id], total)}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </figure>
   );
@@ -1931,7 +1915,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             </p>
             <div className="accuracy-donuts">
               <OverallDonut tally={overall} />
-              <ConfidenceDonut rows={filtered} />
               {METRICS.map((metric) =>
                 metric.comingSoon ? (
                   <figure key={metric.id} className="accuracy-donut-card accuracy-coming-soon" aria-label={`${metric.label}: coming soon`}>
@@ -1966,6 +1949,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                 />
                 ),
               )}
+              <ConfidenceDonut rows={filtered} />
             </div>
           </section>
 
