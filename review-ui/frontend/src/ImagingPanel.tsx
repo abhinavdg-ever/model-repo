@@ -18,8 +18,8 @@ import {
   type StagedEncounter,
   savePageSequences,
 } from "./api";
-import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue, pageTypeOut, scoreChart, accuracyPercent, LIVE_METRICS } from "./accuracy";
-import { chartConfidence, levelLabel, pageConfidence } from "./confidenceLevel";
+import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue, pageTypeOut } from "./accuracy";
+import { levelLabel, pageConfidence } from "./confidenceLevel";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -3362,49 +3362,6 @@ function PageConfidenceStrip({ page }: { page: ImagingPageResult }) {
   );
 }
 
-/** The chart at a glance (2026-11-19, user), collapsible, above every tab: the chart's
- * confidence (its pages High / Medium / Low) and, when it has ground truth, its accuracy per
- * metric as the Accuracy View scores it. */
-function ChartPanel({ document }: { document: ImagingDocumentResponse }) {
-  const cc = chartConfidence(document.pages);
-  const scored = scoreChart(document.folder_id, document.folder_id, document);
-  const rows = LIVE_METRICS.map((metric) => ({ metric, pct: accuracyPercent(scored.metrics[metric.id]) }))
-    .filter((r) => r.pct != null);
-  const overall = accuracyPercent(scored.overall);
-  const list = (pages: number[]) => (pages.length > 12 ? `${pages.slice(0, 12).join(", ")} …` : pages.join(", "));
-  return (
-    <details className={`chart-panel level-${cc.level ?? "none"}`}>
-      <summary>
-        <strong>Chart Confidence: {levelLabel(cc.level)}</strong>
-        {cc.value != null ? ` (${Math.round(cc.value * 100)}%)` : ""}
-        {" · "}pages High {cc.counts.high} · Medium {cc.counts.medium} · Low {cc.counts.low}
-        {overall != null ? ` · Accuracy ${Math.round(overall)}%` : ""}
-      </summary>
-      <div className="chart-panel-body">
-        <div>
-          <h4>Confidence</h4>
-          <p>High: every scored field ≥ 80%. Low: a key field (Member Name, DOB, DOS, Page Type, Blank / Junk) under 50%, or two fields under 50%. Chart Low when 10% or more of its pages are Low.</p>
-          {cc.pages.low.length ? <p><strong>Low pages:</strong> {list(cc.pages.low)}</p> : null}
-          {cc.pages.medium.length ? <p><strong>Medium pages:</strong> {list(cc.pages.medium)}</p> : null}
-        </div>
-        <div>
-          <h4>Accuracy (this chart)</h4>
-          {rows.length ? (
-            <table className="imaging-summary-table chart-panel-table">
-              <tbody>
-                {rows.map(({ metric, pct }) => (
-                  <tr key={metric.id}><td>{metric.label}</td><td>{Math.round(pct ?? 0)}%</td></tr>
-                ))}
-                {overall != null ? <tr><td><strong>Overall</strong></td><td><strong>{Math.round(overall)}%</strong></td></tr> : null}
-              </tbody>
-            </table>
-          ) : <p>No ground truth saved for this chart yet.</p>}
-        </div>
-      </div>
-    </details>
-  );
-}
-
 export default function ImagingPanel({
   tab,
   loading,
@@ -3497,7 +3454,6 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <GroundTruthBanner folderId={document.folder_id} tab="sequencing" />
         <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
         <SequencingTable
           folderId={document.folder_id}
           pages={seqRows}
@@ -3517,7 +3473,6 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <GroundTruthBanner folderId={document.folder_id} tab="encounter" />
         <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
         <EncounterIdentification
           key={document.folder_id}
           folderId={document.folder_id}
@@ -3534,7 +3489,6 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <GroundTruthBanner folderId={document.folder_id} tab="member" />
         <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
         <RejectionRules
           member={
             <>
@@ -3559,7 +3513,6 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
         <DocSummary pages={document.pages} sections={sections} />
       </div>
     );
@@ -3570,7 +3523,6 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <GroundTruthBanner folderId={document.folder_id} tab="page" />
         <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
         <div className="ocr-empty">
           {currentFileName
             ? `No imaging row for ${currentFileName}.`
@@ -3586,7 +3538,6 @@ export default function ImagingPanel({
           drawer (compact) shows the manifest too. */}
       <GroundTruthBanner folderId={document.folder_id} tab="page" update={pageUpdate(currentPage.groundTruth)} />
       <ManifestDetails manifest={manifest} />
-        <ChartPanel document={document} />
       <PageConfidenceStrip page={currentPage} />
       <PageDetails
         folderId={document.folder_id}

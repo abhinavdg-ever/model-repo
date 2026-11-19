@@ -56,6 +56,7 @@ import {
 import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
+import ChartDetails from "./ChartDetails";
 import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
@@ -1246,6 +1247,8 @@ export default function FolderViewer({
           </div>
         </div>
 
+        {/* 2026-11-19 (user): the chart's confidence and a Details card, left of OCR. */}
+        <ChartDetails doc={imagingDoc} folder={folder} />
         <div className="mode-icon-group" role="group" aria-label="Output mode">
           <button
             type="button"
