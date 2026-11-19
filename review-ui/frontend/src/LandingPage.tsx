@@ -12,6 +12,7 @@ import {
   Gauge,
   Inbox,
   RefreshCw,
+  RotateCcw,
   ScanSearch,
   Search,
   Trash2,
@@ -20,9 +21,14 @@ import {
   X,
 } from "lucide-react";
 import { readSession } from "./session";
+import { levelLabel } from "./confidenceLevel";
 import {
   deleteFolder,
   errorDetail,
+  getAppConfig,
+  getFoldersConfidence,
+  rerunCharts,
+  type FolderConfidence,
   getGroundTruthUpdates,
   setChartReview,
   formatBatchLabel,
@@ -381,6 +387,15 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   // The in-app "are you sure" for an admin's Delete, and the note after it.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; pages: number } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Chart confidence per row (2026-11-19, user), loaded for the rows on screen.
+  const [confidence, setConfidence] = useState<Record<string, FolderConfidence>>({});
+  // Admin Rerun (2026-11-19, user): the chart, the pipeline to run on, reuse OCR.
+  const [rerunTarget, setRerunTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rerunPipelines, setRerunPipelines] = useState<{ label: string; url: string }[]>([]);
+  const [rerunPipeline, setRerunPipeline] = useState("");
+  const [rerunSkipOcr, setRerunSkipOcr] = useState(true);
+  const [rerunBusy, setRerunBusy] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!notice) return;
@@ -495,6 +510,19 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   }, [loading, page, totalPages]);
 
   const pageFolders = folders;
+  const confidenceKey = folders.map((f) => f.id).join("|");
+  useEffect(() => {
+    if (!confidenceKey) return undefined;
+    let cancelled = false;
+    getFoldersConfidence(confidenceKey.split("|"))
+      .then((found) => {
+        if (!cancelled) setConfidence((prev) => ({ ...prev, ...found }));
+      })
+      .catch(() => undefined); // the column stays empty
+    return () => {
+      cancelled = true;
+    };
+  }, [confidenceKey]);
   // Back from a chart: the scroll position too, once the rows are back (2026-11-16, user).
   const scrollRef = useScrollRestore("landing", !loading && folders.length > 0);
 
@@ -530,6 +558,37 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   function askDelete(id: string, name: string, pages: number) {
     setDeleteError(null);
     setDeleteTarget({ id, name, pages });
+  }
+
+  /** Admin: run the chart again from its recorded blob source. */
+  function askRerun(id: string, name: string) {
+    setRerunError(null);
+    setRerunTarget({ id, name });
+    if (!rerunPipelines.length) {
+      getAppConfig()
+        .then((config) => {
+          const targets = config.playground_targets ?? [];
+          setRerunPipelines(targets);
+          setRerunPipeline((current) => current || targets[0]?.url || "");
+          if (!targets.length) setRerunError("Rerun is off: set CORE_PIPELINE_URLS in review-ui/.env");
+        })
+        .catch((err) => setRerunError(errorDetail(err, "Could not read the pipelines")));
+    }
+  }
+
+  async function confirmRerun() {
+    if (!rerunTarget || !rerunPipeline) return;
+    setRerunBusy(true);
+    setRerunError(null);
+    try {
+      const answer = await rerunCharts({ target: rerunPipeline, charts: [rerunTarget.id], skip_ocr: rerunSkipOcr });
+      setNotice(`Chart ${rerunTarget.name} queued to run again on ${answer.target_label}${rerunSkipOcr ? " (OCR reused)" : ""}.`);
+      setRerunTarget(null);
+    } catch (err) {
+      setRerunError(errorDetail(err, "Could not start the rerun"));
+    } finally {
+      setRerunBusy(false);
+    }
   }
 
   async function confirmReview() {
@@ -902,6 +961,9 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </ColumnFilterButton>
                     </span>
                   </th>
+                  <th title="Chart confidence: High = every page High; Low = 10% or more of pages Low; else Medium">
+                    Confidence
+                  </th>
                   <th className={runAfter ? "is-filtered" : undefined}>
                     <span className="column-th">
                       <button
@@ -936,7 +998,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
               <tbody>
                 {loading && folders.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="landing-history-empty">
+                    <td colSpan={10} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <RefreshCw size={18} />
@@ -947,7 +1009,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                   </tr>
                 ) : total === 0 ? (
                   <tr>
-                    <td colSpan={9} className="landing-history-empty">
+                    <td colSpan={10} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <Inbox size={18} />
@@ -1013,6 +1075,20 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           <BadgeCheck size={15} aria-hidden="true" />
                         </button>
                       </td>
+                      <td className="accuracy-col-confidence">
+                        {confidence[folder.id]?.level ? (
+                          <>
+                            <span className={`chart-glance-pill level-${confidence[folder.id].level}`}>
+                              {levelLabel(confidence[folder.id].level)}
+                            </span>
+                            <span className="accuracy-conf-counts">
+                              H {confidence[folder.id].counts.high} · M {confidence[folder.id].counts.medium} · L {confidence[folder.id].counts.low}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="accuracy-conf-counts">-</span>
+                        )}
+                      </td>
                       <td className="landing-col-updated">
                         {fmtUpdated(folder.last_updated_at)}
                       </td>
@@ -1038,6 +1114,18 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                             <ScanSearch size={16} aria-hidden="true" />
                             Imaging
                           </button>
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => askRerun(folder.id, folder.name)}
+                              title="Run this chart again (admin)"
+                              aria-label={`Rerun ${folder.name}`}
+                            >
+                              <RotateCcw size={16} aria-hidden="true" />
+                              Rerun
+                            </button>
+                          ) : null}
                           {isAdmin ? (
                             <button
                               type="button"
@@ -1197,6 +1285,53 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                     : reviewMissing && reviewMissing.length > 0
                       ? "Mark Reviewed anyway"
                       : "Mark Reviewed"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {rerunTarget ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => { if (!rerunBusy) setRerunTarget(null); }}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="rerun-chart-title"
+               onClick={(e) => e.stopPropagation()}>
+            <div className="modal-card-header">
+              <div className="blob-auth-title-row">
+                <RotateCcw size={18} aria-hidden="true" />
+                <h2 id="rerun-chart-title">Rerun chart?</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setRerunTarget(null)}
+                      disabled={rerunBusy} aria-label="Close">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="blob-auth-copy">
+              <strong>{rerunTarget.name}</strong> runs again from the blob folder it was read from, into its
+              own output folder. Its results are replaced when the run finishes.
+            </p>
+            <label className="rerun-field">
+              Pipeline{" "}
+              <select value={rerunPipeline} onChange={(e) => setRerunPipeline(e.target.value)} disabled={rerunBusy}>
+                {rerunPipelines.map((t) => (
+                  <option key={t.url} value={t.url}>{t.label} ({t.url})</option>
+                ))}
+              </select>
+            </label>
+            <label className="rerun-field">
+              <input type="checkbox" checked={rerunSkipOcr} onChange={(e) => setRerunSkipOcr(e.target.checked)}
+                     disabled={rerunBusy} />{" "}
+              Reuse OCR (no new Azure Document Intelligence charge)
+            </label>
+            {rerunError ? <div className="error-banner" style={{ marginTop: "0.75rem" }}>{rerunError}</div> : null}
+            <div className="download-results-actions">
+              <button type="button" className="landing-file-viewer-btn" onClick={() => setRerunTarget(null)}
+                      disabled={rerunBusy}>
+                Cancel
+              </button>
+              <button type="button" className="landing-file-viewer-btn landing-file-viewer-btn-primary"
+                      onClick={() => void confirmRerun()} disabled={rerunBusy || !rerunPipeline} autoFocus>
+                <RotateCcw size={15} aria-hidden="true" />
+                {rerunBusy ? "Starting…" : "Rerun"}
               </button>
             </div>
           </div>

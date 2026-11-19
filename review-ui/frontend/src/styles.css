@@ -7015,9 +7015,8 @@ input {
 .level-text-high { color: var(--status-success-fg); }
 .level-text-medium { color: var(--status-warning-fg); }
 .level-text-low { color: var(--status-error-fg); }
-.conf-row-high > * { background-color: color-mix(in srgb, var(--status-success-bg) 55%, transparent); }
-.conf-row-medium > * { background-color: color-mix(in srgb, var(--status-warning-bg) 45%, transparent); }
-.conf-row-low > * { background-color: color-mix(in srgb, var(--status-error-bg) 55%, transparent); }
 .accuracy-col-confidence { white-space: nowrap; font-size: 0.8rem; }
+.rerun-field { display: block; margin: 0.6rem 0 0; font-size: 0.88rem; }
+.rerun-field select { margin-left: 0.4rem; }
 .accuracy-col-confidence .chart-glance-pill { font-size: 0.75rem; margin-right: 0.35rem; }
 .accuracy-conf-counts { opacity: 0.8; }

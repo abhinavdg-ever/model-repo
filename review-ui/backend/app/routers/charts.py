@@ -151,6 +151,30 @@ def list_folders(
     )
 
 
+@router.get("/folders-confidence")
+def folders_confidence(
+    ids: list[str] = Query(default_factory=list, description="chart names, up to 200"),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, dict]:
+    """Chart confidence for the History list (2026-11-19, user): {chart: {level, value, counts}}.
+    Same rule as the frontend's confidenceLevel.ts (services/chart_confidence.py)."""
+    from app.services import chart_confidence
+    from app.services.backend import reads_cosmos
+
+    names = list(dict.fromkeys(i.strip() for i in ids if i and i.strip()))[:200]
+    if not names:
+        return {}
+    if not store_usable(settings, database_url_usable):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        if reads_cosmos():
+            return chart_confidence.for_charts_cosmos(names)
+        return chart_confidence.for_charts_postgres(settings.database_url, settings.db_schema, names)
+    except Exception as exc:
+        logger.warning("chart confidence failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not load chart confidence") from exc
+
+
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
 def get_folder(folder_id: str, repo: FolderRepository = Depends(get_repository)) -> FolderDetail:
     detail = repo.get_folder(folder_id)

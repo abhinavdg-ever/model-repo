@@ -82,6 +82,25 @@ def batch_body(
     return body
 
 
+def rerun_source(chart: str, location: tuple | None, default_container: str = "") -> tuple[str, str, str] | None:
+    """(container, input folder, output folder) to run ``chart`` again, from chart_list's
+    (blob_container, blob_path, output_path). Either path may end in the chart's own folder;
+    that folder is cut back to its parent. None when no blob folder is recorded."""
+    if not location:
+        return None
+    container, blob_path, output_path = (list(location) + [None, None, None])[:3]
+
+    def parent(path: object) -> str:
+        parts = [p for p in clean_path(str(path or "")).split("/") if p]
+        return "/".join(parts[:-1] if parts and parts[-1] == chart else parts)
+
+    source = parent(blob_path)
+    container = str(container or "").strip() or default_container.strip()
+    if not source or not container:
+        return None
+    return container, source, parent(output_path)
+
+
 def start_batch(base_url: str, body: dict[str, Any], api_key: str = "") -> dict[str, Any]:
     """POST the run to core-pipeline; its JSON answer (202: queued in the background).
     ``api_key`` goes in X-API-Key when set (core-pipeline's ORCHESTRATOR_API_KEY)."""

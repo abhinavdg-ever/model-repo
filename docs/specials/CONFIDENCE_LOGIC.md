@@ -678,6 +678,19 @@ confidences are not in this set.
   Duplicate (display curve, section 4.3), Page Type, Sub-type, Specialty, Codable,
   Provider Name / Credentials / Signature, DOS, Member.
 
+### 9.1 Page and chart confidence levels (2026-11-19, user)
+
+`review-ui/frontend/src/confidenceLevel.ts`, and the same rule on the server for History
+(`review-ui/backend/app/services/chart_confidence.py`). Shown in the Page Confidence strip, the
+chart's Details card, the Accuracy View and History Confidence columns, and the .xlsx download.
+
+| Step | Rule |
+|---|---|
+| Features | only the accuracy list's 7: **Member Verification** (the lower of Member Name and Member DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. Each uses its Final confidence (`imaging_final.confidences`). A feature with no confidence is not counted. A Blank / Junk or duplicate page counts only Blank / Junk and Codability |
+| Feature band | High >= 80%, Medium 50-80%, Low < 50% |
+| **Page** | **High**: every counted feature High. **Low**: a key feature (Member Verification, DOS, Page Type, Blank / Junk) is Low, or 2+ features Low. Otherwise **Medium**. Its % = the mean of its features |
+| **Chart** | **High**: every page High. **Low**: Low pages are 10% of the pages or more. Otherwise **Medium**. Its % = the mean of its pages' % |
+
 ---
 
 ## 10. Accuracy metrics (review-ui) and the OCR match rate

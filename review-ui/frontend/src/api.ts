@@ -448,6 +448,28 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Chart confidence for History (2026-11-19, user): the confidenceLevel.ts rule, on the server. */
+export type FolderConfidence = {
+  level: "high" | "medium" | "low" | null;
+  value: number | null;
+  counts: { high: number; medium: number; low: number };
+};
+
+export function getFoldersConfidence(ids: string[]): Promise<Record<string, FolderConfidence>> {
+  const sp = new URLSearchParams();
+  for (const id of ids) sp.append("ids", id);
+  return api(`/api/folders-confidence?${sp.toString()}`);
+}
+
+/** Admins only: run charts again from their recorded blob source (History's Rerun). */
+export function rerunCharts(body: { target: string; charts: string[]; skip_ocr: boolean }): Promise<{
+  target: string;
+  target_label: string;
+  runs: unknown[];
+}> {
+  return api("/api/playground/rerun", { method: "POST", body: JSON.stringify(body) });
+}
+
 /** Admins only: delete a chart and its pipeline results (ground truth, manifest and files
  * on disk are kept). */
 export function deleteFolder(folderId: string): Promise<{ chart_name: string; page_count: number | null }> {
