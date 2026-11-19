@@ -1379,7 +1379,9 @@ SELECT
     -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
     q.is_visible                                              AS algo_is_visible,
     -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy.
-    g.is_duplicate                                            AS gt_is_duplicate
+    g.is_duplicate                                            AS gt_is_duplicate,
+    -- Each metric's Final confidence (2026-11-19): the page / chart confidence level.
+    to_jsonb(f) -> 'confidences'                              AS final_confidences
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

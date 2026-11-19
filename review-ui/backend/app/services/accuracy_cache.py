@@ -123,7 +123,10 @@ SELECT
     -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
     q.is_visible AS algo_is_visible,
     -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy (2026-11-13).
-    g.is_duplicate AS gt_is_duplicate
+    g.is_duplicate AS gt_is_duplicate,
+    -- Each metric's Final confidence, for the page / chart confidence level (2026-11-19, user;
+    -- NULL on a database whose imaging_final has no such column).
+    to_jsonb(f) -> 'confidences' AS final_confidences
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -160,7 +163,8 @@ SELECT chart_name, page_number, source_page_id,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
        gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
-       final_provider_version, final_signature_present, algo_is_visible, gt_is_duplicate
+       final_provider_version, final_signature_present, algo_is_visible, gt_is_duplicate,
+       final_confidences
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -307,6 +311,21 @@ def _float(value: object) -> float | None:
         return None
 
 
+def _confidences(value: object) -> dict[str, float] | None:
+    """imaging_final.confidences as {metric: number}, or None."""
+    if isinstance(value, str):
+        import json
+
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    out = {str(k): float(v) for k, v in value.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    return out or None
+
+
 def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         _chart, page_number, source_page_id,
@@ -331,8 +350,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
         gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
-        final_signed, algo_visible, gt_duplicate,
-    ) = (tuple(extra) + (None,) * 15)[:15]
+        final_signed, algo_visible, gt_duplicate, final_confidences,
+    ) = (tuple(extra) + (None,) * 16)[:16]
     final_key = _text(final_category) or ""
     people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -357,6 +376,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         providerCredentials=provider_credentials or None,
         providerSignature=_signed(final_signed),
         isVisible=None if algo_visible is None else algo_visible in (True, "true", "t", "1"),
+        finalConfidences=_confidences(final_confidences),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),

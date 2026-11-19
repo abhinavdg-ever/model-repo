@@ -4,6 +4,8 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * v_accuracy_page (2026-11-19, migrations/2026-11-19.sql): new last column final_confidences
+   (imaging_final.confidences) for the Accuracy View's page / chart confidence.
  * chart_list.chart_cluster VARCHAR(100) (2026-11-15, migrations/2026-11-15.sql): the chart's
    segment from chart-clustering (--write-db); review-ui's History and Accuracy View filter on it.
  * v_accuracy_page (2026-11-13, migrations/2026-11-13.sql): new last column gt_is_duplicate
