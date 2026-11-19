@@ -551,6 +551,7 @@ def verify_record(
 
     total = int(total_pages if total_pages is not None else len(pages))
     results: list[PageResult] = []
+    read: list[tuple[Any, str, int, dict[str, str], Any, list[str]]] = []
 
     for index, page in enumerate(pages, start=1):
         text = str(page.get("text") or "")
@@ -580,6 +581,24 @@ def verify_record(
             fields["Detection_Source_Name"] = ""
             fields["ner_key_source_Name"] = ""
         kv_names = [name for name in kv_names if not is_age_name(name)]
+        read.append((page, text, page_no, fields, people, kv_names))
+
+    # The DOBs across the chart (2026-11-19, user): a date after 2000 far from the manifest's,
+    # or not the chart's majority DOB, is dropped before any page is verified.
+    from .dob_filter import drop_reasons
+
+    reasons = drop_reasons([r[3]["Detected_DOB"] for r in read], expected.get("DummyDOB", ""))
+    for (_page, _text, _no, fields, _people, _kv), why in zip(read, reasons):
+        if why:
+            fields["Detected_DOB"] = "N/A"
+            fields["Detection_Source_DOB"] = ""
+            fields["ner_key_source_DOB"] = why[:100]
+
+    from modules.member.extractors.ner_based.name import is_age_name
+    from .extractors.rule_based.name_common import name_matches
+    from .name_filter import looks_like_person
+
+    for page, text, page_no, fields, people, kv_names in read:
         page_ok = verify_page(
             expected,
             name_mode,

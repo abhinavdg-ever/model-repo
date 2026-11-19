@@ -1,6 +1,6 @@
 # Member Name and DOB: End-to-End Logic
 
-As built on 2026-11-19. Stage 9 `member_verify`. Code: `core-pipeline/modules/member/`
+As built on 2026-11-19 (DOB post-processing added the same day). Stage 9 `member_verify`. Code: `core-pipeline/modules/member/`
 (`stage.py` the stage, `engine.py` the per-page logic, `extractors/` rules and GLiNER,
 `rules/` the decisions, `name_filter.py`). Words and lists: `resources/canon/member_*.json`.
 How the Yes / No is shown and scored: review-ui `memberMatch.ts`, `accuracy.ts`.
@@ -78,6 +78,19 @@ run-together words, no word from the never-in-a-name list, not only labels / com
 The DOB is **not told apart from other dates by its label** in the rules: the member's date
 anywhere on the page counts.
 
+**Post-processing across the chart (2026-11-19, user; `dob_filter.py`).** After every page has
+been read and **before any page is verified**, only DOBs with a **year after 2000** can be dropped:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | The manifest has a DOB and the page's DOB year is **more than 10 years** from it | dropped |
+| 2 | Otherwise: the page's DOB is not the chart's **majority DOB** (the one date most pages read, strictly more than any other, on 2+ pages) | dropped |
+
+The member's own (manifest) DOB and dates up to 2000 are never dropped. A dropped DOB reads
+**Not Found**, its key source says why (`dropped: …`), it has no confidence, and it can no
+longer back the name in the page verdict. Main pages and blank / junk pages are counted
+separately (they are read in two runs).
+
 ## 4. Finding the member ID
 
 The manifest ID, exact (any case) with no letter or digit touching it; else GLiNER around ID
@@ -154,7 +167,8 @@ side calls blank / junk, or a duplicate, are not scored.
    A page can therefore be Verified in the pipeline while review-ui shows (No), or the reverse.
 2. **Verification on another DOB / ID.** The DOB / ID check is presence only and the kv_extract
    fall-back can fill a non-matching DOB or ID, so a page with the member's name and someone
-   else's date can verify.
+   else's date can verify. The 2026-11-19 post-processing removes the recent wrong dates (after
+   2000); an older wrong date, or another ID, still counts.
 3. **The DOB is any occurrence of the member's date**, not only a date labelled DOB.
 4. **Excel Compare scores differently.** It compares ground-truth Yes / No with whether the
    pipeline has *any* value. Ground truth "No" with another person's name read is a mismatch
