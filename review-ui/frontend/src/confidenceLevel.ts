@@ -85,6 +85,17 @@ function rawValue(page: ImagingPageResult, key: string): number | null {
   }
 }
 
+/** Every feature's confidence on the page, Blank / Junk pages included (the Confidence Analysis
+ * scores each metric on every page the accuracy scores it, 2026-11-19, user). */
+export function featureConfidences(page: ImagingPageResult): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key] of CONFIDENCE_FIELDS) {
+    const value = fieldValue(page, key);
+    if (value != null) out[key] = value;
+  }
+  return out;
+}
+
 export function isBlankJunkOrDuplicate(page: ImagingPageResult): boolean {
   return page.isDuplicate === true || (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
 }

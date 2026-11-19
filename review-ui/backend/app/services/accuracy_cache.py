@@ -126,7 +126,9 @@ SELECT
     g.is_duplicate AS gt_is_duplicate,
     -- Each metric's Final confidence, for the page / chart confidence level (2026-11-19, user;
     -- NULL on a database whose imaging_final has no such column).
-    to_jsonb(f) -> 'confidences' AS final_confidences
+    to_jsonb(f) -> 'confidences' AS final_confidences,
+    -- Stage 1's measured confidences (orientation ...), for the Orientation confidence.
+    q.quality_detail -> 'confidences' AS measured_confidences
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -164,7 +166,7 @@ SELECT chart_name, page_number, source_page_id,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
        gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
        final_provider_version, final_signature_present, algo_is_visible, gt_is_duplicate,
-       final_confidences
+       final_confidences, measured_confidences
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -350,8 +352,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
         gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
-        final_signed, algo_visible, gt_duplicate, final_confidences,
-    ) = (tuple(extra) + (None,) * 16)[:16]
+        final_signed, algo_visible, gt_duplicate, final_confidences, measured_confidences,
+    ) = (tuple(extra) + (None,) * 17)[:17]
     final_key = _text(final_category) or ""
     people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -377,6 +379,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         providerSignature=_signed(final_signed),
         isVisible=None if algo_visible is None else algo_visible in (True, "true", "t", "1"),
         finalConfidences=_confidences(final_confidences),
+        measuredConfidences=_confidences(measured_confidences),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),

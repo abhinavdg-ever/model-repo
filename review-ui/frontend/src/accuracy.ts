@@ -1,4 +1,4 @@
-import { CONFIDENCE_FIELDS, chartConfidence, levelLabel, pageConfidence, type ChartConfidence, type PageConfidence } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, chartConfidence, featureConfidences, levelLabel, pageConfidence, type ChartConfidence, type PageConfidence } from "./confidenceLevel";
 import type { ImagingManifestDetails,
   ImagingDocumentResponse,
   ImagingPageResult,
@@ -333,6 +333,8 @@ export type PageAccuracy = {
   values?: Record<string, string>;
   /** The page's confidence level and each metric's confidence (2026-11-19, user; download). */
   confidence?: PageConfidence;
+  /** Every feature's confidence, Blank / Junk pages included (Confidence Analysis). */
+  features?: Record<string, number>;
 };
 
 /** The value columns of the page-level download, in order: [name, ground truth, pipeline
@@ -1071,6 +1073,7 @@ export function scoreChart(
       matches: pageOverall ? pageOverall.matches : null,
       values: pageValues(raw, doc.manifest),
       confidence: pageConfidence(raw),
+      features: featureConfidences(raw),
     });
     if (pageOverall) {
       add(overall, pageOverall.verdict);

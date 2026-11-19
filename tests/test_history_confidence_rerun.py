@@ -60,3 +60,12 @@ def test_the_percent_is_capped_by_the_level():
     assert page_level({**page, "dos": 1.0, "provider": 0.6}, False) == ("medium", 0.79)
     assert chart_level([("high", 1.0)] * 7 + [("medium", 0.79)] * 3)["value"] == 0.79
     assert chart_level([("high", 1.0)] * 4 + [("low", 0.49)])["value"] == 0.49
+
+
+def test_orientation_falls_back_to_the_measured_confidence():
+    """2026-11-19 (user): Orientation's confidence is stage 1's measured one when the Final
+    confidences lack it (as the frontend)."""
+    from app.services.chart_confidence import page_level
+
+    assert page_level({"dos": 0.9}, False, {"orientation": 0.3})[0] == "low"
+    assert page_level({"dos": 0.9}, False, '{"orientation": 0.95}')[0] == "high"

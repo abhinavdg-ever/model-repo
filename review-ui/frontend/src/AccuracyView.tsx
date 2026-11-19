@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { CONFIDENCE_FIELDS, capToLevel, chartLevel, levelLabel, type Level } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, band, capToLevel, chartLevel, levelLabel, type Level } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1038,21 +1038,24 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     for (const row of rows) {
       for (const page of row.pages) {
         const pc = page.confidence;
-        if (!pc?.level || pc.value == null) continue;
-        pageLevels[pc.level] += 1;
-        sum += pc.value;
-        for (const field of pc.fields) {
-          const counts = perFeature.get(field.key) ?? { high: 0, medium: 0, low: 0 };
-          counts[field.level] += 1;
-          perFeature.set(field.key, counts);
+        if (pc?.level && pc.value != null) {
+          pageLevels[pc.level] += 1;
+          sum += pc.value;
+          addVerdict(cross[pc.level], page.overall);
         }
-        addVerdict(cross[pc.level], page.overall);
+        // Each metric on every page the accuracy scores it (2026-11-19, user): Blank / Junk
+        // pages included, with that metric's own confidence.
         for (const metric of LIVE_METRICS) {
-          const field = pc.fields.find((f) => f.key === METRIC_FEATURE[metric.id]);
-          if (field) {
-            addVerdict(byMetric.get(metric.id)![field.level], page.scores[metric.id]);
-            addVerdict(deciles.get(metric.id)![Math.min(9, Math.max(0, Math.floor(field.value * 10)))], page.scores[metric.id]);
-          }
+          const verdict = page.scores[metric.id];
+          const key = METRIC_FEATURE[metric.id];
+          const value = page.features?.[key];
+          if (verdict == null || value == null) continue;
+          const level = band(value);
+          const counts = perFeature.get(key) ?? { high: 0, medium: 0, low: 0 };
+          counts[level] += 1;
+          perFeature.set(key, counts);
+          addVerdict(byMetric.get(metric.id)![level], verdict);
+          addVerdict(deciles.get(metric.id)![Math.min(9, Math.max(0, Math.floor(value * 10)))], verdict);
         }
       }
     }

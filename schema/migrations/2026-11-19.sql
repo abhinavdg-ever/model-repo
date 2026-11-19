@@ -1,5 +1,6 @@
--- 2026-11-19: v_accuracy_page gains final_confidences (imaging_final.confidences) for the
--- Accuracy View's chart confidence. Added at the end, so CREATE OR REPLACE keeps the rest.
+-- 2026-11-19: v_accuracy_page gains final_confidences (imaging_final.confidences) and
+-- measured_confidences (ocr_quality_results.quality_detail.confidences: orientation) for the
+-- Accuracy View's confidence. Added at the end, so CREATE OR REPLACE keeps the rest.
 -- review-ui also re-creates the view on its first accuracy report. Re-runnable.
 
 CREATE OR REPLACE VIEW v_accuracy_page AS
@@ -78,7 +79,9 @@ SELECT
     -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy.
     g.is_duplicate                                            AS gt_is_duplicate,
     -- Each metric's Final confidence (2026-11-19): the page / chart confidence level.
-    to_jsonb(f) -> 'confidences'                              AS final_confidences
+    to_jsonb(f) -> 'confidences'                              AS final_confidences,
+    -- Stage 1's measured confidences (orientation ...), 2026-11-19.
+    q.quality_detail -> 'confidences'                          AS measured_confidences
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

@@ -47,9 +47,15 @@ def _confidences(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def page_level(confidences: Any, blank_junk_or_duplicate: bool) -> Optional[tuple[str, float]]:
-    """(level, mean) of one page, or None when it has no feature with a confidence."""
-    conf = _confidences(confidences)
+def page_level(confidences: Any, blank_junk_or_duplicate: bool,
+               measured: Any = None) -> Optional[tuple[str, float]]:
+    """(level, mean) of one page, or None when it has no feature with a confidence. ``measured``:
+    stage 1's measured confidences, for Orientation when the Final ones lack it (as the
+    frontend's fieldValue)."""
+    conf = dict(_confidences(confidences))
+    orientation = _num(_confidences(measured).get("orientation"))
+    if conf.get("orientation") is None and orientation is not None:
+        conf["orientation"] = orientation
     values: dict[str, float] = {}
     for key in FEATURES:
         if blank_junk_or_duplicate and key not in BLANK_JUNK_FEATURES:
@@ -89,10 +95,11 @@ def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
 
 
 _PAGES_SQL = """
-SELECT c.chart_name, to_jsonb(f) -> 'confidences', b.blank_junk_flag
+SELECT c.chart_name, to_jsonb(f) -> 'confidences', b.blank_junk_flag, q.quality_detail -> 'confidences'
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN imaging_final f ON f.page_id = p.id
+  LEFT JOIN ocr_quality_results q ON q.page_id = p.id
   LEFT JOIN v_page_blank_junk_final b ON b.page_id = p.id
  WHERE c.chart_name = ANY(%s)
 """
@@ -106,9 +113,9 @@ def for_charts_postgres(database_url: str, db_schema: str, names: list[str]) -> 
     pages: dict[str, list[Optional[tuple[str, float]]]] = {name: [] for name in names}
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute(_PAGES_SQL, (names,))
-        for chart, confidences, flag in cur.fetchall():
+        for chart, confidences, flag, measured in cur.fetchall():
             bj = str(flag or "").strip().lower() in _BLANK_JUNK_FLAGS
-            pages.setdefault(str(chart), []).append(page_level(confidences, bj))
+            pages.setdefault(str(chart), []).append(page_level(confidences, bj, measured))
     return {name: chart_level(found) for name, found in pages.items()}
 
 
@@ -126,7 +133,8 @@ def for_charts_cosmos(names: list[str]) -> dict[str, dict[str, Any]]:
         document = summaries.document(summary)
         out[name] = chart_level(
             page_level(page.finalConfidences or {},
-                       page.isDuplicate is True or str(page.blankOrJunk or "").strip().lower().startswith("yes"))
+                       page.isDuplicate is True or str(page.blankOrJunk or "").strip().lower().startswith("yes"),
+                       page.measuredConfidences or {})
             for page in document.pages
         )
     return out
