@@ -626,14 +626,18 @@ def short_verdict(
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
     seen_nearby: set[str] = set()
+    joined_nearby = ""
     for other_id in (prev_id, next_id):
         if other_id is None:
             continue
         for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
-            seen_nearby |= {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
+            keys = [_line_key(line) for line in other_text.splitlines() if _line_key(line)]
+            seen_nearby |= set(keys)
+            joined_nearby += _joined(keys)
     own_text = "\n".join(line for line in text.splitlines()
-                         if _line_key(line) and not _line_on(_line_key(line), seen_nearby))
-    own_headings = tuple(h for h in own.headings or () if not _line_on(_line_key(str(h)), seen_nearby))
+                         if _line_key(line) and not _line_on(_line_key(line), seen_nearby, joined_nearby))
+    own_headings = tuple(h for h in own.headings or ()
+                         if not _line_on(_line_key(str(h)), seen_nearby, joined_nearby))
     sections = pn_headers.sections_on(own_text, own_headings)
     if sections:
         other = [w for w in re.findall(r"[a-z]+", own_text.lower())
@@ -706,8 +710,10 @@ def short_verdict(
     removed_headings = False
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
-        theirs = {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
-        kept = [line for line in mine_text.splitlines() if _line_key(line) and not _line_on(_line_key(line), theirs)]
+        their_keys = [_line_key(line) for line in other_text.splitlines() if _line_key(line)]
+        theirs, joined = set(their_keys), _joined(their_keys)
+        kept = [line for line in mine_text.splitlines()
+                if _line_key(line) and not _line_on(_line_key(line), theirs, joined)]
         if any(a_heading(line) for line in kept):
             removed_headings = True
             kept = [line for line in kept if not a_heading(line)]
@@ -756,12 +762,23 @@ def _title_like(line: str) -> bool:
 NUMBER_WORD = re.compile(r"\d+(?:[.,:]\d+)*")
 
 
-def _line_on(key: str, theirs: set[str]) -> bool:
-    """Is the line (its _line_key) on the neighbour: the same line, or (2026-11-20, user) the
+def _joined(keys: Any) -> str:
+    """The neighbour's lines (their _line_keys) run together, letters and digits only."""
+    return "|" + "|".join(re.sub(r"[^a-z0-9]", "", key) for key in keys) + "|"
+
+
+def _line_on(key: str, theirs: set[str], joined: Optional[str] = None) -> bool:
+    """Is the line (its _line_key) on the neighbour: the same line; or (2026-11-20, user) the
     same words but one, where both are numbers ("11:43" / "11:44", "0443" / "0442"; not a
-    date such as 01/28/26)."""
+    date such as 01/28/26); or, for a line of 3+ words, its text in the neighbour's text with
+    only the line breaks different (OCR joined or split the same header lines: "Admit Date:
+    n/a Disch Date: n/a Physician: ..." on one line here, four lines there)."""
     if key in theirs:
         return True
+    if joined is not None and len(key.split()) >= 3:
+        compact = re.sub(r"[^a-z0-9]", "", key)
+        if len(compact) >= 8 and compact in joined.replace("|", ""):
+            return True
     words = key.split()
     for other in theirs:
         other_words = other.split()

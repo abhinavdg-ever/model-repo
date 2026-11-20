@@ -357,3 +357,40 @@ def test_a_short_page_whose_only_own_line_is_a_stage_6_header_is_junk(monkeypatc
              2: head + "\nEKG/STRESS TEST results section\nDate/Time Printed: 6/16/2026 09:49 PDT Page 17 of 46"}
     rows = _short(texts, {2: ("EKG/STRESS TEST results section",)})
     assert rows[2]["flag"] == "junk" and "section header" in rows[2]["reason"]
+
+
+P18 = """Dignity Health.
+n/a n/a n/a
+Facility Phone #: n/a
+NAME: Jordan, George MRN: 9752541(AMB); 9752541(SJH); 3600306426(AG); Acct #: 8000008888(EV) Pt Loc: n/a
+DOB: 12/11/1997 Age: n/a Sex: M
+Admit Date: n/a
+Disch Date: n/a
+Physician:
+Tempe, Mario R DO
+Cardiology Reports
+DOCUMENT NAME: RECEIVED DATE/TIME: RESULT STATUS: PERFORM INFORMATION: SIGN INFORMATION:
+Electrocardiogram 1/29/2026 09:36 MST Auth (Verified) Jain, Shashank MD (1/30/2026 23:42 MST)
+""" + BODY + """
+Date/Time Printed: 6/16/2026 09:49 PDT
+Page 16 of 46"""
+
+P19 = """Dignity Health.
+n/a n/a n/a
+Facility Phone #: n/a
+NAME: Jordan, George MRN: 9752541(AMB); 9752541(SJH); 3600306426(AG); Acct #: 8000008888(EV) Pt Loc: n/a
+DOB: 12/11/1997 Age: n/a Sex: M
+Admit Date: n/a Disch Date: n/a Physician: Tempe, Mario R DO
+EKG/Stress Test
+Date/Time Printed: 6/16/2026 09:49 PDT
+Page 17 of 46"""
+
+
+def test_lines_joined_differently_by_the_ocr_still_match(monkeypatch):
+    """2026-11-20 (user): Dignity p18 / p19 (Doc Intel): the header's "Admit Date ... Physician"
+    is four lines on p18 and one on p19; with it matched, only "EKG/Stress Test" is left -> Junk."""
+    _keep(monkeypatch)
+    rows = _run({1: P18, 2: P19})
+    assert rows[2]["flag"] == "junk", rows[2]["reason"]
+    rows = _short({1: P18, 2: P19}, {2: ("EKG/Stress Test",)})
+    assert rows[2]["flag"] == "junk" and "header" in rows[2]["reason"]
