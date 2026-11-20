@@ -36,24 +36,32 @@ def test_fax_not_in_a_section_header_or_in_pass_1_does_nothing():
     assert _verdict(TEXT, pass_no=1).code == m.CODE_MAIN
 
 
-def test_fax_inside_a_note_is_not_junk_and_a_fax_letter_is():
-    """2026-11-19 (user): "Fax to:" on a note's page (Progress Note headers, ICD codes, doses) is
-    not junk; Fax + a letter's closing and no Electronic Signature is Junk / Letter/Fax."""
-    assert _verdict(NOTE).code == m.CODE_MAIN
-    letter = "Fax to: Records Dept\nPlease find the requested records enclosed.\nSincerely,\nMary Jones"
-    v = _verdict(letter, headings=())
-    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX") and "letter" in v.reason
-    assert _verdict(letter, headings=(), signed=True).code == m.CODE_MAIN
+LETTER = "Fax to: Records Dept\nPlease find the requested records enclosed.\nSincerely,\nMary Jones"
+
+
+def test_the_fax_letter_closing_rule_is_gone():
+    """2026-11-20 (user): Fax + a letter's closing no longer junks a page: the model decides."""
+    assert _verdict(LETTER, headings=()).code == m.CODE_MAIN
+    v = _verdict(LETTER, headings=("Fax",))  # a Fax header and no signature: Junk / Letter/Fax
+    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX")
+    assert _verdict(LETTER, headings=("Fax",), signed=True).code == m.CODE_MAIN
+
+
+def test_a_fax_header_between_progress_notes_goes_to_the_model():
+    """2026-11-20 (user): "To: ... Fax" on a page that is not short with a Progress Note page on
+    each side: no fax rule, the model decides."""
+    v = _verdict(TEXT, flanked_by_notes=True)
+    assert v.code == m.CODE_MAIN and "the model decides" in str(v.votes.get("fax_unsigned"))
+    assert _verdict(TEXT, flanked_by_notes=False).code == m.CODE_LETTER_FAX
 
 
 def test_no_rule_junks_a_long_page_the_model_keeps_at_99():
     """2026-11-19 (user): on a page that is not short, a Fax / Cover junk rule stands only while
     p(keep) < 99%."""
-    letter = "Fax to: Records Dept\nPlease find the requested records enclosed.\nSincerely,\nMary Jones"
     sure = {"flag": "KEEP", "subclass": "", "confidence": 0.995, "decision_reason": "argmax",
             "p_keep": 0.995, "p_blank": 0.0, "p_junk": 0.005}
-    inputs = m.PageInputs(text=letter, pass_no=2, headings=(),
+    inputs = m.PageInputs(text=LETTER, pass_no=2, headings=("Fax",),
                           bert={"p_keep": 0.995, "p_junk": 0.005, "p_blank": 0.0, "service": sure})
     v = m.decide(inputs)
     assert v.code == m.CODE_MAIN and v.rule == "KEEP99" and v.confidence == 0.995
-    assert _verdict(letter, headings=()).code == m.CODE_LETTER_FAX  # p(keep) 0.9: the rule stands
+    assert _verdict(LETTER, headings=("Fax",)).code == m.CODE_LETTER_FAX  # p(keep) 0.9: the rule stands

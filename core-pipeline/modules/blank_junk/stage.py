@@ -376,6 +376,15 @@ def _classify(
         scores = (model_scores(text, docling=(docling_pages or {}).get(page_id))
                   if text.strip() and page_inputs.pass_no == 2 else {})
         page_inputs.bert = scores.get("bert")
+        if page_inputs.pass_no == 2:
+            # 2026-11-20 (user): a Progress Note page on each side (2+ note sections on each);
+            # the fax header rule leaves such a page to the model.
+            from modules.blank_junk import pn_headers
+
+            prev_id, next_id = around.get(page_id, (None, None))
+            page_inputs.flanked_by_notes = prev_id is not None and next_id is not None and all(
+                len(pn_headers.clinical_sections_on(texts.get(n) or "", (headers_by_id or {}).get(n) or ())) >= 2
+                for n in (prev_id, next_id))
         if page_inputs.pass_no == 2 and find_duplicates:
             page_inputs.short_verdict = _short_verdict(page_id)
             if (page_inputs.document_type in method.CARD_DOCUMENT_TYPES

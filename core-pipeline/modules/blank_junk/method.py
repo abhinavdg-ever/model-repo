@@ -500,6 +500,8 @@ class PageInputs:
     # kv_extract's provider on the page: (region, name words), for the short page's S3.
     # (region, name words, box centre or None): stage.provider_spots.
     provider_spot: Optional[tuple] = None
+    # The previous and the next page are Progress Note pages (2+ note sections each; stage).
+    flanked_by_notes: bool = False
     # A barcode on the page image (zxing-cpp format name), read for card candidates.
     barcode: Optional[str] = None
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
@@ -883,17 +885,17 @@ def decide(inputs: PageInputs) -> Verdict:
                 return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
             return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
 
-        # 6. a fax letter: Fax, a letter's closing and no Electronic Signature (2026-11-19, user),
-        # or Fax in the section headers and no signature (2026-11-02); never on clinical content
-        # ("Fax to:" inside a note).
-        letter = fax_letter(inputs)
-        if letter is not None:
-            votes["fax_letter"] = letter
-            return ruled(CODE_LETTER_FAX, "FAX", f"FAX: letter ({letter}), no signature -> Junk / Letter/Fax")
+        # 6. the fax header (2026-11-20, user): Fax in the section headers and no signature ->
+        # Junk / Letter/Fax. A page that is not short with a Progress Note page on each side
+        # ("To: ... Fax" inside a note) is left to the model. (The fax letter rule -- Fax, a
+        # letter's closing, no signature -- was removed the same day.)
         word = fax_unsigned(inputs)
-        if word is not None and not note_content(inputs):
-            votes["fax_unsigned"] = word
-            return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
+        if word is not None:
+            if not inputs.short_verdict and inputs.flanked_by_notes:
+                votes["fax_unsigned"] = f"'{word}', but Progress Note pages on both sides: the model decides"
+            else:
+                votes["fax_unsigned"] = word
+                return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
 
         # 7. stage 1's Blank as the fallback (2026-11-17, user): no rule above kept it.
         if inputs.document_type == "blank":
@@ -1004,10 +1006,6 @@ def fax_unsigned(inputs: PageInputs) -> Optional[str]:
     return found.group(0) if found else None
 
 
-LETTER_CLOSING = re.compile(
-    r"(?<![A-Za-z])(?:yours\s+(?:sincerely|truly|faithfully)|sincerely|best\s+regards|kind\s+regards|warm\s+regards"
-    r"|regards|respectfully(?:\s+yours)?|thank\s+you\s+for\s+your\s+(?:time|attention|help))(?![A-Za-z])",
-    re.IGNORECASE)
 SHORT_RULE = "short_page:"
 
 
@@ -1024,18 +1022,6 @@ def note_content(inputs: PageInputs) -> Optional[str]:
         return f"{len(codes)} ICD-10 code(s)"
     meds = medication_doses(inputs.text or "")
     return f"medications ({meds})" if meds else None
-
-
-def fax_letter(inputs: PageInputs) -> Optional[str]:
-    """A fax letter (2026-11-19, user): the word Fax, a letter's closing (Sincerely, Yours truly,
-    Regards ...) and no Electronic Signature on the page, and no note content; else None."""
-    text = inputs.text or ""
-    if inputs.signed or not FAX_WORD.search(text):
-        return None
-    closing = LETTER_CLOSING.search(text)
-    if closing is None or note_content(inputs):
-        return None
-    return f"Fax + '{' '.join(closing.group(0).split())}'"
 
 
 INVOICE_RULE = "INVOICE"
