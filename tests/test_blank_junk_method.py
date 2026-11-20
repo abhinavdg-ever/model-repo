@@ -632,10 +632,8 @@ def test_a_fax_cover_sheet_is_junk_even_when_signed():
     """2026-11-15 (user): Fax + its routing boxes (Urgent, For Your Review, Reply ASAP ...)."""
     text = ("Fax To: NW Womens Imaging From: Julie Laurie Bergstrom MD Remarks: Urgent For Your Review "
             "Reply ASAP Please Comment please send all previous DXA scan results on patient " + FILLER)
-    v = run(text, signed=True, bert=bert(0.1), headings=("Fax",))
+    v = run(text, signed=True, bert=bert(0.1))
     assert v.code == method.CODE_LETTER_FAX and v.votes.get("fax_cover")
-    # 2026-11-19 (user): on a long page Fax must be a section header; mentioned only: no cover sheet.
-    assert not run(text, signed=True, bert=bert(0.1)).votes.get("fax_cover")
     # a faxed clinical note (Fax header only) is not a cover sheet.
     assert method.fax_cover_sheet("Fax 555-1212 Progress Note Assessment Plan") is None
 

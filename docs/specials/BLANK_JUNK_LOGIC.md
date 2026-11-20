@@ -53,7 +53,7 @@ Then, the first rule that matches decides:
 | # | Rule | Check | Verdict |
 |---|---|---|---|
 | 0 | Stage 1 Blank, header only | Stage 1 says Blank, all text in the top 15% header band, no ink below (2026-11-17) | Blank |
-| 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading plus 3+ lines with page numbers or dates. Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
+| 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading **in the top third of the page** (2026-11-20, user), **followed by** 3+ entries with page numbers or dates: a line ending in a page number (dot leaders, spaces, or a table cell such as Docling's "\| Progress Note \| 12 \|"), "Page 3" / "Pages 4-7", or a page number on a line of its own. Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
 | 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed). On a page that is not short, "Fax" must be a **section header** (2026-11-19) | Junk / Letter/Fax |
 | 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
 | 4 | Keeps | Visual page under 20 words that is not a card; > 30% handwritten; Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |

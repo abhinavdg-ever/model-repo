@@ -1,5 +1,7 @@
 """The short page in blank / junk pass 2 (2026-11-19, user): no text in the middle of the page
 (25%-75%); S1-S6 decide it before the other rules, else the classifier (stage.short_verdict)."""
+import types
+
 import modules.blank_junk.stage as stage
 from modules.blank_junk import method
 
@@ -47,7 +49,21 @@ def test_a_contents_page_is_junk_others():
     verdict = method.decide(inputs)
     assert verdict.rule == "INDEX" and verdict.code == stage.CODE_OTHERS
     assert method.index_page("Body Mass Index 23\nweight 80\nheight 170\npulse 70") is None
-    assert method.index_page("Index\nPages 1-4 History\nPages 5-9 Labs") is None   # 2 lines only
+    # 2026-11-20 (user): the title in the top third, followed by 3+ page-number entries.
+    assert method.index_page("Index\nPages 1-4 History\nPages 5-9 Labs") is None   # 2 entries only
+    assert method.index_page("Table of Contents\nHistory\nLabs\nImaging") is None  # no page numbers
+    # Docling's table form, and page numbers on lines of their own, are entries.
+    table = "## Table of Contents\n| Section | Page |\n|---|---|\n| Progress Note | 3 |\n| Labs | 12 |\n| Imaging | 20 |"
+    assert method.index_page(table) is not None
+    assert method.index_page("CONTENTS\nProgress Note\n3\nLabs\n12\nImaging\n20") is not None
+    # A title lower than the top third of the page does not count.
+    low = "History\nLabs\nImaging\nNotes\nContents\nProgress Note ... 3\nLabs ... 12\nImaging ... 20"
+    assert method.index_page(low) is None
+    entries = "\nProgress Note ... 3\nLabs ... 12\nImaging ... 20"
+    lines = [types.SimpleNamespace(text="Patient Summary", top=0.05), types.SimpleNamespace(text="CONTENTS", top=0.55)]
+    assert method.index_page("Patient Summary\nCONTENTS" + entries, lines=lines) is None
+    lines[1].top = 0.2
+    assert method.index_page("Patient Summary\nCONTENTS" + entries, lines=lines) is not None
 
 
 
@@ -198,6 +214,17 @@ def test_s3_a_provider_in_the_same_spot_on_a_neighbour_does_not_keep(monkeypatch
     assert "S3" in run(("header", name), ("footer", name))[2]["reason"]            # another spot
     assert "S3" in run(("footer", frozenset({"amit", "patel"})), ("footer", name))[2]["reason"]  # another name
     assert "S3" in run(None, ("footer", name))[2]["reason"]                        # none nearby
+
+
+def test_s3_compares_the_provider_boxes_when_kv_extract_gives_them():
+    """2026-11-20 (user): kv_extract's credentials row ("Roberto Velasco MD", box) tells where the
+    provider is printed: almost the same box on a neighbour is a running line."""
+    name = frozenset({"roberto", "velasco"})
+    here = ("line", name, (0.287, 0.31))          # box [463, 662, 511, 697] on a 1700 x 2200 page
+    assert stage.same_spot(here, ("line", name, (0.29, 0.32)))        # almost the same box
+    assert not stage.same_spot(here, ("line", name, (0.29, 0.80)))    # lower on the page
+    assert not stage.same_spot(here, ("line", frozenset({"amit", "patel"}), (0.287, 0.31)))
+    assert stage.same_spot(("footer", name), ("footer", name, (0.5, 0.95)))  # one box missing: the region
 
 
 def test_pass_1_rules_rerun_only_on_handwritten_or_low_quality_pages():

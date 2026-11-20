@@ -834,28 +834,59 @@ def extracted_page_names(chart_name: str, *fields: str) -> set[str]:
     return {page.name for page in staged if any(page.selected(field) for field in fields)}
 
 
-def provider_spots(chart_name: str) -> dict[str, tuple[str, frozenset[str]]]:
-    """Page name -> (region, name words) of kv_extract's selected provider name on it: where the
-    provider is printed, so the short page can tell a running provider line (same spot on the
-    previous / next page) from the page's own (2026-11-19, user)."""
+# Two provider boxes are "the same spot" when their centres are this close, as a share of the
+# page's width and height (2026-11-20, user: "almost the same box").
+SAME_BOX_SHARE = 0.05
+
+
+def _box_centre(row: dict[str, Any], width: Any, height: Any) -> Optional[tuple[float, float]]:
+    """A row's box ([left, top, right, bottom], pixels) as its centre, a share of the page."""
+    box = row.get("box")
+    try:
+        left, top, right, bottom = (float(v) for v in box)
+        w, h = float(width), float(height)
+    except (TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return ((left + right) / 2 / w, (top + bottom) / 2 / h)
+
+
+def provider_spots(chart_name: str) -> dict[str, tuple[str, frozenset[str], Optional[tuple[float, float]]]]:
+    """Page name -> (region, name words, box centre) of kv_extract's selected provider on it:
+    where the provider is printed, so the short page can tell a running provider line (same spot
+    on the previous / next page) from the page's own (2026-11-19, user). The provider name row,
+    else the selected credentials row naming its provider, which carries a box ("Roberto Velasco
+    MD"; 2026-11-20, user)."""
     from modules.extraction import staging
 
     staged = staging.read(chart_name)
     if staged is None:
         return {}
-    out: dict[str, tuple[str, frozenset[str]]] = {}
+    out: dict[str, tuple[str, frozenset[str], Optional[tuple[float, float]]]] = {}
     for page in staged:
-        rows = page.selected("provider_name")
+        rows = [(row, str(row.get("value") or "")) for row in page.selected("provider_name")]
+        rows += [(row, str(row.get("provider_name") or "")) for row in page.selected("provider_credentials")
+                 if str(row.get("provider_name") or "").strip()]
         if rows:
-            row = rows[0]
-            words = frozenset(w for w in re.findall(r"[a-z]+", str(row.get("value") or "").lower()) if len(w) > 1)
-            out[page.name] = (str(row.get("region") or "").strip().casefold(), words)
+            row, name = rows[0]
+            words = frozenset(w for w in re.findall(r"[a-z]+", name.lower()) if len(w) > 1)
+            out[page.name] = (str(row.get("region") or "").strip().casefold(), words,
+                              _box_centre(row, page.width, page.height))
     return out
 
 
-def same_spot(a: Optional[tuple[str, frozenset[str]]], b: Optional[tuple[str, frozenset[str]]]) -> bool:
-    """Two provider spots are one running line: the same region and (nearly) the same name."""
-    if not a or not b or a[0] != b[0]:
+def same_spot(a: Optional[tuple], b: Optional[tuple]) -> bool:
+    """Two provider spots are one running line: (nearly) the same name, at almost the same box
+    (centres within SAME_BOX_SHARE of the page) when both have one, else in the same region."""
+    if not a or not b:
+        return False
+    box_a = a[2] if len(a) > 2 else None
+    box_b = b[2] if len(b) > 2 else None
+    if box_a is not None and box_b is not None:
+        if abs(box_a[0] - box_b[0]) > SAME_BOX_SHARE or abs(box_a[1] - box_b[1]) > SAME_BOX_SHARE:
+            return False
+    elif a[0] != b[0]:
         return False
     if not a[1] or not b[1]:
         return not a[1] and not b[1]

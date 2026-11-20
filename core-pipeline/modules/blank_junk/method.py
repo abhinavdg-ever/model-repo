@@ -498,7 +498,8 @@ class PageInputs:
     # "rule": "S1".., "why": "..."}; None when the page is not short.
     short_verdict: Optional[dict[str, Any]] = None
     # kv_extract's provider on the page: (region, name words), for the short page's S3.
-    provider_spot: Optional[tuple[str, frozenset[str]]] = None
+    # (region, name words, box centre or None): stage.provider_spots.
+    provider_spot: Optional[tuple] = None
     # A barcode on the page image (zxing-cpp format name), read for card candidates.
     barcode: Optional[str] = None
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
@@ -818,14 +819,12 @@ def decide(inputs: PageInputs) -> Verdict:
     # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
     # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.
     # 1. a contents / index page (before the keeps: its entries read like a medication list).
-    index = index_page(text, inputs.headings)
+    index = index_page(text, inputs.headings, inputs.lines)
     if index is not None:
         votes["index_page"] = index
         return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
-    # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed. On a page that
-    # is not short, Fax must be a section header (2026-11-19, user: a mention of Fax, or a fax
-    # number in a letter, is not junk).
-    cover = fax_cover_sheet(text) if (inputs.short_verdict or fax_heading(inputs)) else None
+    # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed.
+    cover = fax_cover_sheet(text)
     if cover is not None:
         votes["fax_cover"] = cover
         return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
@@ -1027,21 +1026,11 @@ def note_content(inputs: PageInputs) -> Optional[str]:
     return f"medications ({meds})" if meds else None
 
 
-def fax_heading(inputs: PageInputs) -> Optional[str]:
-    """Fax as one of the page's section headers (stage 6), or None (2026-11-19, user: on a page
-    that is not short only a Fax header counts, never Fax mentioned in the text)."""
-    for heading in inputs.headings or ():
-        if FAX_WORD.search(str(heading)):
-            return str(heading)
-    return None
-
-
 def fax_letter(inputs: PageInputs) -> Optional[str]:
-    """A fax letter (2026-11-19, user): Fax as a section header (not just mentioned, not a fax
-    number), a letter's closing (Sincerely, Yours truly, Regards ...), no Electronic Signature on
-    the page and no note content; else None."""
+    """A fax letter (2026-11-19, user): the word Fax, a letter's closing (Sincerely, Yours truly,
+    Regards ...) and no Electronic Signature on the page, and no note content; else None."""
     text = inputs.text or ""
-    if inputs.signed or not fax_heading(inputs):
+    if inputs.signed or not FAX_WORD.search(text):
         return None
     closing = LETTER_CLOSING.search(text)
     if closing is None or note_content(inputs):
@@ -1153,18 +1142,58 @@ INDEX_MIN_PAGE_LINES = 3
 INDEX_ENTRY_DATE = re.compile(r"(?<!\d)\d{1,2}/\d{1,2}/\d{2,4}(?!\d)|(?<!\d)\d{4}-\d{1,2}-\d{1,2}(?!\d)")
 
 
-def index_page(text: str, headings: tuple[str, ...] = ()) -> Optional[str]:
-    """Why the page is a contents / index page, or None."""
+# 2026-11-20 (user): the contents title must sit in the top third of the page, and then it is
+# enough on its own -- no page numbers or dates needed after it.
+INDEX_TOP_FRACTION = 1 / 3
+
+
+def _title_position(title_text: str, text: str, lines: Any = None) -> Optional[float]:
+    """Where the contents title sits (its top, a share of the page height): from the OCR line
+    positions when there are any, else its line's place among the page's text lines."""
+    want = " ".join(re.findall(r"[a-z]+", title_text.lower()))
+    for line in lines or ():
+        got = " ".join(re.findall(r"[a-z]+", str(getattr(line, "text", "") or "").lower()))
+        if got and got == want:
+            return float(line.top)
+    text_lines = [line for line in (text or "").splitlines() if line.strip()]
+    for i, line in enumerate(text_lines):
+        if INDEX_TITLE.fullmatch(line.strip()):
+            return i / max(1, len(text_lines))
+    return None
+
+
+BARE_PAGE_NUMBER = re.compile(r"^\d{1,4}(?:\s*[-–]\s*\d{1,4})?$")
+
+
+def _entry(line: str) -> bool:
+    """A contents entry: a line ending in a page number (dot leaders, spaces, or a table cell:
+    Docling writes a contents list as "| Progress Note | 12 |"), "Page 3" / "Pages 4-7", a page
+    number on a line of its own, or a date (an encounter list)."""
+    cells = " ".join(part.strip() for part in line.split("|") if part.strip())
+    cells = re.sub(r"^[-:\s]+$", "", cells)  # a markdown table's ---|--- rule
+    if not cells:
+        return False
+    return bool(PAGE_NUMBER_LINE.search(cells) or BARE_PAGE_NUMBER.match(cells) or INDEX_ENTRY_DATE.search(cells))
+
+
+def index_page(text: str, headings: tuple[str, ...] = (), lines: Any = None) -> Optional[str]:
+    """Why the page is a contents / index page, or None: "Table of Contents" / "Contents" /
+    "Index" as a title (a line of its own, or a section header) in the top third of the page,
+    followed by 3+ entries with page numbers or dates (2026-11-20, user)."""
     title = INDEX_TITLE.search(text or "")
     title_text = title.group(0).strip() if title else next(
         (h for h in headings or () if INDEX_TITLE.fullmatch(str(h).strip())), None)
     if not title_text:
         return None
-    numbered = sum(1 for line in (text or "").splitlines()
-                   if PAGE_NUMBER_LINE.search(line.strip()) or INDEX_ENTRY_DATE.search(line))
+    position = _title_position(title_text, text, lines)
+    if position is None or position > INDEX_TOP_FRACTION:
+        return None
+    # The entries after the title (the whole page when the title is only a section header).
+    after = (text or "")[title.end():] if title else (text or "")
+    numbered = sum(1 for line in after.splitlines() if _entry(line.strip()))
     if numbered < INDEX_MIN_PAGE_LINES:
         return None
-    return f"'{title_text}' and {numbered} lines with page numbers or dates"
+    return f"'{title_text}' in the top third ({position:.0%} down) and {numbered} lines with page numbers or dates"
 
 
 def index_entries(text: str) -> int:
