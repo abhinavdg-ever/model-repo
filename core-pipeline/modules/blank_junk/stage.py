@@ -693,10 +693,24 @@ def short_verdict(
     left: Optional[set[str]] = None
     dated_by_pair: list[Optional[str]] = []
     titles_only: list[bool] = []
+    # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
+    # content: a line that is one of them (or only its words) is removed too.
+    heading_texts = [str(h) for h in (own.headings or ())] + [str(h) for h in headers.get(pid) or ()]
+    heading_keys = {_line_key(h) for h in heading_texts if _line_key(h)}
+    heading_words = set().union(*(unique_words(h) for h in heading_texts)) if heading_texts else set()
+
+    def a_heading(line: str) -> bool:
+        key = _line_key(line)
+        return key in heading_keys or (bool(heading_words) and set(unique_words(line)) <= heading_words)
+
+    removed_headings = False
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
         theirs = {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
         kept = [line for line in mine_text.splitlines() if _line_key(line) and not _line_on(_line_key(line), theirs)]
+        if any(a_heading(line) for line in kept):
+            removed_headings = True
+            kept = [line for line in kept if not a_heading(line)]
         found = set().union(*(unique_words(line) for line in kept)) if kept else set()
         left = found if left is None else left & found
         dated_by_pair.append(next((m.group(0) for line in kept for m in [method.ANY_DATE.search(line)] if m), None))
@@ -712,6 +726,8 @@ def short_verdict(
     # A date on a line of its own (not on either neighbour) -> not junk.
     if dated_by_pair and all(dated_by_pair):
         return out(CODE_MAIN, "S6", f"a date on a line of its own ('{dated_by_pair[0]}') -> Main")
+    if not left and removed_headings:
+        return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others")
     if len(left) < 3:
         return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, under 3 -> Junk / Others")
     if left <= header_vocab:

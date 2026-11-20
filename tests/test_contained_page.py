@@ -145,7 +145,7 @@ def test_s6_few_new_words_headers_junk_else_main(monkeypatch):
     page1 = HEADER + "\n" + BODY + "\n" + FOOTER
     texts = {1: page1, 2: FOOTER + "\nInsurance Guarantor Information\n" + HEADER}
     rows = _short(texts, {2: ("Insurance Guarantor Information",)})
-    assert rows[2]["flag"] == "junk" and "header words" in rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "header" in rows[2]["reason"]
     rows = _run({1: page1, 2: FOOTER + "\naddendum newword\n" + HEADER})
     assert rows[2]["flag"] == "junk" and "under 3" in rows[2]["reason"]
     rows = _run({1: page1, 2: FOOTER + "\naddendum newword thirdword\n" + HEADER})
@@ -346,3 +346,14 @@ def test_a_lab_table_carried_onto_a_short_page_is_main(monkeypatch):
     rows = _run({1: "Lab\n" + rows + "\n" + footer.format(3),
                  2: "WBC 6.2 x10(3)/mcL 4.5-11.0x10(3)/mcL 2026-01-26\nRed Cells Complete\n" + footer.format(4)})
     assert rows[2]["flag"] == "not_blank_junk" and "S4" in rows[2]["reason"]
+
+
+def test_a_short_page_whose_only_own_line_is_a_stage_6_header_is_junk(monkeypatch):
+    """2026-11-20 (user): the only difference from the neighbour is the page's stage 6 section
+    header ("EKG/Stress Test", here not title-cased the way OCR read it) -> Junk / Others."""
+    _keep(monkeypatch)
+    head = "Dignity Health\nNAME Jordan, George DOB: 12/11/1997 Age: n/a Sex: M\nPhysician: Tempe, Mario R DO"
+    texts = {1: head + "\nLab Results\n" + BODY + "\nDate/Time Printed: 6/16/2026 09:49 PDT Page 16 of 46",
+             2: head + "\nEKG/STRESS TEST results section\nDate/Time Printed: 6/16/2026 09:49 PDT Page 17 of 46"}
+    rows = _short(texts, {2: ("EKG/STRESS TEST results section",)})
+    assert rows[2]["flag"] == "junk" and "section header" in rows[2]["reason"]
