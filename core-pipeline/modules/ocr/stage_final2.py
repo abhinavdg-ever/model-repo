@@ -470,6 +470,34 @@ def _stage1_grade(row: dict[str, Any], detail: dict[str, Any]) -> Optional[str]:
     return row.get("quality_tag")
 
 
+def _edge_checked(conn: Any, chart_id: int, page_id: int, raw: Optional[str], tesseract: Optional[str],
+                  quality_row: Optional[dict[str, Any]]) -> Optional[str]:
+    """The Docling JSON with its edge check done (modules/ocr/edge_check.py), stored, when it
+    had none (Docling text from a run before the check, reused by skip_ocr); else None."""
+    from apps.worker.stages._support import unwrap_ocr_content
+    from common.db import page_blocks_prelim
+    from modules.ocr.edge_check import check as edge_check, fix_text
+
+    try:
+        page_doc = json.loads(raw or "")
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(page_doc, dict) or isinstance(page_doc.get("edge_check"), dict):
+        return None
+    tess = unwrap_ocr_content(tesseract)
+    content = str(page_doc.get("content") or "")
+    if not tess.strip() or not content.strip() or page_blocks_prelim(quality_row):
+        return None
+    fixed, edges = edge_check(content, tess)
+    page_doc["edge_check"] = edges
+    if fixed != content:
+        page_doc["content"] = fixed
+        page_doc["markdown"] = fix_text(str(page_doc.get("markdown") or content), tess)
+    new_raw = json.dumps(page_doc)
+    upsert_ocr_result(conn, chart_id=chart_id, page_id=page_id, ocr_type="docling", raw_text=new_raw)
+    return new_raw
+
+
 def route_pages(conn: Any, chart_id: int, settled: set[int]) -> dict[int, dict[str, Any]]:
     """Every page's routing-table row (modules/ocr/routing.py), before Doc Intel. Stores the
     Final Quality (provisional for the 3-engine rows) and quality_detail.routing."""
@@ -479,6 +507,11 @@ def route_pages(conn: Any, chart_id: int, settled: set[int]) -> dict[int, dict[s
     tesseract = get_ocr_texts(conn, chart_id, "tesseract")
     decisions: dict[int, dict[str, Any]] = {}
     for page_id, row in get_quality_map(conn, chart_id).items():
+        # 2026-11-20 (user): Docling text an earlier run made (Reuse OCR) never had its first /
+        # last row checked against Tesseract: check it now, and store the fixed text.
+        fixed_raw = _edge_checked(conn, chart_id, page_id, docling.get(page_id), tesseract.get(page_id), row)
+        if fixed_raw is not None:
+            docling[page_id] = fixed_raw
         detail = _detail(row)
         grade = _stage1_grade(row, detail)
         decision = route(
