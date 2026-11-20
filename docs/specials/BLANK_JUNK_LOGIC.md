@@ -13,10 +13,13 @@ Terms:
 - **Electronic Signature** = kv_extract found a provider signature on the page
   (`provider_signature_results`, `signature_present = y`). Words such as "signed" alone never count.
 - **Previous / next page** = the nearest page before / after that is not blank.
-- **Progress Note header** = a line (or stage-6 section header) of at most 6 words holding one of
-  the 36 sections' words, matched loosely: "Orders:", "Orders Placed", "Plan of Care", "Treatment
-  Plan", "Diagnosis" / "Diagnoses", "Assessment & Plan", "HPI", "ROS", "Vitals" …. A sentence that
-  only mentions a word ("we will plan …") never counts.
+- **Progress Note header** = a **real header** (2026-11-20, user): one of the OCR layout's section
+  headers (stage 6) or a markdown heading ("## Assessment"), of at most 6 words, holding one of
+  the 36 sections' words, matched loosely: "Orders", "Orders Placed", "Plan of Care", "Treatment
+  Plan", "Diagnosis" / "Diagnoses", "Assessment & Plan", "HPI", "ROS", "Vitals" …. A section word
+  that only appears in the text never counts, and neither does one in a **bulleted list, a table
+  cell, or a run of 3+ bare section names** (a records-request letter listing "Progress notes,
+  History and physical, Problem list").
 
 The 36 sections (`progress_note_headers.json`): Visit details · Chief complaint · History of present
 illness · Review of systems · Past medical history · Problem list · Past surgical history · Family
