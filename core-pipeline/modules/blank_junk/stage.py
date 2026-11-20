@@ -719,7 +719,7 @@ def short_verdict(
 # A page number in a line ("Page 13", "Page 2 of 4", "pg. 3", "13 of 20"): it changes on every
 # page, so it is left out when lines are compared (2026-11-20, user: a footer "Printed on ...
 # Page 13" is page 12's "... Page 12").
-PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
+PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
 
 
 def _title_like(line: str) -> bool:

@@ -1123,6 +1123,8 @@ INDEX_ENTRY_DATE = re.compile(r"(?<!\d)\d{1,2}/\d{1,2}/\d{2,4}(?!\d)|(?<!\d)\d{4
 # 2026-11-20 (user): the contents title must sit in the top third of the page, and then it is
 # enough on its own -- no page numbers or dates needed after it.
 INDEX_TOP_FRACTION = 1 / 3
+# Entries (page numbers or dates) must be at least this share of the lines after the title.
+INDEX_MIN_ENTRY_SHARE = 0.4
 
 
 def _title_position(title_text: str, text: str, lines: Any = None) -> Optional[float]:
@@ -1168,8 +1170,13 @@ def index_page(text: str, headings: tuple[str, ...] = (), lines: Any = None) -> 
         return None
     # The entries after the title (the whole page when the title is only a section header).
     after = (text or "")[title.end():] if title else (text or "")
-    numbered = sum(1 for line in after.splitlines() if _entry(line.strip()))
+    rest = [line.strip() for line in after.splitlines() if line.strip()]
+    numbered = sum(1 for line in rest if _entry(line))
     if numbered < INDEX_MIN_PAGE_LINES:
+        return None
+    # 2026-11-20 (user): mostly entries -- a note that opens with a "Table of Contents" bar and
+    # then has its content (with a few dates in it) is not a contents page.
+    if numbered < INDEX_MIN_ENTRY_SHARE * len(rest):
         return None
     return f"'{title_text}' in the top third ({position:.0%} down) and {numbered} lines with page numbers or dates"
 

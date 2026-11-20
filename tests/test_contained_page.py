@@ -307,3 +307,22 @@ def test_s6_page_numbers_and_a_lone_title_do_not_keep_a_short_page(monkeypatch):
                  2: "Dignity Health NAME Jordan, George DOB 12/11/1997\nEKG/Stress Test\nDate/Time Printed: 6/16/2026 09:49 PDT Page 17 of 46"})
     assert rows[2]["flag"] == "junk" and "title" in rows[2]["reason"]
     assert stage._title_like("EKG/Stress Test") and not stage._title_like("patient refused treatment today")
+
+
+def test_a_note_opening_with_a_table_of_contents_bar_is_not_a_contents_page():
+    """2026-11-20 (user): a Sharecare summary has "Table of Contents" and its sections at the top,
+    then its content with a few dates: entries must be most of the lines after the title."""
+    page = ("Patient Name: Blake Daniel DOB: 10/03/1998\nTable of Contents\n"
+            "Encounter Details Social History Plan of Treatment Visit Diagnoses\nEncounter Details\n"
+            "Date Type Department Care Team Description\n12/06/2025 Travel\nSocial History\n"
+            "Tobacco Use Types Packs/Day Years Used Date\nSmoking Tobacco: Never\nSmokeless Tobacco: Never\n"
+            "Sex Assigned at Birth Not on file\nLegal Sex Male 08/01/2017 8:00 PM PDT\nGender Identity Not on file\n"
+            "Plan of Treatment\nNot on file\nVisit Diagnoses\nNot on file documented in this encounter\n"
+            "Encounter Summary 01/02/2026")
+    assert method.index_page(page) is None
+
+
+def test_page_colon_number_is_left_out_of_the_line_comparison():
+    """2026-11-20 (user): "Visit: 10/20/2025 Page: 3" is the next page's "... Page: 4"."""
+    assert stage._line_key("Patient: Romero, Eli DOB: 09/07/1992 Visit: 10/20/2025 Page: 3") == \
+        stage._line_key("Patient: Romero, Eli DOB: 09/07/1992 Visit: 10/20/2025 Page: 4")
