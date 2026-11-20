@@ -291,3 +291,19 @@ def test_a_short_page_rules_verdict_reads_60(monkeypatch):
     _keep(monkeypatch)
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
     assert "S5" in rows[2]["reason"] and rows[2]["confidence"] == 0.6
+
+
+def test_s6_page_numbers_and_a_lone_title_do_not_keep_a_short_page(monkeypatch):
+    """2026-11-20 (user): "Printed on 5/26/26 11:43 AM Page 13" is page 12's footer (page numbers
+    left out of the comparison); a lone title ("EKG/Stress Test") under the running header is
+    junk too."""
+    _keep(monkeypatch)
+    head = "Optum Health Information Services Brennan Calvin MRN 33994923 DOB 11/02/1957\nLabs (continued)"
+    page12 = head + "\n" + BODY + "\nPrinted on 5/26/26 11:43 AM Page 12"
+    rows = _run({1: page12, 2: head + "\nPrinted on 5/26/26 11:43 AM Page 13"})
+    assert rows[2]["flag"] == "junk"
+    dignity = "Dignity Health NAME Jordan, George DOB 12/11/1997\nDate/Time Printed: 6/16/2026 09:49 PDT Page {} of 46"
+    rows = _run({1: dignity.format(16).replace("\nDate", "\n" + BODY + "\nDate"),
+                 2: "Dignity Health NAME Jordan, George DOB 12/11/1997\nEKG/Stress Test\nDate/Time Printed: 6/16/2026 09:49 PDT Page 17 of 46"})
+    assert rows[2]["flag"] == "junk" and "title" in rows[2]["reason"]
+    assert stage._title_like("EKG/Stress Test") and not stage._title_like("patient refused treatment today")

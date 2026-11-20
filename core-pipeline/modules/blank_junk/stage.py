@@ -619,11 +619,20 @@ def short_verdict(
             if low is not None and low >= 2 / 3:
                 return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
                                             f"({low:.0%} down the page): this page carries it on -> Main")
-    # S2: its own Progress Note header and 3+ other words.
-    sections = pn_headers.sections_on(text, own.headings)
+    # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
+    # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
+    seen_nearby: set[str] = set()
+    for other_id in (prev_id, next_id):
+        if other_id is None:
+            continue
+        for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
+            seen_nearby |= {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
+    own_text = "\n".join(line for line in text.splitlines() if _line_key(line) and _line_key(line) not in seen_nearby)
+    own_headings = tuple(h for h in own.headings or () if _line_key(str(h)) not in seen_nearby)
+    sections = pn_headers.sections_on(own_text, own_headings)
     if sections:
-        other = [w for w in re.findall(r"[a-z]+", text.lower())
-                 if len(w) > 1 and w not in pn_headers.header_words(text, own.headings)]
+        other = [w for w in re.findall(r"[a-z]+", own_text.lower())
+                 if len(w) > 1 and w not in pn_headers.header_words(own_text, own_headings)]
         if len(other) >= NOTE_HEADER_EXTRA_WORDS:
             return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main")
     # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
@@ -646,11 +655,13 @@ def short_verdict(
         if not repeated_provider:
             return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
                                         "next page -> Main")
-    # S4: measurements, doses or ICD codes.
-    found = (method.medication_doses(text)
-             or (" / ".join(method.lab_result_words(own) or []) or None)
-             or ("ICD-10 codes" if method.ICD10_CODE.search(text) else None)
-             or ("measurements" if len(MEASUREMENT.findall(text)) >= 2 else None))
+    # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
+    from dataclasses import replace as _replace
+
+    found = (method.medication_doses(own_text)
+             or (" / ".join(method.lab_result_words(_replace(own, text=own_text)) or []) or None)
+             or ("ICD-10 codes" if method.ICD10_CODE.search(own_text) else None)
+             or ("measurements" if len(MEASUREMENT.findall(own_text)) >= 2 else None))
     if found:
         return out(CODE_MAIN, "S4", f"its content is {found} -> Main")
     def pair(other_id: int) -> tuple[str, str]:
@@ -676,6 +687,7 @@ def short_verdict(
     # words of the lines left are counted.
     left: Optional[set[str]] = None
     dated_by_pair: list[Optional[str]] = []
+    titles_only: list[bool] = []
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
         theirs = {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
@@ -683,6 +695,7 @@ def short_verdict(
         found = set().union(*(unique_words(line) for line in kept)) if kept else set()
         left = found if left is None else left & found
         dated_by_pair.append(next((m.group(0) for line in kept for m in [method.ANY_DATE.search(line)] if m), None))
+        titles_only.append(bool(kept) and all(_title_like(line) for line in kept))
     if left is None:
         lines = [line for line in text.splitlines() if _line_key(line)]
         left = set().union(*(unique_words(line) for line in lines)) if lines else set()
@@ -698,12 +711,32 @@ def short_verdict(
         return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, under 3 -> Junk / Others")
     if left <= header_vocab:
         return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others")
+    if titles_only and all(titles_only):
+        return out(CODE_OTHERS, "S6", f"only a title of its own ({', '.join(sorted(left)[:5])}) -> Junk / Others")
     return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main")
 
 
+# A page number in a line ("Page 13", "Page 2 of 4", "pg. 3", "13 of 20"): it changes on every
+# page, so it is left out when lines are compared (2026-11-20, user: a footer "Printed on ...
+# Page 13" is page 12's "... Page 12").
+PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
+
+
+def _title_like(line: str) -> bool:
+    """A section title rather than content (2026-11-20, user: "EKG/Stress Test" alone under the
+    running header is junk): 1-5 words, no digits, every word capitalised, no sentence end."""
+    text = re.sub(r"[#*|]", " ", line or "").strip()
+    words = re.findall(r"[A-Za-z0-9']+", text)
+    if not 1 <= len(words) <= 5 or re.search(r"\d", text) or text.endswith((".", "?", "!")):
+        return False
+    return all(word[0].isupper() for word in words)
+
+
 def _line_key(line: str) -> str:
-    """A line as compared between pages: lower case, spacing and markup (#, *, |) evened out."""
-    return " ".join(re.sub(r"[#*|]", " ", line or "").lower().split())
+    """A line as compared between pages: lower case, spacing and markup (#, *, |) evened out,
+    page numbers left out."""
+    text = PAGE_NUMBER_IN_LINE.sub(" page# ", line or "")
+    return " ".join(re.sub(r"[#*|]", " ", text).lower().split())
 
 
 def _line_position(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:

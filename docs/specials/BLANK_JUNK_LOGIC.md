@@ -75,12 +75,12 @@ The first that matches decides:
 | # | Check | Verdict |
 |---|---|---|
 | S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on | Main |
-| S2 | The page has a **Progress Note header and 3+ other words** | Main |
+| S2 | The page has a **Progress Note header and 3+ other words** on **its own lines** (2026-11-20: lines not repeated on the previous / next page; a running "Labs (continued)" header does not count) | Main |
 | SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
-| S4 | Its content is **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
+| S4 | Its **own lines** (not repeated on a neighbour) hold **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
 | S5 | **98%+ of its words, in the same order**, are on the previous or next page (each pair compared on the **same OCR engine**: Doc Intel vs Doc Intel, else Docling vs Docling; 2026-11-20) | Junk / Others |
-| S6 | (2026-11-20, user) Each line of the page is **removed only when the whole line matches a line** of the previous or next page **exactly** (same OCR engine; case, spacing and #, *, \| evened out). With **fewer than 5 words left**: a **date** on a line of its own → **Main**; **under 3 words** → Junk / Others; all header words → Junk / Others; otherwise (3–4 words) → Main | Main / Junk |
+| S6 | (2026-11-20, user) Each line of the page is **removed only when the whole line matches a line** of the previous or next page **exactly** (same OCR engine; case, spacing and #, *, \| evened out; **page numbers left out**, so "Printed on … Page 13" matches "… Page 12"). With **fewer than 5 words left**: a **date** on a line of its own → **Main**; **under 3 words** → Junk / Others; all header words, or **only a title** (1–5 capitalised words, no digits, e.g. "EKG/Stress Test") → Junk / Others; otherwise (3–4 words of content) → Main | Main / Junk |
 | — | 5 or more words left and nothing above | the classifier (rule 8) decides |
 
 ### Rule 5: cards (`card_rules.py`)
