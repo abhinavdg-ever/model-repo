@@ -529,8 +529,12 @@ SAME_ORDER_SHARE = 0.98  # S5: this share of a short page's words, in order, on 
 FEW_NEW_WORDS = 5  # S6
 NOTE_HEADER_EXTRA_WORDS = 3  # S2
 MEASUREMENT = re.compile(
-    r"(?<![\w.])\d+(?:[.,]\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|iu/l|u/l|g/dl|meq/l|mm\s*hg|mmhg|bpm|%|kg|lbs?|°f|°c)(?![A-Za-z])"
-    r"|(?<![A-Za-z])(?:glucose|a1c|hba1c|vitamin\s*[a-z0-9]{1,3}|bmi|blood\s+pressure|bp|pulse|temp(?:erature)?|weight|spo2|o2\s+sat)"
+    # 2026-11-20 (user): lab units too -- a lab table carried onto a short page ("WBC 6.2
+    # x10(3)/mcL 4.5-11.0x10(3)/mcL") is measurements.
+    r"(?<![\w.])\d+(?:[.,]\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|iu/l|u/l|g/dl|meq/l|mm\s*hg|mmhg|bpm|%|kg|lbs?|°f|°c"
+    r"|x\s*10\s*\(?\d+\)?\s*/\s*(?:mcl|ul|µl|l)|(?:cells\s*)?/\s*(?:mcl|ul|µl|hpf|lpf)|fl|pg|ml/min(?:/1\.73\s*m2)?|mosm/kg|mg/l|ug/l|mcg/l|ng/dl)(?![A-Za-z])"
+    r"|(?<![A-Za-z])(?:glucose|a1c|hba1c|vitamin\s*[a-z0-9]{1,3}|bmi|blood\s+pressure|bp|pulse|temp(?:erature)?|weight|spo2|o2\s+sat"
+    r"|wbc|rbc|hgb|hct|mcv|mch|mchc|rdw|platelets?|sodium|potassium|chloride|creatinine|bun|egfr|calcium)"
     r"\W{0,3}\d", re.IGNORECASE)
 
 

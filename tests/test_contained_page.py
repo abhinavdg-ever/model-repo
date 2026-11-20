@@ -335,3 +335,14 @@ def test_a_line_differing_in_one_number_still_matches():
     assert stage._line_on(stage._line_key("Acct 1234 Visit 4"), theirs)
     assert not stage._line_on(stage._line_key("Printed on 5/27/26 11:43 AM"), theirs)   # another date
     assert not stage._line_on(stage._line_key("Acct 9999 Visit 4"), theirs)             # two numbers differ
+
+
+def test_a_lab_table_carried_onto_a_short_page_is_main(monkeypatch):
+    """2026-11-20 (user): 'WBC 6.2 x10(3)/mcL 4.5-11.0x10(3)/mcL' rows at the top of a page,
+    under nothing but the repeated footer -> measurements (S4) -> Main."""
+    _keep(monkeypatch)
+    footer = "Tenet Healthcare\nPatient: DAVIS, MICHAEL DOB: 05/31/1949\nPage {} of 12"
+    rows = "\n".join("Sodium Lvl 139 mmol/L 136-145mmol/L 2026-01-26" for _ in range(30))
+    rows = _run({1: "Lab\n" + rows + "\n" + footer.format(3),
+                 2: "WBC 6.2 x10(3)/mcL 4.5-11.0x10(3)/mcL 2026-01-26\nRed Cells Complete\n" + footer.format(4)})
+    assert rows[2]["flag"] == "not_blank_junk" and "S4" in rows[2]["reason"]
