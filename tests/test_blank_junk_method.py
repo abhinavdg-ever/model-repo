@@ -692,3 +692,12 @@ def test_a_page_with_a_provider_is_never_blank():
     assert method.provider_in_text("Baltimore, MD 21201") is None
     assert method.provider_in_text("Conjunctiva OD OS") is None
     assert run("", pass_no=2, document_type="blank").code == method.CODE_BLANK  # nothing at all: Blank
+
+
+def test_a_page_with_a_date_is_never_blank():
+    """2026-11-20 (user): '01/28/26 0443' (12 characters, stage 1 Blank) is not Blank, in pass 1
+    (Tesseract) or pass 2."""
+    for pass_no in (1, 2):
+        v = run("01/28/26 0443", pass_no=pass_no, document_type="blank", bert=bert(0.1) if pass_no == 2 else None)
+        assert v.code == method.CODE_MAIN and v.votes.get("not_blank_date") == "01/28/26"  # not Blank, not tiny-page Junk
+    assert run("ok", pass_no=1, document_type="blank").code == method.CODE_BLANK

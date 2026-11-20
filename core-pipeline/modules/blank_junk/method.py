@@ -782,6 +782,12 @@ def decide(inputs: PageInputs) -> Verdict:
     provider = "kv_extract provider" if inputs.provider else provider_in_text(text)
     if provider:
         votes["not_blank_provider"] = provider
+    # 2026-11-20 (user): nor is a page with a date on it ("01/28/26 0443" under the header, which
+    # OCR may read as the page's only 12 characters).
+    dated = ANY_DATE.search(text or "")
+    if dated and not provider:
+        provider = f"date '{dated.group(0)}'"
+        votes["not_blank_date"] = dated.group(0)
     if inputs.no_ink and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
     # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15).
@@ -813,7 +819,8 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(_junk_code("Cover Page"), "R1E",
                          f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
                          confidence=conf.pass1_rule())
-        if not visual and chars < MIN_TEXT_CHARS:
+        # 2026-11-20 (user): not a page with a date or a provider on it -- pass 2 judges it.
+        if not visual and chars < MIN_TEXT_CHARS and not provider:
             return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
                          confidence=conf.pass1_rule())
     if not pass2:
