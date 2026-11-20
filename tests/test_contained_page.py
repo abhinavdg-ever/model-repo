@@ -178,10 +178,10 @@ def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monke
     """2026-11-19 (user): the previous page's Progress Note header in its bottom third (one of its
     last 3) -> the short page carries that section on: Main."""
     _keep(monkeypatch)
-    before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["Plan:", FOOTER])
+    before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Plan", FOOTER])
     rows = _run({1: before, 2: FOOTER + " " + HEADER})
     assert rows[2]["flag"] == "not_blank_junk" and "S1" in rows[2]["reason"]
-    early = "\n".join([HEADER, "Plan:"] + [f"line {i} {BODY[:40]}" for i in range(20)] + [FOOTER])
+    early = "\n".join([HEADER, "## Plan"] + [f"line {i} {BODY[:40]}" for i in range(20)] + [FOOTER])
     assert "S1" not in _run({1: early, 2: FOOTER + " " + HEADER})[2]["reason"]
 
 
@@ -190,7 +190,7 @@ def test_s2_s3_s4_keep_a_short_page(monkeypatch):
     measurements / doses / ICD codes -> Main."""
     _keep(monkeypatch)
     base = {1: HEADER + BODY + FOOTER}
-    assert "S2" in _run({**base, 2: "Orders:\nCBC lipid panel chest xray"})[2]["reason"]
+    assert "S2" in _run({**base, 2: "## Orders\nCBC lipid panel chest xray"})[2]["reason"]
     stamp = {"region": "footer", "sentence": "Electronically signed by Nathan A Monaco MD", "provider_name": "Nathan A Monaco"}
     rows = _run({**base, 2: HEADER + FOOTER}, signed={2}, signatures={2: stamp})
     assert rows[2]["flag"] == "not_blank_junk" and "S3" in rows[2]["reason"]

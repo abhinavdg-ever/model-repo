@@ -51,23 +51,56 @@ def section_of(line: str) -> Optional[str]:
     return None
 
 
+# A list item or a table cell (2026-11-20, user: a records-request letter's table of requested
+# record types -- "Progress notes", "History and physical", "Problem list" -- is not a note).
+_LIST_ITEM = re.compile(r"^\s*(?:[•▪●◦‣⁃·*\-–o]\s+|\d+[.)]\s+)")
+LIST_RUN = 3  # this many section names in a row with no text of their own: a list, not a note
+
+
+def _key(value: str) -> str:
+    return " ".join(_WORD.findall(_LIST_ITEM.sub("", str(value or "")).replace("#", " ").lower()))
+
+
 def header_lines(text: str, headings: Iterable[str] = ()) -> list[tuple[int, str, str]]:
-    """(line index, line, section) for every Progress Note header: stage 6's section headers,
-    and the page's own short lines (a header on a line of its own, or a "Label:" opening a line)."""
-    out: list[tuple[int, str, str]] = []
+    """(line index, header, section) for every Progress Note header (2026-11-20, user: a header
+    is a real header, not a section word in the text): stage 6's section headers (the OCR
+    layout's headings) and the page's markdown headings ("## Assessment"). The line index is
+    where it sits in ``text`` (-1 when not found there).
+
+    Not counted: a header that is a bulleted list item, a table cell, or part of a run of
+    LIST_RUN+ section names on consecutive lines with nothing of their own (a records-request
+    letter's list of record types: "Progress notes", "History and physical", "Problem list")."""
     lines = (text or "").splitlines()
-    for i, line in enumerate(lines):
-        candidate = line.split(":", 1)[0] if ":" in line else line
-        section = section_of(candidate)
-        if section:
-            out.append((i, line.strip(), section))
-    seen = {section for _i, _l, section in out}
-    for heading in headings or ():
-        section = section_of(str(heading))
-        if section and section not in seen:
-            out.append((-1, str(heading), section))
-            seen.add(section)
-    return out
+    # Lines that only list section names: bullets, table cells, runs of bare section names.
+    listed: set[str] = set()
+    for line in lines:
+        if "|" in line:
+            listed |= {_key(cell) for cell in line.split("|") if _key(cell)}
+        elif _LIST_ITEM.match(line):
+            listed.add(_key(line))
+    nonempty = [(i, line) for i, line in enumerate(lines) if line.strip()]
+    run: list[str] = []
+    for _i, line in nonempty + [(-1, "")]:
+        bare = line.strip().rstrip(":").strip()
+        if bare and "|" not in line and not _LIST_ITEM.match(line) and section_of(bare) and len(_WORD.findall(bare)) <= 6:
+            run.append(_key(bare))
+            continue
+        if len(run) >= LIST_RUN:
+            listed |= set(run)
+        run = []
+    where = {_key(line.split(":", 1)[0] if ":" in line else line): i for i, line in enumerate(lines)}
+    candidates = [str(h) for h in headings or ()]
+    candidates += [line.strip() for line in lines if line.lstrip().startswith("#")]
+    out: list[tuple[int, str, str]] = []
+    seen: set[str] = set()
+    for heading in candidates:
+        section = section_of(heading)
+        key = _key(heading.split(":", 1)[0] if ":" in heading else heading)
+        if not section or key in listed or section in seen:
+            continue
+        seen.add(section)
+        out.append((where.get(key, -1), heading.strip(), section))
+    return sorted(out, key=lambda item: (item[0] < 0, item[0]))
 
 
 def sections_on(text: str, headings: Iterable[str] = ()) -> list[str]:

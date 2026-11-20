@@ -14,7 +14,8 @@ JUNK_TEXT = "Invoice number 4411 amount due now. Fax cover sheet, number of page
 FAX_TEXT = "Fax cover sheet, number of pages 3. " + FILLER  # keywords: weak JUNK, score 4
 INVOICE_TEXT = "Invoice number 4411, amount due, remit to, balance due " + FILLER  # strong JUNK, score 9
 CLINICAL_WEAK = "Assessment:\nstable\nPlan:\nrest " + FILLER  # keywords: weak KEEP, clinical 4
-CLINICAL_TEXT = "HPI:\nchest pain\nAssessment:\nangina\nPlan:\nstress test, metformin 500 mg daily\n" + FILLER
+# 2026-11-20 (user): note sections count only as real headers (markdown / stage 6 headings).
+CLINICAL_TEXT = "## HPI\nchest pain\n## Assessment\nangina\n## Plan\nstress test, metformin 500 mg daily\n" + FILLER
 
 
 def bert(p_junk: float, label: str = "JUNK_INVOICE") -> dict:
@@ -655,3 +656,25 @@ def test_a_medication_list_with_doses_is_main():
     assert (v.code, v.rule) == (method.CODE_MAIN, "MEDS")
     assert method.medication_doses("Rx: Prolia 60 mg/ml, Vitamin D 1.25 mg") is not None   # word + 2
     assert method.medication_doses("Tot Copay 18.98 Page 2 of 5") is None
+
+
+def test_a_list_of_requested_record_types_is_not_a_note():
+    """2026-11-20 (user): a records-request letter's table / bulleted list of record types
+    ("Progress notes", "History and physical", "Problem list") is no Progress Note: the note
+    sections keep does not fire; a real note's headers, each with its own text, still count."""
+    from modules.blank_junk import pn_headers
+
+    letter = ("Dear Provider Group,\nThis letter is to inform you of our chart review.\nFor Physicians\n"
+              "\u2022 Progress notes for face-to-face office visit\n\u2022 History and physical\n"
+              "\u2022 Problem list\n\u2022 Lab and screening results\nFor Hospitals\nProgress notes\n"
+              "Consultation reports\nRadiology reports\nDischarge summary\n"
+              "| Problem list | Discharge summary |")
+    assert pn_headers.clinical_sections_on(letter) == []
+    v = run(letter + " " + FILLER, bert=bert(0.9, "JUNK_RECORD_REQUEST"))
+    assert v.rule != method.CLINICAL_CONTENT_RULE
+    note = "## HPI\n72 year old presents with cough.\n## Assessment\nBronchitis\n## Plan\nRest and fluids."
+    assert len(pn_headers.clinical_sections_on(note)) >= 2
+    # 2026-11-20 (user): a section word only in the text, not a header, does not count.
+    plain = "HPI:\n72 year old presents with cough.\nAssessment:\nBronchitis\nPlan:\nRest and fluids."
+    assert pn_headers.clinical_sections_on(plain) == []
+    assert len(pn_headers.clinical_sections_on(plain, ("HPI", "Assessment", "Plan"))) >= 2
