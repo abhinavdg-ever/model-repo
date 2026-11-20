@@ -65,3 +65,16 @@ def test_no_rule_junks_a_long_page_the_model_keeps_at_99():
     v = m.decide(inputs)
     assert v.code == m.CODE_MAIN and v.rule == "KEEP99" and v.confidence == 0.995
     assert _verdict(LETTER, headings=("Fax",)).code == m.CODE_LETTER_FAX  # p(keep) 0.9: the rule stands
+
+
+def test_a_fax_title_with_from_and_to_lines_is_a_cover_sheet():
+    """2026-11-20 (user): "CONFIDENTIAL Fax" + FROM: + TO: (no routing boxes) is a fax cover sheet."""
+    page = ("12-18-2025 2:08 PM ET athena 14807839071 pg 1 of 3\nCONFIDENTIAL Fax\nFROM:\nJOSE MENENDEZ, MD\n"
+            "1331 N 7TH ST STE 405, PHOENIX, AZ 85006-2754\nPhone: (602) 254-3151\nFax: (833) 320-2754\nTO:\n"
+            "ROBERT TRUESDALE MD\n(480) 783-9071\nThis fax may contain sensitive and confidential personal "
+            "health information that is being sent for the sole use of the intended recipient.")
+    assert m.fax_cover_sheet(page)
+    v = _verdict(page, headings=())
+    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX") and v.votes.get("fax_cover")
+    # A letter that only mentions a fax number is not one.
+    assert m.fax_cover_sheet("Dear Dr Roe,\nPlease fax 330-555-0142 the records.\nSincerely") is None

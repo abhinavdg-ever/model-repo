@@ -972,13 +972,26 @@ FAX_COVER_BOXES = re.compile(
     r"|please\s+recycle|as\s+requested)(?![A-Za-z])", re.IGNORECASE)
 
 
+FAX_FROM_LINE = re.compile(r"(?im)^\W*(?:from|sender)\s*:")
+FAX_TO_LINE = re.compile(r"(?im)^\W*(?:to|attn|attention|recipient)\s*:")
+
+
 def fax_cover_sheet(text: str) -> Optional[str]:
-    """A fax cover sheet: the word Fax and 2+ of its routing boxes (Urgent, For Review, Please
-    Comment, Please Reply, Please Recycle, As Requested), or None (2026-11-15, user)."""
+    """A fax cover sheet, or None: the word Fax and 2+ of its routing boxes (Urgent, For Review,
+    Please Comment, Please Reply, Please Recycle, As Requested; 2026-11-15, user); or
+    (2026-11-20, user: "CONFIDENTIAL Fax / FROM: / TO:") a short title line naming Fax (up to 4
+    words) with a From line and a To line."""
     if not FAX_WORD.search(text or ""):
         return None
     boxes = list(dict.fromkeys(" ".join(m.group(0).lower().split()) for m in FAX_COVER_BOXES.finditer(text or "")))
-    return f"Fax + {', '.join(boxes)}" if len(boxes) >= 2 else None
+    if len(boxes) >= 2:
+        return f"Fax + {', '.join(boxes)}"
+    title = next((line.strip() for line in (text or "").splitlines()
+                  if FAX_WORD.search(line) and 1 <= len(re.findall(r"[A-Za-z]+", line)) <= 4
+                  and not re.search(r"\d{3}", line)), None)
+    if title and FAX_FROM_LINE.search(text or "") and FAX_TO_LINE.search(text or ""):
+        return f"'{' '.join(title.split()).strip('#* ')}' title + From / To"
+    return None
 
 
 FAX_NUMBER = re.compile(
