@@ -627,8 +627,9 @@ def short_verdict(
             continue
         for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
             seen_nearby |= {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
-    own_text = "\n".join(line for line in text.splitlines() if _line_key(line) and _line_key(line) not in seen_nearby)
-    own_headings = tuple(h for h in own.headings or () if _line_key(str(h)) not in seen_nearby)
+    own_text = "\n".join(line for line in text.splitlines()
+                         if _line_key(line) and not _line_on(_line_key(line), seen_nearby))
+    own_headings = tuple(h for h in own.headings or () if not _line_on(_line_key(str(h)), seen_nearby))
     sections = pn_headers.sections_on(own_text, own_headings)
     if sections:
         other = [w for w in re.findall(r"[a-z]+", own_text.lower())
@@ -691,7 +692,7 @@ def short_verdict(
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
         theirs = {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
-        kept = [line for line in mine_text.splitlines() if _line_key(line) and _line_key(line) not in theirs]
+        kept = [line for line in mine_text.splitlines() if _line_key(line) and not _line_on(_line_key(line), theirs)]
         found = set().union(*(unique_words(line) for line in kept)) if kept else set()
         left = found if left is None else left & found
         dated_by_pair.append(next((m.group(0) for line in kept for m in [method.ANY_DATE.search(line)] if m), None))
@@ -730,6 +731,26 @@ def _title_like(line: str) -> bool:
     if not 1 <= len(words) <= 5 or re.search(r"\d", text) or text.endswith((".", "?", "!")):
         return False
     return all(word[0].isupper() for word in words)
+
+
+NUMBER_WORD = re.compile(r"\d+(?:[.,:]\d+)*")
+
+
+def _line_on(key: str, theirs: set[str]) -> bool:
+    """Is the line (its _line_key) on the neighbour: the same line, or (2026-11-20, user) the
+    same words but one, where both are numbers ("11:43" / "11:44", "0443" / "0442"; not a
+    date such as 01/28/26)."""
+    if key in theirs:
+        return True
+    words = key.split()
+    for other in theirs:
+        other_words = other.split()
+        if len(other_words) != len(words):
+            continue
+        diff = [(a, b) for a, b in zip(words, other_words) if a != b]
+        if len(diff) == 1 and all(NUMBER_WORD.fullmatch(w) for w in diff[0]):
+            return True
+    return False
 
 
 def _line_key(line: str) -> str:

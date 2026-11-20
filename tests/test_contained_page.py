@@ -326,3 +326,12 @@ def test_page_colon_number_is_left_out_of_the_line_comparison():
     """2026-11-20 (user): "Visit: 10/20/2025 Page: 3" is the next page's "... Page: 4"."""
     assert stage._line_key("Patient: Romero, Eli DOB: 09/07/1992 Visit: 10/20/2025 Page: 3") == \
         stage._line_key("Patient: Romero, Eli DOB: 09/07/1992 Visit: 10/20/2025 Page: 4")
+
+
+def test_a_line_differing_in_one_number_still_matches():
+    """2026-11-20 (user): one word different, both numbers -> the same line; a date is not."""
+    theirs = {stage._line_key("Printed on 5/26/26 11:43 AM"), stage._line_key("Acct 1234 Visit 3")}
+    assert stage._line_on(stage._line_key("Printed on 5/26/26 11:44 AM"), theirs)
+    assert stage._line_on(stage._line_key("Acct 1234 Visit 4"), theirs)
+    assert not stage._line_on(stage._line_key("Printed on 5/27/26 11:43 AM"), theirs)   # another date
+    assert not stage._line_on(stage._line_key("Acct 9999 Visit 4"), theirs)             # two numbers differ
