@@ -776,16 +776,22 @@ def decide(inputs: PageInputs) -> Verdict:
     chars = len(re.sub(r"\s", "", text))
     votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
-    if inputs.no_ink:
+    # 2026-11-20 (user): a page with a provider -- kv_extract accepted a provider name or
+    # credentials row, or a name and a credential from the canon are in its text ("Roberto
+    # Velasco MD") -- is never Blank, whatever stage 1 or the ink measure says.
+    provider = "kv_extract provider" if inputs.provider else provider_in_text(text)
+    if provider:
+        votes["not_blank_provider"] = provider
+    if inputs.no_ink and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
     # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15).
-    if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS:
+    if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
     # 2026-11-20 (user): stage 1's Blank never blanks a page with text on it (the "header-only"
     # Blank of 2026-11-17 and the stage-1-Blank fallback are gone): the rules below decide.
     if inputs.document_type == "blank":
         votes["stage1_blank_overruled"] = f"{chars} characters of text"
-    if not visual and chars == 0:
+    if not visual and chars == 0 and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
 
     # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
@@ -1193,6 +1199,33 @@ END_OF_REPORT = re.compile(r"\bend\s+of\s+(?:the\s+)?report\b", re.IGNORECASE)
 CREDENTIAL = re.compile(
     r"(?<![A-Za-z])(?:M\.?D|D\.?O|N\.?P|PA-?C|P\.?A|FNP(?:-[BC]{1,2})?|APRN|ARNP|DNP|DPM|DDS|DMD|O\.?D|CNM|CRNA|"
     r"MBBS|LCSW|LPC|PhD|PsyD|PharmD|R\.?N)\.?(?![A-Za-z])")
+
+
+def provider_in_text(text: str) -> Optional[str]:
+    """A provider in the page text (2026-11-20, user): a name followed by a credential from the
+    credentials canon ("Roberto Velasco MD", "Jane Roe, NP") -- the same reading as kv_extract's
+    credentials rule (a state + ZIP or eye notation is not one); the match, or None."""
+    from modules.extraction.provider_credentials.extract import (
+        _EYE, _STATE_LIKE, _ZIP, _credential_text, _name_before, _norm, load_credentials,
+    )
+
+    catalog = load_credentials()
+    for line in (text or "").splitlines():
+        tokens = line.split()
+        for i, token in enumerate(tokens):
+            key = _norm(token.strip(",;:()"))
+            if key not in catalog or not _credential_text(token) or i == 0:
+                continue
+            previous = tokens[i - 1].strip(",;:")
+            nxt = tokens[i + 1].strip(" ,") if i + 1 < len(tokens) else ""
+            if not _name_before(previous):
+                continue
+            if key in _STATE_LIKE and _ZIP.match(nxt):
+                continue
+            if key in _EYE and (_norm(nxt) in _EYE or _norm(previous) in _EYE):
+                continue
+            return " ".join(tokens[max(0, i - 2): i + 1])
+    return None
 
 
 def provider_or_date(text: str, provider: bool, signer: str = "") -> Optional[str]:

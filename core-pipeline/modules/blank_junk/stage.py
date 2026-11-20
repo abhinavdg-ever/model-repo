@@ -926,13 +926,18 @@ def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) ->
         return None, None
 
 
-def extracted_page_names(chart_name: str, *fields: str) -> set[str]:
-    """Page names kv_extract selected any of ``fields`` on (staging/extraction.json)."""
+def extracted_page_names(chart_name: str, *fields: str, accepted: bool = False) -> set[str]:
+    """Page names kv_extract selected any of ``fields`` on (staging/extraction.json); with
+    ``accepted``, any row of them kv_extract accepted (or selected)."""
     from modules.extraction import staging
 
     staged = staging.read(chart_name)
     if staged is None:
         return set()
+    if accepted:
+        return {page.name for page in staged
+                if any(row.get("accepted") or row.get("selected") for field in fields for row in page.rows(field)
+                       if isinstance(row, dict))}
     return {page.name for page in staged if any(page.selected(field) for field in fields)}
 
 
@@ -1033,7 +1038,8 @@ def _page_inputs(
 
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
-        with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
+        # 2026-11-20 (user): any accepted provider name / credentials row counts.
+        with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials", accepted=True)
         spots = provider_spots(ctx.chart_name)
         with_name = extracted_page_names(ctx.chart_name, "name")
     headings = section_heading_texts(ctx.chart_name) if pass_no == 2 else {}

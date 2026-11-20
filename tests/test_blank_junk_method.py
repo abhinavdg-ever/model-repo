@@ -678,3 +678,17 @@ def test_a_list_of_requested_record_types_is_not_a_note():
     plain = "HPI:\n72 year old presents with cough.\nAssessment:\nBronchitis\nPlan:\nRest and fluids."
     assert pn_headers.clinical_sections_on(plain) == []
     assert len(pn_headers.clinical_sections_on(plain, ("HPI", "Assessment", "Plan"))) >= 2
+
+
+def test_a_page_with_a_provider_is_never_blank():
+    """2026-11-20 (user): kv_extract's accepted provider name / credentials, or a name + credential
+    from the canon in the text ("Roberto Velasco MD"), and the page is never Blank."""
+    text = "Williams Stephen DOB 01/30/1954\nRoberto Velasco MD"
+    assert method.provider_in_text(text) == "Roberto Velasco MD"
+    v = run(text, pass_no=2, document_type="blank", no_ink=True, bert=bert(0.1))
+    assert v.code != method.CODE_BLANK and v.votes.get("not_blank_provider")
+    v = run("Dr X", pass_no=2, document_type="blank", provider=True, bert=bert(0.1))
+    assert v.code != method.CODE_BLANK
+    assert method.provider_in_text("Baltimore, MD 21201") is None
+    assert method.provider_in_text("Conjunctiva OD OS") is None
+    assert run("", pass_no=2, document_type="blank").code == method.CODE_BLANK  # nothing at all: Blank
