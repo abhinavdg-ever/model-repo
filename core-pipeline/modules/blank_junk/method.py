@@ -781,11 +781,8 @@ def decide(inputs: PageInputs) -> Verdict:
     # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15).
     if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
-    # ... or when that text is only a header line (2026-11-17, user): pass 2, measured.
-    if inputs.document_type == "blank" and header_only(inputs):
-        return ruled(CODE_BLANK, "R1", f"R1 blank: stage 1 page type blank, text only in the top "
-                                       f"{float(prof.raw['zones']['header_band']):.0%} header band",
-                     confidence=conf.measured())
+    # 2026-11-20 (user): stage 1's Blank never blanks a page with text on it (the "header-only"
+    # Blank of 2026-11-17 and the stage-1-Blank fallback are gone): the rules below decide.
     if inputs.document_type == "blank":
         votes["stage1_blank_overruled"] = f"{chars} characters of text"
     if not visual and chars == 0:
@@ -896,11 +893,6 @@ def decide(inputs: PageInputs) -> Verdict:
             else:
                 votes["fax_unsigned"] = word
                 return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
-
-        # 7. stage 1's Blank as the fallback (2026-11-17, user): no rule above kept it.
-        if inputs.document_type == "blank":
-            return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank, no rule kept it (fallback)",
-                         confidence=conf.backup())
 
     # 8. the classifier (the teammate's service), then the invoice post-processing.
     votes["reached_classifier"] = True

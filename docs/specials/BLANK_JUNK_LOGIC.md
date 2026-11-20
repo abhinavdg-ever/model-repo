@@ -52,14 +52,13 @@ Then, the first rule that matches decides:
 
 | # | Rule | Check | Verdict |
 |---|---|---|---|
-| 0 | Stage 1 Blank, header only | Stage 1 says Blank, all text in the top 15% header band, no ink below (2026-11-17) | Blank |
+| 0 | Stage 1 Blank | Only when the page has **no text** (under 15 characters). **2026-11-20 (user): stage 1's Blank never blanks a page with text** (the header-only Blank and the fallback are removed); the rules below decide. review-ui shows such a page's Type as **Printed** | Blank |
 | 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading **in the top third of the page** (2026-11-20, user), **followed by** 3+ entries with page numbers or dates: a line ending in a page number (dot leaders, spaces, or a table cell such as Docling's "\| Progress Note \| 12 \|"), "Page 3" / "Pages 4-7", or a page number on a line of its own. Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
 | 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed) | Junk / Letter/Fax |
 | 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
 | 4 | Keeps | Visual page under 20 words that is not a card; > 30% handwritten; Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |
 | 5 | **Card** | on a printed, visual or uncertain page; see below | Junk / Cards |
 | 6 | **Fax header** | "Fax" in a **section header** and **no Electronic Signature** (2026-11-20, user: the only fax letter rule; the "Fax + a letter's closing" rule and the note-content exception are removed). Exception: a page that is **not short** with a **Progress Note page on each side** (previous and next page each with 2+ Progress Note sections) is left to the classifier ("To: … Fax" inside a note) | Junk / Letter/Fax |
-| 7 | Stage 1 Blank fallback | Stage 1 typed it Blank and nothing above kept it (2026-11-17) | Blank |
 | 8 | **Classifier** | The DistilBERT service: JUNK with p(keep) < 0.99 → Junk / its subtype; BLANK → Junk / Others; else Main. A model Invoice is a card only on a card near miss that no form / letter / length guard stopped and no note content (2026-11-19: an anesthesia note read as an invoice was becoming Cards) | its verdict |
 | ✓ | **p(keep) 99% check** (2026-11-19, user) | On a page that is **not short**, a rule that would file it **Junk / Letter/Fax or Junk / Cover Page** (rules 2 and 6) stands only while DistilBERT's p(keep) is **under 99%**. At 99% or more the page stays **Main** (rule `KEEP99`). Other junk rules (contents page, cards, the short-page rules, R1 / R2 no-text rules, the classifier) are not overruled. Canon `keep_veto_at` 0.99 | Main |
 | 9 | Invoice post-processing | unchanged: a dollar table or invoice wording → Main (Invoice page); a terms page → Junk / Others; a care provider's page with no invoice wording → Main, not an invoice | |
@@ -80,9 +79,9 @@ The first that matches decides:
 | SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
 | S4 | Its content is **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
-| S5 | **98%+ of its words, in the same order**, are on the previous or next page | Junk / Others |
-| S6 | **5 new words or fewer** (not on the previous / next page): all header words → Junk / Others; otherwise → Main | Junk / Main |
-| — | More than 5 new words and nothing above | the classifier (rule 8) decides |
+| S5 | **98%+ of its words, in the same order**, are on the previous or next page (each pair compared on the **same OCR engine**: Doc Intel vs Doc Intel, else Docling vs Docling; 2026-11-20) | Junk / Others |
+| S6 | (2026-11-20, user) Each line of the page is **removed only when the whole line matches a line** of the previous or next page **exactly** (same OCR engine; case, spacing and #, *, \| evened out). With **fewer than 5 words left**: a **date** on a line of its own → **Main**; **under 3 words** → Junk / Others; all header words → Junk / Others; otherwise (3–4 words) → Main | Main / Junk |
+| — | 5 or more words left and nothing above | the classifier (rule 8) decides |
 
 ### Rule 5: cards (`card_rules.py`)
 

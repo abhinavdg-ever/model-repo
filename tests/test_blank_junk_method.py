@@ -264,24 +264,17 @@ class TestBlankFromStage1AndLabKeep:
         v = run(text, pass_no=1, document_type="blank")
         assert v.code != method.CODE_BLANK and v.votes.get("stage1_blank_overruled")
 
-    def test_stage_1_blank_with_only_a_header_line_is_blank(self):
-        """2026-11-17 (user): text only in the top header band, no ink below -> Blank (pass 2)."""
-        text = "Patient Name: X Date of Birth: 01/31/1944 Sex: F Encounter Date: April 27, 2026"
-        v = run(text, pass_no=2, document_type="blank", content_bottom=0.03, body_ink=False, bert=bert(0.99))
-        assert (v.code, v.rule) == (method.CODE_BLANK, "R1") and "header band" in v.reason
-        # ink below the header band, or not measured: not header-only (the fallback decides).
-        for ink in (True, None):
-            v = run(text, pass_no=2, document_type="blank", content_bottom=0.03, body_ink=ink)
-            assert "header band" not in v.reason
-
-    def test_stage_1_blank_is_the_fallback(self):
-        """2026-11-17 (user): stage 1 Blank and no content rule kept it -> Blank, whatever the
-        classifier says; a content rule (signature) still keeps it."""
+    def test_stage_1_blank_never_blanks_a_page_with_text(self):
+        """2026-11-20 (user): stage 1's Blank on a page with text is not Blank (the header-only
+        Blank and the stage-1-Blank fallback are gone): the other rules and the model decide."""
+        header = "Patient Name: X Date of Birth: 01/31/1944 Sex: F Encounter Date: April 27, 2026"
+        v = run(header, pass_no=2, document_type="blank", content_bottom=0.03, body_ink=False, bert=bert(0.1))
+        assert v.code == method.CODE_MAIN and v.votes.get("stage1_blank_overruled")
         text = "Outside Labs: Ameripath Quest. In-House Tests OK? YES - AON Lab / YES - AON Path"
-        v = run(text, pass_no=2, document_type="blank", bert=bert(0.99))
-        assert v.code == method.CODE_BLANK and "fallback" in v.reason
-        v = run(text, pass_no=2, document_type="blank", signed=True, bert=bert(0.1))
-        assert v.code == method.CODE_MAIN and v.rule == "R4"
+        assert run(text, pass_no=2, document_type="blank", bert=bert(0.1)).code == method.CODE_MAIN
+        assert run(text, pass_no=2, document_type="blank", signed=True, bert=bert(0.1)).code == method.CODE_MAIN
+        # No text at all: still Blank.
+        assert run("", pass_no=2, document_type="blank").code == method.CODE_BLANK
 
 
     def test_all_three_words_are_needed(self):

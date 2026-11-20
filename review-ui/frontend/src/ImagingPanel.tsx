@@ -531,9 +531,13 @@ const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as co
 /** The page quality grades (ocr_quality_results.quality_tag). */
 const QUALITY_CHOICES = ["High", "Medium", "Low"] as const;
 
-/** Page type; a page classified before document type existed shows its old label. */
+/** Page type; a page classified before document type existed shows its old label. Stage 1's
+ * Blank on a page the Final verdict does not call Blank reads Printed (2026-11-20, user: the
+ * page has text, so it is not blank). */
 function pageTypeOf(page: ImagingPageResult): string | null {
-  return page.documentType || page.handwrittenOrPrinted || null;
+  const type = page.documentType || page.handwrittenOrPrinted || null;
+  if (type && type.trim().toLowerCase() === "blank" && !/blank/i.test(page.blankOrJunk ?? "")) return "Printed";
+  return type;
 }
 const YES_NO_CHOICES = ["Yes", "No"] as const;
 const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
@@ -2767,7 +2771,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
           {rows.map(({ page, quality, reasons }) => (
             <tr key={`${page.pageNumber}-${page.fileName}`}>
               <td>{page.pageNumber}</td>
-              <td>{page.handwrittenOrPrinted || page.documentType || NOT_FOUND}</td>
+              <td>{pageTypeOf(page) || NOT_FOUND}</td>
               {/* The Final Quality (after routing), the algorithm's score beside it. */}
               <td>{(() => {
                 const tag = (page.pageQualityTag ?? "").trim();

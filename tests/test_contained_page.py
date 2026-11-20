@@ -139,13 +139,39 @@ def test_s5_a_short_page_repeating_a_neighbour_in_order_is_junk(monkeypatch):
 
 
 def test_s6_few_new_words_headers_junk_else_main(monkeypatch):
-    """2026-11-19 (user): <= 5 new words: all header words -> Junk / Others; else Main."""
+    """2026-11-20 (user): a line is removed only when the whole line is on a neighbour; the words
+    left: a date -> Main; under 3 -> Junk; all header words -> Junk; else (under 5) Main."""
     _keep(monkeypatch)
-    texts = {1: HEADER + BODY + FOOTER, 2: FOOTER + " Insurance Guarantor " + HEADER}
-    rows = _short(texts, {2: ("Insurance Guarantor",)})
-    assert rows[2]["flag"] == "junk" and "S6" in rows[2]["reason"]
-    rows = _run({1: HEADER + BODY + FOOTER, 2: FOOTER + " addendum newword " + HEADER})
+    page1 = HEADER + "\n" + BODY + "\n" + FOOTER
+    texts = {1: page1, 2: FOOTER + "\nInsurance Guarantor Information\n" + HEADER}
+    rows = _short(texts, {2: ("Insurance Guarantor Information",)})
+    assert rows[2]["flag"] == "junk" and "header words" in rows[2]["reason"]
+    rows = _run({1: page1, 2: FOOTER + "\naddendum newword\n" + HEADER})
+    assert rows[2]["flag"] == "junk" and "under 3" in rows[2]["reason"]
+    rows = _run({1: page1, 2: FOOTER + "\naddendum newword thirdword\n" + HEADER})
     assert rows[2]["flag"] == "not_blank_junk" and "S6" in rows[2]["reason"]
+
+
+def test_s6_a_date_on_a_line_of_its_own_keeps_a_short_page(monkeypatch):
+    """2026-11-20 (user): a date on a line no neighbour has -> Main; the same line on the
+    neighbour is removed; each pair is compared on the same OCR engine."""
+    _keep(monkeypatch)
+    page1 = HEADER + "\n" + BODY + "\n" + FOOTER
+    rows = _run({1: page1, 2: HEADER + "\n01/28/26 0443"})
+    assert rows[2]["flag"] == "not_blank_junk" and "a date on a line of its own" in rows[2]["reason"]
+    rows = _run({1: HEADER + "\n01/28/26 0443\n" + BODY, 2: HEADER + "\n01/28/26 0443"})
+    assert rows[2]["flag"] == "junk"                                             # the same line nearby
+    # Same engine: page 1 has Docling only; page 2's best text (Doc Intel) reads the header
+    # differently, its Docling text as page 1's -> compared Docling vs Docling.
+    garbled = "Radlology Lt Grean Valey Patlent Watsen DOB MRN ACC\naddendum"
+    texts = {1: page1, 2: garbled}
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
+    engines = {1: {"docling": page1}, 2: {"azuredocintel": garbled, "docling": HEADER + "\naddendum"}}
+    rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs,
+                                                       find_duplicates=True, engine_texts=engines)}
+    assert rows[2]["flag"] == "junk" and "under 3" in rows[2]["reason"]       # only 'addendum' is left
 
 
 def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monkeypatch):

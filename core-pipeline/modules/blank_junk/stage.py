@@ -277,8 +277,10 @@ def _classify(
     find_duplicates: bool = True,
     exact_near: bool = False,
     headers_by_id: Optional[dict[int, tuple[str, ...]]] = None,
+    engine_texts: Optional[dict[int, dict[str, str]]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages (dup_rules.find).
+    ``engine_texts``: each page's text per OCR engine, for the short page's comparisons.
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
     are added here. ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier
@@ -359,7 +361,8 @@ def _classify(
     def _short_verdict(pid: int) -> Optional[dict[str, Any]]:
         return short_verdict(pid, texts=texts, inputs=inputs or {}, around=around,
                              headers=headers_by_id or {}, signed=signed,
-                             repeated=_repeated_signature(pid) is not None, words=_words)
+                             repeated=_repeated_signature(pid) is not None, words=_words,
+                             engine_texts=engine_texts)
 
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
@@ -568,6 +571,7 @@ def short_verdict(
     signed: set[int],
     repeated: bool,
     words: Any,
+    engine_texts: Optional[dict[int, dict[str, str]]] = None,
 ) -> Optional[dict[str, Any]]:
     """The short page's outcome (2026-11-19, user), or None when the page is not short:
     {"code": a CODE_* (or None: on to the classifier), "rule": "S1".., "why": "..."}.
@@ -580,8 +584,10 @@ def short_verdict(
       S3 an Electronic Signature, or a provider, not repeated on the previous / next page -> Main
       S4 its content is measurements, doses or ICD codes -> Main
       S5 98% of its words, in order, on the previous or next page -> Junk / Others
-      S6 5 new words or fewer (not on the previous / next page): all header words -> Junk / Others,
-         else Main
+      S6 (2026-11-20, user) each line is removed only when the whole line matches a line of the
+         previous or next page exactly (each pair on the same OCR engine: Doc Intel vs Doc Intel,
+         else Docling vs Docling); with fewer than 5 words left: a date on a line of its own ->
+         Main; under 3 words -> Junk / Others; all header words -> Junk / Others; else Main
       otherwise the classifier decides."""
     from modules.blank_junk import pn_headers
 
@@ -647,24 +653,57 @@ def short_verdict(
              or ("measurements" if len(MEASUREMENT.findall(text)) >= 2 else None))
     if found:
         return out(CODE_MAIN, "S4", f"its content is {found} -> Main")
+    def pair(other_id: int) -> tuple[str, str]:
+        """This page's and the neighbour's text from the same OCR engine (2026-11-20, user):
+        Doc Intel vs Doc Intel, else Docling vs Docling, else the best text of each."""
+        mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
+        for engine in ("azuredocintel", "docling"):
+            if (mine_by.get(engine) or "").strip() and (theirs_by.get(engine) or "").strip():
+                return mine_by[engine], theirs_by[engine]
+        return text, texts.get(other_id) or ""
+
+    neighbours = [n for n in (prev_id, next_id) if n is not None]
     # S5: the same words in the same order on a neighbour.
-    mine = re.findall(r"[a-z0-9]+", text.lower())
-    for other_id in (prev_id, next_id):
-        if other_id is None:
-            continue
-        share = _in_order_share(mine, re.findall(r"[a-z0-9]+", (texts.get(other_id) or "").lower()))
+    for other_id in neighbours:
+        mine_text, other_text = pair(other_id)
+        share = _in_order_share(re.findall(r"[a-z0-9]+", mine_text.lower()),
+                                re.findall(r"[a-z0-9]+", other_text.lower()))
         if share >= SAME_ORDER_SHARE:
             return out(CODE_OTHERS, "S5", f"{share:.0%} of its words, in order, are on the page "
                                           f"{'before' if other_id == prev_id else 'after'} -> Junk / Others")
-    # S6: what it adds.
-    new = words(pid) - words(prev_id) - words(next_id)
-    if len(new) <= FEW_NEW_WORDS:
-        header_vocab = pn_headers.header_words(text, own.headings) | set(
-            w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
-        if not new or new <= header_vocab:
-            return out(CODE_OTHERS, "S6", f"{len(new)} new word(s), all header words -> Junk / Others")
-        return out(CODE_MAIN, "S6", f"{len(new)} new word(s) of its own ({', '.join(sorted(new))}) -> Main")
-    return out(None, "S7", f"{len(new)} new words, no short-page rule: the classifier decides")
+    # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
+    # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
+    # words of the lines left are counted.
+    left: Optional[set[str]] = None
+    dated_by_pair: list[Optional[str]] = []
+    for other_id in neighbours:
+        mine_text, other_text = pair(other_id)
+        theirs = {_line_key(line) for line in other_text.splitlines() if _line_key(line)}
+        kept = [line for line in mine_text.splitlines() if _line_key(line) and _line_key(line) not in theirs]
+        found = set().union(*(unique_words(line) for line in kept)) if kept else set()
+        left = found if left is None else left & found
+        dated_by_pair.append(next((m.group(0) for line in kept for m in [method.ANY_DATE.search(line)] if m), None))
+    if left is None:
+        lines = [line for line in text.splitlines() if _line_key(line)]
+        left = set().union(*(unique_words(line) for line in lines)) if lines else set()
+        dated_by_pair = [next((m.group(0) for line in lines for m in [method.ANY_DATE.search(line)] if m), None)]
+    if len(left) >= FEW_NEW_WORDS:
+        return out(None, "S7", f"{len(left)} words on lines of its own, no short-page rule: the classifier decides")
+    header_vocab = pn_headers.header_words(text, own.headings) | set(
+        w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
+    # A date on a line of its own (not on either neighbour) -> not junk.
+    if dated_by_pair and all(dated_by_pair):
+        return out(CODE_MAIN, "S6", f"a date on a line of its own ('{dated_by_pair[0]}') -> Main")
+    if len(left) < 3:
+        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, under 3 -> Junk / Others")
+    if left <= header_vocab:
+        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others")
+    return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main")
+
+
+def _line_key(line: str) -> str:
+    """A line as compared between pages: lower case, spacing and markup (#, *, |) evened out."""
+    return " ".join(re.sub(r"[#*|]", " ", line or "").lower().split())
 
 
 def _line_position(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:
@@ -1272,6 +1311,7 @@ def _run_pass(
             quality = get_quality_map(conn, chart_id)
             # Final OCR 1 page objects, so the model reads them as b_jnk v3 does.
             docling_pages: dict[int, dict[str, Any]] = {}
+            engine_texts: dict[int, dict[str, str]] = {}
 
             if pass_no == 1:
                 ocr_source = "tesseract"
@@ -1305,6 +1345,15 @@ def _run_pass(
                         quality_row=quality.get(pid),
                     )
                     texts[pid] = body
+                    # 2026-11-20 (user): each engine's own text, so the short page compares a
+                    # page with its neighbour engine for engine (Doc Intel vs Doc Intel, Docling
+                    # vs Docling).
+                    engine_texts[pid] = {
+                        engine: text for engine, text in (
+                            ("azuredocintel", unwrap_ocr_content(final2.get(pid))),
+                            ("docling", unwrap_ocr_content(final1.get(pid))),
+                        ) if text.strip()
+                    }
                     if unwrap_ocr_content(final2.get(pid)).strip():
                         sources[pid] = "azuredocintel"
                     elif unwrap_ocr_content(final1.get(pid)).strip():
@@ -1381,6 +1430,7 @@ def _run_pass(
             find_duplicates=pass_no == 2,
             exact_near=pass_no == 1,
             headers_by_id=_headers_by_id(ctx) if pass_no == 2 else None,
+            engine_texts=engine_texts,
         )
 
         with connect() as conn:
