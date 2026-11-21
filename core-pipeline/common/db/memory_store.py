@@ -1270,6 +1270,22 @@ class MemoryStore(StoreBackend):
         with self._lock:
             return self._copy(self.member_summaries.get(chart_id))
 
+    def charts_with_tags(self, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
+        """common.db.charts_with_tags over the chart rows' ``tags`` (a Cosmos chart doc's tags)."""
+        wanted = {t.strip().casefold() for t in tags if t and t.strip()}
+        if not wanted:
+            return []
+        cols = ("id", "chart_name", "source", "blob_container", "blob_path", "output_path",
+                "run_id", "batch_id", "status", "page_count")
+        out = []
+        with self._lock:
+            for row in sorted(self.charts.values(), key=lambda r: r["chart_name"]):
+                have = {str(t).strip().casefold() for t in (row.get("tags") or [])}
+                hits = len(wanted & have)
+                if hits >= (len(wanted) if match_all else 1):
+                    out.append({k: row.get(k) for k in cols})
+        return out
+
     def chart_page_counts(self, chart_ids: list[int]) -> dict[str, int]:
         with self._lock:
             return {row["chart_name"]: int(row["page_count"]) for cid, row in self.charts.items()

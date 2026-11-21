@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -60,6 +61,7 @@ from apps.orchestrator_api.schemas import (  # noqa: F401 - re-exported: tests a
     BatchRequest,
     ChartRunOptions,
     RunRequest,
+    TagBatchRequest,
     WriteRequest,
 )
 from apps.worker import chart_run, run_stats
@@ -904,6 +906,109 @@ def batch_run(
     written, existing skipped).
     """
     return _batch_run_impl(body, background_tasks)
+
+
+def _parent_folder(path: Optional[str], chart_name: str) -> Optional[str]:
+    """The folder holding the chart: ``path`` without a last folder named after the chart."""
+    parts = [p for p in re.split(r"[\\/]+", (path or "").strip()) if p]
+    if parts and parts[-1] == chart_name:
+        parts = parts[:-1]
+    return "/".join(parts) or None
+
+
+def tag_run_requests(rows: list[dict[str, Any]], body: TagBatchRequest) -> tuple[list[RunRequest], list[str]]:
+    """(one RunRequest per tagged chart, read from its recorded Blob folder and written to its
+    recorded Processed folder; the charts with no recorded Blob source)."""
+    shared = body.model_dump(mode="json", include={"only", "run_through", "skip_ocr", "skip_completed",
+                                                   "skip_page_download"})
+    requests: list[RunRequest] = []
+    no_source: list[str] = []
+    for row in rows:
+        name = str(row["chart_name"])
+        input_path = _parent_folder(row.get("blob_path"), name)
+        container = (row.get("blob_container") or "").strip()
+        if str(row.get("source") or "blob") != "blob" or not input_path or not container:
+            no_source.append(name)
+            continue
+        requests.append(RunRequest.model_validate({
+            **shared, "input_type": "blob", "container_name": container, "input_path": input_path,
+            "output_path": _parent_folder(row.get("output_path"), name), "chart_name": name,
+        }))
+    return requests, no_source
+
+
+@app.post("/api/charts/batch-run-tag", status_code=202, tags=["charts"])
+def batch_run_tag(body: TagBatchRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Every chart carrying the tag(s), across runs and batches (2026-11-21, user).
+
+    Each chart is read from the Blob folder it was read from before and written to its own
+    Processed folder (chart_list.blob_container / blob_path / output_path). Charts with no
+    recorded Blob source (local runs) are listed in ``charts_no_source`` and not run. Queue
+    mode: charts sharing a source folder are queued together, one message per chart (the
+    large-chart queue still applies). Inline mode: run one after another in the background.
+    """
+    from apps.worker.jobs.batch_intake import finished_chart_names
+    from common.db import charts_with_tags
+
+    _require_db()
+    for token in ([body.run_through] if body.run_through else []) + list(body.only or []):
+        try:
+            resolve_stage(token)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with connect() as conn:
+        rows = charts_with_tags(conn, body.tags, match_all=body.match == "all")
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No chart is tagged {', '.join(body.tags)} ({body.match})")
+    found = len(rows)
+    skipped: list[str] = []
+    if body.skip_completed or body.only_completed:
+        finished = finished_chart_names([str(r["chart_name"]) for r in rows], body.min_run_date)
+        if body.skip_completed:
+            skipped = [str(r["chart_name"]) for r in rows if r["chart_name"] in finished]
+            rows = [r for r in rows if r["chart_name"] not in finished]
+        else:
+            rows = [r for r in rows if r["chart_name"] in finished]
+    if body.sample:
+        rows = rows[: body.sample]
+    requests, no_source = tag_run_requests(rows, body)
+    groups: dict[tuple[str, str, str], list[RunRequest]] = {}
+    for req in requests:
+        groups.setdefault((req.container_name or "", req.input_path, req.output_path or ""), []).append(req)
+    trigger_id = run_stats.new_trigger("batch-run-tag")
+    reply: dict[str, Any] = {
+        "trigger_id": trigger_id,
+        "tags": body.tags,
+        "match": body.match,
+        "charts_found": found,
+        "charts_skipped_completed": skipped if body.skip_completed else None,
+        "charts_no_source": no_source or None,
+        "sources": [{"container": c, "input_path": i, "output_path": o or None, "charts": len(g)}
+                    for (c, i, o), g in groups.items()],
+        "skip_ocr": body.skip_ocr,
+        "only": body.only,
+        "run_through": body.run_through,
+    }
+    if not requests:
+        return {**reply, "status": "nothing_to_run", "charts_queued": 0}
+    if RUN_MODE == "queue":
+        queued: list[dict[str, Any]] = []
+        for group in groups.values():
+            queued += _enqueue_charts(group, trigger_id,
+                                      min_run_date=body.min_run_date.isoformat() if body.min_run_date else None)
+        return {**reply, "status": "queued", "charts_queued": len(queued), "runs": queued,
+                "poll": "/api/runs/{run_id}"}
+
+    def run_all() -> None:
+        for req in requests:
+            try:
+                _bg_run(req)
+            except Exception:  # noqa: BLE001 - one chart must not stop the rest
+                logger.exception("batch-run-tag: chart %s failed", req.chart_name)
+
+    background_tasks.add_task(run_stats.in_trigger, (trigger_id, "batch-run-tag"), run_all)
+    return {**reply, "status": "accepted", "charts_queued": len(requests),
+            "poll": "/api/charts/by-name/{chart_name}"}
 
 
 def _queue_batch(body: BatchRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:

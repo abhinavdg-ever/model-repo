@@ -1911,6 +1911,34 @@ def get_member_summary(conn: Any, chart_id: int) -> Optional[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+TAGGED_CHART_COLUMNS = ("id", "chart_name", "source", "blob_container", "blob_path", "output_path",
+                        "run_id", "batch_id", "status", "page_count")
+
+
+@_dispatch
+def charts_with_tags(conn: Any, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
+    """Charts carrying the tags (chart_list.tags, case-insensitive; 2026-11-21, user: run every
+    chart of a tag, across runs and batches): any of them, or all with ``match_all``. Each row
+    has TAGGED_CHART_COLUMNS, by chart name."""
+    wanted = sorted({t.strip().casefold() for t in tags if t and t.strip()})
+    if not wanted:
+        return []
+    rows = conn.execute(
+        """
+        SELECT id, chart_name, source, blob_container, blob_path, output_path, run_id, batch_id,
+               status, page_count,
+               (SELECT count(DISTINCT lower(t)) FROM jsonb_array_elements_text(
+                    COALESCE(to_jsonb(c) -> 'tags', '[]'::jsonb)) AS t
+                 WHERE lower(t) = ANY(%s)) AS hits
+          FROM chart_list c
+         ORDER BY chart_name
+        """,
+        (wanted,),
+    ).fetchall()
+    need = len(wanted) if match_all else 1
+    return [{k: row[k] for k in TAGGED_CHART_COLUMNS} for row in rows if int(row["hits"] or 0) >= need]
+
+
 @_dispatch
 def chart_page_counts(conn: Any, chart_ids: list[int]) -> dict[str, int]:
     """chart_name -> page_count for the given chart ids, where an earlier run recorded one

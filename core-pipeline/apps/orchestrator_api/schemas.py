@@ -253,6 +253,61 @@ class BatchRequest(ChartRunOptions):
         return out or None
 
 
+class TagBatchRequest(BaseModel):
+    """Every chart carrying a tag (``chart_list.tags``), across runs and batches (2026-11-21,
+    user). Each chart is read from the Blob folder it was read from before and written to its
+    own Processed folder (both recorded on the chart), so no input or output path is given."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[str] = Field(
+        ...,
+        description="Tag(s), case-insensitive (list, or one comma-separated string).",
+        examples=[["Pilot-Nov"], "Pilot-Nov, Review-2"],
+    )
+    match: Literal["any", "all"] = Field(
+        "any", description="any = charts with any of the tags; all = charts with every one."
+    )
+    only: Optional[list[str]] = Field(None, description=f"Run only these stages. {_STAGE_HELP}")
+    run_through: Optional[str] = Field(None, description=f"Stop after this stage. {_STAGE_HELP}")
+    skip_ocr: bool = Field(
+        False,
+        description="Reuse existing OCR instead of re-running the OCR engines (no Azure billing "
+                    "except pages the routing now sends there that have none).",
+    )
+    skip_completed: bool = Field(False, description="Skip charts already finished.")
+    only_completed: bool = Field(False, description="Run only charts already finished.")
+    min_run_date: Optional[date] = Field(
+        None, description="With skip_completed / only_completed: finished on or after this date."
+    )
+    sample: Optional[int] = Field(None, ge=1, description="Run at most N of the tagged charts.")
+    skip_page_download: bool = Field(True, description="Reuse page images already in the workspace.")
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _norm_tags(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.split(",")
+        if not isinstance(value, list):
+            return value
+        out: list[str] = []
+        for item in value:
+            tag = " ".join(str(item or "").split())
+            if tag and tag.casefold() not in {t.casefold() for t in out}:
+                out.append(tag)
+        if not out:
+            raise ValueError("give at least one tag")
+        return out
+
+    @model_validator(mode="after")
+    def _completed_flags(self) -> "TagBatchRequest":
+        if self.only_completed and self.skip_completed:
+            raise ValueError("only_completed and skip_completed cannot both be true")
+        if self.min_run_date and not (self.skip_completed or self.only_completed):
+            raise ValueError("min_run_date needs skip_completed or only_completed")
+        return self
+
+
 class WriteRequest(BaseModel):
     """Legacy body for the removed ``/write`` endpoint (returns 410)."""
 

@@ -252,6 +252,32 @@ cd "$REPO/core-pipeline" && source .venv/bin/activate && python cli.py usage --d
 
 To run again without paying for OCR again, add `"skip_ocr": true`. To run one stage only, add `"only": ["dos_extract"]`.
 
+### Run every chart with a tag: `POST /api/charts/batch-run-tag` (2026-11-21)
+
+Every chart carrying the tag(s) in `chart_list.tags` (set with `utilities/tag_chart.py`), across
+runs and batches. Each chart is read from the Blob folder it was read from before and written to
+its own Processed folder (recorded on the chart), so there is no `input_path` / `output_path`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `tags` | required | one tag or several (list, or a comma-separated string), case-insensitive |
+| `match` | `any` | `any`: charts with any of the tags; `all`: charts with every one |
+| `skip_ocr` | `false` | reuse OCR (no new Azure charge except pages that now need Doc Intel and have none) |
+| `skip_completed` / `only_completed` / `min_run_date` | | as batch-run |
+| `only` / `run_through` | | as batch-run |
+| `sample` | all | at most N of the tagged charts |
+| `skip_page_download` | `true` | as batch-run |
+
+```bash
+curl -X POST localhost:8001/api/charts/batch-run-tag -H 'Content-Type: application/json' \
+  -d '{"tags":["Pilot-Nov"],"skip_ocr":true}'
+```
+
+The reply lists `charts_found`, `charts_queued`, the source folders (`sources`), the charts
+skipped as finished, and `charts_no_source` (a chart run from a local folder has no recorded Blob
+source and is not run). Queue mode: one message per chart (the large-chart queue still applies);
+inline mode: the charts run one after another in the background. 404 when no chart has the tag.
+
 
 ---
 
