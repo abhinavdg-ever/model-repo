@@ -401,3 +401,89 @@ def test_a_nextgen_contents_page_of_encounters_and_items():
             "Encounter: 1/16/2025 12:40:00 PM\nAPSO Summary\nintake_note\nMaster_im\nPatient Plan\n"
             "Provider_Test_Action\nVVHC_Medications")
     assert method.index_page(page) is not None
+
+
+# 2026-11-21 (user): line positions -- a line repeated from a neighbour is its running header /
+# footer only in the same band of the page (or as a run of lines carried over).
+GONZALEZ = "Patient Name: Gonzalez Nicholas Date of Birth: 06/18/1994 Sex:F Encounter Id:3663216 Encounter Date: December 16, 2025"
+
+
+def _placed(texts, tops):
+    """_classify with OCR line positions: tops[page] = {line: top}."""
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {}
+    for i, text in texts.items():
+        lines = [method.Line(text=line, top=tops[i][line], bottom=tops[i][line] + 0.01)
+                 for line in text.splitlines() if line.strip()]
+        inputs[i] = method.PageInputs(text="", pass_no=2, lines=lines)
+    return {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
+
+
+def _spread(lines, start, end):
+    return {line: start + (end - start) * k / max(1, len(lines) - 1) for k, line in enumerate(lines)}
+
+
+def test_a_running_header_page_after_a_note_header_is_junk(monkeypatch):
+    """Gonzalez p12 / p13: the previous page ends in "Physical Exam" (bottom third), p13 is only
+    the running header and the page number -> nothing of its own: S1 does not keep it -> Junk."""
+    _keep(monkeypatch)
+    body = [f"Constitutional line {k} general appearance obese no acute distress" for k in range(12)]
+    p1 = [GONZALEZ] + body + ["Physical Exam", "Eyes: PERRLA, extraocular movements intact", "2"]
+    p2 = [GONZALEZ, "3"]
+    tops = {1: {**_spread(p1, 0.02, 0.97)}, 2: {GONZALEZ: 0.02, "3": 0.97}}
+    rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
+    assert rows[2]["flag"] == "junk" and "S1" not in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_a_none_recorded_section_page_is_junk(monkeypatch):
+    """"DME Orders / None recorded." under the previous page's "Implant Orders / None recorded." -> Junk."""
+    _keep(monkeypatch)
+    body = [f"Diabetes Mellitus Y Oral Meds row {k} no information" for k in range(12)]
+    p1 = body + ["Mental Status", "Unknown.", "Medical Equipment", "Implant Orders", "None recorded."]
+    p2 = ["DME Orders", "None recorded."]
+    tops = {1: _spread(p1, 0.02, 0.9), 2: {"DME Orders": 0.08, "None recorded.": 0.12}}
+    rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
+    assert rows[2]["flag"] == "junk", rows[2]["reason"]
+
+
+def test_a_list_carried_on_from_the_middle_of_the_previous_page_is_not_junk(monkeypatch):
+    """z0910: the diagnosis list goes on at the top of the next page; its lines are also in the
+    middle of the previous page (its problem list), in another order -> not the previous page's lines."""
+    _keep(monkeypatch)
+    dx = ["Pain of right lower extremity", "Lumbar post-laminectomy syndrome",
+          "Long term (current) use of opiate analgesic", "Cervical radiculopathy"]
+    middle = ["Musculoskeletal", "Lumbar radiculopathy", "Relevant Medications", dx[0], "Relevant Medications",
+              dx[3], "Behavioral Health", dx[1], "Relevant Medications", "Other", dx[2], "Relevant Medications"]
+    p1 = [GONZALEZ] + middle + ["Visit Diagnoses", "Diagnosis", "Periumbilical hernia - Primary", "6"]
+    tops = {1: {GONZALEZ: 0.02, **_spread(middle, 0.35, 0.65), "Visit Diagnoses": 0.8, "Diagnosis": 0.82,
+                "Periumbilical hernia - Primary": 0.85, "6": 0.97}}
+    p2 = [GONZALEZ, "Diagnosis"] + dx
+    tops[2] = {GONZALEZ: 0.02, "Diagnosis": 0.05, **_spread(dx, 0.08, 0.2)}
+    rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
+    assert rows[2]["flag"] == "not_blank_junk", rows[2]["reason"]
+
+
+def test_a_block_carried_over_is_the_neighbours_wherever_it_sits(monkeypatch):
+    """A run of 2+ lines in the same order on the neighbour is its block, in any band."""
+    block = ["Result type: Orthopedic Progress Note", "Result date: 01/14/2025", "Result status: Auth (Verified)",
+             "Contributor system: PowerChart"]
+    p1 = [GONZALEZ] + block + [f"exam line {k} range of motion strength sensation intact" for k in range(10)] + ["5"]
+    p2 = [GONZALEZ] + block + ["6"]
+    tops = {1: _spread(p1, 0.02, 0.97), 2: {GONZALEZ: 0.02, **_spread(block, 0.8, 0.9), "6": 0.97}}
+    rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
+    assert rows[2]["flag"] == "junk", rows[2]["reason"]
+
+
+def test_a_document_details_cover_sheet_is_junk(monkeypatch):
+    """z0913: "Document Details / Date / Type: EKG / Subject: EKG / Approved By / Comments: No" -> Junk."""
+    _keep(monkeypatch)
+    footer = "06/16/2026 11:35 am Black, Tommy Lee DOB 01/26/1947 30/43"
+    sheet = ["Document Details", "Date: 2/24/2026", "Type: EKG", "Subject: EKG", "Approved By: Jessica Vickery",
+             "Comments: No", footer]
+    before = ["Document Details", f"tracing {0} sinus rhythm"] + [f"lead {k} interval normal axis" for k in range(10)] + [
+        footer.replace("30/43", "29/43")]
+    tops = {1: _spread(before, 0.02, 0.97), 2: {**_spread(sheet[:-1], 0.03, 0.2), footer: 0.97}}
+    rows = _placed({1: "\n".join(before), 2: "\n".join(sheet)}, tops)
+    assert rows[2]["flag"] == "junk" and "SC" in rows[2]["reason"], rows[2]["reason"]
+    # a short clinical page of fields is not a cover sheet.
+    assert stage.cover_sheet_fields(["Date: 2/24/2026", "Provider: Jane Roe MD", "Diagnosis: hypertension"]) is None

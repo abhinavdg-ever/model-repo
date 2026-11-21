@@ -580,8 +580,15 @@ def short_verdict(
     """The short page's outcome (2026-11-19, user), or None when the page is not short:
     {"code": a CODE_* (or None: on to the classifier), "rule": "S1".., "why": "..."}.
 
+    The page's own lines (2026-11-21, user): a line is the neighbour's when it is part of a run of
+    2+ lines in the same order there, or a single line matching one there in the same band of the
+    page (top / middle / bottom; repeated_lines); placeholder values ("None recorded.") are no
+    content either.
+
+      SC a document cover sheet: its own lines only label / value fields (Date, Type, Subject,
+         Approved By, Comments ...), 3+, one naming the document -> Junk / Cover Page
       S1 the previous page ends in a Progress Note header: in its bottom third, one of its last
-         3 headers -> Main (this page carries that section on)
+         3 headers -> Main (this page carries that section on) -- only with 2+ words of its own
       S2 a Progress Note header and 3+ other words on the page -> Main
       SF a fax routing block (a fax number and a To / Attn / From line), no note content ->
          Junk / Letter/Fax, even with a provider on it (2026-11-19, user)
@@ -610,8 +617,40 @@ def short_verdict(
     def out(code: Optional[int], rule: str, why: str) -> dict[str, Any]:
         return {"code": code, "rule": rule, "why": why}
 
-    # S1: the previous page's last headers, one of its last 3 in its bottom third.
-    if prev_id is not None:
+    neighbours = [n for n in (prev_id, next_id) if n is not None]
+    # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
+    # content: a line that is one of them (or only its words) is removed too.
+    heading_texts = [str(h) for h in (own.headings or ())] + [str(h) for h in headers.get(pid) or ()]
+    heading_keys = {_line_key(h) for h in heading_texts if _line_key(h)}
+    heading_words = set().union(*(unique_words(h) for h in heading_texts)) if heading_texts else set()
+
+    def a_heading(line: str) -> bool:
+        key = _line_key(line)
+        return key in heading_keys or (bool(heading_words) and set(unique_words(line)) <= heading_words)
+
+    # The page's own lines (2026-11-21, user): not the previous / next page's (repeated_lines:
+    # a running header / footer in the same band, or a block carried over), not a placeholder
+    # value ("None recorded."). Measured on every text of the neighbours (each OCR engine).
+    page_lines = [line for line in text.splitlines() if _line_key(line)]
+    theirs_flags = [False] * len(page_lines)
+    for other_id in neighbours:
+        for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
+            flags = repeated_lines(text, other_text, own, inputs.get(other_id))
+            theirs_flags = [a or b for a, b in zip(theirs_flags, flags)]
+    own_lines = [line for line, theirs in zip(page_lines, theirs_flags)
+                 if not theirs and not EMPTY_VALUE_LINE.match(line.strip())]
+    repeated_keys = [_line_key(line) for line, theirs in zip(page_lines, theirs_flags) if theirs]
+    own_words = set().union(*(_plain_words(line) for line in own_lines if not a_heading(line))) if own_lines else set()
+
+    # SC (2026-11-21, user): a document cover sheet -- "Document Details / Date: / Type: EKG /
+    # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
+    fields = cover_sheet_fields(own_lines)
+    if fields:
+        return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page")
+    # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
+    # with content of its own (2026-11-21, user: a page with only the running header and the
+    # page number carries nothing on).
+    if prev_id is not None and len(own_words) > 1:
         prev_text = texts.get(prev_id) or ""
         prev_lines = [line for line in prev_text.splitlines() if line.strip()]
         found = pn_headers.header_lines(prev_text, headers.get(prev_id) or ())
@@ -626,19 +665,10 @@ def short_verdict(
                                             f"({low:.0%} down the page): this page carries it on -> Main")
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
-    seen_nearby: set[str] = set()
-    joined_nearby = ""
-    for other_id in (prev_id, next_id):
-        if other_id is None:
-            continue
-        for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
-            keys = [_line_key(line) for line in other_text.splitlines() if _line_key(line)]
-            seen_nearby |= set(keys)
-            joined_nearby += _joined(keys)
-    own_text = "\n".join(line for line in text.splitlines()
-                         if _line_key(line) and not _line_on(_line_key(line), seen_nearby, joined_nearby))
+    own_text = "\n".join(own_lines)
+    repeated_joined = _joined(repeated_keys)
     own_headings = tuple(h for h in own.headings or ()
-                         if not _line_on(_line_key(str(h)), seen_nearby, joined_nearby))
+                         if not _line_on(_line_key(str(h)), set(repeated_keys), repeated_joined))
     sections = pn_headers.sections_on(own_text, own_headings)
     if sections:
         other = [w for w in re.findall(r"[a-z]+", own_text.lower())
@@ -656,12 +686,12 @@ def short_verdict(
     # The provider: 2026-11-19 (user), like the signature -- a provider printed in the same spot
     # (region and name) on the previous / next page is a running line, not this page's own.
     # Without a provider position, a provider the neighbours do not have at all.
-    neighbours = [inputs.get(n) for n in (prev_id, next_id) if n is not None]
+    neighbour_inputs = [inputs.get(n) for n in (prev_id, next_id) if n is not None]
     if own.provider:
         if own.provider_spot is not None:
-            repeated_provider = any(same_spot(own.provider_spot, getattr(n, "provider_spot", None)) for n in neighbours)
+            repeated_provider = any(same_spot(own.provider_spot, getattr(n, "provider_spot", None)) for n in neighbour_inputs)
         else:
-            repeated_provider = any(getattr(n, "provider", False) for n in neighbours)
+            repeated_provider = any(getattr(n, "provider", False) for n in neighbour_inputs)
         if not repeated_provider:
             return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
                                         "next page -> Main")
@@ -683,7 +713,6 @@ def short_verdict(
                 return mine_by[engine], theirs_by[engine]
         return text, texts.get(other_id) or ""
 
-    neighbours = [n for n in (prev_id, next_id) if n is not None]
     # S5: the same words in the same order on a neighbour.
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
@@ -697,23 +726,13 @@ def short_verdict(
     # words of the lines left are counted.
     left: Optional[set[str]] = None
     titles_only: list[bool] = []
-    # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
-    # content: a line that is one of them (or only its words) is removed too.
-    heading_texts = [str(h) for h in (own.headings or ())] + [str(h) for h in headers.get(pid) or ()]
-    heading_keys = {_line_key(h) for h in heading_texts if _line_key(h)}
-    heading_words = set().union(*(unique_words(h) for h in heading_texts)) if heading_texts else set()
-
-    def a_heading(line: str) -> bool:
-        key = _line_key(line)
-        return key in heading_keys or (bool(heading_words) and set(unique_words(line)) <= heading_words)
-
     removed_headings = False
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
-        their_keys = [_line_key(line) for line in other_text.splitlines() if _line_key(line)]
-        theirs, joined = set(their_keys), _joined(their_keys)
-        kept = [line for line in mine_text.splitlines()
-                if _line_key(line) and not _line_on(_line_key(line), theirs, joined)]
+        mine_lines = [line for line in mine_text.splitlines() if _line_key(line)]
+        flags = repeated_lines(mine_text, other_text, own, inputs.get(other_id))
+        kept = [line for line, theirs in zip(mine_lines, flags)
+                if not theirs and not EMPTY_VALUE_LINE.match(line.strip())]
         if any(a_heading(line) for line in kept):
             removed_headings = True
             kept = [line for line in kept if not a_heading(line)]
@@ -788,7 +807,7 @@ def _line_on(key: str, theirs: set[str], joined: Optional[str] = None) -> bool:
         if len(other_words) != len(words):
             continue
         diff = [(a, b) for a, b in zip(words, other_words) if a != b]
-        if len(diff) == 1 and all(NUMBER_WORD.fullmatch(w) for w in diff[0]):
+        if len(diff) == 1 and _number_pair(*diff[0]):
             return True
     return False
 
@@ -798,6 +817,140 @@ def _line_key(line: str) -> str:
     page numbers left out."""
     text = PAGE_NUMBER_IN_LINE.sub(" page# ", line or "")
     return " ".join(re.sub(r"[#*|]", " ", text).lower().split())
+
+
+# 2026-11-21 (user): a document cover sheet -- an EHR's "Document Details" page: label / value
+# fields only (Date, Type, Subject, Approved By, Comments ...), at least 3, one of them naming
+# the document (Type / Document Type / Subject / Category), each value a few words.
+META_LABEL = (r"(?:document\s+type|document\s+date|type|subject|category|description|approved\s+by|reviewed\s+by"
+              r"|author|created\s+by|status|comments?|received(?:\s+date)?|scanned\s+(?:by|date)|uploaded\s+by"
+              r"|filed\s+by|date)")
+META_FIELD = re.compile(rf"(?:^|(?<=\s)){META_LABEL}\s*:", re.IGNORECASE)
+META_NAMING = {"type", "document type", "subject", "category"}
+META_MIN_FIELDS = 3
+META_MAX_VALUE_WORDS = 6
+
+
+def cover_sheet_fields(lines: list[str]) -> Optional[list[str]]:
+    """The labels of a document cover sheet, or None: every line a label / value field (a title
+    line aside), 3+ fields, one naming the document, no value over 6 words."""
+    labels: list[str] = []
+    for line in lines or ():
+        body = line.strip().strip("#*|").strip()
+        found = list(META_FIELD.finditer(body))
+        if not found:
+            if _title_like(body):
+                continue
+            return None
+        if found[0].start() != 0:
+            return None
+        for k, match in enumerate(found):
+            end = found[k + 1].start() if k + 1 < len(found) else len(body)
+            if len(re.findall(r"[A-Za-z0-9]+", body[match.end():end])) > META_MAX_VALUE_WORDS:
+                return None
+            labels.append(" ".join(match.group(0).rstrip(": ").lower().split()))
+    if len(labels) >= META_MIN_FIELDS and META_NAMING & set(labels):
+        return labels
+    return None
+
+
+# 2026-11-21 (user): placeholder values ("None recorded.", "No information", "N/A") are no
+# content of the page's own.
+EMPTY_VALUE_LINE = re.compile(
+    r"^\W*(?:none(?:\s+(?:recorded|documented|reported|noted|on\s+file))?|no\s+(?:information|data|records?)"
+    r"(?:\s+(?:available|found|recorded))?|not\s+(?:recorded|documented|available|applicable|on\s+file)"
+    r"|n\s*/\s*a|unknown)\W*$", re.IGNORECASE)
+
+
+def _band(position: Optional[float]) -> Optional[str]:
+    """top / middle / bottom of the page (contained_page 25% / 75%), None when unknown."""
+    if position is None:
+        return None
+    cfg = method.canon().raw.get("contained_page") or {}
+    top, bottom = float(cfg.get("top_fraction", 0.25)), float(cfg.get("bottom_fraction", 0.75))
+    return "top" if position < top else "bottom" if position >= bottom else "middle"
+
+
+def _line_top(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:
+    """Where ``line`` sits on its page (its top, a share of the height): the OCR line with the
+    same words, else the OCR line that contains it; None when not found."""
+    want = " ".join(re.findall(r"[a-z0-9]+", (line or "").lower()))
+    if not want or page_inputs is None or not page_inputs.lines:
+        return None
+    texts = [(" ".join(re.findall(r"[a-z0-9]+", (o.text or "").lower())), float(o.top)) for o in page_inputs.lines]
+    for got, top in texts:
+        if got == want:
+            return top
+    for got, top in texts:
+        if got and want in got:
+            return top
+    return None
+
+
+def _same_line_keys(key: str, their_keys: list[str]) -> list[int]:
+    """The neighbour's lines that are this line: the same key, or the same words but one number."""
+    words = key.split()
+    found = []
+    for j, other in enumerate(their_keys):
+        if other == key:
+            found.append(j)
+            continue
+        other_words = other.split()
+        if len(other_words) != len(words):
+            continue
+        diff = [(a, b) for a, b in zip(words, other_words) if a != b]
+        if len(diff) == 1 and _number_pair(*diff[0]):
+            found.append(j)
+    return found
+
+
+def _number_pair(a: str, b: str) -> bool:
+    """Two words that are the same number field: both numbers ("11:43" / "11:44"), or a page
+    count with the same total ("30/43" / "31/43"; not a reading such as 120/80 vs 130/85)."""
+    if NUMBER_WORD.fullmatch(a) and NUMBER_WORD.fullmatch(b):
+        return True
+    ma, mb = PAGE_COUNT.fullmatch(a), PAGE_COUNT.fullmatch(b)
+    return bool(ma and mb and ma.group(2) == mb.group(2))
+
+
+PAGE_COUNT = re.compile(r"(\d{1,4})/(\d{1,4})")
+
+
+def repeated_lines(mine_text: str, other_text: str,
+                   mine_inputs: Optional["method.PageInputs"] = None,
+                   other_inputs: Optional["method.PageInputs"] = None) -> list[bool]:
+    """For each non-empty line of ``mine_text``: is it the neighbour's line (2026-11-21, user)?
+    A running header / footer or a block carried over, not the page's own content:
+      - a run of 2+ lines that follow each other in the same order on the neighbour, anywhere; or
+      - a single line that matches a neighbour line (_line_on) in the same band of the page
+        (top / middle / bottom): "Cervical radiculopathy" at the top of a diagnosis list that
+        goes on from the previous page is not the previous page's line in the middle of its
+        problem list. Where a position is not known the line counts as the neighbour's."""
+    mine = [line for line in (mine_text or "").splitlines() if _line_key(line)]
+    their_lines = [line for line in (other_text or "").splitlines() if _line_key(line)]
+    keys = [_line_key(line) for line in mine]
+    their_keys = [_line_key(line) for line in their_lines]
+    theirs, joined = set(their_keys), _joined(their_keys)
+    pairs = set(zip(their_keys, their_keys[1:]))
+    out = [False] * len(mine)
+    for i in range(len(mine) - 1):
+        if (keys[i], keys[i + 1]) in pairs:
+            out[i] = out[i + 1] = True
+    for i, line in enumerate(mine):
+        if out[i] or not _line_on(keys[i], theirs, joined):
+            continue
+        same = _same_line_keys(keys[i], their_keys)
+        my_band = _band(_line_top(mine_inputs, line))
+        if my_band is None or not same:
+            out[i] = True  # no position, or matched across a line break: the neighbour's
+            continue
+        bands = []
+        for j in same:
+            band = _band(_line_top(other_inputs, their_lines[j]))
+            # Not found on the neighbour's OCR lines: its place among the neighbour's lines.
+            bands.append(band if band is not None else _band(j / max(1, len(their_lines))))
+        out[i] = my_band in bands
+    return out
 
 
 def _line_position(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:

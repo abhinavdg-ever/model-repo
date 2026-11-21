@@ -709,3 +709,35 @@ def test_a_page_over_20_words_is_never_junk_cover_page():
     v = run(text, bert=bert(0.95, "JUNK_COVER_PAGE"))
     assert v.code == classify.CODE_OTHERS and v.votes.get("cover_to_others")
     assert run("Accept", pass_no=1).code == classify.CODE_COVER_PAGE
+
+
+def test_a_visual_card_is_decided_before_the_keeps():
+    """2026-11-21 (user): on a visual page the card comes first, then the under-20-words keep --
+    a licence photo with a signature on it (handwriting) is still a card."""
+    v = run(CARD_TEXT, document_type="visual", bert=bert(0.5), hw_area_pct=45.0)
+    assert v.code == classify.CODE_CARDS and v.rule == "R3"
+
+
+def test_a_fax_cover_with_to_and_from_on_one_line():
+    """2026-11-21 (user): "FAX / TO: Laura Curtis, ARNP FROM: Dana Green" -- no signature -> a fax cover."""
+    text = "FAX\nTO: Laura Curtis, ARNP FROM: Dana Green, Dylan\nDATE: 03/02/2026\nRE: records\nPAGES: 4"
+    assert method.fax_cover_sheet(text) is not None
+    assert method.fax_cover_sheet("Fax 555-1212 Progress Note Assessment Plan") is None
+
+
+def test_a_documents_list_is_a_contents_page():
+    """2026-11-21 (user): "Documents / # Date Type Subject / 1. 5/26/2026 Records Release Optum ..." -> Junk."""
+    text = ("Documents\n# Date Type Subject\n1. 5/26/2026 Records Release Optum\n2. 5/19/2025 Procedures GM - Upper GI"
+            " endoscopy\n3. 5/19/2025 Hospital Records HH - H&P\n4. 5/19/2025 Pathology Gastric Antrum Biopsy\n"
+            "5. 4/30/2025 Imaging SimonMed - CT Abdomen and Pelvis w/contrast")
+    assert method.index_page(text) is not None
+
+
+def test_visual_pages_skip_the_handwriting_keep_and_the_card_text_area_guard():
+    """2026-11-21 (user): chart 70084500 p15 (UHC card: handwritten > 30%) and p16 (card back:
+    text over 89% of the page) -- neither guard applies to a visual page."""
+    from modules.blank_junk import card_rules
+    assert card_rules.detect(CARD_TEXT, text_area=0.89).blocked_by
+    assert card_rules.detect(CARD_TEXT, text_area=0.89, visual=True).is_card
+    v = run(" ".join(["word"] * 25), document_type="visual", bert=bert(0.2), hw_area_pct=45.0)
+    assert v.rule != "HW"

@@ -332,7 +332,8 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append("no name on it")
     # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept
     # blocking real cards; the form / letter words, the word count and the text area guard it).
-    if text_area is not None and text_area > MAX_TEXT_AREA:
+    # 2026-11-21 (user): not on a visual page -- a card photographed to fill the page is still a card.
+    if text_area is not None and text_area > MAX_TEXT_AREA and not visual:
         blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:
         return CardResult(False, kind, matched, blocked, words)

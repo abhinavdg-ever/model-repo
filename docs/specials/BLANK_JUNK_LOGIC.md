@@ -56,10 +56,10 @@ Then, the first rule that matches decides:
 | # | Rule | Check | Verdict |
 |---|---|---|---|
 | 0 | Stage 1 Blank | Only when the page has **no text** (under 15 characters). **2026-11-20 (user): stage 1's Blank never blanks a page with text** (the header-only Blank and the fallback are removed); the rules below decide. review-ui shows such a page's Type as **Printed** | Blank |
-| 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" as a heading **in the top third of the page** (2026-11-20, user), **followed by** 3+ entries with page numbers or dates: a line ending in a page number (dot leaders, spaces, or a table cell such as Docling's "\| Progress Note \| 12 \|"), "Page 3" / "Pages 4-7", or a page number on a line of its own. The entries must be **at least 40% of the lines after the title** (a note that opens with a "Table of Contents" bar and then has its own content is not a contents page). Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
-| 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed) | Junk / Letter/Fax |
+| 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" (2026-11-21: also "Documents" / "Document List", a list of the chart's documents by date) as a heading **in the top third of the page** (2026-11-20, user), **followed by** 3+ entries with page numbers or dates: a line ending in a page number (dot leaders, spaces, or a table cell such as Docling's "\| Progress Note \| 12 \|"), "Page 3" / "Pages 4-7", or a page number on a line of its own. The entries must be **at least 40% of the lines after the title** (a note that opens with a "Table of Contents" bar and then has its own content is not a contents page). Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
+| 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed); or a short "Fax" title line with a From and a To label (2026-11-21: the two may share a line, "TO: … FROM: …") | Junk / Letter/Fax |
 | 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
-| 4 | Keeps | Visual page under 20 words that is not a card; > 30% handwritten; Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |
+| 4 | Keeps | **A visual page with a card is decided as a card first** (rule 5, whatever its word count; 2026-11-21, user); then a visual page under 20 words that is not a card; > 30% handwritten (**not on a visual page**, 2026-11-21); Electronic Signature not repeated in the same spot on the previous / next page (and p(junk) < 0.95); lab result; medication list (3+ doses); **clinical content**: 2+ ICD-10 codes, a Social History header, or **2+ Progress Note sections** (2026-11-19) | Main |
 | 5 | **Card** | on a printed, visual or uncertain page; see below | Junk / Cards |
 | 6 | **Fax header** | "Fax" in a **section header** and **no Electronic Signature** (2026-11-20, user: the only fax letter rule; the "Fax + a letter's closing" rule and the note-content exception are removed). Exception: a page that is **not short** with a **Progress Note page on each side** (previous and next page each with 2+ Progress Note sections) is left to the classifier ("To: … Fax" inside a note) | Junk / Letter/Fax |
 | 8 | **Classifier** | The DistilBERT service: JUNK with p(keep) < 0.99 → Junk / its subtype; BLANK → Junk / Others; else Main. A model Invoice is a card only on a card near miss that no form / letter / length guard stopped and no note content (2026-11-19: an anesthesia note read as an invoice was becoming Cards) | its verdict |
@@ -73,23 +73,34 @@ measured: the text sits at the top, at the bottom, or both (canon `contained_pag
 0.25, `bottom_fraction` 0.75). A page with no line positions is short only when its content ends in
 the top 25%. A page over 30% handwritten, or a visual page, is not judged here (its own keeps apply).
 
+**The page's own lines** (2026-11-21, user). A line is the previous / next page's, not the page's own,
+when it is part of a **run of 2+ lines in the same order** on that page (a block carried over,
+anywhere), or a **single line matching a line there in the same band** of the page (top 25% /
+middle / bottom 25%): a running header or footer. A diagnosis list continued at the top of a page
+is not "repeated" because the same diagnoses sit in the middle of the previous page's problem list.
+Placeholder values ("None recorded.", "No information", "N/A", "Unknown") are no content either. A
+line matches when it is the same (case, spacing, #, *, | and page numbers evened out), differs in one
+number ("11:43" / "11:44"; a page count with the same total, "30/43" / "31/43"), or has the same text
+with the line breaks different.
+
 The first that matches decides:
 
 | # | Check | Verdict |
 |---|---|---|
-| S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on | Main |
+| SC | (2026-11-21, user) A **document cover sheet**: its own lines are only label / value fields (Date, Type, Subject, Approved By, Comments, Category …; a title line such as "Document Details" aside), 3+ fields, one naming the document (Type / Document Type / Subject / Category), each value 6 words or fewer | Junk / Cover Page |
+| S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on, **if it has 2+ words of its own** (2026-11-21: a page with only the running header and the page number carries nothing on) | Main |
 | S2 | The page has a **Progress Note header and 3+ other words** on **its own lines** (2026-11-20: lines not repeated on the previous / next page; a running "Labs (continued)" header does not count) | Main |
 | SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
 | S4 | Its **own lines** (not repeated on a neighbour) hold **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
 | S5 | **98%+ of its words, in the same order**, are on the previous or next page (each pair compared on the **same OCR engine**: Doc Intel vs Doc Intel, else Docling vs Docling; 2026-11-20) | Junk / Others |
-| S6 | (2026-11-20, user) Each line of the page is **removed only when the whole line matches a line** of the previous or next page **exactly** (same OCR engine; case, spacing and #, *, \| evened out; **page numbers left out**, so "Printed on … Page 13" matches "… Page 12"). With **fewer than 5 words left**: a **date** on a line of its own → **Main**; **under 3 words** → Junk / Others; all header words, or **only a title** (1–5 capitalised words, no digits, e.g. "EKG/Stress Test") → Junk / Others; otherwise (3–4 words of content) → Main | Main / Junk |
+| S6 | (2026-11-20 / 21, user) Its **own lines** (above; each pair on the same OCR engine) and not its own stage 6 section headers; the unique words left, **dates and numbers left out**: **1 or none** → Junk / Others; only section headers, all header words, or **only a title** (1–5 capitalised words, no digits, e.g. "EKG/Stress Test") → Junk / Others; 2–4 → Main | Main / Junk |
 | — | 5 or more words left and nothing above | the classifier (rule 8) decides |
 
 ### Rule 5: cards (`card_rules.py`)
 
 Unchanged guards: words from two card groups; no form or letter words; ≤ 150 words; text over ≤ 75%
-of the page; the word "card" and a name, **unless the evidence is strong**. Changes on 2026-11-19:
+of the page (**not on a visual page**, 2026-11-21: a card photographed to fill the page); the word "card" and a name, **unless the evidence is strong**. Changes on 2026-11-19:
 
 - **Strong evidence needs neither the word "card" nor a name**: 3+ insurance groups (Member ID,
   Group Number, Payer ID, RxBIN / RxPCN / RxGRP, payer name, plan words such as PPO, PCP $0),

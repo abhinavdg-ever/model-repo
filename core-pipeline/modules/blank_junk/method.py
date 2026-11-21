@@ -875,11 +875,23 @@ def decide(inputs: PageInputs) -> Verdict:
             found_card = card
         elif card is not None and card.blocked_by:
             votes["card_near_miss"] = {"type": card.card_type, "blocked_by": card.blocked_by}
-        # 4. keeps: a picture, handwriting, a signature, a lab result, medications, clinical content.
-        if visual and found_card is None:
+        def card_verdict() -> Verdict:
+            found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
+            if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
+                return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
+            return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
+
+        # 4. a visual page (2026-11-21, user): the card first (whatever its word count), then the
+        # under-20-words keep -- a licence or insurance card photo is decided as a card before any
+        # keep (its signature, its words) reads it.
+        if found_card is not None and inputs.document_type == "visual":
+            return card_verdict()
+        if visual:
             return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
+        # keeps: handwriting, a signature, a lab result, medications, clinical content.
         hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
-        if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
+        # 2026-11-21 (user): not on a visual page -- a card's photo and signature read as handwriting.
+        if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit and inputs.document_type != "visual":
             return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
         if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
             return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby, raw p(junk) "
@@ -900,10 +912,7 @@ def decide(inputs: PageInputs) -> Verdict:
 
         # 5. card (printed / visual / uncertain): an ID, licence or insurance card.
         if found_card is not None:
-            found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
-            if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
-                return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
-            return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
+            return card_verdict()
 
         # 6. the fax header (2026-11-20, user): Fax in the section headers and no signature ->
         # Junk / Letter/Fax. A page that is not short with a Progress Note page on each side
@@ -982,8 +991,10 @@ FAX_COVER_BOXES = re.compile(
     r"|please\s+recycle|as\s+requested)(?![A-Za-z])", re.IGNORECASE)
 
 
-FAX_FROM_LINE = re.compile(r"(?im)^\W*(?:from|sender)\s*:")
-FAX_TO_LINE = re.compile(r"(?im)^\W*(?:to|attn|attention|recipient)\s*:")
+# 2026-11-21 (user): "TO: Laura Curtis, ARNP   FROM: Dana Green" -- the From / To labels may
+# share a line, so a label counts at a line start or after a space.
+FAX_FROM_LINE = re.compile(r"(?im)(?:^|\s)\W*(?:from|sender)\s*:")
+FAX_TO_LINE = re.compile(r"(?im)(?:^|\s)\W*(?:to|attn|attention|recipient)\s*:")
 
 
 def fax_cover_sheet(text: str) -> Optional[str]:
@@ -1146,7 +1157,10 @@ def _model_probs(inputs: PageInputs) -> tuple[Optional[float], Optional[float], 
 # Junk / Others. The title is a line of its own (or a section header), so "Body Mass Index"
 # inside a sentence never counts; the page numbers are lines ending in a page number after
 # dot leaders or spaces ("Progress Note ....... 12"), or "Page 3" / "Pages 4-7".
-INDEX_TITLE = re.compile(r"^\W*(?:table\s+of\s+contents|contents|(?:document\s+|chart\s+|record\s+)?index)\W*$",
+# 2026-11-21 (user): a "Documents" / "Document List" page (# Date Type Subject, one line per
+# document) is the same kind of list.
+INDEX_TITLE = re.compile(r"^\W*(?:table\s+of\s+contents|contents|(?:document\s+|chart\s+|record\s+)?index"
+                         r"|documents|documents?\s+list|list\s+of\s+documents)\W*$",
                          re.IGNORECASE | re.MULTILINE)
 PAGE_NUMBER_LINE = re.compile(r"^(?=.*[A-Za-z]).*?(?:\.{2,}|\s)\s*\d{1,4}\s*$|\bpages?\s*\d{1,4}(?:\s*[-\u2013]\s*\d{1,4})?\b",
                               re.IGNORECASE)
