@@ -601,7 +601,7 @@ def short_verdict(
          numbers left out: 1 or none -> Junk / Others; only a title or header words -> Junk /
          Others; 2-4 -> Main; 5+ -> the classifier
       otherwise the classifier decides."""
-    from modules.blank_junk import pn_headers
+    from modules.blank_junk import evidence, pn_headers
 
     own = inputs.get(pid)
     if own is None or not is_short(own):
@@ -614,10 +614,38 @@ def short_verdict(
     text = texts.get(pid) or ""
     prev_id, next_id = around.get(pid, (None, None))
 
-    def out(code: Optional[int], rule: str, why: str) -> dict[str, Any]:
-        return {"code": code, "rule": rule, "why": why}
-
     neighbours = [n for n in (prev_id, next_id) if n is not None]
+
+    def pair(other_id: int) -> tuple[str, str]:
+        """This page's and the neighbour's text from the same OCR engine (2026-11-20, user):
+        Doc Intel vs Doc Intel, else Docling vs Docling, else the best text of each."""
+        mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
+        for engine in ("azuredocintel", "docling"):
+            if (mine_by.get(engine) or "").strip() and (theirs_by.get(engine) or "").strip():
+                return mine_by[engine], theirs_by[engine]
+        return text, texts.get(other_id) or ""
+
+    def same_engine(other_id: int) -> bool:
+        mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
+        return any((mine_by.get(e) or "").strip() and (theirs_by.get(e) or "").strip()
+                   for e in ("azuredocintel", "docling"))
+
+    def out(code: Optional[int], rule: str, why: str, margin: Optional[float] = None) -> dict[str, Any]:
+        """The outcome, with its evidence (2026-11-21, user): ``margin`` how far past the rule's cut
+        (evidence.py), and the support -- both neighbours compared or one, the same OCR engine
+        on both sides, and for a Junk verdict the share of its lines that are the neighbours'
+        (for Main, the share that are its own)."""
+        support: dict[str, Optional[float]] = {
+            "neighbours_compared": len(neighbours) / 2 if neighbours else None,
+            "same_ocr_engine": (sum(1 for n in neighbours if same_engine(n)) / len(neighbours))
+                               if neighbours and engine_texts else None,
+        }
+        if page_lines and code is not None:
+            theirs_share = sum(theirs_flags) / len(page_lines)
+            support["lines_theirs" if code != CODE_MAIN else "lines_own"] = (
+                theirs_share if code != CODE_MAIN else 1.0 - theirs_share)
+        return {"code": code, "rule": rule, "why": why,
+                "evidence": {"margin": None if margin is None else round(float(margin), 4), "support": support}}
     # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
     # content: a line that is one of them (or only its words) is removed too.
     heading_texts = [str(h) for h in (own.headings or ())] + [str(h) for h in headers.get(pid) or ()]
@@ -646,7 +674,9 @@ def short_verdict(
     # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
     fields = cover_sheet_fields(own_lines)
     if fields:
-        return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page")
+        field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
+        margin = evidence.past_cut(len(fields), META_MIN_FIELDS - 1, META_MIN_FIELDS + 3) * field_lines / max(1, len(own_lines))
+        return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
     # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
     # with content of its own (2026-11-21, user: a page with only the running header and the
     # page number carries nothing on).
@@ -661,8 +691,9 @@ def short_verdict(
             if low is None and prev_lines:
                 low = (i + 1) / max(1, len((prev_text or "").splitlines()))
             if low is not None and low >= 2 / 3:
+                margin = (evidence.past_cut(low, 2 / 3, 1.0) + evidence.past_cut(len(own_words), 1, 10)) / 2
                 return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
-                                            f"({low:.0%} down the page): this page carries it on -> Main")
+                                            f"({low:.0%} down the page): this page carries it on -> Main", margin)
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
     own_text = "\n".join(own_lines)
@@ -674,15 +705,20 @@ def short_verdict(
         other = [w for w in re.findall(r"[a-z]+", own_text.lower())
                  if len(w) > 1 and w not in pn_headers.header_words(own_text, own_headings)]
         if len(other) >= NOTE_HEADER_EXTRA_WORDS:
-            return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main")
+            return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main",
+                       evidence.past_cut(len(other), NOTE_HEADER_EXTRA_WORDS - 1, 12))
     # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
     # with the provider it names; a page with note content (header, ICD codes, doses) is not.
     routing = method.fax_routing(text)
     if routing and not method.note_content(own):
-        return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax")
+        labels = len(method.FAX_ROUTING.findall(text)) + len(method.FAX_NUMBER.findall(text))
+        return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax",
+                   evidence.past_cut(labels, 1, 4))
     # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
     if pid in signed and not repeated:
-        return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main")
+        # The signature was compared on both neighbours or one.
+        return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main",
+                   len(neighbours) / 2 if neighbours else None)
     # The provider: 2026-11-19 (user), like the signature -- a provider printed in the same spot
     # (region and name) on the previous / next page is a running line, not this page's own.
     # Without a provider position, a provider the neighbours do not have at all.
@@ -693,8 +729,9 @@ def short_verdict(
         else:
             repeated_provider = any(getattr(n, "provider", False) for n in neighbour_inputs)
         if not repeated_provider:
+            # Compared by position (the box) or by name only.
             return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
-                                        "next page -> Main")
+                                        "next page -> Main", 1.0 if own.provider_spot is not None else 0.5)
     # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
     from dataclasses import replace as _replace
 
@@ -703,15 +740,9 @@ def short_verdict(
              or ("ICD-10 codes" if method.ICD10_CODE.search(own_text) else None)
              or ("measurements" if len(MEASUREMENT.findall(own_text)) >= 2 else None))
     if found:
-        return out(CODE_MAIN, "S4", f"its content is {found} -> Main")
-    def pair(other_id: int) -> tuple[str, str]:
-        """This page's and the neighbour's text from the same OCR engine (2026-11-20, user):
-        Doc Intel vs Doc Intel, else Docling vs Docling, else the best text of each."""
-        mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
-        for engine in ("azuredocintel", "docling"):
-            if (mine_by.get(engine) or "").strip() and (theirs_by.get(engine) or "").strip():
-                return mine_by[engine], theirs_by[engine]
-        return text, texts.get(other_id) or ""
+        hits = (len(MEASUREMENT.findall(own_text)) + len(method.ICD10_CODE.findall(own_text))
+                + len(re.findall(r"\d\s*(?:mg|mcg|ml|units?)\b", own_text, re.IGNORECASE)))
+        return out(CODE_MAIN, "S4", f"its content is {found} -> Main", evidence.past_cut(hits, 1, 6))
 
     # S5: the same words in the same order on a neighbour.
     for other_id in neighbours:
@@ -720,7 +751,8 @@ def short_verdict(
                                 re.findall(r"[a-z0-9]+", other_text.lower()))
         if share >= SAME_ORDER_SHARE:
             return out(CODE_OTHERS, "S5", f"{share:.0%} of its words, in order, are on the page "
-                                          f"{'before' if other_id == prev_id else 'after'} -> Junk / Others")
+                                          f"{'before' if other_id == prev_id else 'after'} -> Junk / Others",
+                       evidence.past_cut(share, SAME_ORDER_SHARE, 1.0))
     # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
     # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
     # words of the lines left are counted.
@@ -748,15 +780,22 @@ def short_verdict(
         w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
     # 2026-11-21 (user): dates and numbers are left out of the words counted (above); more than
     # one unique word of its own keeps the page, one or none is junk.
+    # The margin: how far the word count is from the cut between 1 (Junk) and 2 (Main); a Junk by
+    # header / title words, how far from the classifier's 5.
+    junk_margin = evidence.past_cut(len(left), 1.5, 0)
     if not left and removed_headings:
-        return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others")
+        return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others", junk_margin)
     if len(left) <= 1:
-        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) of its own (dates and numbers left out) -> Junk / Others")
+        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) of its own (dates and numbers left out) -> Junk / Others",
+                   junk_margin)
     if left <= header_vocab:
-        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others")
+        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others",
+                   evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
     if titles_only and all(titles_only):
-        return out(CODE_OTHERS, "S6", f"only a title of its own ({', '.join(sorted(left)[:5])}) -> Junk / Others")
-    return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main")
+        return out(CODE_OTHERS, "S6", f"only a title of its own ({', '.join(sorted(left)[:5])}) -> Junk / Others",
+                   evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
+    return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main",
+               evidence.past_cut(len(left), 1.5, FEW_NEW_WORDS))
 
 
 # A page number in a line ("Page 13", "Page 2 of 4", "pg. 3", "13 of 20"): it changes on every
@@ -1276,6 +1315,7 @@ def _page_inputs(
             inputs.content_bottom = bottom
             if bottom is not None and bottom <= max(top, short_top):
                 inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"], start=bottom)
+            inputs.ocr_match_rate = _match_rate(q)
             # Docling markdown, for the invoice rule's dollar table (2026-11-14, user).
             inputs.final1_text = unwrap_ocr_content((final1 or {}).get(pid))
             # Tesseract's text for the junk terms the final OCR missed; only where prelim is
@@ -1284,6 +1324,24 @@ def _page_inputs(
                 inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
     return out
+
+
+def _match_rate(quality_row: dict[str, Any]) -> Optional[float]:
+    """The page's OCR match rate from its routing record (quality_detail.routing), None when
+    the page was not routed or the rate not stored."""
+    from modules.ocr.routing import final_match_rate
+
+    detail = quality_row.get("quality_detail") or {}
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail)
+        except ValueError:
+            return None
+    try:
+        rate = final_match_rate((detail or {}).get("routing"))
+        return None if rate is None else max(0.0, min(1.0, float(rate)))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 _HEADER_CLASSES = None

@@ -282,11 +282,17 @@ def test_sf_a_short_fax_routing_page_is_junk_even_with_a_provider(monkeypatch):
     assert method.fax_routing("To: Dr Roe\nFax # 330.555.0142") is not None
 
 
-def test_a_short_page_rules_verdict_reads_60(monkeypatch):
-    """2026-11-19 (user): a short page the short rules decided: 0.60, whatever the model said."""
+def test_a_short_page_rules_verdict_reads_its_evidence(monkeypatch):
+    """2026-11-21 (user; was a flat 0.60): the rule's margin, the page's uniqueness and the model's
+    p -- the same S5 page is surer when the model agrees than when it disagrees."""
     _keep(monkeypatch)
-    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
-    assert "S5" in rows[2]["reason"] and rows[2]["confidence"] == 0.6
+    disagree = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})[2]
+    junk = {"bert": {"p_keep": 0.1, "p_junk": 0.9, "service": {"flag": "JUNK", "subclass": "", "confidence": 0.9,
+                                                              "decision_reason": "argmax"}}}
+    monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: junk)
+    agree = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})[2]
+    assert "S5" in disagree["reason"] and "S5" in agree["reason"]
+    assert 0.2 <= disagree["confidence"] < 0.6 < agree["confidence"] <= 1.0
 
 
 def test_s6_page_numbers_and_a_lone_title_do_not_keep_a_short_page(monkeypatch):

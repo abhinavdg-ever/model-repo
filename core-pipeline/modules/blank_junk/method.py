@@ -516,6 +516,9 @@ class PageInputs:
     text_area: Optional[float] = None
     # Pass 2: Final OCR 1 (Docling) markdown, for its tables (the invoice rule, 2026-11-14).
     final1_text: str = ""
+    # Pass 2: the page's OCR match rate (routing: three engines, else Docling vs Tesseract), for
+    # the confidence (evidence.py, 2026-11-21); None when not measured.
+    ocr_match_rate: Optional[float] = None
 
 
 @dataclass
@@ -751,9 +754,12 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["visual"] = f"document_type visual, but {words} words >= {visual_max_words()}: not Visual"
 
     def ruled(code: int, rule: str, reason: str, strength: Optional[float] = None,
-              confidence: Optional[float] = None) -> Verdict:
+              confidence: Optional[float] = None, margin: Optional[float] = None,
+              support: Optional[dict[str, Optional[float]]] = None) -> Verdict:
         """``strength``: the pre-2026-11-14 value (rule_strength when None); ``confidence``:
-        the new one (verdict_confidence when None)."""
+        the new one (verdict_confidence when None). ``margin`` / ``support`` (2026-11-21, user):
+        the rule's evidence -- with them, or when the rule goes against the model, the
+        confidence is evidence.combine's (margin, support, OCR match rate, the model's p)."""
         # 2026-11-19 (user): on a page that is not short, a rule may file it Junk / Letter/Fax or
         # Junk / Cover Page only while DistilBERT's p(keep) is under KEEP_VETO_AT (99%): a page
         # the model is that sure of stays Main. Other junk rules, the no-text rules (R1, R2), the
@@ -774,11 +780,19 @@ def decide(inputs: PageInputs) -> Verdict:
             reason = f"{reason}; {words} words, not a cover page -> Junk / Others"
         votes["rule"] = rule
         old = rule_strength(code, rule, p_keep, p_junk) if strength is None else strength
-        if confidence is None and rule_flips_model(code, p_keep, p_junk, p_blank):
-            # 2026-11-19 (user): a hard-coded rule that turns the model's Keep into Junk / Blank,
-            # or its Junk / Blank into Main: the backup 40%.
+        # The classifier's own verdict (R5) is the model's p, never "a rule against the model".
+        flips = confidence is None and rule != "R5" and rule_flips_model(code, p_keep, p_junk, p_blank)
+        if flips:
             votes["flipped_model"] = True
-            confidence = conf.backup()
+        if confidence is None and (margin is not None or support or flips):
+            # 2026-11-21 (user): no flat backup -- the rule's margin and support against the model's
+            # p for the verdict (agreeing lifts it, disagreeing lowers it) and the OCR match rate.
+            from modules.blank_junk import evidence
+
+            model_class = "keep" if code == CODE_MAIN else "blank" if code == CODE_BLANK else "junk"
+            confidence, votes["confidence_parts"] = evidence.combine(
+                margin=margin, support=support, p_model=evidence.model_p(model_class, bert),
+                ocr_rate=inputs.ocr_match_rate)
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
         return Verdict(code, float(value), rule, reason, votes, strength=round(float(old), 4))
 
@@ -844,7 +858,9 @@ def decide(inputs: PageInputs) -> Verdict:
     index = index_page(text, inputs.headings, inputs.lines)
     if index is not None:
         votes["index_page"] = index
-        return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others")
+        measure = index_measure(text, inputs.headings, inputs.lines) or {}
+        return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others",
+                     margin=measure.get("margin"))
     # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed.
     cover = fax_cover_sheet(text)
     if cover is not None:
@@ -856,9 +872,12 @@ def decide(inputs: PageInputs) -> Verdict:
     if short:
         votes["short_page"] = short["why"]
         if short["code"] is not None:
-            # 2026-11-19 (user): a short page the short rules decided: the rules-find 60%.
+            # 2026-11-21 (user): a short page the short rules decided: its evidence (the rule's
+            # margin, the page's uniqueness against its neighbours), the OCR match rate and the
+            # model's p -- was a flat 60%.
+            ev = short.get("evidence") or {}
             return ruled(short["code"], short["rule"], f"{SHORT_RULE}{short['rule']}: {short['why']}",
-                         confidence=conf.rules_find())
+                         margin=ev.get("margin"), support=ev.get("support") or {"short_rule": 1.0})
     to_classifier = bool(short)  # a short page no short rule decided goes to the classifier
 
     card = None
@@ -879,7 +898,11 @@ def decide(inputs: PageInputs) -> Verdict:
             found = f"{found_card.card_type} ({'; '.join(found_card.matched)})"
             if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
                 return ruled(CODE_MAIN, "R3", f"R3 card: {found}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
-            return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95)
+            # The margin: how much card evidence matched (groups, titles, fields, barcode).
+            from modules.blank_junk import evidence
+
+            return ruled(CODE_CARDS, "R3", f"R3 card: {found} -> Junk / Cards", 0.95,
+                         margin=evidence.past_cut(len(found_card.matched), 1, 4))
 
         # 4. a visual page (2026-11-21, user): the card first (whatever its word count), then the
         # under-20-words keep -- a licence or insurance card photo is decided as a card before any
@@ -1204,6 +1227,27 @@ def _entry(line: str) -> bool:
     if not cells:
         return False
     return bool(PAGE_NUMBER_LINE.search(cells) or BARE_PAGE_NUMBER.match(cells) or INDEX_ENTRY_DATE.search(cells))
+
+
+def index_measure(text: str, headings: tuple[str, ...] = (), lines: Any = None) -> Optional[dict[str, Any]]:
+    """A contents page's measures, for its confidence (2026-11-21, user): the share of the lines
+    after the title that are entries, and where the title sits; ``margin`` how far both are past
+    their cuts (INDEX_MIN_ENTRY_SHARE, INDEX_TOP_FRACTION). None when it is not one."""
+    if index_page(text, headings, lines) is None:
+        return None
+    from modules.blank_junk import evidence
+
+    title = INDEX_TITLE.search(text or "")
+    title_text = title.group(0).strip() if title else next(
+        (h for h in headings or () if INDEX_TITLE.fullmatch(str(h).strip())), "")
+    position = _title_position(title_text, text, lines) or 0.0
+    after = (text or "")[title.end():] if title else (text or "")
+    rest = [line.strip() for line in after.splitlines() if line.strip()]
+    numbered = sum(1 for line in rest if _entry(line))
+    content = sum(1 for line in rest if not _entry(line) and len(re.findall(r"[A-Za-z0-9]+", line)) >= 4)
+    share = numbered / max(1, numbered + content)
+    margin = (evidence.past_cut(share, INDEX_MIN_ENTRY_SHARE, 1.0) + evidence.past_cut(position, INDEX_TOP_FRACTION, 0.0)) / 2
+    return {"entry_share": round(share, 4), "title_position": round(position, 4), "margin": round(margin, 4)}
 
 
 def index_page(text: str, headings: tuple[str, ...] = (), lines: Any = None) -> Optional[str]:

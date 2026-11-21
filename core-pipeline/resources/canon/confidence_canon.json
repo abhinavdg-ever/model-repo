@@ -52,6 +52,16 @@
     "image_preprocess": {
       "osd_scale": 3.0,
       "note": "Tesseract OSD's orientation confidence is open-ended (about 0-20): mapped to 0-1 as 1 - exp(-c / osd_scale), so 1 -> 0.28, 3 -> 0.63, 6 -> 0.86, 10 -> 0.96; then backed by how well the page reads as English at the chosen turn (2026-10-26)."
+    },
+    "blank_junk": {
+      "evidence": {
+        "rule_span": 0.45,
+        "rule_weight": 1.0,
+        "model_weight": 1.0,
+        "ocr_min_factor": 0.5,
+        "unmeasured_margin": 0.5,
+        "note": "2026-11-21 (user): a blank / junk rule's confidence from its evidence, not a flat number (modules/blank_junk/evidence.py). rule = 0.5 + rule_span x margin x support; logit(c) = rule_weight x ocr_factor x logit(rule) + model_weight x logit(model p for the verdict); ocr_factor = ocr_min_factor + (1 - ocr_min_factor) x OCR match rate. margin: how far past the rule's own cut (0 on it, 1 far past); support: neighbours compared, same OCR engine, share of lines the neighbours' (Junk) or its own (Main). Used for the short-page rules, contents pages, cards and any rule that goes against the model (was 0.60 / 0.40). Then calibration.blank_junk (fit on labelled pages) and the floor."
+      }
     }
   }
 }
