@@ -191,7 +191,11 @@ def run_pipeline_for_chart(
             conn, chart_id=chart_id, stage_name="pipeline_full", status="running"
         )
         update_job(conn, job_id, started=True)
-        progress = refresh_chart_status(conn, chart_id)
+        # 2026-11-21 (user): processing from the run's start -- the stage rows an earlier run left
+        # read "completed" until the first stage of this run finished.
+        first = next(((n, pno) for n, pno, _fn in STAGE_CHAIN if not only or n in only or f"{n}:{pno}" in only),
+                     STAGE_CHAIN[0][:2])
+        progress = refresh_chart_status(conn, chart_id, running=first)
 
     from common.logging_setup import (
         reset_current_chart,
@@ -476,6 +480,19 @@ def run_pipeline_for_chart(
                     progress.get("status"),
                     progress.get("current_stage") or "finished",
                 )
+            except Exception as exc:  # noqa: BLE001 -- one stage must not sink the chart
+                # 2026-11-21 (user): a stage that raises (a one-page chart whose only page is junk
+                # left a later stage nothing to read) no longer stops the chain: the error is
+                # recorded, the later stages run (codability, final values), and the chart ends
+                # needs_review rather than failed.
+                logger.error("stage %s failed for chart %s: %s -- continuing with the next stage",
+                             key, chart["chart_name"], exc)
+                logger.debug(traceback.format_exc())
+                results.setdefault("stage_errors", {})[key] = str(exc)[:500]
+                results["stages"][key] = {"error": str(exc)[:500]}
+                with connect() as conn:
+                    progress = refresh_chart_status(conn, chart_id, running=(name, pass_no))
+                results["progress"] = progress
             finally:
                 reset_current_stage(stage_token)
                 # Monitoring (run_usage.stage_seconds): every stage that ran, skipped ones excluded.
@@ -485,7 +502,16 @@ def run_pipeline_for_chart(
 
         with connect() as conn:
             progress = refresh_chart_status(conn, chart_id)
-            update_job(conn, job_id, status="completed", completed=True)
+            errors = results.get("stage_errors") or {}
+            if errors and progress.get("status") in {"completed", "processing", "failed"}:
+                # A stage errored: not failed (the chain ran on), but not silently completed either.
+                set_chart_status(conn, chart_id, "needs_review",
+                                 current_stage=progress.get("current_stage"),
+                                 current_pass=progress.get("current_pass"))
+                progress["status"] = "needs_review"
+            update_job(conn, job_id, status="completed", completed=True,
+                       **({"error_message": "; ".join(f"{k}: {v}" for k, v in errors.items())[:2000]}
+                          if errors else {}))
 
         results["progress"] = progress
         results["status"] = progress.get("status")
