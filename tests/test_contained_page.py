@@ -139,30 +139,26 @@ def test_s5_a_short_page_repeating_a_neighbour_in_order_is_junk(monkeypatch):
 
 
 def test_s6_few_new_words_headers_junk_else_main(monkeypatch):
-    """2026-11-20 (user): a line is removed only when the whole line is on a neighbour; the words
-    left: a date -> Main; under 3 -> Junk; all header words -> Junk; else (under 5) Main."""
+    """2026-11-21 (user): matched lines removed; of the unique words left, dates and numbers left
+    out: 1 or none -> Junk; header words / a title -> Junk; 2-4 -> Main."""
     _keep(monkeypatch)
     page1 = HEADER + "\n" + BODY + "\n" + FOOTER
     texts = {1: page1, 2: FOOTER + "\nInsurance Guarantor Information\n" + HEADER}
     rows = _short(texts, {2: ("Insurance Guarantor Information",)})
     assert rows[2]["flag"] == "junk" and "header" in rows[2]["reason"]
+    rows = _run({1: page1, 2: FOOTER + "\naddendum 12 01/02/2026\n" + HEADER})
+    assert rows[2]["flag"] == "junk" and "of its own" in rows[2]["reason"]
     rows = _run({1: page1, 2: FOOTER + "\naddendum newword\n" + HEADER})
-    assert rows[2]["flag"] == "junk" and "under 3" in rows[2]["reason"]
-    rows = _run({1: page1, 2: FOOTER + "\naddendum newword thirdword\n" + HEADER})
     assert rows[2]["flag"] == "not_blank_junk" and "S6" in rows[2]["reason"]
 
 
-def test_s6_a_date_on_a_line_of_its_own_keeps_a_short_page(monkeypatch):
-    """2026-11-20 (user): a date on a line no neighbour has -> Main; the same line on the
-    neighbour is removed; each pair is compared on the same OCR engine."""
+def test_s6_dates_and_numbers_are_not_words_of_its_own(monkeypatch):
+    """2026-11-21 (user): a line of only a date and a time is no content; two words of its own
+    are. Each pair is compared on the same OCR engine."""
     _keep(monkeypatch)
     page1 = HEADER + "\n" + BODY + "\n" + FOOTER
-    rows = _run({1: page1, 2: HEADER + "\n01/28/26 0443"})
-    assert rows[2]["flag"] == "not_blank_junk" and "a date on a line of its own" in rows[2]["reason"]
-    rows = _run({1: HEADER + "\n01/28/26 0443\n" + BODY, 2: HEADER + "\n01/28/26 0443"})
-    assert rows[2]["flag"] == "junk"                                             # the same line nearby
-    # Same engine: page 1 has Docling only; page 2's best text (Doc Intel) reads the header
-    # differently, its Docling text as page 1's -> compared Docling vs Docling.
+    assert _run({1: page1, 2: HEADER + "\n01/28/26 0443"})[2]["flag"] == "junk"
+    assert _run({1: page1, 2: HEADER + "\nAddendum reviewed 01/28/26"})[2]["flag"] == "not_blank_junk"
     garbled = "Radlology Lt Grean Valey Patlent Watsen DOB MRN ACC\naddendum"
     texts = {1: page1, 2: garbled}
     pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
@@ -171,7 +167,7 @@ def test_s6_a_date_on_a_line_of_its_own_keeps_a_short_page(monkeypatch):
     engines = {1: {"docling": page1}, 2: {"azuredocintel": garbled, "docling": HEADER + "\naddendum"}}
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs,
                                                        find_duplicates=True, engine_texts=engines)}
-    assert rows[2]["flag"] == "junk" and "under 3" in rows[2]["reason"]       # only 'addendum' is left
+    assert rows[2]["flag"] == "junk" and "of its own" in rows[2]["reason"]       # only 'addendum' is left
 
 
 def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monkeypatch):
@@ -394,3 +390,14 @@ def test_lines_joined_differently_by_the_ocr_still_match(monkeypatch):
     assert rows[2]["flag"] == "junk", rows[2]["reason"]
     rows = _short({1: P18, 2: P19}, {2: ("EKG/Stress Test",)})
     assert rows[2]["flag"] == "junk" and "header" in rows[2]["reason"]
+
+
+def test_a_nextgen_contents_page_of_encounters_and_items():
+    """2026-11-21 (user): CONTENTS, 'Encounter: <date>' entries, each with short item names under
+    it (Letter_To_Patient, APSO Summary, intake_note ...) -> a contents page."""
+    page = ("NextGen Patient Record\nName: Le Blanc Jonathan\nDOB: 09/07/1997\nCONTENTS\n"
+            "Encounter: 11/25/2025 3:32:57 PM\nLetter_To_Patient\n"
+            "Encounter: 3/25/2025 3:00:00 PM\nAPSO Summary\nintake_note\nMaster_im\nPatient Plan\n"
+            "Encounter: 1/16/2025 12:40:00 PM\nAPSO Summary\nintake_note\nMaster_im\nPatient Plan\n"
+            "Provider_Test_Action\nVVHC_Medications")
+    assert method.index_page(page) is not None

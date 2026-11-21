@@ -701,3 +701,11 @@ def test_a_page_with_a_date_is_never_blank():
         v = run("01/28/26 0443", pass_no=pass_no, document_type="blank", bert=bert(0.1) if pass_no == 2 else None)
         assert v.code == method.CODE_MAIN and v.votes.get("not_blank_date") == "01/28/26"  # not Blank, not tiny-page Junk
     assert run("ok", pass_no=1, document_type="blank").code == method.CODE_BLANK
+
+
+def test_a_page_over_20_words_is_never_junk_cover_page():
+    """2026-11-21 (user): tagged Junk / Cover Page with more than 20 words -> Junk / Others."""
+    text = " ".join(f"word{i}" for i in range(30)) + " " + FILLER
+    v = run(text, bert=bert(0.95, "JUNK_COVER_PAGE"))
+    assert v.code == classify.CODE_OTHERS and v.votes.get("cover_to_others")
+    assert run("Accept", pass_no=1).code == classify.CODE_COVER_PAGE

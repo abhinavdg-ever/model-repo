@@ -634,6 +634,10 @@ def rule_flips_model(code: int, p_keep: Optional[float], p_junk: Optional[float]
     return model_keeps != (code == CODE_MAIN)
 
 
+# A Junk / Cover Page verdict on a page with more words than this is Junk / Others (2026-11-21).
+COVER_MAX_PAGE_WORDS = 20
+
+
 def keep_veto_at() -> float:
     """DistilBERT's p(keep) at or above which no rule junks a page that is not short (canon
     ``keep_veto_at``, 0.99; 2026-11-19, user)."""
@@ -762,6 +766,12 @@ def decide(inputs: PageInputs) -> Verdict:
             return Verdict(CODE_MAIN, float(value), "KEEP99",
                            f"KEEP99: {rule} would junk it, but p(keep) {p_keep:.1%} >= {keep_veto_at():.0%} -> Main",
                            votes, strength=round(float(value), 4))
+        # 2026-11-21 (user): a page of more than COVER_MAX_PAGE_WORDS words tagged Junk / Cover Page
+        # is not a cover page: Junk / Others.
+        if code == CODE_COVER_PAGE and words > COVER_MAX_PAGE_WORDS:
+            votes["cover_to_others"] = f"{words} words > {COVER_MAX_PAGE_WORDS}"
+            code = _junk_code("Others")
+            reason = f"{reason}; {words} words, not a cover page -> Junk / Others"
         votes["rule"] = rule
         old = rule_strength(code, rule, p_keep, p_junk) if strength is None else strength
         if confidence is None and rule_flips_model(code, p_keep, p_junk, p_blank):
@@ -1201,8 +1211,11 @@ def index_page(text: str, headings: tuple[str, ...] = (), lines: Any = None) -> 
     if numbered < INDEX_MIN_PAGE_LINES:
         return None
     # 2026-11-20 (user): mostly entries -- a note that opens with a "Table of Contents" bar and
-    # then has its content (with a few dates in it) is not a contents page.
-    if numbered < INDEX_MIN_ENTRY_SHARE * len(rest):
+    # then has its content (with a few dates in it) is not a contents page. 2026-11-21 (user):
+    # the short item names under an entry ("Letter_To_Patient", "APSO Summary", "intake_note")
+    # are part of the list: only lines of 4+ words that are not entries count against it.
+    content = sum(1 for line in rest if not _entry(line) and len(re.findall(r"[A-Za-z0-9]+", line)) >= 4)
+    if numbered < INDEX_MIN_ENTRY_SHARE * (numbered + content):
         return None
     return f"'{title_text}' in the top third ({position:.0%} down) and {numbered} lines with page numbers or dates"
 

@@ -588,10 +588,11 @@ def short_verdict(
       S3 an Electronic Signature, or a provider, not repeated on the previous / next page -> Main
       S4 its content is measurements, doses or ICD codes -> Main
       S5 98% of its words, in order, on the previous or next page -> Junk / Others
-      S6 (2026-11-20, user) each line is removed only when the whole line matches a line of the
-         previous or next page exactly (each pair on the same OCR engine: Doc Intel vs Doc Intel,
-         else Docling vs Docling); with fewer than 5 words left: a date on a line of its own ->
-         Main; under 3 words -> Junk / Others; all header words -> Junk / Others; else Main
+      S6 (2026-11-20 / 21, user) each line is removed when it matches a line of the previous or
+         next page (each pair on the same OCR engine: Doc Intel vs Doc Intel, else Docling vs
+         Docling), and so are the page's own section headers; the unique words left, dates and
+         numbers left out: 1 or none -> Junk / Others; only a title or header words -> Junk /
+         Others; 2-4 -> Main; 5+ -> the classifier
       otherwise the classifier decides."""
     from modules.blank_junk import pn_headers
 
@@ -695,7 +696,6 @@ def short_verdict(
     # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
     # words of the lines left are counted.
     left: Optional[set[str]] = None
-    dated_by_pair: list[Optional[str]] = []
     titles_only: list[bool] = []
     # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
     # content: a line that is one of them (or only its words) is removed too.
@@ -717,25 +717,22 @@ def short_verdict(
         if any(a_heading(line) for line in kept):
             removed_headings = True
             kept = [line for line in kept if not a_heading(line)]
-        found = set().union(*(unique_words(line) for line in kept)) if kept else set()
+        found = set().union(*(_plain_words(line) for line in kept)) if kept else set()
         left = found if left is None else left & found
-        dated_by_pair.append(next((m.group(0) for line in kept for m in [method.ANY_DATE.search(line)] if m), None))
         titles_only.append(bool(kept) and all(_title_like(line) for line in kept))
     if left is None:
         lines = [line for line in text.splitlines() if _line_key(line)]
-        left = set().union(*(unique_words(line) for line in lines)) if lines else set()
-        dated_by_pair = [next((m.group(0) for line in lines for m in [method.ANY_DATE.search(line)] if m), None)]
+        left = set().union(*(_plain_words(line) for line in lines)) if lines else set()
     if len(left) >= FEW_NEW_WORDS:
         return out(None, "S7", f"{len(left)} words on lines of its own, no short-page rule: the classifier decides")
     header_vocab = pn_headers.header_words(text, own.headings) | set(
         w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
-    # A date on a line of its own (not on either neighbour) -> not junk.
-    if dated_by_pair and all(dated_by_pair):
-        return out(CODE_MAIN, "S6", f"a date on a line of its own ('{dated_by_pair[0]}') -> Main")
+    # 2026-11-21 (user): dates and numbers are left out of the words counted (above); more than
+    # one unique word of its own keeps the page, one or none is junk.
     if not left and removed_headings:
         return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others")
-    if len(left) < 3:
-        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, under 3 -> Junk / Others")
+    if len(left) <= 1:
+        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) of its own (dates and numbers left out) -> Junk / Others")
     if left <= header_vocab:
         return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others")
     if titles_only and all(titles_only):
@@ -747,6 +744,12 @@ def short_verdict(
 # page, so it is left out when lines are compared (2026-11-20, user: a footer "Printed on ...
 # Page 13" is page 12's "... Page 12").
 PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
+
+
+def _plain_words(line: str) -> set[str]:
+    """A line's unique words without its dates and numbers (2026-11-21, user)."""
+    text = method.ANY_DATE.sub(" ", line or "")
+    return {w for w in unique_words(text) if not any(ch.isdigit() for ch in w)}
 
 
 def _title_like(line: str) -> bool:

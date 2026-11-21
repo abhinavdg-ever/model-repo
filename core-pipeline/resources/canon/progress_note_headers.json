@@ -164,6 +164,9 @@
       "medical\\s+decision\\s+making",
       "mdm",
       "time\\s+spent"
+    ],
+    "Care timeline": [
+      "care\\s+timeline"
     ]
   }
 }
