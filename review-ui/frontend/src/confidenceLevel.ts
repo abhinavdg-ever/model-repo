@@ -11,8 +11,10 @@
  * feature matters, 2026-11-19, user); else **Medium**. A Blank / Junk or duplicate page counts only what matters for it: Blank / Junk
  * and Codability. Its number is the mean of the counted fields, capped by its level (LEVEL_CAP).
  *
- * Chart: **High** when HIGH_SHARE (80%) of the pages are High; **Low** when LOW_SHARE (20%) of the
- * pages or more; else **Medium**. Its number is the mean of its pages' numbers, capped by its level.
+ * Chart (2026-11-21, user: like an NPS): score = (High pages - Low pages) / pages scored, -1..+1
+ * (Medium counts 0). Its % = (1 + score) / 2 -- all High 100%, all Medium 50%, all Low 0% -- at
+ * least the 20% floor, and its level is that % banded like any confidence (High >= 80%, i.e.
+ * score >= +0.6; Low < 50%, i.e. more Low pages than High).
  */
 import type { ImagingPageResult } from "./api";
 
@@ -20,13 +22,16 @@ export type Level = "high" | "medium" | "low";
 
 export const HIGH_AT = 0.8;
 export const LOW_BELOW = 0.5;
-/** Chart (2026-11-19, user): High when HIGH_SHARE of its pages are High, Low when LOW_SHARE
- * are Low (Low wins when both hold), else Medium. */
-export const HIGH_SHARE = 0.8;
-export const LOW_SHARE = 0.2;
+/** No confidence is shown below this (2026-11-19, user). */
+export const FLOOR = 0.2;
 
-export function chartLevel(counts: Record<Level, number>, n: number): Level {
-  return counts.low / n >= LOW_SHARE ? "low" : counts.high / n >= HIGH_SHARE ? "high" : "medium";
+/** A chart's confidence from its pages' levels (2026-11-21, user: NPS-like). */
+export function chartScore(counts: Record<Level, number>): { nps: number; value: number; level: Level } | null {
+  const n = counts.high + counts.medium + counts.low;
+  if (!n) return null;
+  const nps = (counts.high - counts.low) / n;
+  const value = Math.max(FLOOR, (1 + nps) / 2);
+  return { nps, value, level: band(value) };
 }
 /** The % never contradicts the level (2026-11-19, user): a Medium page / chart shows at most
  * 79%, a Low one at most 49%, whatever the plain average. */
@@ -121,6 +126,8 @@ export function pageConfidence(page: ImagingPageResult): PageConfidence {
 export type ChartConfidence = {
   level: Level | null;
   value: number | null;
+  /** (High - Low) / pages, -1..+1 (2026-11-21). */
+  nps: number | null;
   /** Pages per level; pages with nothing to score are not counted. */
   counts: Record<Level, number>;
   /** Page numbers per level, for "Low: 3, 8, 12". */
@@ -130,19 +137,15 @@ export type ChartConfidence = {
 export function chartConfidence(pages: ImagingPageResult[]): ChartConfidence {
   const counts: Record<Level, number> = { high: 0, medium: 0, low: 0 };
   const byLevel: Record<Level, number[]> = { high: [], medium: [], low: [] };
-  let sum = 0;
-  let n = 0;
   for (const page of pages) {
     const pc = pageConfidence(page);
     if (!pc.level || pc.value == null) continue;
     counts[pc.level] += 1;
     byLevel[pc.level].push(page.pageNumber);
-    sum += pc.value;
-    n += 1;
   }
-  if (!n) return { level: null, value: null, counts, pages: byLevel };
-  const level: Level = chartLevel(counts, n);
-  return { level, value: capToLevel(level, sum / n), counts, pages: byLevel };
+  const score = chartScore(counts);
+  if (!score) return { level: null, value: null, nps: null, counts, pages: byLevel };
+  return { level: score.level, value: score.value, nps: score.nps, counts, pages: byLevel };
 }
 
 export function levelLabel(level: Level | null): string {

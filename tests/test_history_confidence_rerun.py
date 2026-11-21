@@ -28,11 +28,14 @@ def test_page_level_uses_the_seven_features():
 def test_chart_level():
     from app.services.chart_confidence import chart_level
 
-    # 2026-11-19 (user): High at 80%+ pages High, Low at 20%+ pages Low (Low wins), else Medium.
-    assert chart_level([("high", 0.9)] * 3)["level"] == "high"
-    assert chart_level([("high", 0.9)] * 17 + [("medium", 0.6)] * 2 + [("low", 0.3)])["level"] == "high"
-    assert chart_level([("high", 0.9)] * 15 + [("medium", 0.6)] * 3 + [("low", 0.3)] * 2)["level"] == "medium"
-    assert chart_level([("high", 0.9)] * 8 + [("low", 0.3)] * 2)["level"] == "low"
+    # 2026-11-21 (user, NPS-like): score (High - Low) / pages, value (1 + score) / 2, banded.
+    assert chart_level([("high", 0.9)] * 3) == {"level": "high", "value": 1.0, "nps": 1.0,
+                                                 "counts": {"high": 3, "medium": 0, "low": 0}}
+    assert chart_level([("high", 0.9)] * 17 + [("medium", 0.6)] * 2 + [("low", 0.3)])["value"] == 0.9
+    assert chart_level([("high", 0.9)] * 10 + [("medium", 0.6)] * 8 + [("low", 0.3)] * 2)["level"] == "medium"
+    out = chart_level([("high", 0.9)] * 2 + [("medium", 0.6)] * 3 + [("low", 0.3)] * 5)
+    assert (out["level"], out["value"], out["nps"]) == ("low", 0.35, -0.3)
+    assert chart_level([("low", 0.3)] * 4)["value"] == 0.2  # the floor
     out = chart_level([None, ("medium", 0.6)])
     assert out["level"] == "medium" and out["counts"] == {"high": 0, "medium": 1, "low": 0}
     assert chart_level([])["level"] is None
@@ -58,8 +61,8 @@ def test_the_percent_is_capped_by_the_level():
             "provider": 1.0, "orientation": 1.0}
     assert page_level(page, False) == ("low", 0.49)
     assert page_level({**page, "dos": 1.0, "provider": 0.6}, False) == ("medium", 0.79)
-    assert chart_level([("high", 1.0)] * 7 + [("medium", 0.79)] * 3)["value"] == 0.79
-    assert chart_level([("high", 1.0)] * 4 + [("low", 0.49)])["value"] == 0.49
+    # The chart reads its pages' levels, not their %: 7 High + 3 Medium -> score 0.7 -> 85%.
+    assert chart_level([("high", 1.0)] * 7 + [("medium", 0.79)] * 3)["value"] == 0.85
 
 
 def test_orientation_falls_back_to_the_measured_confidence():

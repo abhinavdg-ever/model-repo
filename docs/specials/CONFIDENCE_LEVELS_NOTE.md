@@ -42,19 +42,21 @@ a Medium page shows at most 79%, a Low page at most 49%.
 
 ## 3. Chart level
 
+Like an NPS, from how many of its pages are High, Medium and Low:
+
+**Score** = (High pages − Low pages) / pages scored, from −100 to +100 (a Medium page counts 0).
+
+**Chart confidence %** = (1 + score) / 2: all pages High → 100%, all Medium → 50%, all Low → 0%
+(shown as at least 20%, the floor every confidence has).
+
 | Level | When |
 |---|---|
-| **High** | 80% or more of the pages are High |
-| **Low** | 20% or more of the pages are Low |
-| **Medium** | otherwise |
-
-A chart that meets both (exactly 80% High and 20% Low) is Low.
-
-**Chart confidence %** = the average of its pages' confidence %, with the same limits: a Medium
-chart shows at most 79%, a Low chart at most 49%.
+| **High** | confidence 80% or more (score +60 or more) |
+| **Medium** | 50% to 80% (score 0 to +60) |
+| **Low** | under 50% (more Low pages than High) |
 
 ## Example
 
-A 20-page chart: 17 pages High (85%), 2 Medium, 1 Low (5%). Fewer than 20% are Low and 80% or more
-are High, so the chart is **High**. With 15 High (75%), 3 Medium, 2 Low (10%) it is **Medium**, at
-most 79%. With 4 or more Low pages (20%) it is **Low**, at most 49%.
+A 20-page chart: 17 pages High, 2 Medium, 1 Low. Score = (17 − 1) / 20 = +80, confidence 90%:
+**High**. With 10 High, 8 Medium, 2 Low: score +40, 70%: **Medium**. With 2 High, 3 Medium, 5 Low:
+score −30, 35%: **Low**.

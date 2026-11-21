@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { CONFIDENCE_FIELDS, band, capToLevel, chartLevel, levelLabel, type Level } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, band, chartScore, levelLabel, type Level } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1027,7 +1027,6 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const data = useMemo(() => {
     if (!open) return null;
     const pageLevels: Record<Level, number> = { high: 0, medium: 0, low: 0 };
-    let sum = 0;
     const perFeature = new Map<string, Record<Level, number>>();
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
@@ -1040,7 +1039,6 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         const pc = page.confidence;
         if (pc?.level && pc.value != null) {
           pageLevels[pc.level] += 1;
-          sum += pc.value;
           addVerdict(cross[pc.level], page.overall);
         }
         // Each metric on every page the accuracy scores it (2026-11-19, user): Blank / Junk
@@ -1060,9 +1058,17 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
-    const level: Level | null = !total ? null
-      : chartLevel(pageLevels, total);
-    return { pageLevels, total, level, mean: total && level ? Math.round(100 * capToLevel(level, sum / total)) : null, perFeature, cross, byMetric, deciles };
+    // 2026-11-21 (user): NPS-like -- (High - Low) / pages; the % is (1 + score) / 2.
+    const score = chartScore(pageLevels);
+    // Every metric pooled, per level (each metric on each page it scores counts once).
+    const pooled: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
+    for (const by of byMetric.values()) {
+      for (const l of CONF_LEVELS) {
+        pooled[l].pages += by[l].pages; pooled[l].yes += by[l].yes; pooled[l].maybe += by[l].maybe; pooled[l].no += by[l].no;
+      }
+    }
+    return { pageLevels, total, level: score?.level ?? null, nps: score?.nps ?? null,
+             mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles };
   }, [open, rows]);
 
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
@@ -1079,6 +1085,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <div className="modal-card-header">
                   <h2 id="confidence-metrics-title">
                     Confidence Analysis · {data.mean == null ? "—" : `${data.mean}%`}{" "}
+                    {data.nps != null ? <small title="(High pages - Low pages) / pages">score {data.nps >= 0 ? "+" : ""}{Math.round(100 * data.nps)}</small> : null}{" "}
                     {data.level ? <span className={`chart-glance-pill level-${data.level}`}>{levelLabel(data.level)}</span> : null}
                   </h2>
                   <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">
@@ -1088,7 +1095,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <p className="chart-details-note">
                   {rows.length.toLocaleString()} charts, {data.total.toLocaleString()} pages with ground truth (the filters apply).
                   Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: High when every field is High; Low when any
-                  field is Low; else Medium.
+                  field is Low; else Medium. Overall: score = (High pages − Low pages) / pages (−100..+100, like an
+                  NPS), shown as (1 + score) / 2: all High 100%, all Medium 50%, all Low 0% (at least 20%).
                 </p>
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
                   {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
@@ -1211,21 +1219,27 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
 
                 <section>
                   <h3>Confidence × Accuracy, across metrics</h3>
-                  <p className="chart-details-note">Across metrics: each metric's accuracy on the pages where its own confidence is High, Medium or Low (matching / scored pages in brackets). High should be the most accurate.</p>
+                  <p className="chart-details-note">Across metrics: each metric's accuracy on the pages where its own confidence is High, Medium or Low (matching / scored pages in brackets), and over all its pages. All metrics: every metric pooled. Overall (page): the page's own confidence level against all seven metrics matching. High should be the most accurate.</p>
                   <table className="chart-details-table">
                     <thead>
-                      <tr><th>Metric</th>{CONF_LEVELS.map((l) => <th key={l} className={`num level-text-${l}`}>{levelLabel(l)}</th>)}</tr>
+                      <tr><th>Metric</th>{CONF_LEVELS.map((l) => <th key={l} className={`num level-text-${l}`}>{levelLabel(l)}</th>)}<th className="num">All</th></tr>
                     </thead>
                     <tbody>
-                      {LIVE_METRICS.map((metric) => {
-                        const by = data.byMetric.get(metric.id)!;
+                      {[
+                        ...LIVE_METRICS.map((metric) => ({ key: metric.id as string, label: metric.tableLabel ?? metric.label, by: data.byMetric.get(metric.id)!, total: false })),
+                        { key: "pooled", label: "All metrics", by: data.pooled, total: true },
+                        { key: "overall", label: "Overall (page)", by: data.cross, total: true },
+                      ].map(({ key, label, by, total }) => {
+                        const all = CONF_LEVELS.reduce((t, l) => ({ pages: t.pages + by[l].pages, yes: t.yes + by[l].yes, maybe: t.maybe + by[l].maybe, no: t.no + by[l].no }), emptyScore());
+                        // The page Overall is all seven matching: a Partial is not a match there.
+                        const pct = (b: LevelScore) => (key === "overall" ? (b.pages ? share(b.yes, b.pages) : "—") : scorePct(b));
                         return (
-                          <tr key={metric.id}>
-                            <td>{metric.tableLabel ?? metric.label}</td>
-                            {CONF_LEVELS.map((l) => (
-                              <td key={l} className="num" title={`${metric.label}, ${levelLabel(l)} confidence: Match ${by[l].yes}${by[l].maybe ? ` · Partial ${by[l].maybe}` : ""} · No Match ${by[l].no}`}>
-                                {scorePct(by[l])}{" "}
-                                <small>({by[l].yes.toLocaleString()}/{by[l].pages.toLocaleString()} match)</small>
+                          <tr key={key} className={total ? "chart-details-total" : undefined}>
+                            <td>{label}</td>
+                            {[...CONF_LEVELS.map((l) => [l, by[l]] as const), ["all", all] as const].map(([l, b]) => (
+                              <td key={l} className="num" title={`${label}, ${l === "all" ? "all" : levelLabel(l as Level)}: Match ${b.yes}${b.maybe ? ` · Partial ${b.maybe}` : ""} · No Match ${b.no}`}>
+                                {pct(b)}{" "}
+                                <small>({b.yes.toLocaleString()}/{b.pages.toLocaleString()} match)</small>
                               </td>
                             ))}
                           </tr>

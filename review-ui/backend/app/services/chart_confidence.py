@@ -7,9 +7,10 @@ The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
   from ``imaging_final.confidences``. A Blank / Junk or duplicate page counts Blank / Junk and
   Codability only. High >= 0.80, Medium 0.50-0.80, Low < 0.50.
 * Page: High when every feature is High; Low when any feature is Low; else Medium.
-* Chart: High when 80%+ of the pages are High; Low when 20%+ are Low (Low wins); else
-  Medium. Its value is the mean of its pages' means.
-* A % is capped by its level: Medium at most 79%, Low at most 49% (LEVEL_CAP).
+* Chart (2026-11-21, user: like an NPS): score = (High pages - Low pages) / pages, -1..+1;
+  its value = (1 + score) / 2, at least the 20% floor, banded like any confidence (High >= 0.80,
+  Low < 0.50).
+* A page's % is capped by its level: Medium at most 79%, Low at most 49% (LEVEL_CAP).
 """
 
 from __future__ import annotations
@@ -19,8 +20,7 @@ from typing import Any, Iterable, Optional
 
 HIGH_AT = 0.8
 LOW_BELOW = 0.5
-HIGH_SHARE = 0.8
-LOW_SHARE = 0.2
+FLOOR = 0.2
 # The % never contradicts the level (2026-11-19, user): Medium at most 79%, Low at most 49%.
 LEVEL_CAP = {"high": 1.0, "medium": 0.79, "low": 0.49}
 
@@ -77,21 +77,18 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
 
 
 def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
-    """{level, value, counts} of a chart from its pages' (level, mean); level None = not scored."""
+    """{level, value, nps, counts} of a chart from its pages' (level, mean); level None = not
+    scored. 2026-11-21 (user): NPS-like -- (High - Low) / pages, the value (1 + nps) / 2."""
     counts = {"high": 0, "medium": 0, "low": 0}
-    total = 0.0
-    n = 0
     for page in pages:
-        if page is None:
-            continue
-        counts[page[0]] += 1
-        total += page[1]
-        n += 1
+        if page is not None:
+            counts[page[0]] += 1
+    n = sum(counts.values())
     if not n:
-        return {"level": None, "value": None, "counts": counts}
-    # 2026-11-19 (user): Low when 20%+ of the pages are Low (it wins), High when 80%+ are High.
-    level = "low" if counts["low"] / n >= LOW_SHARE else "high" if counts["high"] / n >= HIGH_SHARE else "medium"
-    return {"level": level, "value": round(min(total / n, LEVEL_CAP[level]), 4), "counts": counts}
+        return {"level": None, "value": None, "nps": None, "counts": counts}
+    nps = (counts["high"] - counts["low"]) / n
+    value = max(FLOOR, (1 + nps) / 2)
+    return {"level": band(value), "value": round(value, 4), "nps": round(nps, 4), "counts": counts}
 
 
 _PAGES_SQL = """
