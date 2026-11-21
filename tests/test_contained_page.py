@@ -143,12 +143,12 @@ def test_s6_few_new_words_headers_junk_else_main(monkeypatch):
     out: 1 or none -> Junk; header words / a title -> Junk; 2-4 -> Main."""
     _keep(monkeypatch)
     page1 = HEADER + "\n" + BODY + "\n" + FOOTER
-    texts = {1: page1, 2: FOOTER + "\nInsurance Guarantor Information\n" + HEADER}
+    texts = {1: page1, 2: HEADER + "\nInsurance Guarantor Information\n" + FOOTER}
     rows = _short(texts, {2: ("Insurance Guarantor Information",)})
     assert rows[2]["flag"] == "junk" and "header" in rows[2]["reason"]
-    rows = _run({1: page1, 2: FOOTER + "\naddendum 12 01/02/2026\n" + HEADER})
+    rows = _run({1: page1, 2: HEADER + "\naddendum 12 01/02/2026\n" + FOOTER})
     assert rows[2]["flag"] == "junk" and "of its own" in rows[2]["reason"]
-    rows = _run({1: page1, 2: FOOTER + "\naddendum newword\n" + HEADER})
+    rows = _run({1: page1, 2: HEADER + "\naddendum newword\n" + FOOTER})
     assert rows[2]["flag"] == "not_blank_junk" and "S6" in rows[2]["reason"]
 
 
@@ -493,3 +493,47 @@ def test_a_document_details_cover_sheet_is_junk(monkeypatch):
     assert rows[2]["flag"] == "junk" and "SC" in rows[2]["reason"], rows[2]["reason"]
     # a short clinical page of fields is not a cover sheet.
     assert stage.cover_sheet_fields(["Date: 2/24/2026", "Provider: Jane Roe MD", "Diagnosis: hypertension"]) is None
+
+
+WELLS = "Patient Name: Dorothy Wells, Date of Birth: 08/26/1981 Sex:M Encounter Date:January 22, 2026"
+
+
+def test_a_line_under_the_header_there_and_after_a_title_here_is_the_pages_own(monkeypatch):
+    """Wells p23 / p24 (2026-11-21): 'Chronic kidney disease, stage 3a' is right under the header on
+    p23 and after 'Diagnosis' on p24 -- the header is matched from the top edge in order, so the
+    diagnosis is p24's own: not junk."""
+    _keep(monkeypatch)
+    ckd = "Chronic kidney disease, stage 3a (CMS/HCC)"
+    p23 = [WELLS, ckd, "GFR at 49 previously, which is low. Microalbumin elevated at 97. Continue losartan"] + [
+        f"Diagnosis line {k} hypertension hyperlipidemia hypothyroidism" for k in range(20)] + ["6"]
+    p24 = [WELLS, "Diagnosis", ckd, "7"]
+    tops = {1: _spread(p23, 0.02, 0.97), 2: {WELLS: 0.02, "Diagnosis": 0.03, ckd: 0.04, "7": 0.97}}
+    rows = _placed({1: "\n".join(p23), 2: "\n".join(p24)}, tops)
+    assert rows[2]["flag"] == "not_blank_junk", rows[2]["reason"]
+
+
+def test_a_signature_carried_onto_the_next_page_keeps_it(monkeypatch):
+    """70069595 p54 / p55: p54 ends 'Signed By ... / Signed', p55 is 'Rajinder Grover on 7/30/2025
+    at 1:12 PM' and the footer -> Main (S1S)."""
+    _keep(monkeypatch)
+    foot = "Tsagic Antonio DOB: 01/02/1950 (216009)"
+    p54 = [f"Assessment line {k} multiple myeloma follow up in two weeks" for k in range(20)] + [
+        "Signed By: Sarah Transcription on 7/29/2025 at 9:46 PM", "Signed", foot, "Page 3 of 4"]
+    p55 = ["Rajinder Grover on 7/30/2025 at 1:12 PM", foot, "Page 4 of 4"]
+    tops = {1: _spread(p54, 0.02, 0.97), 2: {p55[0]: 0.02, foot: 0.95, "Page 4 of 4": 0.97}}
+    rows = _placed({1: "\n".join(p54), 2: "\n".join(p55)}, tops)
+    assert rows[2]["flag"] == "not_blank_junk" and "S1S" in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_end_of_report_alone_is_a_cover_page(monkeypatch):
+    """TMC p34: running header, 'End Of Report', footer -> Junk / Cover Page (SE), whatever the
+    header's word count."""
+    _keep(monkeypatch)
+    head = ["TMC HEALTH 5301 E Grant Rd TUCSON AZ 85712 Brennan, Ronald MRN: 6056636, DOB: 05/08/1984 Legal Sex: M",
+            "09/25/2025 - Office Visit in Sonoran Foot and Ankle Institute - Green Valley (continued)"]
+    p33 = head + [f"Plan line {k} orthotics follow up wound care" for k in range(20)] + ["Printed on 4/6/26 10:09 AM Page 26"]
+    p34 = head + ["End Of Report", "Printed on 4/6/26 10:09 AM Page 27"]
+    tops = {1: _spread(p33, 0.02, 0.97), 2: {head[0]: 0.02, head[1]: 0.06, "End Of Report": 0.08, p34[-1]: 0.97}}
+    rows = _placed({1: "\n".join(p33), 2: "\n".join(p34)}, tops)
+    assert rows[2]["flag"] == "junk" and "SE" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["subtype"] == "Cover Page" if "subtype" in rows[2] else True

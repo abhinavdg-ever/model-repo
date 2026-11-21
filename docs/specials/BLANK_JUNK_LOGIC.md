@@ -75,9 +75,11 @@ the top 25%. A page over 30% handwritten, or a visual page, is not judged here (
 
 **The page's own lines** (2026-11-21, user). A line is the previous / next page's, not the page's own,
 when it is part of a **run of 2+ lines in the same order** on that page (a block carried over,
-anywhere), or a **single line matching a line there in the same band** of the page (top 25% /
-middle / bottom 25%): a running header or footer. A diagnosis list continued at the top of a page
-is not "repeated" because the same diagnoses sit in the middle of the previous page's problem list.
+anywhere), or it is part of the **running header or footer matched from the page edge**: the
+page's lines from its top repeat the neighbour's from its top, one for one and in the same order,
+and likewise from the bottom; the first line that differs ends the run. A diagnosis continued at
+the top of a page is the page's own even when the same diagnosis sits right under the neighbour's
+header ("Diagnosis" comes first here), or in the middle of its problem list.
 Placeholder values ("None recorded.", "No information", "N/A", "Unknown") are no content either. A
 line matches when it is the same (case, spacing, #, *, | and page numbers evened out), differs in one
 number ("11:43" / "11:44"; a page count with the same total, "30/43" / "31/43"), or has the same text
@@ -88,7 +90,9 @@ The first that matches decides:
 | # | Check | Verdict |
 |---|---|---|
 | SC | (2026-11-21, user) A **document cover sheet**: its own lines are only label / value fields (Date, Type, Subject, Approved By, Comments, Category …; a title line such as "Document Details" aside), 3+ fields, one naming the document (Type / Document Type / Subject / Category), each value 6 words or fewer | Junk / Cover Page |
+| SE | (2026-11-21, user) **"End of Report"** is all the page has of its own | Junk / Cover Page |
 | S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on, **if it has 2+ words of its own** (2026-11-21: a page with only the running header and the page number carries nothing on) | Main |
+| S1S | (2026-11-21, user) The **previous page ends in a signature** ("Signed By …", "Signed", "Electronically signed" in its last 4 lines) and this page's own text has a date (its signer and date carried over: "Rajinder Grover on 7/30/2025 at 1:12 PM") | Main |
 | S2 | The page has a **Progress Note header and 3+ other words** on **its own lines** (2026-11-20: lines not repeated on the previous / next page; a running "Labs (continued)" header does not count) | Main |
 | SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
@@ -98,6 +102,11 @@ The first that matches decides:
 | — | 5 or more words left and nothing above | the classifier (rule 8) decides |
 
 ### Rule 5: cards (`card_rules.py`)
+
+**Strong evidence** (a licence or state ID, 3+ insurance groups, 3+ card-back lines, a Medicare /
+other ID card, a barcode with card words; 2026-11-21, user) is decided **before the keeps** on any
+page and **waives the text-area guard**: a card scanned into an EHR print has the print's header
+and footer around it (the word box 85%+ of the page) and may carry a margin signature stamp.
 
 Unchanged guards: words from two card groups; no form or letter words; ≤ 150 words **per card** (2026-11-21: a page of two licences and an insurance card's front and back gets 150 per card, each licence / ID title and each insurance side counting one, up to 4); text over ≤ 75%
 of the page (**not on a visual page**, 2026-11-21: a card photographed to fill the page); the word "card" and a name, **unless the evidence is strong**. Changes on 2026-11-19:
@@ -191,3 +200,12 @@ the **row** page's distinct body words (the duplicate check's body text: header 
 stamps out) found on the **column** page. So a page contained in another is 100% one way only. Numbers
 only, no page text. Pass 1 reads Tesseract, pass 2 the Final OCR.
 
+
+## The service's protocol keep (2026-11-21, user)
+
+The page classifier service forces KEEP on a page its protocol patterns call clinical
+(`protocol_retain_clinical_image`: a signature line, record-type words) or demographic
+(`protocol_retain_demographic`), whatever the model says. When none of our own keeps fired (rule
+4) and the raw model's p(junk) is **95% or more** (`signature_overruled_above`, the bar a
+signature already yields to), the protocol keep does not keep it: Junk / the model's subtype.
+Below 95% (an Atlas transmittal letter at 72%) the keep stands: such pages are for model training.

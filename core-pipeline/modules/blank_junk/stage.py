@@ -677,6 +677,11 @@ def short_verdict(
         field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
         margin = evidence.past_cut(len(fields), META_MIN_FIELDS - 1, META_MIN_FIELDS + 3) * field_lines / max(1, len(own_lines))
         return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
+    # SE (2026-11-21, user): "End of Report" is all the page has of its own (the running header and
+    # footer aside) -> Junk / Cover Page, as pass 1's R1E on a page of few words.
+    report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
+    if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
+        return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
     # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
     # with content of its own (2026-11-21, user: a page with only the running header and the
     # page number carries nothing on).
@@ -694,6 +699,16 @@ def short_verdict(
                 margin = (evidence.past_cut(low, 2 / 3, 1.0) + evidence.past_cut(len(own_words), 1, 10)) / 2
                 return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
                                             f"({low:.0%} down the page): this page carries it on -> Main", margin)
+    # S1S (2026-11-21, user): the previous page ends in a signature ("Signed By ...", "Signed",
+    # "Electronically signed") and this page's own text is its signer and date ("Rajinder Grover
+    # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
+    if prev_id is not None and own_words and any(method.ANY_DATE.search(line) for line in own_lines):
+        prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
+        signing = next((line for line in prev_tail if SIGNATURE_LINE.search(line)), None)
+        if signing is not None:
+            at = prev_tail.index(signing)
+            return out(CODE_MAIN, "S1S", "the previous page ends in a signature and this page carries its signer / "
+                                         "date on -> Main", evidence.past_cut(at, 0, len(prev_tail) - 1))
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
     own_text = "\n".join(own_lines)
@@ -893,6 +908,10 @@ def cover_sheet_fields(lines: list[str]) -> Optional[list[str]]:
     return None
 
 
+# S1S: a signature in the previous page's last lines (its footer included).
+SIGNATURE_LINE = re.compile(r"(?i)\b(?:electronically\s+signed|e-?signed|signed\s+by|signed|signature)\b")
+SIGNATURE_TAIL_LINES = 4
+
 # 2026-11-21 (user): placeholder values ("None recorded.", "No information", "N/A") are no
 # content of the page's own.
 EMPTY_VALUE_LINE = re.compile(
@@ -955,41 +974,67 @@ def _number_pair(a: str, b: str) -> bool:
 PAGE_COUNT = re.compile(r"(\d{1,4})/(\d{1,4})")
 
 
+def _compact(key: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", key or "")
+
+
+def _edge_walk(keys: list[str], their_keys: list[str], out: list[bool]) -> None:
+    """Mark the page's lines that repeat the neighbour's from one edge, in the same order: the
+    page's i-th line from the edge against the neighbour's j-th (a match: the same line, one
+    number different, or the same text with the line breaks different -- one line here, several
+    there, or the other way round). The first line that does not match ends the run."""
+    i = j = 0
+    while i < len(keys) and j < len(their_keys):
+        key, theirs = keys[i], their_keys[j]
+        if _line_on(key, {theirs}):
+            out[i] = True
+            i, j = i + 1, j + 1
+            continue
+        mine_c, theirs_c = _compact(key), _compact(theirs)
+        step = None
+        # One line here, several there.
+        for span in range(2, 7):
+            if j + span <= len(their_keys) and mine_c and mine_c == "".join(_compact(k) for k in their_keys[j:j + span]):
+                step = (1, span)
+                break
+        # Several lines here, one there.
+        if step is None:
+            for span in range(2, 7):
+                if i + span <= len(keys) and theirs_c and theirs_c == "".join(_compact(k) for k in keys[i:i + span]):
+                    step = (span, 1)
+                    break
+        if step is None:
+            return
+        for at in range(i, i + step[0]):
+            out[at] = True
+        i, j = i + step[0], j + step[1]
+
+
 def repeated_lines(mine_text: str, other_text: str,
                    mine_inputs: Optional["method.PageInputs"] = None,
                    other_inputs: Optional["method.PageInputs"] = None) -> list[bool]:
     """For each non-empty line of ``mine_text``: is it the neighbour's line (2026-11-21, user)?
     A running header / footer or a block carried over, not the page's own content:
       - a run of 2+ lines that follow each other in the same order on the neighbour, anywhere; or
-      - a single line that matches a neighbour line (_line_on) in the same band of the page
-        (top / middle / bottom): "Cervical radiculopathy" at the top of a diagnosis list that
-        goes on from the previous page is not the previous page's line in the middle of its
-        problem list. Where a position is not known the line counts as the neighbour's."""
+      - the page's lines from its top edge that repeat the neighbour's from its top, in the same
+        order, and likewise from the bottom edge (_edge_walk): the running header and footer.
+        "Chronic kidney disease" right under the header there and after "Diagnosis" here is not
+        the neighbour's line; nor is a diagnosis that sits in the middle of the neighbour's
+        problem list."""
+    del mine_inputs, other_inputs  # the order from the edges, not the measured position, decides
     mine = [line for line in (mine_text or "").splitlines() if _line_key(line)]
     their_lines = [line for line in (other_text or "").splitlines() if _line_key(line)]
     keys = [_line_key(line) for line in mine]
     their_keys = [_line_key(line) for line in their_lines]
-    theirs, joined = set(their_keys), _joined(their_keys)
     pairs = set(zip(their_keys, their_keys[1:]))
     out = [False] * len(mine)
     for i in range(len(mine) - 1):
         if (keys[i], keys[i + 1]) in pairs:
             out[i] = out[i + 1] = True
-    for i, line in enumerate(mine):
-        if out[i] or not _line_on(keys[i], theirs, joined):
-            continue
-        same = _same_line_keys(keys[i], their_keys)
-        my_band = _band(_line_top(mine_inputs, line))
-        if my_band is None or not same:
-            out[i] = True  # no position, or matched across a line break: the neighbour's
-            continue
-        bands = []
-        for j in same:
-            band = _band(_line_top(other_inputs, their_lines[j]))
-            # Not found on the neighbour's OCR lines: its place among the neighbour's lines.
-            bands.append(band if band is not None else _band(j / max(1, len(their_lines))))
-        out[i] = my_band in bands
-    return out
+    _edge_walk(keys, their_keys, out)
+    bottom = [False] * len(mine)
+    _edge_walk(keys[::-1], their_keys[::-1], bottom)
+    return [a or b for a, b in zip(out, bottom[::-1])]
 
 
 def _line_position(page_inputs: Optional["method.PageInputs"], line: str) -> Optional[float]:

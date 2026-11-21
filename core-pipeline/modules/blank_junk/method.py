@@ -774,7 +774,9 @@ def decide(inputs: PageInputs) -> Verdict:
                            votes, strength=round(float(value), 4))
         # 2026-11-21 (user): a page of more than COVER_MAX_PAGE_WORDS words tagged Junk / Cover Page
         # is not a cover page: Junk / Others.
-        if code == CODE_COVER_PAGE and words > COVER_MAX_PAGE_WORDS:
+        # 2026-11-21 (user): the short page's own cover rules (SC cover sheet, SE End of Report) read
+        # its own lines only; their header / footer words do not count.
+        if code == CODE_COVER_PAGE and words > COVER_MAX_PAGE_WORDS and rule not in ("SC", "SE"):
             votes["cover_to_others"] = f"{words} words > {COVER_MAX_PAGE_WORDS}"
             code = _junk_code("Others")
             reason = f"{reason}; {words} words, not a cover page -> Junk / Others"
