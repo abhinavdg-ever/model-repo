@@ -958,6 +958,20 @@ def decide(inputs: PageInputs) -> Verdict:
     why = _service_why(service)
     if service.get("review_required"):
         votes["review_required"] = True
+    # 2026-11-21 (user): the service's protocol keep ("protocol_retain_*": a signature line, record
+    # type words such as "Radiology reports") forces KEEP whatever the model says. Our own keeps
+    # (signature, lab, medications, clinical content) ran above and passed on this page; with the
+    # raw model at p(junk) >= signature_overruled_above (95%, the bar a signature already yields
+    # to), the protocol keep does not keep it: the model's junk call stands.
+    reason_tag = str(service.get("decision_reason") or "")
+    if (service["flag"] == "KEEP" and reason_tag.startswith("protocol_retain") and p_junk is not None
+            and p_junk >= t["signature_overruled_above"] and not (p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT)):
+        subtype = MODEL_SUBTYPE.get(str((bert or {}).get("top_junk_label") or ""), "Others")
+        votes["protocol_keep_overruled"] = f"{reason_tag}, raw p(junk) {p_junk:.4f} >= {t['signature_overruled_above']}"
+        verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why}, but raw p(junk) {p_junk:.3f} >= "
+                        f"{t['signature_overruled_above']}: the protocol keep is overruled -> Junk / {subtype}",
+                        conf.score(p_junk))
+        return _keep_invoice(verdict, inputs)
     if service["flag"] == "JUNK":
         if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
             return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")

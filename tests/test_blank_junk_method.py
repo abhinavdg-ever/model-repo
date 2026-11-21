@@ -763,3 +763,16 @@ def test_a_page_of_several_cards_gets_the_word_limit_per_card():
     assert card_rules.detect(text).is_card
     # one card's text padded past 150 words is still too long.
     assert "too long" in " ".join(card_rules.detect(front + " filler" * 200).blocked_by)
+
+
+def test_the_services_protocol_keep_yields_to_a_sure_junk_model():
+    """2026-11-21 (user): an Optum chart-review letter, p(junk) 0.9952, kept Main by the service's
+    protocol_retain_clinical_image -- with none of our keeps firing and p(junk) >= 95% it is junk."""
+    def protocol_keep(p_junk):
+        b = bert(p_junk, "JUNK_RECORD_REQUEST")
+        b["service"] = {**b["service"], "flag": "KEEP", "subclass": "", "confidence": 0.99,
+                        "decision_reason": "protocol_retain_clinical_image"}
+        return b
+    v = run(FILLER, bert=protocol_keep(0.9952))
+    assert v.code == classify.CODE_RECORD_REQUEST and v.votes.get("protocol_keep_overruled")
+    assert run(FILLER, bert=protocol_keep(0.90)).code == method.CODE_MAIN
