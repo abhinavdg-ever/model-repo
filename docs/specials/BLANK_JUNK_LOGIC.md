@@ -99,7 +99,7 @@ The first that matches decides:
 
 ### Rule 5: cards (`card_rules.py`)
 
-Unchanged guards: words from two card groups; no form or letter words; ≤ 150 words; text over ≤ 75%
+Unchanged guards: words from two card groups; no form or letter words; ≤ 150 words **per card** (2026-11-21: a page of two licences and an insurance card's front and back gets 150 per card, each licence / ID title and each insurance side counting one, up to 4); text over ≤ 75%
 of the page (**not on a visual page**, 2026-11-21: a card photographed to fill the page); the word "card" and a name, **unless the evidence is strong**. Changes on 2026-11-19:
 
 - **Strong evidence needs neither the word "card" nor a name**: 3+ insurance groups (Member ID,

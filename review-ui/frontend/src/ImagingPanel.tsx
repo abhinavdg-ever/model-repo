@@ -2722,11 +2722,11 @@ export function algorithmQuality(score: number | null | undefined): string | nul
 
 type QualityRow = { page: ImagingPageResult; quality: string | null; reasons: string[] };
 
-/** A Low page is listed when its final OCR match rate is under this (2026-11-19, user). */
-export const REJECT_MATCH_BELOW = 0.2;
+/** A Low page is listed when its final OCR match rate is under this (2026-11-19, user; 50% since 2026-11-21, was 20%). */
+export const REJECT_MATCH_BELOW = 0.5;
 
-/** Pages the page-tag model calls not visible, or Low quality with an OCR match rate under
- * 20% (2026-11-19, user: the three engines' rate when Doc Intel read the page, else Docling vs
+/** Pages the page-tag model calls not visible, or Low quality with an OCR match rate under 50%
+ * (2026-11-19, user; 2026-11-21: 50%, was 20%: the three engines' rate when Doc Intel read the page, else Docling vs
  * Tesseract). A page routed before the match rate was stored: the algorithm's Low, as before. */
 export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
   const out: QualityRow[] = [];
@@ -2752,7 +2752,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
   return (
     <div className="member-rejection">
       <p className="rejection-note">
-        Pages the page-tag model calls not visible, or Low quality with an OCR match rate under 20% (three
+        Pages the page-tag model calls not visible, or Low quality with an OCR match rate under 50% (three
         engines when Doc Intel read the page, else Docling vs Tesseract):{" "}
         <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
       </p>

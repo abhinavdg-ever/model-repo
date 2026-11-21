@@ -241,6 +241,18 @@ LICENSE_BACK_FIELDS = frozenset({"class", "endorsements", "restrictions", "corre
 LICENSE_BACK_MIN = 3
 
 
+MAX_CARDS_PER_PAGE = 4
+
+
+def cards_on_page(text: str, kind: str, n_ins: int, back_lines: int) -> int:
+    """How many cards the page holds (1-4), for the per-card word limit: each licence / ID
+    title printed on it, plus an insurance card (its front groups, its back lines)."""
+    titles = sum(len(list(p.finditer(text))) for p in LICENSE_TITLE + STATE_ID_TITLE)
+    insurance = (1 if n_ins >= 2 else 0) + (1 if back_lines >= 3 else 0)
+    found = titles + insurance or (1 if kind else 0)
+    return max(1, min(MAX_CARDS_PER_PAGE, found))
+
+
 def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] = (),
            text_area: float | None = None, visual: bool = False, name_found: bool = False,
            barcode: str | None = None) -> CardResult:
@@ -317,8 +329,11 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
     blocked = [f"{name}: {', '.join(h)}" for name, pats in BLOCKERS.items() if (h := _hits(pats, text))]
     if visual and kind in LICENSE_KINDS:
         return CardResult(not blocked, kind, matched, blocked, words)
-    if words > max_words:
-        blocked.append(f"too long: {words} words")
+    # 2026-11-21 (user): a page of several cards (two licences and an insurance card's front and
+    # back) -- the word limit is per card.
+    cards = cards_on_page(text, kind, n_ins, back_lines)
+    if words > max_words * cards:
+        blocked.append(f"too long: {words} words" + (f" for {cards} cards" if cards > 1 else ""))
     # Strong evidence (2026-11-10 / 11-19, user) needs neither a name nor the word "card": three
     # insurance groups ("UCard", RxBIN / RxPCN, Member ID, Group, Payer ID), three back-of-card
     # lines, a Medicare / other ID card, a licence (it prints neither), or a barcode with card words.

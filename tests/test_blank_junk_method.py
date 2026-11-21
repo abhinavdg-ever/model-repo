@@ -741,3 +741,22 @@ def test_visual_pages_skip_the_handwriting_keep_and_the_card_text_area_guard():
     assert card_rules.detect(CARD_TEXT, text_area=0.89, visual=True).is_card
     v = run(" ".join(["word"] * 25), document_type="visual", bert=bert(0.2), hw_area_pct=45.0)
     assert v.rule != "HW"
+
+
+def test_a_page_of_several_cards_gets_the_word_limit_per_card():
+    """2026-11-21 (user): chart 70078926 p17 -- two licences and a UHC card's front and back on one
+    printed page (over 150 words) is still a card page; one card's worth of words per card."""
+    from modules.blank_junk import card_rules
+    lic = ("UTAH DRIVER LICENSE 4d DLN 123456789 3 DOB 03/15/1966 4b EXP 03/15/2030 1 MORGAN 2 EDITH 8 123 MAIN ST "
+           "SALT LAKE CITY UT 84101 15 SEX F 16 HGT 5-04 18 EYES BRN 9 CLASS D 9a END NONE 12 RESTR NONE "
+           + "state seal hologram " * 10)
+    front = ("UnitedHealthcare UCard EDITH O MORGAN Member ID 929752122 Group Number 90301 Payer ID 87726 RxBIN 610097 "
+             "RxPCN 9999 RxGRP COS PCP SMITH MD PCP Phone 801-555-0100 Medicare Advantage HMO " + "plan words " * 10)
+    back = ("For Members: myUHCMedicare.com 1-800-555-0100 TTY 711 Providers: uhcprovider.com 1-877-555-0101 Medical "
+            "Claims: PO Box 30995 Salt Lake City UT 84130 Pharmacists: 1-877-555-0102 Rx Claims: OptumRx PO Box 650287 "
+            "Dallas TX " + "information " * 10)
+    text = "\n".join([lic, lic, front, back])
+    assert card_rules.word_count(text) > card_rules.MAX_WORDS
+    assert card_rules.detect(text).is_card
+    # one card's text padded past 150 words is still too long.
+    assert "too long" in " ".join(card_rules.detect(front + " filler" * 200).blocked_by)
