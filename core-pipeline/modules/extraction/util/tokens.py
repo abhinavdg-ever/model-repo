@@ -13,9 +13,43 @@ import re
 from dataclasses import dataclass
 
 from .geometry import Box, Word
+from .names import is_not_name
 
-# A colon splits a key from a value glued into one OCR word ('Ptnt:Marija', 'MRN:88234.0').
-_SUB_TOKEN = re.compile(r"[^\s,:]+,*|:+|,+")
+# A colon splits a key from a value glued into one OCR word ('Ptnt:Marija', 'MRN:88234.0'), and
+# an opening bracket starts a new token ('David(MRN' -> 'David', '(MRN').
+_SUB_TOKEN = re.compile(r"\(?[^\s,:(]+,*|:+|,+|\(")
+
+# OCR drops the space between two capitalized words ('JohnsonRobert', 'Webb, PaulDate of Birth',
+# 'GloriaVega'). A capital after a lowercase letter starts a new word when both sides are words of
+# three letters or more: 'McDonald', 'DeAngelo', 'LeBlanc' have a shorter left side, and
+# 'MacArthur', 'VanDyke', 'FitzGerald' start with a surname prefix, so they stay whole.
+_GLUED = re.compile(r"(?<=[a-z])(?=[A-Z][a-z]{2})")
+_SURNAME_PREFIXES = frozenset({"mac", "fitz", "van", "von", "del", "della", "dela", "des", "dos", "das", "san", "ten", "ter"})
+
+
+def glued_breaks(text: str) -> list[int]:
+    """Offsets inside one word where OCR glued two capitalized words together. A word listed in
+    Util/not_name_words.txt is printed that way ('NextGen'), so it stays whole."""
+    if is_not_name(text):
+        return []
+    breaks: list[int] = []
+    start = 0
+    for match in _GLUED.finditer(text):
+        left = re.search(r"[A-Za-z]+$", text[start : match.start()])
+        segment = left.group(0) if left else ""
+        if re.fullmatch(r"[A-Z][a-z]{2,}", segment) and segment.casefold() not in _SURNAME_PREFIXES:
+            breaks.append(match.start())
+            start = match.start()
+    return breaks
+
+
+def spaced(text: str) -> str:
+    """The text with a space put back where OCR glued two words ('JohnsonRobert' -> 'Johnson Robert')."""
+    out: list[str] = []
+    for part in re.split(r"(\s+)", text):
+        cuts = [0, *glued_breaks(part), len(part)]
+        out.append(" ".join(part[a:b] for a, b in zip(cuts, cuts[1:]) if part[a:b]))
+    return "".join(out)
 
 
 @dataclass
@@ -68,14 +102,16 @@ def ordered_tokens(words: list[Word]) -> tuple[list[Token], str]:
         if parts:
             cursor += 1
         for match in _SUB_TOKEN.finditer(word.content):
-            tokens.append(
-                Token(
-                    word=_sub_word(word, match.start(), match.end()),
-                    text=match.group(0),
-                    start=cursor + match.start(),
-                    end=cursor + match.end(),
+            cuts = [match.start(), *(match.start() + at for at in glued_breaks(match.group(0))), match.end()]
+            for begin, end in zip(cuts, cuts[1:]):
+                tokens.append(
+                    Token(
+                        word=_sub_word(word, begin, end),
+                        text=word.content[begin:end],
+                        start=cursor + begin,
+                        end=cursor + end,
+                    )
                 )
-            )
         parts.append(word.content)
         cursor += len(word.content)
     return tokens, " ".join(parts)

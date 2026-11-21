@@ -21,10 +21,12 @@ from dataclasses import dataclass, field
 from ..provider_name.extract import _NON_NAME, geometry_confidence, load_suffixes
 from ..util.dates import find_dates, normalize_date
 from ..util.keys import KeyHit, extract_field_keys
-from ..util.geometry import is_edge_region, median_height, region_priority
+from math import hypot
+
+from ..util.geometry import Word, is_edge_region, median_height, region_priority, union_boxes
 from ..util.model import predict
 from ..util.names import is_not_name
-from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
+from ..util.tokens import Token, key_token_span, ordered_tokens, same_line, spaced
 from ..util.window import expand_for_key
 
 LABELS = ["person", "date"]
@@ -145,7 +147,7 @@ def _parse_name(tokens: list[Token], start: int, stop: int, line_h: float) -> _N
 
 
 def _printed(tokens: list[Token], name: _Name, text: str) -> str:
-    return text[tokens[name.first].start : tokens[name.last].end].strip(" ,;:-")
+    return spaced(text[tokens[name.first].start : tokens[name.last].end]).strip(" ,;:-")
 
 
 def split_name_designation(printed: str) -> tuple[str, str]:
@@ -217,6 +219,44 @@ def _in_window(tokens: list[Token], key_first: int, key_last: int, line_h: float
     return min(found, key=lambda item: (item[0], item[1]))[2]
 
 
+def is_status_key(key: str) -> bool:
+    """A sign-off status printed beside the note's author ('Signed', 'Cosigned'), not a phrase
+    that names the signer after it ('Signed by') or a signature line ('Signature')."""
+    folded = _CLEAN.sub(" ", key.strip().casefold())
+    return folded.split()[-1] in {"signed", "cosigned", "co-signed"} if folded else False
+
+
+def _beside_status(hit: KeyHit, words: list[Word]) -> str:
+    """The credentialed name an EHR header prints beside a status key: on the key's row or up to
+    two rows above it, to its left ('Oliverio, Freeland Gerard, DO  Progress Notes' over
+    'Physician  Signed'). The nearest such name, as printed."""
+    key = hit.box
+    line_h = max(key.height(), 1.0)
+    near = [
+        word for word in words
+        if word.index not in hit.word_indexes
+        and key.cy - 2.5 * line_h <= word.box.cy <= key.cy + 0.6 * line_h
+        and word.box.right <= key.left + 0.5 * line_h
+    ]
+    tokens, text = ordered_tokens(near)
+    if not tokens:
+        return ""
+    token_h = median_height([token.word for token in tokens])
+    best: tuple[float, str] | None = None
+    index = 0
+    while index < len(tokens):
+        name = _parse_name(tokens, index, len(tokens), token_h)
+        if name is None or not name.has_credential:
+            index += 1
+            continue
+        box = union_boxes([tokens[at].word.box for at in range(name.first, name.last + 1)])
+        gap = hypot(max(0.0, key.left - box.right), max(0.0, box.top - key.bottom, key.top - box.bottom))
+        if best is None or gap < best[0]:
+            best = (gap, _printed(tokens, name, text))
+        index = name.last + 1
+    return best[1] if best else ""
+
+
 def _date_gap(
     sentence: str,
     key_at: tuple[int, int],
@@ -281,8 +321,9 @@ def _ner_support(raws: list[dict], start: int, end: int) -> tuple[str, float]:
     return best_text, best_score
 
 
-def extract_box(hit: KeyHit) -> ESigHit:
-    """One overlay box â†’ printed provider name + signature date when present."""
+def extract_box(hit: KeyHit, words: list[Word] | None = None) -> ESigHit:
+    """One overlay box â†’ printed provider name + signature date when present. A status key
+    ('Signed') with no name after it takes the credentialed name beside it (_beside_status)."""
     scale = f"{expand_for_key(hit.key):g}x"
     tokens, text = ordered_tokens(hit.value_words)
     blank = ESigHit(key=hit.key, region=hit.region, sentence=text, scale=scale)
@@ -301,13 +342,18 @@ def extract_box(hit: KeyHit) -> ESigHit:
         source, geometry = "printed_before", 0.8
         if name is not None and not (strong or name.has_credential):
             name = None
-    if name is None:
+    beside = ""
+    if name is None and words and is_status_key(hit.key):
+        beside = _beside_status(hit, words)
+        source, geometry = "printed_beside", 0.75
+    if name is None and not beside:
         name = _in_window(tokens, key_first, key_last, line_h)
         source, geometry = "printed_window", 0.65
 
     # provider_name stays as printed (credential included): it is the page's provider name
-    # downstream. The credential is also kept on its own as the designation.
-    provider = _printed(tokens, name, text) if name else ""
+    # downstream. The credential is also kept on its own as the designation. A status key with
+    # no name after it takes the credentialed name beside it (2026-11-21 drop).
+    provider = _printed(tokens, name, text) if name else beside
     designation = split_name_designation(provider)[1]
     name_end = tokens[name.last].end if name else None
     signature_date, date_score = nearest_signature_date(text, key_at, after=name_end)
@@ -350,7 +396,11 @@ def mark_selected(rows: list[ESigHit]) -> None:
     winner.selected = True
 
 
-def extract_page(hits: list[KeyHit]) -> list[ESigHit]:
-    rows = extract_field_keys(hits, "electronic_signature", extract_box)
+def extract_page(hits: list[KeyHit], words: list[Word] | None = None) -> list[ESigHit]:
+    rows = extract_field_keys(hits, "electronic_signature", lambda hit: extract_box(hit, words))
+    # The name beside a status key is a fallback: a signature phrase that names its signer
+    # ('Electronically signed by Shaffner, James, DO at 3/10/2026') is the page's signature.
+    if any(row.accepted and row.provider_name and row.source != "printed_beside" for row in rows):
+        rows = [row for row in rows if row.source != "printed_beside"]
     mark_selected(rows)
     return rows

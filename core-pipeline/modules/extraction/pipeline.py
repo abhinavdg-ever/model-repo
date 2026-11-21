@@ -96,7 +96,7 @@ def extract_page_all(page: dict) -> PageResult:
         "name": name_page(hits, words, page_w, page_h, role_hints=role_member_hints(provider)),
         "provider_name": provider,
         "provider_credentials": credential_page(words),
-        "electronic_signature": esig_page(hits),
+        "electronic_signature": esig_page(hits, words),
         "dos": dos_page(hits, words, page_h),
         "page_no": page_no_page(words, page_h),
     }

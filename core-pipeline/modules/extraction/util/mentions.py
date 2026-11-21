@@ -16,6 +16,7 @@ import re
 from .dates import canonical_date, find_dates
 from .geometry import Box, Word, edge_band, union_boxes
 from .keys import KeyHit
+from .tokens import spaced
 
 _PARTS = re.compile(r"[a-z0-9]+")
 PERSON_FIELDS = frozenset({"name", "provider_name"})
@@ -27,7 +28,8 @@ REPEAT_SOURCE = "repeat"
 
 
 def value_parts(text: str) -> list[str]:
-    return _PARTS.findall((text or "").casefold())
+    """Alphanumeric parts, with glued words apart ('JohnsonRobert' -> johnson, robert)."""
+    return _PARTS.findall(spaced(text or "").casefold())
 
 
 def all_runs(words: list[Word], parts: list[str]) -> list[list[Word]]:

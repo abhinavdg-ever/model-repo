@@ -36,12 +36,16 @@ _DATE_BODY = (
     rf"{_MONTH}[/-]\d{{1,2}}[/-]\d{{2,4}}"
 )
 
+# A date ends at a word boundary, or where OCR glued the next label onto its last digit
+# ('DOB: 06/28/1995Encounter Date: 11/14/2024'). A digit after it still blocks ('06/28/19951').
+_END = r"(?:\b|(?<=\d)(?=[A-Za-z]))"
+
 # Capture group 1 is always the full date text.
-_DATE = re.compile(rf"\b({_DATE_BODY})\b", flags=re.IGNORECASE)
+_DATE = re.compile(rf"\b({_DATE_BODY}){_END}", flags=re.IGNORECASE)
 
 # Groups 1 and 2 are the two ends of the range.
 _RANGE = re.compile(
-    rf"\b({_DATE_BODY})\s*(?:-|–|—|to|thru|through)\s*({_DATE_BODY})\b",
+    rf"\b({_DATE_BODY})\s*(?:-|–|—|to|thru|through)\s*({_DATE_BODY}){_END}",
     flags=re.IGNORECASE,
 )
 

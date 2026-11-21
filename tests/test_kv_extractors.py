@@ -579,3 +579,23 @@ def test_dos_confidence_is_the_selected_row_of_the_shown_date():
     assert _dos_page("Progress Notes", rows)[:4] == ("2024-10-07", "2024-10-07", "kv", 0.798)
     rows[1]["selected"] = False
     assert _dos_page("Progress Notes", rows)[3] == 0.7992  # no selected row: the source row
+
+
+def test_the_2026_11_21_drop_glued_words_and_dates():
+    """The 2026-11-21 Extraction drop: OCR-glued capitalized words split back ('JohnsonRobert'),
+    surname prefixes and vendor names kept whole; a date glued to the next label still found."""
+    from modules.extraction.util.dates import find_dates
+    from modules.extraction.util.tokens import spaced
+
+    assert spaced("JohnsonRobert") == "Johnson Robert"
+    assert spaced("Webb, PaulDate") == "Webb, Paul Date"
+    assert spaced("McDonald") == "McDonald" and spaced("MacArthur") == "MacArthur"
+    assert spaced("NextGen") == "NextGen"
+    assert [m.group(1) for m in find_dates("DOB: 06/28/1995Encounter Date: 11/14/2024")] == ["06/28/1995", "11/14/2024"]
+    assert not [m for m in find_dates("06/28/19951")]
+
+
+def test_the_2026_11_21_drop_organisations_are_not_names():
+    from modules.extraction.util.names import is_not_name
+
+    assert is_not_name("Clinic") and is_not_name("Hospital") and is_not_name("NextGen")

@@ -1,0 +1,12 @@
+{
+  "signature": {
+    "before": [
+      "guardian",
+      "member",
+      "parent",
+      "patient",
+      "representative",
+      "witness"
+    ]
+  }
+}

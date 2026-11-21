@@ -137,3 +137,47 @@ old
 yo
 clinical
 entry
+
+# organizations and document labels ('Cleveland Clinic', 'Inter-Operative Orders' are not people)
+clinic
+hospital
+center
+centre
+health
+healthcare
+medical
+medicine
+surgery
+surgical
+orders
+order
+operative
+preoperative
+postoperative
+intraoperative
+interoperative
+inter-operative
+department
+dept
+institute
+university
+foundation
+pharmacy
+laboratory
+radiology
+imaging
+associates
+services
+
+# EHR vendor names printed as one capitalized word (kept whole, never split into 'Next Gen')
+nextgen
+athenahealth
+athenaone
+eclinicalworks
+allscripts
+cerner
+meditech
+
+# form words that follow a name field ('Name: Diana. Marital Status: Married') and clinical abbreviations
+marital
+bilat

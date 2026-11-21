@@ -60,6 +60,16 @@ _FUZZY = {
 _HASH_REQUIRED = frozenset({"chart"})
 # Common words that are a key only when printed with their colon ('For: Diaz Sarah').
 _COLON_REQUIRED = frozenset({"for", "scribe", "technician", "re", "visit", "appointment"})
+# Whole prose words a multi-word spelling variant of a key may not contain (unless the key has them).
+_PROSE_WORDS = frozenset(
+    {
+        "and", "or", "the", "of", "to", "in", "is", "was", "for", "with", "on", "at", "by", "as", "an",
+        "he", "she", "we", "it", "be", "has", "had", "are", "not", "his", "her", "our", "you", "this", "that",
+    }
+)
+# Fields whose keys read prose as a label ('the patient and I' as Patient ID). DOS keeps its looser
+# matching: 'DISCHARGE TO' read as Discharged still finds the discharge date below it.
+_PROSE_CHECKED = frozenset({"member_id", "name", "dob"})
 # E-signature keys shorter than this (letters only) never fuzzy-match.
 _ESIG_FUZZY_MIN = 10
 _DOS_FUZZY_MIN = 5
@@ -574,6 +584,13 @@ def _ocr_fuzzy_matches(
                 kind = "fuzzy"
                 distance = min(_edit_distance(chunk, target), _edit_distance(folded, target))
                 if distance > max_dist:
+                    continue
+                # OCR splits a word; it never adds a prose word: 'patient and I' ≠ 'Patient ID'.
+                if (
+                    field in _PROSE_CHECKED
+                    and width > 1
+                    and any(part in _PROSE_WORDS and part not in parts for part in exact_parts)
+                ):
                     continue
                 # An extra whole word is not an OCR split: 'Patient ID Name' ≠ 'Patient Name'.
                 if width > 1 and any(
