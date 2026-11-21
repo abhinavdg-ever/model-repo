@@ -907,7 +907,10 @@ def decide(inputs: PageInputs) -> Verdict:
         # 4. a visual page (2026-11-21, user): the card first (whatever its word count), then the
         # under-20-words keep -- a licence or insurance card photo is decided as a card before any
         # keep (its signature, its words) reads it.
-        if found_card is not None and inputs.document_type == "visual":
+        if found_card is not None and (inputs.document_type == "visual" or getattr(found_card, "strong", False)):
+            # 2026-11-21 (user): strong card evidence (a licence, 3+ insurance groups, a card back, a
+            # barcode) is decided before the keeps on any page -- a card scanned into an EHR print
+            # with an "Electronically Signed and Reviewed by" margin stamp is still a card.
             return card_verdict()
         if visual:
             return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)

@@ -502,12 +502,17 @@ class TestInvoiceKept:
         assert row["classification_category"] == "non_codeable"
 
 
+WEAK_CARD = "Insurance card Name: Jane Roe Member ID 12345678 Group Number 4455 " + "plan " * 12
+
+
 class TestCardKeeps:
-    """2026-11-05 (user): a card goes through the same keeps as other junk."""
+    """2026-11-05 (user): a card goes through the same keeps as other junk -- since 2026-11-21
+    (user) only a card on weak evidence; a strong card is decided before the keeps."""
 
     def test_handwritten_signed_or_sure_keep_is_main(self):
-        assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), hw_area_pct=45.0).rule == "HW"
-        assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), signed=True).rule == "R4"
+        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), hw_area_pct=45.0).rule == "HW"
+        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), signed=True).rule == "R4"
+        assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), signed=True).code == classify.CODE_CARDS
         v = run(CARD_TEXT, document_type="printed", bert=bert(0.005))
         assert (v.code, v.rule) == (method.CODE_MAIN, "R3")
 
@@ -740,8 +745,8 @@ def test_visual_pages_skip_the_handwriting_keep_and_the_card_text_area_guard():
     """2026-11-21 (user): chart 70084500 p15 (UHC card: handwritten > 30%) and p16 (card back:
     text over 89% of the page) -- neither guard applies to a visual page."""
     from modules.blank_junk import card_rules
-    assert card_rules.detect(CARD_TEXT, text_area=0.89).blocked_by
-    assert card_rules.detect(CARD_TEXT, text_area=0.89, visual=True).is_card
+    assert card_rules.detect(WEAK_CARD, text_area=0.89).blocked_by
+    assert card_rules.detect(WEAK_CARD, text_area=0.89, visual=True).is_card
     v = run(" ".join(["word"] * 25), document_type="visual", bert=bert(0.2), hw_area_pct=45.0)
     assert v.rule != "HW"
 
@@ -776,3 +781,26 @@ def test_the_services_protocol_keep_yields_to_a_sure_junk_model():
     v = run(FILLER, bert=protocol_keep(0.9952))
     assert v.code == classify.CODE_RECORD_REQUEST and v.votes.get("protocol_keep_overruled")
     assert run(FILLER, bert=protocol_keep(0.90)).code == method.CODE_MAIN
+
+
+UHC_CARD = ("Patient: Park, Charles DOB: 12/25/1980 UnitedHealthcare UCard Charles D Park Member ID 901230786-00 AARP "
+            "Medicare Advantage from UHC AZ-002P (HMO-POS) With Dental Group Number: 00340 H0609-027-000 Payer ID: LIFE1 "
+            "RxBIN RxPCN RxGRP 610097 9999 COS Optum Health Networks PCP $0 Specialist $20 MedicareRx "
+            "Document: 36726 Printed: 04-13-2026 10:51:41 Page 1 of 1")
+
+
+def test_a_strong_card_on_a_printed_ehr_page_is_a_card():
+    """2026-11-21 (user): UCards and a licence scanned into EHR prints were missed -- the header and
+    footer made the text box 85%+ of the page, and a margin signature stamp kept the page first.
+    Strong evidence waives the text-area guard and is decided before the keeps."""
+    from modules.blank_junk import card_rules
+
+    card = card_rules.detect(UHC_CARD, text_area=0.88)
+    assert card.is_card and card.strong
+    v = run(UHC_CARD, document_type="printed", bert=bert(0.5), signed=True, signature_known=True)
+    v_area = method.decide(method.PageInputs(text=UHC_CARD, pass_no=2, document_type="printed", bert=bert(0.5),
+                                             text_area=0.88, signed=True, signature_known=True))
+    assert v.code == classify.CODE_CARDS and v_area.code == classify.CODE_CARDS
+    # weak evidence (two groups, the word card and a name) keeps the guard.
+    weak = card_rules.detect("Insurance card Name: Jane Roe Member ID 12345678 Group Number 4455", text_area=0.88)
+    assert not weak.is_card

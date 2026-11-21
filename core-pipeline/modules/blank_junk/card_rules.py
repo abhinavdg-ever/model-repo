@@ -216,6 +216,9 @@ class CardResult:
     matched: list[str] = field(default_factory=list)
     blocked_by: list[str] = field(default_factory=list)
     words: int = 0
+    # Strong card evidence (a licence, 3+ insurance groups, a card back, a Medicare / other ID, a
+    # barcode with card words): method.decide decides such a card before the keeps (2026-11-21).
+    strong: bool = False
 
 
 def _hits(patterns: list[re.Pattern], text: str) -> list[str]:
@@ -328,7 +331,7 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
 
     blocked = [f"{name}: {', '.join(h)}" for name, pats in BLOCKERS.items() if (h := _hits(pats, text))]
     if visual and kind in LICENSE_KINDS:
-        return CardResult(not blocked, kind, matched, blocked, words)
+        return CardResult(not blocked, kind, matched, blocked, words, strong=True)
     # 2026-11-21 (user): a page of several cards (two licences and an insurance card's front and
     # back) -- the word limit is per card.
     cards = cards_on_page(text, kind, n_ins, back_lines)
@@ -347,9 +350,11 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
         blocked.append("no name on it")
     # No section-header check (removed 2026-11-10, user: a card's own lines read as headers kept
     # blocking real cards; the form / letter words, the word count and the text area guard it).
-    # 2026-11-21 (user): not on a visual page -- a card photographed to fill the page is still a card.
-    if text_area is not None and text_area > MAX_TEXT_AREA and not visual:
+    # 2026-11-21 (user): not on a visual page -- a card photographed to fill the page is still a
+    # card; nor with strong evidence -- a card scanned into an EHR print measures the box round
+    # every word, the running header and footer included, at 85%+ of the page.
+    if text_area is not None and text_area > MAX_TEXT_AREA and not visual and not strong:
         blocked.append(f"text over {text_area:.0%} of the page (> {MAX_TEXT_AREA:.0%})")
     if blocked:
-        return CardResult(False, kind, matched, blocked, words)
-    return CardResult(True, kind, matched, [], words)
+        return CardResult(False, kind, matched, blocked, words, strong=strong)
+    return CardResult(True, kind, matched, [], words, strong=strong)

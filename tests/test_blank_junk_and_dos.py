@@ -731,11 +731,15 @@ class TestCardRule:
         assert method.decide(named).code == classify.CODE_CARDS
 
     def test_over_150_words_or_three_quarters_of_the_page_is_not_a_card(self):
-        """2026-11-05 (user); the area limit is 75% since 2026-11-07 (was half)."""
+        """2026-11-05 (user); the area limit is 75% since 2026-11-07 (was half); since 2026-11-21 (user)
+        strong card evidence waives it (a card scanned into an EHR print with a header and footer)."""
         long = self.CARD + " " + " ".join(["word"] * 140)
         assert self._decide(long).code != classify.CODE_CARDS
-        big = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.80)
+        weak = "Insurance card Name: Jane Roe Member ID 12345678 Group Number 4455 " + "plan " * 12
+        big = method.PageInputs(text=weak, pass_no=2, document_type="printed", text_area=0.80)
         assert method.decide(big).code != classify.CODE_CARDS
+        strong = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.80)
+        assert method.decide(strong).code == classify.CODE_CARDS
         within = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.62)
         assert method.decide(within).code == classify.CODE_CARDS
         small = method.PageInputs(text=self.CARD, pass_no=2, document_type="printed", text_area=0.20)
