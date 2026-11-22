@@ -31,6 +31,8 @@
   "floor": 0.2,
   "floor_note": "2026-11-19 (user): no confidence, any field, is shown below this; a lower value is raised to it.",
   "rules_find": 0.6,
+  "dropped_value": 0.6,
+  "dropped_value_note": "2026-11-22 (user): a value post-processing dropped (a clinic read as the provider, a DOB far from the manifest's): 0.60, or its own score when lower (was flipped_low, 0.30).",
   "duplicate": {
     "match_slope": 10.0,
     "floor": 0.3,

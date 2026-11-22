@@ -68,6 +68,9 @@ DEFAULTS: dict[str, Any] = {
     # value found by searching the whole page (rules, GLiNER), or a key / value row only the
     # rules scored.
     "rules_find": 0.6,
+    # 2026-11-22 (user): a value post-processing dropped (a clinic read as the provider, a DOB far
+    # from the manifest's): 0.60, its own score if lower (was flipped_low, 0.30).
+    "dropped_value": 0.6,
     # 2026-11-19 (user): no confidence anywhere, any field, is shown below this.
     "floor": 0.2,
     "duplicate": {
@@ -218,8 +221,9 @@ def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
 
 def dropped(value: Optional[float] = None) -> float:
     """A value post-processing dropped as wrong (a clinic read as the provider, a DOB far from
-    the manifest's; 2026-11-19, user): capped at ``flipped_low`` (0.30), always flagged."""
-    cap = flipped()
+    the manifest's): ``dropped_value`` (0.60; 2026-11-22, user -- was flipped_low, 0.30), or the
+    value's own score when that is lower."""
+    cap = round(float(settings().get("dropped_value", 0.6)), 4)
     return cap if value is None else round(min(float(value), cap), 4)
 
 

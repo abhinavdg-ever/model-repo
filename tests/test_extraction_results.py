@@ -427,7 +427,7 @@ def test_a_facility_is_never_the_provider_2026_11_19():
     only = signature_fields([{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "score": 0.8,
                               "accepted": True, "model_score": 0.9}])
     assert only["provider_name"] is None and only["provider_dropped"] == "facility"
-    assert only["signature_present"] is True and only["confidence"] == 0.3  # capped (2026-11-19)
+    assert only["signature_present"] is True and only["confidence"] == 0.6  # dropped: 0.60 (2026-11-22, user)
     fallback = signature_fields(
         [{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "designation": "MD", "score": 0.8,
           "accepted": True, "model_score": 0.9}],
@@ -450,4 +450,4 @@ def test_one_signer_twice_is_listed_once_and_a_facility_signature_stays_yes():
     clinic = signature_fields([{"key": SIGNED_BY, "provider_name": "Sunrise Family Clinic", "score": 0.9,
                                 "accepted": True, "model_score": 0.9}])
     assert clinic["signature_present"] is True and clinic["provider_name"] is None
-    assert clinic["confidence"] == 0.3
+    assert clinic["confidence"] == 0.6  # dropped: 0.60 (2026-11-22, user; was 0.30)
