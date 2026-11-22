@@ -1,0 +1,12 @@
+{
+ "kind": "page_pair_text",
+ "heads": [
+  "break",
+  "follows"
+ ],
+ "output": "probs [batch, 2] = (p_break, p_follows)",
+ "input": "tokenizer(tail of page A, head of page B), truncation longest_first",
+ "words_per_side": 150,
+ "max_length": 384,
+ "base_model": "emilyalsentzer/Bio_ClinicalBERT"
+}

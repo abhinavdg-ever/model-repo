@@ -1,0 +1,23 @@
+{
+ "base_model": "emilyalsentzer/Bio_ClinicalBERT",
+ "val_best": {},
+ "test": {
+  "break": {
+   "pairs": 394,
+   "pos": 154,
+   "auc": 0.8658,
+   "P@0.5": 0.718,
+   "R@0.5": 0.61,
+   "F1@0.5": 0.66
+  },
+  "follows": {
+   "pairs": 2660,
+   "pos": 327,
+   "auc": 0.7452,
+   "P@0.5": 0.551,
+   "R@0.5": 0.232,
+   "F1@0.5": 0.327
+  }
+ },
+ "scores": "out_of_fold"
+}

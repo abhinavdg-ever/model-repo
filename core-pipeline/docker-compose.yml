@@ -86,10 +86,10 @@ services:
       # core-pipeline/outputs/ on the host: scratch, not shared with review-ui.
       - ${OUTPUTS_HOST_PATH:-./outputs}:/data/outputs
       # core-pipeline/models/ on the host: large checkpoints plus the small
-      # models (blank-junk/, kv-extraction/, hw/). page-family/page-leaf/ and
-      # encounter/ come with git (encoders via `git lfs pull`); the other weights are
-      # copied by hand. .env paths such as models/page-family/page-leaf resolve here. Writable: GLiNER
-      # repairs encoder config.json on first load.
+      # models (blank-junk/, kv-extraction/, hw/). continuity/ (clue model + the int8 page-pair
+      # text model, `git lfs pull`) and sequencing/pair_model/ come with git (2026-11-22); the
+      # other weights are copied by hand. .env paths such as models/page-family/page-leaf resolve
+      # here. Writable: GLiNER repairs encoder config.json on first load.
       - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models
       - ${LOGS_HOST_PATH:-./logs}:/app/core-pipeline/logs
     extra_hosts:

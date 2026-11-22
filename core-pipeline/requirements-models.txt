@@ -38,3 +38,7 @@ scikit-learn~=1.9.1
 
 # The page classifier (models/page-family/) is a BERT folder: it runs on the
 # torch + transformers above; nothing extra.
+
+# The continuity / sequencing page-pair text model (models/continuity/text_model/model.int8.onnx,
+# 2026-11-22): ONNX on CPU. rapidocr-onnxruntime also pulls it in; pinned here for the text model.
+onnxruntime==1.30.0
