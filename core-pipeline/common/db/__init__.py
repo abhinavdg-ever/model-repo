@@ -1916,6 +1916,24 @@ TAGGED_CHART_COLUMNS = ("id", "chart_name", "source", "blob_container", "blob_pa
 
 
 @_dispatch
+def blank_junk_truth_rows(conn: Any) -> list[tuple[Any, ...]]:
+    """(chart name, page name, pass-2 blank / junk flag, reason, ground truth blank_page, junk_page)
+    for every page with a Blank / Junk ground truth (2026-11-22: each blank / junk rule's measured
+    accuracy, modules/blank_junk/rule_reliability.py)."""
+    rows = conn.execute(
+        """
+        SELECT c.chart_name, p.page_name, b.blank_junk_flag, b.reason, g.blank_page, g.junk_page
+          FROM blank_junk_classification b
+          JOIN page_list p ON p.id = b.page_id
+          JOIN chart_list c ON c.id = p.chart_id
+          JOIN page_ground_truth g ON g.chart_name = c.chart_name AND g.page_number = p.page_number
+         WHERE b.pass_no = 2 AND (g.blank_page IS NOT NULL OR g.junk_page IS NOT NULL)
+        """
+    ).fetchall()
+    return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
+
+
+@_dispatch
 def charts_with_tags(conn: Any, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
     """Charts carrying the tags (chart_list.tags, case-insensitive; 2026-11-21, user: run every
     chart of a tag, across runs and batches): any of them, or all with ``match_all``. Each row

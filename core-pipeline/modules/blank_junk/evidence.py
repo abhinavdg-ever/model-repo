@@ -18,8 +18,9 @@ A rule's verdict is as sure as three measurements make it:
 
 They meet in log-odds:
 
-  rule      = 0.5 + rule_span x margin x support   (on its cut a coin flip; rule_span 0.45: at most 95%,
-                                                  so a rule alone never outweighs a sure model)
+  rule      = 0.5 + rule_span x margin x support   (on its cut a coin flip; rule_span: the rule's own
+                                                  measured accuracy - 0.5 once it has enough
+                                                  ground-truth pages, else 0.45: at most 95%)
   logit(c)  = rule_weight x ocr_factor x logit(rule) + model_weight x logit(p_model)
   ocr_factor = ocr_min_factor + (1 - ocr_min_factor) x match rate   (1 when not measured)
 
@@ -34,7 +35,8 @@ from typing import Any, Optional
 
 from modules import confidence as conf
 
-DEFAULTS = {"rule_span": 0.45, "rule_weight": 1.0, "model_weight": 1.0, "ocr_min_factor": 0.5, "unmeasured_margin": 0.5}
+DEFAULTS = {"rule_span": 0.45, "rule_weight": 1.0, "model_weight": 1.0, "ocr_min_factor": 0.5, "unmeasured_margin": 0.5,
+            "min_measured_pages": 30}
 MODULE = "blank_junk"
 _EPS = 1e-4
 
@@ -72,19 +74,34 @@ def model_p(code_class: str, bert: Optional[dict[str, Any]]) -> Optional[float]:
     return probs.get(code_class)
 
 
+def rule_span(rule: Optional[str], cfg: dict[str, Any]) -> tuple[float, str]:
+    """The rule's ceiling above a coin flip (2026-11-22, user: not one size for every rule): its
+    measured accuracy on the ground truth minus 0.5 (``rule_reliability``, written by
+    ``python -m modules.blank_junk.rule_reliability --write``) once it has min_measured_pages
+    pages; else the shared rule_span. A rule right half the time or less adds nothing."""
+    found = (cfg.get("rule_reliability") or {}).get(rule or "") or {}
+    if found.get("accuracy") is not None and int(found.get("pages") or 0) >= int(cfg["min_measured_pages"]):
+        span = max(0.0, min(0.49, float(found["accuracy"]) - 0.5))
+        return span, f"measured {rule}: {float(found['accuracy']):.0%} right on {int(found['pages'])} pages"
+    return float(cfg["rule_span"]), "shared default"
+
+
 def combine(*, margin: Optional[float], support: Optional[dict[str, Optional[float]]] = None,
-            p_model: Optional[float] = None, ocr_rate: Optional[float] = None) -> tuple[float, dict[str, Any]]:
+            p_model: Optional[float] = None, ocr_rate: Optional[float] = None,
+            rule: Optional[str] = None) -> tuple[float, dict[str, Any]]:
     """The confidence and its parts. ``margin`` None = the rule measured none (unmeasured_margin);
-    ``support``: named measures in [0, 1], None ones left out."""
+    ``support``: named measures in [0, 1], None ones left out; ``rule``: its name, for its own
+    measured ceiling (rule_span)."""
     cfg = settings()
     m = clip(margin) if margin is not None else float(cfg["unmeasured_margin"])
     measured = {k: round(float(v), 4) for k, v in (support or {}).items() if v is not None}
     s = sum(measured.values()) / len(measured) if measured else 1.0
-    rule = 0.5 + float(cfg["rule_span"]) * m * s
+    span, span_from = rule_span(rule, cfg)
+    rule_value = 0.5 + span * m * s
     rate = clip(ocr_rate)
     lo = float(cfg["ocr_min_factor"])
     ocr_factor = 1.0 if rate is None else lo + (1.0 - lo) * rate
-    x = float(cfg["rule_weight"]) * ocr_factor * _logit(rule)
+    x = float(cfg["rule_weight"]) * ocr_factor * _logit(rule_value)
     if p_model is not None:
         x += float(cfg["model_weight"]) * _logit(float(p_model))
     raw = _sigmoid(x)
@@ -92,7 +109,8 @@ def combine(*, margin: Optional[float], support: Optional[dict[str, Optional[flo
     parts = {
         "margin": round(m, 4) if margin is not None else f"not measured ({m})",
         "support": measured or "not measured",
-        "rule": round(rule, 4),
+        "rule": round(rule_value, 4),
+        "rule_span": f"{span:.2f} ({span_from})",
         "ocr_match_rate": round(rate, 4) if rate is not None else "not measured",
         "model_p": round(float(p_model), 4) if p_model is not None else "no model",
         "raw": round(raw, 4),

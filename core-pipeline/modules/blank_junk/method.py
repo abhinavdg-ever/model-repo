@@ -793,7 +793,7 @@ def decide(inputs: PageInputs) -> Verdict:
 
             model_class = "keep" if code == CODE_MAIN else "blank" if code == CODE_BLANK else "junk"
             confidence, votes["confidence_parts"] = evidence.combine(
-                margin=margin, support=support, p_model=evidence.model_p(model_class, bert),
+                rule=rule, margin=margin, support=support, p_model=evidence.model_p(model_class, bert),
                 ocr_rate=inputs.ocr_match_rate)
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
         return Verdict(code, float(value), rule, reason, votes, strength=round(float(old), 4))

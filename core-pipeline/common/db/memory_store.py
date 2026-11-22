@@ -1270,6 +1270,10 @@ class MemoryStore(StoreBackend):
         with self._lock:
             return self._copy(self.member_summaries.get(chart_id))
 
+    def blank_junk_truth_rows(self) -> list[tuple[Any, ...]]:
+        """common.db.blank_junk_truth_rows: the in-memory store keeps no page ground truth."""
+        return []
+
     def charts_with_tags(self, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
         """common.db.charts_with_tags over the chart rows' ``tags`` (a Cosmos chart doc's tags)."""
         wanted = {t.strip().casefold() for t in tags if t and t.strip()}
