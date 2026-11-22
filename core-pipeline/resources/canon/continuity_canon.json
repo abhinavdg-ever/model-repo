@@ -435,7 +435,17 @@
   },
   "visual_join": {
     "comment": "2026-10-23 (user): a Visual page (ocr_quality_results.document_type 'visual' with fewer than blank_junk visual.max_words words) that is not junk always joins the page before it, whatever the score.",
+    "visual_max_words": 25,
+    "visual_max_words_comment": "2026-11-22 (Brief 3 section 2.2b): the clue model's visual_a / visual_b on training pages, which have no page-tag model answer: fewer words than this. The pipeline passes its own visual flag.",
     "enabled": true
+  },
+  "signature_types": {
+    "comment": "2026-11-22 (Brief 3 section 2.2a): not every signature ends a document. Each signature line is typed by position: header (in the first 6 lines: metadata, ignored), embedded (within result_window_lines after a result marker: closes a result block, not the note), before_section (a next-section header or a Progress Note section header follows later on the page, or opens page n+1: the note carries on) or end (the last signature, in the last 10 lines, none of the above: the only break signal). Read by the continuity clue model (modules/continuity/ml/clues.py).",
+    "next_section_headers": ["Additional Documentation", "Addendum", "Addenda", "Attestation", "Results", "Lab Results", "Imaging", "Orders Placed", "Patient Instructions", "Communications", "Other Notes"],
+    "addendum_headers": ["Additional Documentation", "Addendum", "Addenda", "Late Entry", "Attestation"],
+    "result_markers": ["Specimen", "Collected", "Resulting lab", "Performing lab", "Interpreted by", "Reading physician", "Radiologist", "Accession"],
+    "result_markers_comment": "2026-11-22, measured on train + val: with the brief's generic markers too (Result, Results, Impression, Narrative) a note's own closing Impression made its end signature 'embedded' (58 points, 71% break); with lab / reading markers only: end of note 141 points 84% break (the old single flag 76%), signature before the next section 39% (base 36%), embedded 8 points.",
+    "result_window_lines": 15
   },
   "signature_break": {
     "enabled": true,

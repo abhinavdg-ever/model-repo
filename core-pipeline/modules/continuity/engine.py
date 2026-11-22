@@ -428,6 +428,8 @@ class Gap:
     def summary(self) -> str:
         top = sorted(self.parts().items(), key=lambda kv: -abs(kv[1]))[:4]
         signals = ", ".join(f"{n} {v:+g}" for n, v in top) or "no signal"
+        if "model" in self.evidence:  # the clue model decided (CONTINUITY_MODE=ml): its top clues
+            signals = self.evidence["model"] or "no signal"
         verdict = "break" if self.is_break else "joined"
         text = f"{self.total:+g} {verdict}, {self.level} ({signals})"
         if self.final_pass:
@@ -1008,8 +1010,15 @@ def is_signature_page(page: "PageInput") -> bool:
     return any((name or "").casefold() == "signature" for name in (page.page_subtype, *page.names))
 
 
-def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[dict[str, Any]]:
-    """One row per page, in the order given (which must be page order)."""
+def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None,
+           model: Optional[dict[tuple[Any, Any], dict[str, Any]]] = None) -> list[dict[str, Any]]:
+    """One row per page, in the order given (which must be page order).
+
+    ``model`` (CONTINUITY_MODE=ml, 2026-11-22): (page_id before, page_id after) -> the continuity
+    clue model's decision for a meeting point of two content pages (``ml/model.py``). It replaces
+    the rules' decision there (decided_by decisive / visual_continues / model, score 2 ln(p / (1 - p)),
+    the top clues as evidence), and the rules' final pass is skipped: the whole-chart pass already
+    ran. Everything else -- junk runs, rows, final DOS, labels -- is the engine's, unchanged."""
     rules = rules or load_rules()
     run_length, run_conf = _junk_runs(pages)
     scored = [
@@ -1034,6 +1043,9 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
             a_opens = not any(pages[j].kind == "main" for j in segments[-1].pages if j != prev)
             gap = score_gap(pages, prev, i, open_dos=open_dos, open_trust=open_trust, blanks=blanks, ctx=ctx,
                             a_opens=a_opens)
+            decision = (model or {}).get((pages[prev].page_id, page.page_id))
+            if decision is not None:
+                _apply_model(gap, decision)
             gaps[(prev, i)] = gap
             if gap.is_break:
                 segments.append(_Segment(kind, [i]))
@@ -1048,8 +1060,21 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
         if page.kind == "main" and page.dos_from and not open_dos[0]:
             open_dos, open_trust = page.dos, page.dos_trust
 
-    segments = _final_pass(pages, segments, gaps, rules)
+    if model is None:
+        segments = _final_pass(pages, segments, gaps, rules)
     return _rows(pages, scored, segments, gaps, rules)
+
+
+def _apply_model(gap: Gap, decision: dict[str, Any]) -> None:
+    """The clue model's decision for this meeting point (CONTINUITY_MODE=ml)."""
+    p = float(decision["p_break"])
+    gap.is_break = bool(decision["break"])
+    gap.decided_by = str(decision["decided_by"])
+    gap.total = float(decision["score"])
+    gap.confidence = round(max(p, 1 - p), 4)
+    gap.level = "high" if gap.confidence >= 0.8 else "medium" if gap.confidence >= 0.6 else "low"
+    gap.evidence = {"model": str(decision.get("evidence") or "")}
+    gap.flags = [f for f in gap.flags if "low confidence" not in f] + (["low confidence"] if gap.level == "low" else [])
 
 
 def _rows(

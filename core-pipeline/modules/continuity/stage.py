@@ -501,6 +501,70 @@ def _review_duplicates(
     return assign(inputs, rules) if blocked else rows
 
 
+SHADOW_FILE = "continuity_shadow.json"
+
+
+def _ml_pages(inputs: list[PageInput], classification: dict[Any, dict[str, Any]]) -> tuple[list[PageInput], list[dict[str, Any]], dict[int, int]]:
+    """The content pages in order, their clue records and the removed pages between them."""
+    mains, records, gaps = [], [], {}
+    removed = 0
+    for item in inputs:
+        if item.kind != "main":
+            removed += 1
+            continue
+        if mains:
+            gaps[len(mains) - 1] = removed
+        removed = 0
+        stored = page_result.stored(classification.get(item.page_id) or {})
+        top = [str(t.get("path") or "").split(" > ")[0] for t in ((stored.get("leaf") or {}).get("model_top") or [])]
+        mains.append(item)
+        records.append({"text": item.text, "L1": item.page_type, "L2": stored.get("l2") or "",
+                        "specialty": stored.get("specialty") or "", "top5_l1": list(dict.fromkeys(top)) or None,
+                        "visual": item.visual})
+    return mains, records, gaps
+
+
+def _continuity_ml(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any,
+                   classification: dict[Any, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """CONTINUITY_MODE: rules -> the rows as they are; shadow -> the clue model runs too and every
+    meeting point where it disagrees with the rules goes to staging/continuity_shadow.json (page
+    names, both decisions, P(break), the top clues; no text); ml -> the engine again with the
+    model's decisions (same rows and columns). A missing model keeps the rules' rows."""
+    from common.config import CONTINUITY_MODE
+    from modules.continuity.ml import model as ml_model
+
+    if CONTINUITY_MODE not in ("shadow", "ml"):
+        return rows, {"mode": "rules"}
+    mains, records, gaps = _ml_pages(inputs, classification)
+    decisions = ml_model.decide(records, gaps)
+    if decisions is None:
+        return rows, {"mode": CONTINUITY_MODE, "ran": False, "reason": ml_model.status().get("reason")}
+    pairs = {(a.page_id, b.page_id): d for a, b, d in zip(mains, mains[1:], decisions)}
+    seq = {item.page_id: row.get("document_seq") for item, row in zip(inputs, rows)}
+    disagree = []
+    for (a, b), d in pairs.items():
+        rules_break = seq.get(a) != seq.get(b)
+        if rules_break != d["break"]:
+            name = {i.page_id: i.page_name for i in mains}
+            disagree.append({"page_before": name[a], "page_after": name[b], "rules": "break" if rules_break else "joined",
+                             "model": "break" if d["break"] else "joined", "p_break": d["p_break"],
+                             "decided_by": d["decided_by"], "evidence": d["evidence"]})
+    summary = {"mode": CONTINUITY_MODE, "ran": True, "points": len(pairs), "disagreements": len(disagree),
+               "model_breaks": sum(d["break"] for d in decisions)}
+    try:
+        path = staging_dir(chart_name) / SHADOW_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": 1, "chart": chart_name, **summary,
+                                    "model": ml_model.status(), "disagreements": disagree}, indent=1), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("continuity chart=%s shadow file not written: %s", chart_name, exc)
+    if CONTINUITY_MODE == "ml":
+        rows = assign(inputs, rules, model=pairs)
+    logger.info("continuity ML chart=%s mode=%s points=%d disagreements=%d", chart_name, CONTINUITY_MODE,
+                len(pairs), len(disagree))
+    return rows, summary
+
+
 def _rewrite_junk_csv(conn: Any, chart_id: int, chart_name: str) -> None:
     """The junk CSV after the duplicate check changed verdicts (as the blank / junk stage
     writes it)."""
@@ -612,6 +676,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # 2026-11-03 (user); continuity reads it as any junk page.
         # 2026-11-06 (user): a junk page inside a Progress Note that is not a short page is Main.
         rows = _unjunk_inside_notes(chart_id, ctx.chart_name, inputs, rows, bj, rules, own_texts)
+        # 2026-11-22 (Brief 3): the continuity clue model beside the rules (CONTINUITY_MODE).
+        rows, ml_summary = _continuity_ml(ctx.chart_name, inputs, rows, rules, classification)
         scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
 
         csv_rows: list[dict[str, Any]] = []
@@ -677,6 +743,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
         return {
             "chart_id": chart_id,
+            "continuity_ml": ml_summary,
             "continuity_csv": str(path),
             "continuity_json": scores_file,
             "documents": documents,
