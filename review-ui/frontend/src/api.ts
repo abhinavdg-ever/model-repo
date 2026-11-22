@@ -501,6 +501,33 @@ export function startPlaygroundRun(body: PlaygroundRunRequest): Promise<Playgrou
   return api("/api/playground/batch-run", { method: "POST", body: JSON.stringify(body) });
 }
 
+/** Admins only: every chart tag and the charts carrying it (the Playground's Tag Run). */
+export function playgroundTags(): Promise<{ tags: { tag: string; charts: string[] }[] }> {
+  return api("/api/playground/tags");
+}
+
+export type PlaygroundTagRunResponse = {
+  target: string;
+  target_label: string;
+  /** What was sent to core-pipeline's batch-run-tag. */
+  request: Record<string, unknown>;
+  /** The tagged charts started. */
+  charts: string[];
+  pipeline: Record<string, unknown>;
+};
+
+/** Admins only: run every chart with the tag(s), across runs and batches, each from its
+ * recorded blob folder to its own Processed folder. */
+export function startPlaygroundTagRun(body: {
+  target: string;
+  tags: string[];
+  match: "any" | "all";
+  skip_ocr: boolean;
+  skip_completed: boolean;
+}): Promise<PlaygroundTagRunResponse> {
+  return api("/api/playground/tag-run", { method: "POST", body: JSON.stringify(body) });
+}
+
 export type UserRole = "reviewer" | "admin" | "viewer";
 
 export type UserRow = {

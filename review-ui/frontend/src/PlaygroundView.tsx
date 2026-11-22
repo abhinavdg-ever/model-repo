@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Play } from "lucide-react";
 import PageMessage from "./PageMessage";
-import { errorDetail, startPlaygroundRun, type AppConfig, type PlaygroundRunResponse } from "./api";
+import {
+  errorDetail,
+  playgroundTags,
+  startPlaygroundRun,
+  startPlaygroundTagRun,
+  type AppConfig,
+  type PlaygroundRunResponse,
+  type PlaygroundTagRunResponse,
+} from "./api";
 
 type Props = {
   config: AppConfig | null;
@@ -20,6 +28,24 @@ export function chartNames(text: string): string[] {
     if (name && !out.includes(name)) out.push(name);
   }
   return out;
+}
+
+/** The charts carrying any of the tags (every one with matchAll), case-insensitive -- as
+ * core-pipeline's batch-run-tag selects them. */
+export function taggedCharts(
+  byTag: { tag: string; charts: string[] }[],
+  chosen: string[],
+  matchAll: boolean,
+): string[] {
+  const wanted = new Set(chosen.map((t) => t.toLowerCase()));
+  if (!wanted.size) return [];
+  const hits = new Map<string, number>();
+  for (const { tag, charts } of byTag) {
+    if (!wanted.has(tag.toLowerCase())) continue;
+    for (const chart of charts) hits.set(chart, (hits.get(chart) ?? 0) + 1);
+  }
+  const need = matchAll ? wanted.size : 1;
+  return [...hits].filter(([, n]) => n >= need).map(([chart]) => chart).sort();
 }
 
 /** As the server derives it: the last folder dropped, Raw_Input -> Processed
@@ -186,6 +212,157 @@ export default function PlaygroundView({ config, onBack }: Props) {
           </PageMessage>
         ) : null}
       </section>
+
+      <TagRunSection enabled={enabled} targets={targets} defaultTarget={defaultTarget} />
     </div>
+  );
+}
+
+type Target = { label: string; url: string };
+
+/** Tag Run (2026-11-22, user): every chart with the tag(s), across runs and batches, each read
+ * from the blob folder it was read from before and written to its own Processed folder. Only
+ * charts run before carry a tag and a recorded source, so this reruns them. */
+function TagRunSection({ enabled, targets, defaultTarget }: { enabled: boolean; targets: Target[]; defaultTarget: string }) {
+  const [target, setTarget] = useState(defaultTarget);
+  const [byTag, setByTag] = useState<{ tag: string; charts: string[] }[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [matchAll, setMatchAll] = useState(false);
+  const [skipOcr, setSkipOcr] = useState(true);
+  const [skipCompleted, setSkipCompleted] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<PlaygroundTagRunResponse | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    playgroundTags()
+      .then((r) => live && setByTag(r.tags))
+      .catch((err) => live && setLoadError(errorDetail(err, "Could not read the tags")));
+    return () => {
+      live = false;
+    };
+  }, [enabled]);
+
+  const chosenTarget = targets.some((t) => t.url === target) ? target : defaultTarget;
+  const charts = taggedCharts(byTag ?? [], chosen, matchAll);
+  const problem = !chosen.length
+    ? "Choose at least one tag"
+    : !charts.length
+      ? "No chart carries " + (matchAll ? "all of these tags" : "these tags")
+      : charts.length > MAX_CHARTS
+        ? `${charts.length} charts: at most ${MAX_CHARTS} per run`
+        : null;
+
+  function toggle(tag: string) {
+    setChosen((now) => (now.includes(tag) ? now.filter((t) => t !== tag) : [...now, tag]));
+  }
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(
+        await startPlaygroundTagRun({
+          target: chosenTarget,
+          tags: chosen,
+          match: matchAll ? "all" : "any",
+          skip_ocr: skipOcr,
+          skip_completed: skipCompleted,
+        }),
+      );
+    } catch (err) {
+      setError(errorDetail(err, "Could not start the run"));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <section className="accuracy-section" aria-label="Tag run">
+      <h2>Tag Run</h2>
+      <p className="accuracy-note">
+        Runs again every chart with the chosen tag(s), across runs and batches (up to {MAX_CHARTS}). Each
+        chart is read from the blob folder it was read from before and written to its own Processed folder.
+        Only charts already run carry a tag, so this is for reruns.
+      </p>
+      <div className="playground-form">
+        <label>
+          <span>Pipeline</span>
+          <select value={chosenTarget} required onChange={(e) => setTarget(e.target.value)}>
+            {targets.map((t) => (
+              <option key={t.url} value={t.url}>
+                {t.label} ({t.url})
+              </option>
+            ))}
+          </select>
+        </label>
+        <div>
+          <span>Tags</span>
+          {loadError ? <PageMessage kind="error">{loadError}</PageMessage> : null}
+          {byTag === null && !loadError ? <small>Loading tags…</small> : null}
+          {byTag !== null && !byTag.length ? <small>No chart is tagged yet (utilities/tag_chart.py).</small> : null}
+          <div className="playground-checks">
+            {(byTag ?? []).map(({ tag, charts: tagged }) => (
+              <label key={tag}>
+                <input type="checkbox" checked={chosen.includes(tag)} onChange={() => toggle(tag)} />
+                {tag} ({tagged.length})
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="playground-checks">
+          <label>
+            <input type="radio" name="tag-match" checked={!matchAll} onChange={() => setMatchAll(false)} />
+            Any of the tags
+          </label>
+          <label>
+            <input type="radio" name="tag-match" checked={matchAll} onChange={() => setMatchAll(true)} />
+            All of the tags
+          </label>
+        </div>
+        <label>
+          <span>Charts</span>
+          <textarea rows={3} readOnly value={charts.join(", ")} placeholder="The charts with the chosen tags" />
+          <small className={chosen.length && problem ? "playground-error" : undefined}>
+            {chosen.length && problem ? problem : `${charts.length} of ${MAX_CHARTS}`}
+          </small>
+        </label>
+        <div className="playground-checks">
+          <label>
+            <input type="checkbox" checked={skipOcr} onChange={(e) => setSkipOcr(e.target.checked)} />
+            Skip OCR (reuse existing OCR)
+          </label>
+          <label>
+            <input type="checkbox" checked={skipCompleted} onChange={(e) => setSkipCompleted(e.target.checked)} />
+            Skip completed charts
+          </label>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="landing-file-viewer-btn"
+            disabled={!enabled || running || !chosenTarget || Boolean(problem)}
+            onClick={run}
+          >
+            <Play size={14} aria-hidden="true" />
+            {running ? "Starting…" : "Start tag run"}
+          </button>
+        </div>
+      </div>
+      {error ? (
+        <PageMessage kind="error" onClose={() => setError(null)}>
+          Could not start the run: {error}
+        </PageMessage>
+      ) : null}
+      {result ? (
+        <PageMessage kind="success" half onClose={() => setResult(null)}>
+          Job submitted: {result.charts.length} chart(s) on {result.target_label}. Please view History when it finishes.
+        </PageMessage>
+      ) : null}
+    </section>
   );
 }

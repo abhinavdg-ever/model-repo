@@ -101,14 +101,34 @@ def rerun_source(chart: str, location: tuple | None, default_container: str = ""
     return container, source, parent(output_path)
 
 
-def start_batch(base_url: str, body: dict[str, Any], api_key: str = "") -> dict[str, Any]:
-    """POST the run to core-pipeline; its JSON answer (202: queued in the background).
-    ``api_key`` goes in X-API-Key when set (core-pipeline's ORCHESTRATOR_API_KEY)."""
+def tagged_charts(tag_map: dict[str, list[str]], tags: list[str], match_all: bool = False) -> list[str]:
+    """The charts carrying any of ``tags`` (every one with ``match_all``), case-insensitive, by
+    name -- what core-pipeline's batch-run-tag selects (common.db.charts_with_tags)."""
+    wanted = {t.strip().casefold() for t in tags if t and t.strip()}
+    if not wanted:
+        return []
+    need = len(wanted) if match_all else 1
+    return sorted(chart for chart, have in tag_map.items()
+                  if len(wanted & {t.casefold() for t in have}) >= need)
+
+
+def tag_body(*, tags: list[str], match_all: bool, skip_ocr: bool, skip_completed: bool) -> dict[str, Any]:
+    """The batch-run-tag request: each chart from its recorded Blob folder to its own Processed
+    folder, so no paths."""
+    return {"tags": tags, "match": "all" if match_all else "any",
+            "skip_ocr": skip_ocr, "skip_completed": skip_completed}
+
+
+def start_batch(base_url: str, body: dict[str, Any], api_key: str = "",
+                path: str = "/api/charts/batch-run") -> dict[str, Any]:
+    """POST the run to core-pipeline (``path``: batch-run, or batch-run-tag for a tag run); its
+    JSON answer (202: queued in the background). ``api_key`` goes in X-API-Key when set
+    (core-pipeline's ORCHESTRATOR_API_KEY)."""
     headers = {"Content-Type": "application/json"}
     if api_key.strip():
         headers["X-API-Key"] = api_key.strip()
     request = urllib.request.Request(
-        base_url.rstrip("/") + "/api/charts/batch-run",
+        base_url.rstrip("/") + path,
         data=json.dumps(body).encode("utf-8"),
         headers=headers,
         method="POST",

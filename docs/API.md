@@ -278,6 +278,10 @@ skipped as finished, and `charts_no_source` (a chart run from a local folder has
 source and is not run). Queue mode: one message per chart (the large-chart queue still applies);
 inline mode: the charts run one after another in the background. 404 when no chart has the tag.
 
+review-ui's Playground has the same as **Tag Run** (2026-11-22, admins): tick the tags, Any / All,
+Skip OCR, Skip completed; the matching charts are listed before the run, at most 10 per run as
+every Playground run.
+
 
 ---
 

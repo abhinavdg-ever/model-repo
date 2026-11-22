@@ -24,7 +24,8 @@ Setup and the API: [API.md](API.md). The VM and the release path:
 
 - The two services share **data, not code**: the database and Azure Blob.
 - They never call each other, with one exception: review-ui's **Playground** (admins
-  only) starts a core-pipeline batch run on one of `CORE_PIPELINE_URLS`.
+  only) starts a core-pipeline batch run (or, under Tag Run, a `batch-run-tag` rerun of the
+  charts with the chosen tags) on one of `CORE_PIPELINE_URLS`.
 - `core-pipeline/outputs/charts/<chart>/` is core-pipeline's working folder. review-ui
   never reads it, and a folder not run for 7 days is deleted.
 - Either service can be redeployed without the other.
