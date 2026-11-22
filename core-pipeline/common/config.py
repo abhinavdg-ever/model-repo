@@ -331,6 +331,14 @@ CONTINUITY_MODEL_DIR = _path_under_core(
     os.environ.get("CONTINUITY_MODEL_DIR"),
     "models/continuity/clue_model",
 )
+# Sequencing (Brief 2, 2026-11-22): "rules" = today's stage; "ml" = the +-5 local repair with the pair
+# model (repair groups across soft boundaries, mismatches, window fix); "shadow" (default) = both
+# run, the rules order is written and the repair's moves go to staging/sequencing_shadow.json.
+SEQUENCING_MODE = (os.environ.get("SEQUENCING_MODE") or "shadow").strip().lower()
+SEQUENCING_MODEL_DIR = _path_under_core(
+    os.environ.get("SEQUENCING_MODEL_DIR"),
+    "models/sequencing/pair_model",
+)
 # Encounter model (folder written by training/bert-training-encounter/train_encounter.py:
 # encoder/, head.pt, label_space.json). One more vote per page in the encounter stage,
 # where the rules found no evidence (encounter_canon.json -> model_vote). Missing folder,

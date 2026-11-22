@@ -154,6 +154,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         assignments = compute_sequence_assignments(seq_inputs)
         by_str_id = {str(a["page_id"]): a for a in assignments}
+        ml_summary = _sequencing_shadow(ctx.chart_name, seq_inputs, {p["id"]: p["page_name"] for p in ctx.pages})
 
         csv_rows: list[dict[str, Any]] = []
         with connect() as conn:
@@ -210,7 +211,95 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
         return {
             "chart_id": chart_id,
+            "sequencing_ml": ml_summary,
             "sequencing_csv": str(path),
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
         }
+
+
+SHADOW_FILE = "sequencing_shadow.json"
+
+
+def _encounter_dates(texts: list[str], docs: list[Any]) -> list[str]:
+    """Each page's encounter date (Brief 2 Step 1a): the encounter's first dated page's date of
+    service; an undated encounter takes the one before."""
+    from modules.continuity.ml.clues import dos_dates
+
+    first: dict[Any, str] = {}
+    for text, doc in zip(texts, docs):
+        if doc not in first:
+            found = dos_dates(text)
+            if found:
+                first[doc] = found[0]
+    out, last = [], ""
+    seen: dict[Any, str] = {}
+    for doc in docs:
+        if doc not in seen:
+            seen[doc] = first.get(doc) or last
+            last = seen[doc]
+        out.append(seen[doc])
+    return out
+
+
+def _sequencing_shadow(chart_name: str, mains: list[dict[str, Any]], names: dict[Any, str]) -> dict[str, Any]:
+    """SEQUENCING_MODE shadow (default; Brief 2, 2026-11-22): the +-5 local repair runs beside today's
+    rules on the same Main pages and continuity documents, and the moves it would make go to
+    staging/sequencing_shadow.json (page names, how far each moved, held pages; no text). The written
+    order stays the rules'. "ml" waits for the text model (Brief 2 Q3): the clue model alone fixes too
+    few shuffles at a safe gain bar, so it runs as shadow and says so."""
+    import json
+
+    from common.config import SEQUENCING_MODE, staging_dir
+    from modules.continuity.ml import clues as cclues
+    from modules.continuity.ml import model as cmodel
+    from modules.sequencing.ml import model as smodel
+    from modules.sequencing.ml import repair as rp
+
+    if SEQUENCING_MODE not in ("shadow", "ml") or len(mains) < 2:
+        return {"mode": SEQUENCING_MODE if SEQUENCING_MODE in ("shadow", "ml") else "rules"}
+    if smodel.load() is None:
+        return {"mode": SEQUENCING_MODE, "ran": False, "reason": smodel.status().get("reason")}
+    texts = [m["text"] or "" for m in mains]
+    docs = [m.get("document") for m in mains]
+    recs = [{"text": t, "L1": "", "L2": "", "visual": None} for t in texts]
+    rows = cclues.chart_rows(recs)
+    decisions = cmodel.decide(recs) or [None] * len(rows)
+    dos = _encounter_dates(texts, docs)
+    hard = {i: rp.hard_boundary(rows[i], (decisions[i] or {}).get("p_break"))
+            for i in range(len(rows)) if docs[i] != docs[i + 1]}
+    doc_index, k = [], -1
+    for i, d in enumerate(docs):
+        k += int(i == 0 or d != docs[i - 1])
+        doc_index.append(k)
+    groups = rp.repair_groups(doc_index, hard, dos)
+    settings = _repair_settings()
+    res = rp.repair(len(mains), smodel.scorer(texts), [smodel.page_info(t, d) for t, d in zip(texts, dos)],
+                    groups, min_gain=settings["min_gain"], cut=settings["cut"])
+    moves = [{"page": names.get(mains[p]["page_id"], str(mains[p]["page_id"])), "moved_by": k - p}
+             for k, p in enumerate(res.order) if p != k]
+    held = [names.get(mains[p]["page_id"], "") for p in res.held]
+    summary = {"mode": SEQUENCING_MODE, "ran": True, "pages": len(mains), "groups": len(groups),
+               "hard_boundaries": sum(hard.values()), "soft_boundaries": len(hard) - sum(hard.values()),
+               "moved": len(moves), "held": len(held)}
+    if SEQUENCING_MODE == "ml":
+        summary["note"] = "ml waits for the text model (Brief 2 Q3): ran as shadow, the rules order is written"
+    try:
+        path = staging_dir(chart_name) / SHADOW_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": 1, "chart": chart_name, **summary, "settings": settings,
+                                    "moves": moves, "held": held, "windows": res.windows}, indent=1), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("page_sequencing chart=%s shadow file not written: %s", chart_name, exc)
+    return summary
+
+
+def _repair_settings() -> dict[str, float]:
+    """min_gain and the mismatch cut, tuned on the val shuffle cases (modules.sequencing.ml.evaluate_synth),
+    in the pair model's settings.json (``repair``); a safe default without it."""
+    from modules.sequencing.ml import model as smodel
+
+    loaded = smodel.load() or {}
+    repair = (loaded.get("settings") or {}).get("repair") or {}
+    return {"min_gain": float(repair.get("min_gain", 16.0)), "cut": float(repair.get("cut", 0.01))}
+
