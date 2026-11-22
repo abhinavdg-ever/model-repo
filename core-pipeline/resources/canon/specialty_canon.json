@@ -41,7 +41,14 @@
     "refraction",
     "iol calculation",
     "intraocular lens",
-    "corneal topography"
+    "corneal topography",
+    "dilated exam",
+    "Visual Evaluation",
+    "O.D. (Doctor of Optometry)",
+    "background/proliferative",
+    "spectacle Rx",
+    "vision",
+    "visual function"
    ],
    "_comment": "Ophthalmology and optometry are one combined specialty (client, 2026-10-24)."
   },
@@ -131,7 +138,12 @@
     "seizure",
     "neuropathy",
     "migraine",
-    "parkinson"
+    "parkinson",
+    "neurological exam",
+    "cranial nerves",
+    "reflexes",
+    "stroke/CVA",
+    "Parkinson's"
    ]
   },
   "Nephrology": {
@@ -167,7 +179,17 @@
     "fetal heart",
     "colposcopy",
     "pap smear",
-    "trimester"
+    "trimester",
+    "Postpartum visit / exam",
+    "PP exam",
+    "6-week check",
+    "delivery date",
+    "lochia",
+    "breastfeeding/lactation",
+    "incision/perineum",
+    "contraception counseling",
+    "s/p NSVD or C-section",
+    "EPDS"
    ]
   },
   "Gastroenterology": {
@@ -201,7 +223,14 @@
     "sleep study",
     "apnea",
     "cpap",
-    "fev1"
+    "fev1",
+    "Respiratory therapy",
+    "nebulizer",
+    "albuterol",
+    "oxygen L/min",
+    "BiPAP/CPAP",
+    "breath sounds",
+    "RT"
    ]
   },
   "Dermatology": {
@@ -233,7 +262,22 @@
     "phq-9",
     "gad-7",
     "axis i",
-    "suicidal ideation"
+    "suicidal ideation",
+    "mental status exam",
+    "mood",
+    "DSM-5",
+    "affect",
+    "psychotherapy session",
+    "Substance use disorder",
+    "alcohol dependence",
+    "opioid use disorder",
+    "Suboxone",
+    "methadone",
+    "detox",
+    "relapse",
+    "MSE",
+    "SUD",
+    "MAT"
    ]
   },
   "Radiology": {
@@ -278,7 +322,11 @@
     "gait training",
     "therapeutic exercise",
     "functional mobility",
-    "plan of care units"
+    "plan of care units",
+    "Rehabilitation Plan",
+    "short-term/long-term",
+    "duration",
+    "interventions"
    ]
   },
   "Audiology": {
@@ -292,7 +340,11 @@
     "audiogram",
     "tympanometry",
     "hearing aid",
-    "speech discrimination"
+    "speech discrimination",
+    "ear",
+    "nose",
+    "throat",
+    "hearing"
    ]
   },
   "Primary Care": {
@@ -307,7 +359,12 @@
    "body": [
     "annual wellness",
     "health maintenance",
-    "preventive care"
+    "preventive care",
+    "musculoskeletal exam",
+    "Sports physical",
+    "pre-participation",
+    "cleared for sports",
+    "PPE"
    ]
   },
   "Emergency": {
@@ -321,7 +378,21 @@
     "triage",
     "chief complaint:",
     "ed course",
-    "disposition:"
+    "disposition:",
+    "run report",
+    "Patient Care Report",
+    "acute visit",
+    "ambulance",
+    "paramedic",
+    "dispatch",
+    "scene",
+    "transport",
+    "arrival time",
+    "walk-in",
+    "rapid strep/flu",
+    "discharged home",
+    "EMS",
+    "EMT"
    ]
   },
   "Podiatry": {
@@ -466,7 +537,13 @@
     "estimated blood loss",
     "incision",
     "specimens removed",
-    "wound closure"
+    "wound closure",
+    "Post-op",
+    "s/p",
+    "incision healing",
+    "sutures removed",
+    "global period",
+    "POD"
    ],
    "_comment": "Not \"surgery center\" or \"surgical center\": an ambulatory surgery centre hosts eye, GI and pain procedures, so its name does not decide the specialty."
   }
