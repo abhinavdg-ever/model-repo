@@ -12,11 +12,12 @@ def test_page_level_uses_the_seven_features():
     high = {"member_name": 0.9, "member_dob": 0.95, "dos": 0.9, "page_type": 0.85}
     assert page_level(high, False)[0] == "high"
     # Member Verification = the lower of name and DOB: a Low DOB is a Low key feature.
-    assert page_level({**high, "member_dob": 0.3}, False)[0] == "low"
-    # Any Low feature: Low (2026-11-19, user: every feature matters); a Medium one: Medium.
-    assert page_level({**high, "provider": 0.3}, False)[0] == "low"
-    assert page_level({**high, "provider": 0.6}, False)[0] == "medium"
-    assert page_level({**high, "provider": 0.3, "orientation": 0.2}, False)[0] == "low"
+    # 2026-11-22 (user): like an NPS over the features -- (High - Low) / features, % (1 + score) / 2.
+    assert page_level({**high, "member_dob": 0.3}, False) == ("medium", 0.6667)  # 2 High, 1 Low
+    assert page_level({**high, "provider": 0.3}, False) == ("medium", 0.75)  # 3 High, 1 Low
+    assert page_level({**high, "provider": 0.6}, False)[0] == "high"  # 3 High, 1 Medium: 87.5%
+    assert page_level({**high, "provider": 0.3, "orientation": 0.2}, False) == ("medium", 0.6)
+    assert page_level({"dos": 0.3, "page_type": 0.2, "provider": 0.9}, False)[0] == "low"  # more Low than High
     # Member ID is not a feature.
     assert page_level({**high, "member_id": 0.1}, False)[0] == "high"
     # Blank / junk page: only Blank / Junk and Codability count.
@@ -52,15 +53,16 @@ def test_rerun_source_cuts_the_chart_folder():
     assert rerun_source("c1", None) is None
 
 
-def test_the_percent_is_capped_by_the_level():
-    """2026-11-19 (user): all fields 100% but one Low: the page reads Low, so its % is at most 49%;
-    a Medium page or chart at most 79%."""
+def test_the_page_percent_is_the_nps_score():
+    """2026-11-22 (user): a page's % is (1 + (High - Low) / features) / 2, as the chart's over its
+    pages; its level is that % banded."""
     from app.services.chart_confidence import chart_level, page_level
 
     page = {"member_name": 1.0, "member_dob": 1.0, "dos": 0.2, "page_type": 1.0, "codability": 1.0,
             "provider": 1.0, "orientation": 1.0}
-    assert page_level(page, False) == ("low", 0.49)
-    assert page_level({**page, "dos": 1.0, "provider": 0.6}, False) == ("medium", 0.79)
+    # Member Name + DOB are one feature (Member Verification): six features.
+    assert page_level(page, False) == ("high", 0.8333)  # 5 High, 1 Low
+    assert page_level({**page, "dos": 1.0, "provider": 0.6}, False) == ("high", 0.9167)  # 5 High, 1 Medium
     # The chart reads its pages' levels, not their %: 7 High + 3 Medium -> score 0.7 -> 85%.
     assert chart_level([("high", 1.0)] * 7 + [("medium", 0.79)] * 3)["value"] == 0.85
 
@@ -70,5 +72,5 @@ def test_orientation_falls_back_to_the_measured_confidence():
     confidences lack it (as the frontend)."""
     from app.services.chart_confidence import page_level
 
-    assert page_level({"dos": 0.9}, False, {"orientation": 0.3})[0] == "low"
+    assert page_level({"dos": 0.9}, False, {"orientation": 0.3}) == ("medium", 0.5)  # 1 High, 1 Low
     assert page_level({"dos": 0.9}, False, '{"orientation": 0.95}')[0] == "high"

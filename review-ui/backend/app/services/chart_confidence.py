@@ -6,7 +6,8 @@ The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
   Member DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation -- each
   from ``imaging_final.confidences``. A Blank / Junk or duplicate page counts Blank / Junk and
   Codability only. High >= 0.80, Medium 0.50-0.80, Low < 0.50.
-* Page: High when every feature is High; Low when any feature is Low; else Medium.
+* Page (2026-11-22, user: like an NPS, as the chart): score = (High features - Low features) /
+  features, -1..+1; its value = (1 + score) / 2, at least the 20% floor, banded like any confidence.
 * Chart (2026-11-21, user: like an NPS): score = (High pages - Low pages) / pages, -1..+1;
   its value = (1 + score) / 2, at least the 20% floor, banded like any confidence (High >= 0.80,
   Low < 0.50).
@@ -69,11 +70,21 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
             values[key] = value
     if not values:
         return None
-    levels = {key: band(v) for key, v in values.items()}
-    # 2026-11-19 (user): every feature matters, so any Low feature makes the page Low.
-    found = set(levels.values())
-    level = "low" if "low" in found else "medium" if "medium" in found else "high"
-    return level, min(sum(values.values()) / len(values), LEVEL_CAP[level])
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for v in values.values():
+        counts[band(v)] += 1
+    # 2026-11-22 (user): like an NPS over the page's features, as the chart over its pages.
+    scored = nps_level(counts)
+    return scored["level"], scored["value"]
+
+
+def nps_level(counts: dict[str, int]) -> dict[str, Any]:
+    """{level, value, nps} from High / Medium / Low counts: (High - Low) / n, value (1 + nps) / 2
+    with the floor, banded. Pages over their features and charts over their pages alike."""
+    n = sum(counts.values())
+    nps = (counts["high"] - counts["low"]) / n
+    value = max(FLOOR, (1 + nps) / 2)
+    return {"level": band(value), "value": round(value, 4), "nps": round(nps, 4)}
 
 
 def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
@@ -86,9 +97,7 @@ def chart_level(pages: Iterable[Optional[tuple[str, float]]]) -> dict[str, Any]:
     n = sum(counts.values())
     if not n:
         return {"level": None, "value": None, "nps": None, "counts": counts}
-    nps = (counts["high"] - counts["low"]) / n
-    value = max(FLOOR, (1 + nps) / 2)
-    return {"level": band(value), "value": round(value, 4), "nps": round(nps, 4), "counts": counts}
+    return {**nps_level(counts), "counts": counts}
 
 
 _PAGES_SQL = """

@@ -7,9 +7,10 @@
  * everywhere: High >= 0.80, Medium 0.50-0.80, Low < 0.50. A feature with no confidence
  * (nothing read, a default value) is not counted.
  *
- * Page: **High** when every counted feature is High; **Low** when any feature is Low (every
- * feature matters, 2026-11-19, user); else **Medium**. A Blank / Junk or duplicate page counts only what matters for it: Blank / Junk
- * and Codability. Its number is the mean of the counted fields, capped by its level (LEVEL_CAP).
+ * Page (2026-11-22, user: like an NPS, as the chart): score = (High fields - Low fields) / fields
+ * counted, -1..+1 (Medium counts 0); its % = (1 + score) / 2, at least the 20% floor, banded like
+ * any confidence. A Blank / Junk or duplicate page counts only what matters for it: Blank / Junk
+ * and Codability.
  *
  * Chart (2026-11-21, user: like an NPS): score = (High pages - Low pages) / pages scored, -1..+1
  * (Medium counts 0). Its % = (1 + score) / 2 -- all High 100%, all Medium 50%, all Low 0% -- at
@@ -61,6 +62,8 @@ export type FieldConfidence = { key: string; label: string; value: number; level
 export type PageConfidence = {
   level: Level | null;
   value: number | null;
+  /** (High fields - Low fields) / fields, -1..+1 (2026-11-22). */
+  nps?: number | null;
   counts: Record<Level, number>;
   fields: FieldConfidence[];
 };
@@ -116,11 +119,10 @@ export function pageConfidence(page: ImagingPageResult): PageConfidence {
   }
   const counts: Record<Level, number> = { high: 0, medium: 0, low: 0 };
   for (const f of fields) counts[f.level] += 1;
-  if (!fields.length) return { level: null, value: null, counts, fields };
-  // 2026-11-19 (user): every feature matters, so any Low feature makes the page Low.
-  const level: Level = counts.low > 0 ? "low" : counts.medium > 0 ? "medium" : "high";
-  const value = capToLevel(level, fields.reduce((sum, f) => sum + f.value, 0) / fields.length);
-  return { level, value, counts, fields };
+  if (!fields.length) return { level: null, value: null, nps: null, counts, fields };
+  // 2026-11-22 (user): like an NPS over the page's fields, as the chart over its pages.
+  const score = chartScore(counts)!;
+  return { level: score.level, value: score.value, nps: score.nps, counts, fields };
 }
 
 export type ChartConfidence = {

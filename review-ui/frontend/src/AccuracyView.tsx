@@ -1005,11 +1005,19 @@ function scorePct(score: LevelScore): string {
  * pages, how confidence is spread (overall and per metric), the cross tab of page confidence
  * against the page's overall match, and each metric's accuracy at each of its confidence levels
  * -- High should be the most accurate. */
-/** Deciles, top first: [label, lowest value]. */
-const DECILES: [string, number][] = Array.from({ length: 10 }, (_, i) => {
-  const lo = (9 - i) / 10;
-  return [`${Math.round(lo * 100)}-${Math.round(lo * 100) + 10}%`, lo] as [string, number];
-});
+/** Confidence bands, top first: [label, lowest value] (2026-11-22, user): steps of 5 above 70%,
+ * of 10 from 30% to 70%, one band under 30%. */
+const BANDS: [string, number][] = [
+  ...[95, 90, 85, 80, 75, 70].map((lo) => [`${lo}-${lo + 5}%`, lo / 100] as [string, number]),
+  ...[60, 50, 40, 30].map((lo) => [`${lo}-${lo + 10}%`, lo / 100] as [string, number]),
+  ["<30%", 0],
+];
+
+/** The band a confidence falls in (index into BANDS). */
+function bandIndex(value: number): number {
+  const i = BANDS.findIndex(([, lo]) => value >= lo);
+  return i < 0 ? BANDS.length - 1 : i;
+}
 
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const [open, setOpen] = useState(false);
@@ -1031,9 +1039,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
     for (const metric of LIVE_METRICS) byMetric.set(metric.id, { high: emptyScore(), medium: emptyScore(), low: emptyScore() });
-    // Per metric, its pages by their own confidence decile (index 0 = 0-10%, 9 = 90-100%).
+    // Per metric, its pages by their own confidence band (BANDS, top first).
     const deciles = new Map<MetricId, LevelScore[]>();
-    for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: 10 }, emptyScore));
+    for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
     for (const row of rows) {
       for (const page of row.pages) {
         const pc = page.confidence;
@@ -1053,7 +1061,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
           counts[level] += 1;
           perFeature.set(key, counts);
           addVerdict(byMetric.get(metric.id)![level], verdict);
-          addVerdict(deciles.get(metric.id)![Math.min(9, Math.max(0, Math.floor(value * 10)))], verdict);
+          addVerdict(deciles.get(metric.id)![bandIndex(value)], verdict);
         }
       }
     }
@@ -1094,8 +1102,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 </div>
                 <p className="chart-details-note">
                   {rows.length.toLocaleString()} charts, {data.total.toLocaleString()} pages with ground truth (the filters apply).
-                  Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: High when every field is High; Low when any
-                  field is Low; else Medium. Overall: score = (High pages − Low pages) / pages (−100..+100, like an
+                  Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: score = (High fields − Low fields) / fields, shown
+                  as (1 + score) / 2, banded like any field. Overall: score = (High pages − Low pages) / pages (−100..+100, like an
                   NPS), shown as (1 + score) / 2: all High 100%, all Medium 50%, all Low 0% (at least 20%).
                 </p>
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
@@ -1114,7 +1122,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                   const all = buckets.reduce((t, b) => ({ pages: t.pages + b.pages, yes: t.yes + b.yes, maybe: t.maybe + b.maybe, no: t.no + b.no }), emptyScore());
                   return (
                     <section>
-                      <h3>{metric.label}: accuracy by confidence decile</h3>
+                      <h3>{metric.label}: accuracy by confidence band</h3>
                       <p className="chart-details-note">
                         Pages with ground truth, grouped by this metric's own confidence. Accuracy should rise with
                         confidence. No confidence is below 20%.
@@ -1128,8 +1136,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {DECILES.map(([label, lo], i) => {
-                            const b = buckets[9 - i];
+                          {BANDS.map(([label, lo], i) => {
+                            const b = buckets[i];
                             const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
                             return (
                               <tr key={label}>
