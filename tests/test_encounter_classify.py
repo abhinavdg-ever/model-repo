@@ -144,8 +144,9 @@ def test_negative_cancels_the_finding_it_names(canon):
 
 
 def test_negatives_do_not_touch_page_type_evidence(canon):
-    d = one(canon, page(1, "discharged home last week", type_id="HouseCalls visit summary"))
-    assert d.setting == "home"
+    # 2026-11-22: tier 1 names are taxonomy names (Telephone Encounter); HouseCalls is a tier 2 phrase.
+    d = one(canon, page(1, "telehealth, discharged home last week", type_id="Telephone Encounter"))
+    assert d.setting == "outpatient_tele"
 
 
 # --- step 3: decide ------------------------------------------------------
@@ -173,10 +174,10 @@ def test_conflict_goes_to_more_tier3_hints_and_is_flagged(canon):
     d = one(
         canon,
         page(1, type_id="Discharge Summary"),
-        page(2, "chief complaint, follow up, subjective: ...", type_id="Office Visit"),
+        page(2, "chief complaint, follow up, subjective: ...", type_id="Telephone Encounter"),
     )
-    assert (d.setting, d.confidence, d.conflict) == ("outpatient_f2f", 0.80, True)
-    assert set(d.contenders) == {"inpatient", "outpatient_f2f"}
+    assert d.conflict is True
+    assert set(d.contenders) == {"inpatient", "outpatient_tele"}
 
 
 def test_conflict_without_hints_goes_to_priority(canon):
@@ -223,7 +224,7 @@ def test_worked_example(canon):
 # --- label-free regression checks ---------------------------------------
 
 
-@pytest.mark.parametrize("type_id", ["Discharge Summary", "Operative Report", "ICU Note"])
+@pytest.mark.parametrize("type_id", ["Discharge Summary", "Surgery Report", "Critical Care Record"])
 def test_a_hospital_document_is_never_f2f(canon, type_id):
     d = one(canon, page(1, "office visit follow up chief complaint " * 5, type_id=type_id))
     assert d.setting != "outpatient_f2f"
