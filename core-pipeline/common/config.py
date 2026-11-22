@@ -322,11 +322,12 @@ PAGE_LEAF_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_LEAF_MODEL_DIR"),
     "models/page-family/page-leaf",
 )
-# Continuity (Brief 3, 2026-11-22): "rules" = the rules engine alone; "ml" = the clue model decides
-# every meeting point (hard rules, visual rule, clue model, whole-chart pass), written in the same
-# format; "shadow" (default) = both run, the rules output is written and every disagreement goes to
-# staging/continuity_shadow.json. Missing model folder: rules only.
-CONTINUITY_MODE = (os.environ.get("CONTINUITY_MODE") or "shadow").strip().lower()
+# Continuity (Brief 3, 2026-11-22): "ml" (default since 2026-11-22, user) = the clue model decides every
+# meeting point (hard rules, visual rule, clue model with the text model, whole-chart pass), written in
+# the same format, and its disagreements with the rules still go to staging/continuity_shadow.json;
+# "shadow" = both run, the rules output is written; "rules" = the rules engine alone. A missing model
+# folder: the rules decide.
+CONTINUITY_MODE = (os.environ.get("CONTINUITY_MODE") or "ml").strip().lower()
 CONTINUITY_MODEL_DIR = _path_under_core(
     os.environ.get("CONTINUITY_MODEL_DIR"),
     "models/continuity/clue_model",

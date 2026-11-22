@@ -187,3 +187,29 @@ class TestTextModel:
             pytest.skip("no continuity clue model installed here")
         out = model.decide([{"text": BODY, "L1": "Progress Note"}, {"text": BODY, "L1": "Progress Note"}])
         assert out and 0.0 <= out[0]["p_break"] <= 1.0
+
+
+class TestMlModeInTheStage:
+    """2026-11-22 (user): continuity runs ml -- the model's decisions are written in the same rows."""
+
+    def test_ml_mode_writes_the_models_breaks_in_the_same_rows(self, tmp_path, monkeypatch):
+        from common import config
+        from modules.continuity import stage
+        from modules.continuity.engine import PageInput, assign, text_lines
+        from modules.continuity.ml import model as ml_model
+
+        pages = [PageInput(page_id=i, page_name=f"p{i}", page_number=i, text=BODY, lines=text_lines(BODY),
+                           page_type="Progress Note") for i in (1, 2, 3)]
+        rules_rows = assign(pages)
+        fixed = [{"break": True, "p_break": 0.9, "score": 4.39, "decided_by": "model", "evidence": "new visit header (+)"},
+                 {"break": False, "p_break": 0.1, "score": -4.39, "decided_by": "model", "evidence": "same running header (-)"}]
+        monkeypatch.setattr(ml_model, "decide", lambda records, gaps=None: fixed)
+        monkeypatch.setattr(config, "CONTINUITY_MODE", "ml")
+        monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path / chart / "staging")
+        rows, summary = stage._continuity_ml("c1", pages, rules_rows, None, {})
+        assert summary["mode"] == "ml" and summary["ran"]
+        seqs = [r["document_seq"] for r in rows]
+        assert seqs[0] != seqs[1] and seqs[1] == seqs[2]
+        assert rows[1]["decided_by"] == "model" and "new visit header" in rows[1]["evidence"]
+        assert set(rows[0]) == set(rules_rows[0])  # the same columns as the rules write
+        assert (tmp_path / "c1" / "staging" / "continuity_shadow.json").is_file()

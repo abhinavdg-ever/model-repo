@@ -82,12 +82,14 @@ Final OCR 2, else Final OCR 1, else the preliminary text (only on printed pages)
 | 14 | `page_sequencing` | every page (junk set aside) | best text + documents | `page_sequencing_results` | `imaging/_sequencing.csv` |
 | 15 | `imaging_final` | every page | all of the above | `imaging_final` | `imaging/_final.csv` |
 
-**Shadow models (2026-11-22).** Continuity and sequencing each have a learned model beside the
-rules: `CONTINUITY_MODE` and `SEQUENCING_MODE` = `rules` | `ml` | `shadow` (default `shadow`: the rules'
-output is written, and what the model would do goes to `staging/continuity_shadow.json` /
-`staging/sequencing_shadow.json`; page names and scores, no text). The models are
-`core-pipeline/models/continuity/clue_model/` and `models/sequencing/pair_model/` (copied to each host,
-like every model); without them the stages run as before. Trainers: `training/continuity/`,
+**Learned models (2026-11-22).** Continuity and sequencing each have a learned model beside the
+rules: `CONTINUITY_MODE` and `SEQUENCING_MODE` = `rules` | `ml` | `shadow`. **Continuity runs `ml`**
+(default since 2026-11-22, user): the clue model with the page-pair text model decides the document
+breaks, in the same tables and columns, and where it disagrees with the rules the chart's
+`staging/continuity_shadow.json` lists it. **Sequencing runs `shadow`**: the rules' order is written and
+the repair's moves go to `staging/sequencing_shadow.json` (page names and scores, no text). The models are
+`core-pipeline/models/continuity/` (clue model in git, the int8 text model via Git LFS) and
+`models/sequencing/pair_model/`; without them the stages run on rules. Trainers: `training/continuity/`,
 `training/sequencing/`. The continuity rules count only a typed signature (an end-of-note one; not a
 header "Signed by" or a lab signature in a results block) for the signed-page break.
 
