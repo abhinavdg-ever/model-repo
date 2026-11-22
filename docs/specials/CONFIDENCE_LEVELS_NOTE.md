@@ -31,14 +31,11 @@ Blank / Junk and Codability are counted.
 
 ## 2. Page level
 
-| Level | When |
-|---|---|
-| **High** | every field is High |
-| **Low** | any field is Low |
-| **Medium** | otherwise (no field Low, at least one Medium) |
+Like an NPS, from how many of its fields are High, Medium and Low:
 
-**Page confidence %** = the average of its fields' confidences, never above what its level allows:
-a Medium page shows at most 79%, a Low page at most 49%.
+**Page score** = (High fields - Low fields) / fields counted, from -100 to +100.
+**Page confidence %** = (1 + score) / 2: all High 100%, all Medium 50%, all Low 0% (shown at the
+20% floor). Its level is that % banded like any field: High 80% and above, Low under 50%.
 
 ## 3. Chart level
 
