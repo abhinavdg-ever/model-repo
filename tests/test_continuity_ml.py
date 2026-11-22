@@ -148,3 +148,42 @@ class TestRulesEngineSignatures:
         addendum = NOTE + SIGNED + "Additional Documentation\nmore made up\n"
         assert _signed_anywhere(addendum, False) and not _signed_at_end(addendum, False)
         assert _signed_anywhere(BODY, True)  # the extraction's accepted e-signature still counts
+
+
+class TestTextModel:
+    """The page-pair text model (Brief 3 E3, 2026-11-22)."""
+
+    def test_the_copied_input_functions_match_the_trainer(self):
+        trainer = REPO / "training" / "continuity" / "text-model" / "train_pairs.py"
+        if not trainer.is_file():
+            pytest.skip("training/ is kept on the dev machine only")
+
+        def defs(path):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            return {n.name: ast.dump(n) for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+        mine = defs(CORE / "modules" / "continuity" / "ml" / "text_model.py")
+        theirs = defs(trainer)
+        assert [n for n in ("_tail", "_head") if mine.get(n) != theirs.get(n)] == []
+
+    def test_the_input_is_the_trained_one(self):
+        from modules.continuity.ml.text_model import EDGE_CHARS, pair_input
+
+        a = "\n".join(f"line {i} " + "word " * 10 for i in range(200))
+        tail, head = pair_input(a, a, 150)
+        assert len(tail.split()) <= 150 and len(head.split()) <= 150
+        assert len(tail) <= EDGE_CHARS and len(head) <= EDGE_CHARS
+
+    def test_without_the_text_model_the_clue_is_missing_and_the_model_still_runs(self, tmp_path, monkeypatch):
+        from common import config
+        from modules.continuity.ml import model, text_model
+
+        monkeypatch.setattr(config, "TEXT_MODEL_DIR", str(tmp_path / "none"))
+        monkeypatch.setattr(text_model, "_loaded", None)
+        monkeypatch.setattr(text_model, "_failed", None)
+        assert text_model.score([("a", "b")]) is None
+        assert text_model.status()["ready"] is False
+        if model._load() is None:
+            pytest.skip("no continuity clue model installed here")
+        out = model.decide([{"text": BODY, "L1": "Progress Note"}, {"text": BODY, "L1": "Progress Note"}])
+        assert out and 0.0 <= out[0]["p_break"] <= 1.0

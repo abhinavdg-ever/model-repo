@@ -88,6 +88,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--page-types", type=Path)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--score-test", action="store_true")
+    ap.add_argument("--model", type=Path, help="the pair model folder (default SEQUENCING_MODEL_DIR)")
+    ap.add_argument("--test-only", nargs=2, type=float, metavar=("MIN_GAIN", "CUT"),
+                    help="score only the test cases with these settings (chosen earlier on val)")
     a = ap.parse_args(argv)
     cases = [json.loads(l) for l in a.cases.read_text(encoding="utf-8").splitlines() if l.strip()]
     wanted = {i for c in cases for i in c["scan_order"]}
@@ -100,10 +103,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                     texts[r["image"]] = r.get("text") or ""
     cases += split_by_break(cases, texts)
     types = page_types(a.page_types)
-    sides = {s: [c for c in cases if c["split"] == s] for s in ("val", "test")}
+    sides = {s: [c for c in cases if c["split"] == s] for s in (("test",) if a.test_only else ("val", "test"))}
     preps = {s: [prepare(c, texts, types) for c in cs] for s, cs in sides.items()}
-    scorers = {s: [smodel.scorer(p["texts"]) for p in ps] for s, ps in preps.items()}
+    loaded = smodel.load(a.model) if a.model else None
+    scorers = {s: [smodel.scorer(p["texts"], loaded) for p in ps] for s, ps in preps.items()}
 
+    if a.test_only:
+        g, c = a.test_only
+        result = {"settings": {"min_gain": g, "cut": c},
+                  "test": score_side(preps["test"], sides["test"], scorers["test"], g, c)}
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(result, indent=1), encoding="utf-8")
+        print(json.dumps(result, indent=1))
+        return 0
     grid = []
     for g, c in itertools.product(GAINS, CUTS):
         grid.append({"min_gain": g, "cut": c, **score_side(preps["val"], sides["val"], scorers["val"], g, c)})

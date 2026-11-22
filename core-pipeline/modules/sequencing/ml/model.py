@@ -71,6 +71,14 @@ def scorer(texts: Sequence[str], loaded: Optional[dict[str, Any]] = None,
     pages = [order_clues.opage({"text": t}) for t in texts]
     records = [{"text": t} for t in texts]
     cache: dict[tuple[int, int], float] = {}
+    use_text = "p_follows_text" in feats
+
+    def follows_text(i: int, j: int) -> float:
+        """The page-pair text model's p_follows (Brief 2 Q3); NaN without it."""
+        from modules.continuity.ml import text_model
+
+        found = text_model.score([(texts[i], texts[j])], batch=1)
+        return found[0][1] if found else math.nan
 
     def score(i: int, j: int) -> float:
         key = (i, j)
@@ -78,6 +86,8 @@ def scorer(texts: Sequence[str], loaded: Optional[dict[str, Any]] = None,
             p = extra(i, j) if extra else None
             if p is None:
                 row = order_clues.order_feats(records[i], records[j], pages[i], pages[j])
+                if use_text:
+                    row["p_follows_text"] = follows_text(i, j)
                 raw = loaded["booster"].predict([[float(row[f]) for f in feats]])[0]
                 p = calibrate([raw], loaded["calib"])[0]
             cache[key] = math.log(min(1 - 1e-6, max(1e-6, float(p))))

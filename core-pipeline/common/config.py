@@ -334,6 +334,12 @@ CONTINUITY_MODEL_DIR = _path_under_core(
 # Sequencing (Brief 2, 2026-11-22): "rules" = today's stage; "ml" = the +-5 local repair with the pair
 # model (repair groups across soft boundaries, mismatches, window fix); "shadow" (default) = both
 # run, the rules order is written and the repair's moves go to staging/sequencing_shadow.json.
+# The page-pair text model (Bio_ClinicalBERT, ONNX on CPU; training/continuity/text-model): p_break
+# for continuity's clue model, p_follows for the sequencing repair. Missing: those clues are NaN.
+TEXT_MODEL_DIR = _path_under_core(
+    os.environ.get("TEXT_MODEL_DIR"),
+    "models/continuity/text_model",
+)
 SEQUENCING_MODE = (os.environ.get("SEQUENCING_MODE") or "shadow").strip().lower()
 SEQUENCING_MODEL_DIR = _path_under_core(
     os.environ.get("SEQUENCING_MODEL_DIR"),

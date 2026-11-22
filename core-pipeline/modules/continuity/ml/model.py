@@ -55,6 +55,7 @@ WORDS = {
     "title_head_b": "title at the top of the next page",
     "cont_head_b": "continued at the top",
     "visual_b": "next page is visual",
+    "p_break_text": "the text reads as a new document",
     "id_conflict": "different visit / account ids",
     "id_overlap": "same visit / account ids",
 }
@@ -137,6 +138,14 @@ def decide(pages: Sequence[dict[str, Any]], gaps: Optional[dict[int, int]] = Non
     settings = loaded["settings"]
     feats = settings["features"]
     rows = clues.chart_rows(pages, gaps)
+    if "p_break_text" in feats:
+        # The page-pair text model (Brief 3 E3): one more clue; NaN when it is not installed.
+        from modules.continuity.ml import text_model
+
+        scored = text_model.score([(pages[i].get("text") or "", pages[i + 1].get("text") or "")
+                                   for i in range(len(rows))])
+        for row, s in zip(rows, scored or [None] * len(rows)):
+            row["p_break_text"] = s[0] if s else math.nan
     X = [[_value(r.get(f)) for f in feats] for r in rows]
     booster = loaded["booster"]
     raw = list(booster.predict(X))

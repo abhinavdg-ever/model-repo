@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 from modules.continuity.ml.clues import FEATURES, chart_rows
 
+TEXT_CLUE = "p_break_text"
 ID_COLUMNS = ["pair_id", "chart_id", "page_n", "page_n1", "image_n", "image_n1", "split", "doc_breaks", "unsure",
               "group_n", "group_n1", "L1_n", "L1_n1"]
 REPORT_ONLY = ["sig_any_tail_a"]
@@ -70,9 +71,19 @@ def apply_corrections(pairs: list[dict[str, str]], labels: Path) -> int:
     return changed
 
 
-def build(labels: Path, text: Path, types_file: Optional[Path]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def text_scores(path: Optional[Path]) -> dict[str, float]:
+    """pair_id -> p_break_text from the text model's scores_break.csv (out-of-fold for train / val,
+    the final model for test: never a score the text model learned that pair from)."""
+    if not path:
+        return {}
+    return {r["pair_id"]: float(r["p_break_text"]) for r in _read_csv(path)}
+
+
+def build(labels: Path, text: Path, types_file: Optional[Path],
+          scores_file: Optional[Path] = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     pairs = _read_csv(labels / "document_pairs.csv")
     corrected = apply_corrections(pairs, labels)
+    scores = text_scores(scores_file)
     wanted = {p["image_n"] for p in pairs} | {p["image_n1"] for p in pairs}
     pages: dict[str, dict[str, Any]] = {}
     with text.open(encoding="utf-8") as handle:
@@ -107,10 +118,12 @@ def build(labels: Path, text: Path, types_file: Optional[Path]) -> tuple[list[di
                 gaps = {k: int(c.get("gap") or 0) for k, c in enumerate(chain)}
                 for c, clue in zip(chain, chart_rows(recs, gaps)):
                     rows.append({**{k: c.get(k, "") for k in ID_COLUMNS}, **{k: clue.get(k) for k in FEATURES},
-                                 **{k: clue.get(k) for k in REPORT_ONLY}})
+                                 **{k: clue.get(k) for k in REPORT_ONLY},
+                                 **({TEXT_CLUE: scores.get(c["pair_id"], math.nan)} if scores else {})})
             chain = [p] if p is not None else []
     return rows, {"pairs_in": len(pairs), "rows_out": len(rows), "pages_without_text": len(missing),
                   "reviewer_corrections_applied": corrected,
+                  "text_scores": len(scores),
                   "page_types": "predicted" if predicted else "reviewed"}
 
 
@@ -153,12 +166,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--labels", type=Path, required=True)
     ap.add_argument("--text", type=Path, required=True)
     ap.add_argument("--page-types", type=Path)
+    ap.add_argument("--text-scores", type=Path, help="the text model's scores_break.csv: adds p_break_text")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
-    rows, info = build(args.labels, args.text, args.page_types)
+    rows, info = build(args.labels, args.text, args.page_types, args.text_scores)
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out / "clue_table.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ID_COLUMNS + list(FEATURES) + REPORT_ONLY)
+        writer = csv.DictWriter(handle, fieldnames=ID_COLUMNS + list(FEATURES) + REPORT_ONLY
+                                + ([TEXT_CLUE] if info["text_scores"] else []))
         writer.writeheader()
         writer.writerows(rows)
     rep = report(rows, info)
