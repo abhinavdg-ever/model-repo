@@ -299,8 +299,9 @@ class TestFinalValues:
         assert [r["final_page_type"] for r in rows] == ["Progress Note"] * 3
 
     def test_a_stand_alone_non_visit_document_takes_the_default_dos(self):
-        rows = assign([page(1, dos_from="2024-03-14", dos_trust=5, page_type="Patient Demographics"),
-                       page(2, page_type="Patient Demographics", page_confidence=0.9)])
+        # 2026-11-22: taxonomy names only (the canon page type "Patient Demographics" was retired).
+        rows = assign([page(1, dos_from="2024-03-14", dos_trust=5, page_type="Demographics"),
+                       page(2, page_type="Demographics", page_confidence=0.9)])
         assert [r["final_dos_from"] for r in rows] == ["2222-02-22"] * 2
         assert "is not a visit" in rows[0]["evidence"]
 
@@ -590,7 +591,7 @@ class TestEncounterSignals:
         assert rows[0]["document_seq"] == rows[1]["document_seq"]
 
     def test_a_visual_page_joins_the_page_before_it(self):
-        demo = dict(page_type="Demographics", names=("Patient Demographics", "Demographics"))
+        demo = dict(page_type="Demographics", names=("Patient Information", "Demographics"))
         rows = assign([bare(1, "Chief Complaint: cough"), bare(2, "", visual=True, **demo)])
         assert gap(rows[1])["evidence"]["visual_join"]
         assert rows[0]["document_seq"] == rows[1]["document_seq"]
@@ -610,7 +611,7 @@ class TestEncounterSignals:
 
     def test_demographics_never_joins_a_progress_note(self):
         # Page numbers running on (-5, decisive join) would join these two.
-        demo = bare(1, page_type="Demographics", names=("Patient Demographics", "Demographics"),
+        demo = bare(1, page_type="Demographics", names=("Patient Information", "Demographics"),
                     printed=(1, 2), dos_from="2024-03-14", dos_trust=5)
         note = bare(2, page_type="Progress Note", names=("Progress Note",),
                     printed=(2, 2), dos_from="2024-03-14", dos_trust=5)
@@ -623,7 +624,7 @@ class TestEncounterSignals:
         assert rows[1]["final_dos_from"] == "2024-03-14"
 
     def test_consecutive_demographics_pages_stay_together(self):
-        demo = dict(page_type="Demographics", names=("Patient Demographics", "Demographics"))
+        demo = dict(page_type="Demographics", names=("Patient Information", "Demographics"))
         rows = assign([bare(1, printed=(1, 2), **demo), bare(2, printed=(2, 2), **demo)])
         assert rows[0]["document_seq"] == rows[1]["document_seq"]
 
