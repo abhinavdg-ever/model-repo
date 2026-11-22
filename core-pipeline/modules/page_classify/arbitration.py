@@ -304,18 +304,22 @@ def _visit_settings() -> dict[str, Any]:
     return _ARBITRATION.get().get("visit_document") or {}
 
 
+def heading_regex(phrases: Sequence[str]) -> re.Pattern[str]:
+    """A section heading: a line that starts with one of ``phrases`` followed by ':' or
+    nothing else (Chief Complaint:, HPI, Plan:). The one heading matcher, also used by the
+    page classifier's priority rules (page_classify/priority.py)."""
+    return re.compile(
+        r"(?im)^[\s*#\-\u2022]*(?:" + "|".join(re.escape(p) for p in sorted(phrases, key=len, reverse=True))
+        + r")\s*(?::|$)"
+    )
+
+
 def _heading_patterns() -> dict[str, re.Pattern[str]]:
     cfg = _visit_settings()
     key = json.dumps(cfg.get("groups") or {}, sort_keys=True)
     cached = _HEADING_CACHE.get(key)
     if cached is None:
-        cached = {
-            group: re.compile(
-                r"(?im)^[\s*#\-\u2022]*(?:" + "|".join(re.escape(p) for p in sorted(phrases, key=len, reverse=True))
-                + r")\s*(?::|$)"
-            )
-            for group, phrases in (cfg.get("groups") or {}).items() if phrases
-        }
+        cached = {group: heading_regex(phrases) for group, phrases in (cfg.get("groups") or {}).items() if phrases}
         _HEADING_CACHE.clear()
         _HEADING_CACHE[key] = cached
     return cached

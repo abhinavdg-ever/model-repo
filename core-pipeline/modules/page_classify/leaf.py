@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from modules import confidence as conf
-from modules.page_classify import leaf_canon, specialty_keywords
+from modules.page_classify import leaf_canon, priority, specialty_keywords
 from modules.page_classify import result as page_result
 from modules.page_classify import taxonomy as tax
 
@@ -247,6 +247,8 @@ class Decision:
     # Every eligible leaf with points (not only the Deciding pool): the page's best leaf
     # under each other L1 (under_l1).
     all_points: dict[str, float] = field(default_factory=dict)
+    # The family priority step (priority.py): the rule that restricted the winner's family.
+    priority_rule: Optional[dict[str, Any]] = None
 
 
 def tie_order(leaves: dict[str, Any], settings: dict[str, Any]) -> dict[str, int]:
@@ -260,7 +262,7 @@ def tie_order(leaves: dict[str, Any], settings: dict[str, Any]) -> dict[str, int
 
 
 def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords,
-           settings: dict[str, Any]) -> Decision:
+           settings: dict[str, Any], fired: Optional[priority.Fired] = None) -> Decision:
     k, per_l1 = int(settings["top_k"]), int(settings["per_l1"])
     eligible = {leaf for leaf in leaves if leaf not in kw.excluded}
 
@@ -287,10 +289,17 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
             if leaf not in model_rank or rank < model_rank[leaf]:
                 model_rank[leaf] = rank
 
-    # Deciding: the best-scored node with a Deciding word that still has an eligible leaf.
+    # The family priority step (2026-11-22, Brief 4 section 3): the Progress Note model guard or
+    # the first priority rule that fired restricts the winner to its family.
+    fired = fired or priority.Fired()
+    family = fired.family
+    in_family = {leaf for leaf in eligible if not family or under(leaf, family)}
+
+    # Deciding: the best-scored node with a Deciding word that still has an eligible leaf (inside
+    # the priority family when there is one).
     deciding = overruled = None
     for node, _score in sorted(kw.deciding.items(), key=lambda kv: (-kv[1], -kv[0].count(SEP))):
-        if any(under(leaf, node) for leaf in eligible):
+        if any(under(leaf, node) for leaf in in_family):
             deciding = node
             break
     top_model = max(model.candidates, key=lambda c: c["score"], default=None)
@@ -298,7 +307,7 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
             and top_model["path"].split(SEP)[0] != deciding.split(SEP)[0]:
         overruled = f"model {top_model['score']:.2f} sure of {top_model['path']}"
         deciding = None
-    pool = {leaf for leaf in eligible if not deciding or under(leaf, deciding)}
+    pool = {leaf for leaf in in_family if not deciding or under(leaf, deciding)}
 
     all_points = {leaf: points(model_rank.get(leaf), k) + points(keyword_rank.get(leaf), k) for leaf in eligible}
     totals = {leaf: all_points[leaf] for leaf in pool if leaf in all_points}
@@ -320,6 +329,11 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     elif deciding:
         others = f"{deciding}{SEP}{OTHERS}"
         winner = others if others in pool else deciding
+    elif family:
+        # Nothing scored inside the family: the model's likeliest leaf there, else its Others.
+        mine = [leaf for leaf in in_family if _prob(model, leaf) > 0]
+        others = f"{family}{SEP}{OTHERS}"
+        winner = max(mine, key=lambda leaf: _prob(model, leaf)) if mine else others if others in leaves else family
     elif top_model:
         winner = top_model["path"]
     else:
@@ -328,7 +342,10 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     model_first = min(model_rank_raw, key=model_rank_raw.get) if model_rank_raw else None
     keyword_first = min(keyword_rank, key=keyword_rank.get) if keyword_rank else None
     model_has = any(stands_for(model, winner, path) for path in model_rank_raw)
-    if deciding and under(winner, deciding):
+    model_family = str(model_first).split(SEP)[0] if model_first else None
+    if fired.rule and fired.rule != priority.GUARD and family and model_family != family:
+        how = "priority"  # a priority rule chose another family than the model's
+    elif deciding and under(winner, deciding):
         how = "deciding"
     elif model_first and keyword_first and stands_for(model, winner, model_first) and winner == keyword_first:
         how = "agree"
@@ -357,11 +374,13 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
         model_agrees=bool(model_first) and stands_for(model, winner, model_first),
         overruled=bool(overruled), others=is_others(winner),
     )
+    if how == "priority" and model_first:
+        confidence, rule = conf.flipped(), f"priority rule {fired.rule} against the model's family: flipped"
     why = {**why, "strength": strength, "rule_2026_11_14": rule}
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
                     deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength,
-                    {leaf: t for leaf, t in all_points.items() if t > 0})
+                    {leaf: t for leaf, t in all_points.items() if t > 0}, fired.record())
 
 
 def chosen_confidence(*, how: str, p: float, has_model: bool, model_agrees: bool, overruled: bool,
@@ -538,7 +557,11 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
     leaves = taxonomy_leaves()
     model = model_side(text, int(settings["top_k"]), int(settings["per_l1"]))
     kw = leaf_canon.score_leaves(leaves, text, headings)
-    decision = decide(leaves, model, kw, settings)
+    top = max(model.candidates, key=lambda c: c["score"], default=None)
+    fired = priority.decide(text, tuple(headings), model.probs if model.source != NO_MODEL else {},
+                            (top["path"], float(top["score"])) if top else None,
+                            float(settings["model_sure_other_l1"]))
+    decision = decide(leaves, model, kw, settings, fired)
 
     l1, l2, l3 = leaves.get(decision.path) or _split(decision.path)
     if l1 == OTHERS:
@@ -546,7 +569,8 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
     path_conf = decision.confidence
     codeability = tax.codeability_of(l1, l2, l3) or page_result.NEEDS_REVIEW
     who = (page_result.BY_OTHERS if l1 == OTHERS or decision.how == "nothing"
-           else page_result.MODEL if decision.how in ("agree", "model") else page_result.CANON)
+           else page_result.MODEL if decision.how in ("agree", "model")
+           else page_result.RULE if decision.how == "priority" else page_result.CANON)
     specialty, specialty_conf, specialty_by = page_specialty(model, text, headings)
     sources = (who, who if l2 else "-", who if l3 else "-", specialty_by, who)
     return page_result.PageResult(
@@ -561,6 +585,7 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
                      "model_rank": decision.model_rank.get(leaf), "keyword_rank": decision.keyword_rank.get(leaf)}
                     for i, (leaf, total) in enumerate(decision.totals.items(), start=1)),
         under_l1=under_l1(leaves, decision, model, kw, l1),
+        rules=(decision.priority_rule["rule"],) if decision.priority_rule and decision.priority_rule.get("rule") else (),
         leaf={
             "leaf": decision.path, "how": decision.how, "confidence": decision.confidence,
             "strength": decision.strength,
@@ -571,6 +596,7 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
             "keyword_top": [{"path": p, "rank": r, "score": kw.scores.get(p)}
                             for p, r in sorted(decision.keyword_rank.items(), key=lambda kv: kv[1])],
             "deciding": decision.deciding, "deciding_overruled": decision.deciding_overruled,
+            "priority_rule": decision.priority_rule,
             "excluded": dict(list(decision.excluded.items())[:20]) or None,
             "hits": {node: hits for node, hits in kw.hits.items()
                      if decision.path == node or decision.path.startswith(node + SEP)} or None,

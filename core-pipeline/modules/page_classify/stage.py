@@ -105,6 +105,8 @@ CODEABLE_COLS = [
     "axes_codeability_rule",
     "axes_title_l1",
     "axes_route",
+    # 2026-11-22: the family priority rule that restricted the page type (Brief 4), at the end.
+    "priority_rule",
 ]
 
 _DOS_PROFILE: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "dos_canon.json")
@@ -371,6 +373,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "ocr_source": source,
                         **{k: ("" if v is None else v)
                            for k, v in (page_axes.csv_columns() if page_axes else {}).items()},
+                        "priority_rule": ((page_axes.leaf or {}).get("priority_rule") or {}).get("rule") or ""
+                        if page_axes else "",
                     }
                 )
 

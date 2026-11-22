@@ -30,8 +30,12 @@ def _l1(path: str) -> str:
     return (path or "").split(SEP)[0]
 
 
-def run(split: Path, data: Path, side: str, out: Path, limit: Optional[int] = None) -> dict[str, Any]:
-    from modules.page_classify import leaf
+def run(split: Path, data: Path, side: str, out: Path, limit: Optional[int] = None,
+        guard: Optional[float] = None) -> dict[str, Any]:
+    from modules.page_classify import leaf, leaf_canon
+
+    if guard is not None:  # try another Progress Note guard threshold (tuning on val only)
+        leaf_canon.canon().priority["progress_note_model_guard"]["min_model_prob"] = guard
 
     wanted: dict[str, dict[str, str]] = {}
     with split.open(encoding="utf-8") as handle:
@@ -53,7 +57,7 @@ def run(split: Path, data: Path, side: str, out: Path, limit: Optional[int] = No
             rows.append({"image": ref["image"], "chart_id": ref["chart_id"], "truth": ref["leaf"],
                          "leaf": info.get("leaf") or "", "how": info.get("how") or "",
                          "deciding": info.get("deciding") or "",
-                         "priority_rule": json.dumps(info.get("priority_rule")) if info.get("priority_rule") else "",
+                         "priority_rule": (info.get("priority_rule") or {}).get("rule") or "",
                          "confidence": info.get("confidence")})
             if limit and len(rows) >= limit:
                 break
@@ -67,6 +71,36 @@ def run(split: Path, data: Path, side: str, out: Path, limit: Optional[int] = No
     return summary
 
 
+def predict(images_csv: Path, data: Path, out: Path) -> dict[str, Any]:
+    """The pipeline's page type for every image in ``images_csv`` (a column ``image``): leaf,
+    L1, L2, specialty and the L1s of the model's top 5 leaves (continuity's page-type clues,
+    Brief 3 section 2.2). Ids and labels only."""
+    from modules.page_classify import leaf
+
+    with images_csv.open(encoding="utf-8") as handle:
+        wanted = {row["image"] for row in csv.DictReader(handle)}
+    started, rows = time.time(), []
+    with data.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            page = json.loads(line)
+            if page.get("image") not in wanted:
+                continue
+            r = leaf.predict(str(page.get("text") or ""))
+            info = (r.leaf or {}) if r else {}
+            top = [_l1(t["path"]) for t in info.get("model_top") or []]
+            rows.append({"image": page["image"], "leaf": info.get("leaf") or "", "l1": r.l1 if r else "",
+                         "l2": (r.l2 or "") if r else "", "specialty": (r.specialty or "") if r else "",
+                         "top5_l1": "|".join(dict.fromkeys(top))})
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["image", "leaf", "l1", "l2", "specialty", "top5_l1"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return {"pages": len(rows), "of": len(wanted), "seconds": round(time.time() - started, 1)}
+
+
 def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
     n = len(rows) or 1
     notes = [r for r in rows if _l1(r["truth"]) == NOTE]
@@ -77,7 +111,10 @@ def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "note_pages": len(notes),
         "note_called_lab_report": sum(_l1(r["leaf"]) == LAB for r in notes),
         "lab_called_note": sum(_l1(r["leaf"]) == NOTE for r in rows if _l1(r["truth"]) == LAB),
+        "notes_kept": sum(_l1(r["leaf"]) == NOTE for r in notes),
+        "others_called_note": sum(_l1(r["leaf"]) == NOTE for r in rows if _l1(r["truth"]) != NOTE),
         "how": dict(Counter(r["how"] for r in rows)),
+        "priority_fired": dict(Counter(r.get("priority_rule") or "none" for r in rows)),
     }
 
 
@@ -106,7 +143,8 @@ def compare(before: Path, after: Path) -> dict[str, Any]:
                             "verdict": "fixed" if b[image]["leaf"] == truth else
                             "broken" if a[image]["leaf"] == truth else "still wrong",
                             "how_before": a[image]["how"], "how_after": b[image]["how"],
-                            "deciding_after": b[image]["deciding"], "priority_rule": b[image].get("priority_rule", "")})
+                            "deciding_after": b[image]["deciding"], "priority_rule": b[image].get("priority_rule", ""),
+                            "rule_right": b[image]["leaf"].split(SEP)[0] == truth.split(SEP)[0]})
     return {"before": score(list(a.values())), "after": score(list(b.values())),
             "changed": len(changed), "verdicts": dict(Counter(c["verdict"] for c in changed)), "pages": changed}
 
@@ -120,14 +158,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--side", choices=("val", "test"), default="val")
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--limit", type=int)
+    r.add_argument("--guard", type=float, help="Progress Note guard threshold to try (val only)")
+    pr = sub.add_parser("predict", help="page types for a list of images (continuity clues)")
+    pr.add_argument("--images", type=Path, required=True, help="CSV with an image column")
+    pr.add_argument("--data", type=Path, required=True)
+    pr.add_argument("--out", type=Path, required=True)
     c = sub.add_parser("compare")
     c.add_argument("before", type=Path)
     c.add_argument("after", type=Path)
     c.add_argument("--pages", action="store_true", help="list every changed page (ids and leaves only)")
     args = ap.parse_args(argv)
     if args.cmd == "run":
-        print(json.dumps(run(args.split, args.data, args.side, args.out, args.limit), indent=1))
+        print(json.dumps(run(args.split, args.data, args.side, args.out, args.limit, args.guard), indent=1))
         print(json.dumps(per_l1(_read(args.out)), indent=1))
+        return 0
+    if args.cmd == "predict":
+        print(json.dumps(predict(args.images, args.data, args.out)))
         return 0
     result = compare(args.before, args.after)
     pages = result.pop("pages")

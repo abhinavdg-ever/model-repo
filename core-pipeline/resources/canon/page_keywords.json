@@ -213,6 +213,11 @@
      ]
     },
     "min_groups": 2,
+    "groups_need_one_of": [
+     "subjective",
+     "plan"
+    ],
+    "groups_need_one_of_comment": "2026-11-22 (tuned on val): a diagnostic report heads Exam + Impression (objective + assessment); a note also heads a subjective or plan section. On val this kept 7 lab / radiology pages out of Progress Note and lost 1 note page.",
     "not_when": {
      "letter_open": [
       "Dear"
