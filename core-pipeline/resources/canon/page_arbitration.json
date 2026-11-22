@@ -84,6 +84,22 @@
     "continuation_link",
     "continuation_rule"
   ],
+  "sections": {
+    "comment": "2026-11-22 (Brief 5 section 3): the usual order of a visit note's sections, for modules/page_classify/sections.py (first / last section rank; continuity's section_order clues; sequencing's note-order clue). Keys are the generic sections of progress_note_headers.json; the rank is the place in the note (histories may also come first).",
+    "rank": {"Visit details": 0, "Care timeline": 0, "Chief complaint": 1, "History of present illness": 2, "Review of systems": 3, "Past medical history": 4, "Problem list": 4, "Past surgical history": 4, "Family history": 4, "Social history": 4, "Social needs (SDOH)": 4, "OB/GYN history": 4, "Medications": 4, "Allergies": 4, "Immunizations": 4, "Preventive care": 4, "Screening tools": 4, "Vitals": 5, "Physical exam": 6, "Mental status exam": 6, "Lab results": 7, "Imaging and diagnostics": 7, "Pathology": 7, "Assessment / impression": 8, "Visit diagnoses": 8, "Assessment and plan (combined)": 8, "Medical decision making and time": 8, "Plan": 9, "Orders": 9, "Prescriptions and refills": 9, "Medication changes": 9, "Referrals": 9, "Procedures done in the visit": 9, "Medications given in the visit": 9, "Follow-up and next appointment": 9, "Disposition": 9, "Patient instructions and education": 10},
+    "history_rank": 4,
+    "top_zone_lines": 12
+  },
+  "lab_markers": {
+    "comment": "2026-11-22 (Brief 5 section 3): a stand-alone lab report prints these (each counts once); an embedded result block heads one of embedded_headings.",
+    "standalone": {"performing_lab": "performing\\s+(?:lab|laborator|site|location)", "clia": "\\bclia\\b", "accession": "\\baccession\\b", "specimen_block": "\\b(?:collected|received|reported)\\s*(?:date|time|on)?\\s*[:\\-]", "final_report": "\\bfinal\\s+report\\b"},
+    "embedded_headings": ["Labs", "Lab Results", "Results Reviewed", "Recent Labs", "Data Reviewed", "Pertinent Results", "Labs Reviewed"]
+  },
+  "visual_page": {
+    "comment": "2026-11-22 (Brief 5 section 3, Brief 3 section 2.2b): a visual page (ECG tracing, photo, scanned image) has a Docling picture area of at least picture_share of the page or fewer than max_words OCR words; never a blank / junk / duplicate page.",
+    "picture_share": 0.6,
+    "max_words": 25
+  },
   "section_L1": "Progress Note",
   "final_placement": {
     "comment": "2026-10-25: Final L2 of a page whose own L1 differs from its document's: final_placement[document L1][page L1] (context_rules: page_essence keeps the page's own label in Extracted; the document view is Final — a Lab Report > Pathology Report page inside a Progress Note is Progress Note / Lab and Imaging Results; absorb_into_progress_note; procedure_in_operative_document). A pair not listed: under the Progress Note, Others; under any other L1, the L2 the page classifier gave the page there (axes.under_l1: the model's, else the canon's), else its own name when that L1 has it, else Others. Never L1 / L1. 2026-11-01 (user): a re-placed page always gets a valid L1 > L2: an L2 listed here must exist under that L1 (else it is ignored); '*' is the L2 for any family not listed (Clinical Summary: Summary); inside a Progress Note an unlisted page keeps its own name when the Progress Note has it (Summary, Vitals ...), else Others.",
