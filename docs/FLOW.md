@@ -82,6 +82,15 @@ Final OCR 2, else Final OCR 1, else the preliminary text (only on printed pages)
 | 14 | `page_sequencing` | every page (junk set aside) | best text + documents | `page_sequencing_results` | `imaging/_sequencing.csv` |
 | 15 | `imaging_final` | every page | all of the above | `imaging_final` | `imaging/_final.csv` |
 
+**Shadow models (2026-11-22).** Continuity and sequencing each have a learned model beside the
+rules: `CONTINUITY_MODE` and `SEQUENCING_MODE` = `rules` | `ml` | `shadow` (default `shadow`: the rules'
+output is written, and what the model would do goes to `staging/continuity_shadow.json` /
+`staging/sequencing_shadow.json`; page names and scores, no text). The models are
+`core-pipeline/models/continuity/clue_model/` and `models/sequencing/pair_model/` (copied to each host,
+like every model); without them the stages run as before. Trainers: `training/continuity/`,
+`training/sequencing/`. The continuity rules count only a typed signature (an end-of-note one; not a
+header "Signed by" or a lab signature in a results block) for the signed-page break.
+
 Every stage also writes a `pipeline_jobs` row and updates `page_stage_status` per page.
 One bad page never sinks a chart: its error goes in `page_stage_status.error_message` and
 the stage carries on.

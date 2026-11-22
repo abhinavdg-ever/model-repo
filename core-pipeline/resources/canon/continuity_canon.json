@@ -449,7 +449,7 @@
   },
   "signature_break": {
     "enabled": true,
-    "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it. A signature on a document's first page does not count (2026-11-01, user): the signer is often printed in page 1's header."
+    "note": "2026-11-01 (user): a page signed anywhere (kv_extract's electronic signature, a signature section) ends its document: the next page starts a new one, whatever a sticky visit header ('... (continued)'), the same date or the printed page numbers say. Results, orders and attachments printed after a signed note are their own. A Visual page (an attached image) still joins the page before it. A signature on a document's first page does not count (2026-11-01, user): the signer is often printed in page 1's header. 2026-11-22 (user): only a typed signature counts (continuity_canon signature_types): an end-of-note signature, never a header 'Signed by' or a lab / radiologist signature in a result block; a signature followed by Additional Documentation or another section is not the end. Kept a hard rule in the rules engine (measured on the labelled charts: as a soft signal it added ~3 wrong merges per 100 pages); the continuity clue model uses it as a strong signal."
   },
   "section_continued": {
     "enabled": true,

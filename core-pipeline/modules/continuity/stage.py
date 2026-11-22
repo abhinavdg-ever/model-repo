@@ -143,6 +143,28 @@ def _staged_trust(staged: Any, dos_from: str) -> Optional[int]:
     return trust_points(min(tiers, key=lambda t: TIER_RANK.get(t, 9)))
 
 
+def _signed_anywhere(text: str, extracted: bool) -> bool:
+    """Signed somewhere (2026-11-22, user; Brief 3 signature types): the extraction's accepted
+    e-signature, or a signature in the text that is not only a header "Signed by" (page metadata) or a
+    lab / radiologist signature inside a result block. Still the signature_break hard rule's input."""
+    from modules.continuity.ml.clues import signature_kinds
+
+    kinds = signature_kinds(text)
+    return extracted or kinds["sig_end_tail"] or kinds["sig_before_section"] or (
+        has_signature_section(text) and not kinds["sig_header"] and not kinds["sig_embedded"])
+
+
+def _signed_at_end(text: str, extracted_in_footer: bool) -> bool:
+    """Signed at the end of the note: the last signature, in the closing lines, with no other section
+    (Additional Documentation, an addendum, results) after it on the page."""
+    from modules.continuity.ml.clues import signature_kinds
+
+    kinds = signature_kinds(text)
+    if kinds["sig_before_section"]:
+        return False
+    return kinds["sig_end_tail"] or (extracted_in_footer and not kinds["sig_embedded"])
+
+
 def _staged_signature(staged: Any) -> tuple[bool, bool]:
     """(signed anywhere, signed in the closing lines) from the accepted e-signatures."""
     rows = staged.accepted("electronic_signature") if staged else []
@@ -650,8 +672,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     dos_from=dos_from if kind == "main" else "",
                     dos_to=_iso(page_dos.get("date_of_service_to")) if kind == "main" else "",
                     dos_trust=(_staged_trust(staged, dos_from) or trust_points(None, rules)) if dos_from else None,
-                    signed=sig_any or name in signed_names or has_signature_section(text),
-                    signed_in_tail=sig_tail or has_signature_section(_tail_text(lines)),
+                    signed=_signed_anywhere(text, sig_any or name in signed_names),
+                    signed_in_tail=_signed_at_end(text, sig_tail),
                     printed=_staged_printed(staged, rules.max_total) or _printed(details.get(page_id)),
                     visit_ids=_staged_visits(staged),
                     kind=kind,

@@ -128,3 +128,20 @@ class TestModel:
         calib = {"x": [0.1, 0.5, 0.9], "y": [0.0, 0.4, 1.0]}
         out = calibrate([0.0, 0.3, 0.5, 0.7, 1.0], calib)
         assert out[0] == 0.0 and out[-1] == 1.0 and out == sorted(out)
+
+
+class TestRulesEngineSignatures:
+    """2026-11-22 (user): the rules engine's signature rule stays hard, but only a typed signature
+    counts (an end-of-note one)."""
+
+    def test_typed_flags(self):
+        from modules.continuity.stage import _signed_anywhere, _signed_at_end
+
+        assert _signed_anywhere(NOTE + SIGNED, False) and _signed_at_end(NOTE + SIGNED, False)
+        header_only = "Signed by Dr Made Up 3/4/2025\n" + NOTE
+        assert not _signed_anywhere(header_only, False) and not _signed_at_end(header_only, False)
+        lab_only = NOTE + "Specimen: blood\nElectronically signed by Resulting Lab\n" + BODY
+        assert not _signed_anywhere(lab_only, False) and not _signed_at_end(lab_only, False)
+        addendum = NOTE + SIGNED + "Additional Documentation\nmore made up\n"
+        assert _signed_anywhere(addendum, False) and not _signed_at_end(addendum, False)
+        assert _signed_anywhere(BODY, True)  # the extraction's accepted e-signature still counts

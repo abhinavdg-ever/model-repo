@@ -32,8 +32,16 @@ def page_input(i: int, image: str, text: str, l1: str, l2: str) -> PageInput:
     tail = "\n".join(clues.tail(text))
     return PageInput(page_id=i, page_name=image, page_number=i, text=text, lines=lines, page_type=l1 or "",
                      page_subtype=l2 or "", names=tuple(x for x in (l2, l1) if x), dos_from=dos[0] if dos else "",
-                     dos_trust=5 if dos else None, signed=has_signature_section(text),
-                     signed_in_tail=has_signature_section(tail), printed=last)
+                     dos_trust=5 if dos else None, signed=signed_anywhere(text),
+                     signed_in_tail=clues.signature_kinds(text)["sig_end_tail"], printed=last)
+
+
+def signed_anywhere(text: str) -> bool:
+    """The stage's typed signature (2026-11-22): not a header "Signed by" or a lab / radiologist
+    signature in a result block alone."""
+    kinds = clues.signature_kinds(text)
+    return kinds["sig_end_tail"] or kinds["sig_before_section"] or (
+        has_signature_section(text) and not kinds["sig_header"] and not kinds["sig_embedded"])
 
 
 def main(argv: Optional[list[str]] = None) -> int:
