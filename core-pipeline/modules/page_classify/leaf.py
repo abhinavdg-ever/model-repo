@@ -1,13 +1,12 @@
-"""The page's type as one **leaf** (a whole path L1 > L2 > L3), from a model and the
-per-leaf keyword canon together (2026-11-01, user). Replaces the cascade's level-by-level
-vote (``axes.gate``) when ``PAGE_CLASSIFIER=leaf`` (the default).
+"""The page classifier: the page's type as one **leaf** (a whole path L1 > L2 > L3), from the
+page-leaf model and the keyword canon (``page_keywords.json``) together (2026-11-01, user; the
+only classifier since 2026-11-22: the page-axes cascade, its model and keyword vote were removed).
 
 1. **Model**: its best leaves -- the top ``top_k`` (5) above its minimum, at most
-   ``per_l1`` (3) under one L1, ties at the cut kept. From the page-leaf model when its
-   folder is there; else the page-axes model's best paths stand in (``model_source:
-   axes_fallback``; a path that stops above the leaves stands for every leaf under it).
+   ``per_l1`` (3) under one L1, ties at the cut kept, from the page-leaf model. Without its
+   folder (or torch) the keywords decide alone (``model_source: none``, /health says why).
 2. **Keywords** (``leaf_canon``): each leaf's score from its own and its ancestors' lists
-   (a word in a section header x2); the best 5 the same way.
+   (a word in a section header x2, a title in the title zone x1.5); the best 5 the same way.
 3. **Gates**: a leaf whose node has Must Have words and none on the page (a Deciding word
    of the node also counts), or with a Negative word on the page, is out.
 4. **Deciding**: a node with a Deciding word on the page is sure: only leaves under it can
@@ -19,7 +18,7 @@ vote (``axes.gate``) when ``PAGE_CLASSIFIER=leaf`` (the default).
    leaf model's probability for the chosen leaf; keywords only, Others, no model -> backup
    (0.40); a Deciding word against the model's top (either way) -> flipped (0.30).
    The older value below is kept as ``strength``, the weight later stages decide with.
-   **Strength** (``leaf_confidence``, settings ``confidence`` in leaf_keywords.json):
+   **Strength** (``leaf_confidence``, settings ``confidence`` in page_keywords.json):
    the model's probability for the winner lifted by the keywords' support for it (a
    Deciding word 1.0 in a header / 0.85 on the page, else 0.7 / 0.45 / 0.25 by the
    keywords' rank); the model alone -> its probability (x keywords_disagree, x close_call
@@ -27,9 +26,13 @@ vote (``axes.gate``) when ``PAGE_CLASSIFIER=leaf`` (the default).
    no_model / model_disagree); x conflict when a Deciding word was overruled; an Others
    leaf at most 0.6.
 
-Codeability is the leaf's (``taxonomy.codeability_of``). The answer keeps the
-``axes.AxesResult`` shape, so continuity, Final and review-ui read it as before; the
-leaf's working (both lists, gates, hits, points) is in ``AxesResult.leaf``.
+Codeability is the leaf's (``taxonomy.codeability_of``). Specialty: the model's specialty head
+(>= ``specialty_min``, not Unknown / Others), else a ``specialty_titles`` phrase in the title
+zone, else the specialty keywords (``specialty_keywords``), else General. ``title_l1``: the L1
+whose page title heads the page. ``under_l1``: under every other L1 with L2s, the leaf the page
+would take there (the best by the same points), for the Final step. The answer is a
+``result.PageResult``, so continuity, Final and review-ui read it as before; the leaf's working
+(both lists, gates, hits, points) is in ``PageResult.leaf``.
 """
 from __future__ import annotations
 
@@ -42,7 +45,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from modules import confidence as conf
-from modules.page_classify import axes, leaf_canon
+from modules.page_classify import leaf_canon, specialty_keywords
+from modules.page_classify import result as page_result
 from modules.page_classify import taxonomy as tax
 
 logger = logging.getLogger(__name__)
@@ -50,7 +54,7 @@ logger = logging.getLogger(__name__)
 SEP = " > "
 OTHERS = "Others"
 MODEL_FILES = ("label_space.json", "heads.pt", "encoder/config.json")
-LEAF_MODEL, AXES_FALLBACK, NO_MODEL = "leaf_model", "axes_fallback", "none"
+LEAF_MODEL, NO_MODEL = "leaf_model", "none"
 
 _lock = threading.Lock()
 _loaded: Optional[dict[str, Any]] = None
@@ -61,12 +65,6 @@ def model_dir() -> Path:
     from common.config import PAGE_LEAF_MODEL_DIR
 
     return Path(PAGE_LEAF_MODEL_DIR)
-
-
-def enabled() -> bool:
-    from common.config import PAGE_CLASSIFIER
-
-    return PAGE_CLASSIFIER == "leaf"
 
 
 # --- The taxonomy's leaves --------------------------------------------------------------------------
@@ -155,7 +153,7 @@ def _load() -> Optional[dict[str, Any]]:
         missing = [f for f in MODEL_FILES if not (folder / f).is_file()]
         if missing:
             _failed = f"no page-leaf model at {folder} (missing {', '.join(missing)})"
-            logger.info("Page leaf: %s; the page-axes model stands in", _failed)
+            logger.info("Page leaf: %s; the keywords decide alone", _failed)
             return None
         if not (find_spec("transformers") and find_spec("torch")):
             _failed = "transformers / torch not installed"
@@ -184,7 +182,6 @@ class ModelSide:
     candidates: list[dict[str, Any]] = field(default_factory=list)  # {"leaf"|"node", "score"}
     probs: dict[str, float] = field(default_factory=dict)  # leaf or node -> probability
     specialty: Optional[tuple[str, float]] = None
-    axes_raw: Optional[tuple[dict[str, Any], dict[str, Any]]] = None
     # A leaf the model has no class for (folded: too few pages, or never seen) -> the class
     # it trained as (its parent's Others, or the parent). That class's rank and probability
     # stand for the leaf when the keywords find it (2026-11-02, user).
@@ -226,13 +223,7 @@ def model_side(text: str, k: int, per_l1: int) -> ModelSide:
         cands = [{"path": renamed(leaf["leaf"]), "score": leaf["score"]} for leaf in row["leaves"]]
         spec = (row["specialty"], row["specialty_confidence"]) if row.get("specialty") else None
         return ModelSide(LEAF_MODEL, cands, probs, spec, trained_as=loaded["trained_as"])
-    found = axes.model_raw(text)
-    if found is None:
-        return ModelSide()
-    raw, space = found
-    cands = [{"path": renamed(p["path"]), "score": float(p["score"] or 0.0)}
-             for p in axes.model_paths(raw, space) if p.get("path")]
-    return ModelSide(AXES_FALLBACK, cands, {c["path"]: c["score"] for c in cands}, None, found)
+    return ModelSide()
 
 
 # --- The decision -------------------------------------------------------------------------------------
@@ -253,6 +244,9 @@ class Decision:
     # The pre-2026-11-14 confidence (leaf_confidence: model p backed by keywords, penalties):
     # kept as the weight continuity and the Final vote read, so no decision changes.
     strength: Optional[float] = None
+    # Every eligible leaf with points (not only the Deciding pool): the page's best leaf
+    # under each other L1 (under_l1).
+    all_points: dict[str, float] = field(default_factory=dict)
 
 
 def tie_order(leaves: dict[str, Any], settings: dict[str, Any]) -> dict[str, int]:
@@ -270,8 +264,7 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     k, per_l1 = int(settings["top_k"]), int(settings["per_l1"])
     eligible = {leaf for leaf in leaves if leaf not in kw.excluded}
 
-    # Model ranks. A candidate that is a node (a path above the leaves, from the page-axes
-    # stand-in) stands for the leaves under it the keywords scored; with none, for its
+    # Model ranks. A candidate that is a node (a path above the leaves) stands for the leaves under it the keywords scored; with none, for its
     # Others leaf, else for the node itself.
     model_rank_raw = ranked({c["path"]: c["score"] for c in model.candidates}, k, per_l1)
     model_rank: dict[str, int] = {}
@@ -307,7 +300,8 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
         deciding = None
     pool = {leaf for leaf in eligible if not deciding or under(leaf, deciding)}
 
-    totals = {leaf: points(model_rank.get(leaf), k) + points(keyword_rank.get(leaf), k) for leaf in pool}
+    all_points = {leaf: points(model_rank.get(leaf), k) + points(keyword_rank.get(leaf), k) for leaf in eligible}
+    totals = {leaf: all_points[leaf] for leaf in pool if leaf in all_points}
     scored = {leaf: t for leaf, t in totals.items() if t > 0}
     named = {leaf: t for leaf, t in scored.items() if not is_others(leaf)}
     choice_pool = named or scored
@@ -366,7 +360,8 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     why = {**why, "strength": strength, "rule_2026_11_14": rule}
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
-                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength)
+                    deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength,
+                    {leaf: t for leaf, t in all_points.items() if t > 0})
 
 
 def chosen_confidence(*, how: str, p: float, has_model: bool, model_agrees: bool, overruled: bool,
@@ -491,8 +486,52 @@ def stands_for(model: ModelSide, leaf: str, path: str) -> bool:
 # --- One page -----------------------------------------------------------------------------------------
 
 
-def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[axes.AxesResult]:
-    """The page's type as one leaf, in the AxesResult shape; None when the page has no text."""
+def specialty_settings() -> dict[str, Any]:
+    c = leaf_canon.canon().settings
+    return {"min": float(c.get("specialty_min", 0.5)),
+            "not_asserted": tuple(c.get("specialty_not_asserted") or ("Unknown", "Others")),
+            "fallback": str(c.get("specialty_fallback") or "General")}
+
+
+def page_specialty(model: ModelSide, text: str, headings: tuple[str, ...]) -> tuple[str, Optional[float], str]:
+    """(specialty, confidence, who): the model's specialty head when it is sure enough; else a
+    specialty title in the title zone; else the specialty keywords; else General. Only the
+    model's carries its own probability; the others are a backup (CONFIDENCE_LOGIC.md 12.2)."""
+    s = specialty_settings()
+    if model.specialty and model.specialty[0] not in s["not_asserted"] and model.specialty[1] >= s["min"]:
+        return model.specialty[0], round(float(model.specialty[1]), 4), page_result.MODEL
+    found = leaf_canon.specialty_title(text, headings) or specialty_keywords.specialty(text)[0]
+    if found:
+        return found, conf.backup(), page_result.CANON
+    return s["fallback"], conf.backup(), page_result.BY_OTHERS
+
+
+def under_l1(leaves: dict[str, Any], decision: Decision, model: ModelSide, kw: leaf_canon.LeafKeywords,
+             winner_l1: str) -> dict[str, Any]:
+    """Under every other L1 that has L2s: the leaf the page would take there -- the best by the
+    same points (then the model's probability, the keyword score) -- as
+    {L1: {l2, l2_confidence, l2_source, l3, l3_confidence}}. The Final step reads it when the
+    page's document has another L1."""
+    out: dict[str, Any] = {}
+    for other in tax.l1_names_with_l2():
+        if other == winner_l1:
+            continue
+        mine = [leaf for leaf in decision.all_points if leaf.split(SEP)[0] == other]
+        if not mine:
+            continue
+        best = max(mine, key=lambda leaf: (decision.all_points[leaf], _prob(model, leaf), kw.scores.get(leaf, 0.0)))
+        _l1, l2, l3 = leaves.get(best) or _split(best)
+        if not l2:
+            continue
+        p = round(_prob(model, best), 4) or None
+        out[other] = {"l2": l2, "l2_confidence": p,
+                      "l2_source": page_result.MODEL if p else page_result.CANON,
+                      "l3": l3, "l3_confidence": p if l3 else None}
+    return out
+
+
+def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.PageResult]:
+    """The page's type as one leaf (a PageResult); None when the page has no text."""
     if not (text or "").strip():
         return None
     settings = leaf_canon.canon().settings
@@ -501,34 +540,27 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[axes.AxesResu
     kw = leaf_canon.score_leaves(leaves, text, headings)
     decision = decide(leaves, model, kw, settings)
 
-    # The rest of the page's answer (specialty, under_l1, the canon entry) as the cascade
-    # gives it: from the page-axes model's answer when it ran, else the keyword canon.
-    base = axes.gate(model.axes_raw[0], model.axes_raw[1], text, headings) if model.axes_raw \
-        else axes.gate(None, {}, text, headings)
     l1, l2, l3 = leaves.get(decision.path) or _split(decision.path)
     if l1 == OTHERS:
         l2 = l3 = None
     path_conf = decision.confidence
-    entry_name, _ = axes.canon_entry(text, headings, l1, l2, l3 if l3 != OTHERS else None) \
-        if l1 != OTHERS else (None, None)
-    codeability = tax.codeability_of(l1, l2, l3) or axes.NEEDS_REVIEW
-    who = (axes.BY_OTHERS if l1 == OTHERS or decision.how == "nothing"
-           else axes.MODEL if decision.how in ("agree", "model") else axes.CANON)
-    sources = (who, who if l2 else "-", who if l3 else "-", base.sources[3], who)
-    specialty, specialty_conf = base.specialty, base.specialty_confidence
-    if model.specialty and model.specialty[0] not in ("Unknown", "Others") and model.specialty[1] >= 0.5:
-        specialty, specialty_conf = model.specialty[0], model.specialty[1]
-        sources = (*sources[:3], axes.MODEL, sources[4])
-    return dataclasses.replace(
-        base,
+    codeability = tax.codeability_of(l1, l2, l3) or page_result.NEEDS_REVIEW
+    who = (page_result.BY_OTHERS if l1 == OTHERS or decision.how == "nothing"
+           else page_result.MODEL if decision.how in ("agree", "model") else page_result.CANON)
+    specialty, specialty_conf, specialty_by = page_specialty(model, text, headings)
+    sources = (who, who if l2 else "-", who if l3 else "-", specialty_by, who)
+    return page_result.PageResult(
         l1=l1, l1_confidence=path_conf, l2=l2, l2_confidence=path_conf if l2 else None,
         l3=l3, l3_confidence=path_conf if l3 else None, page_type_confidence=path_conf,
         specialty=specialty, specialty_confidence=specialty_conf,
-        codeability=codeability, codeability_confidence=path_conf if codeability != axes.NEEDS_REVIEW else None,
-        sources=sources, canon_page_type=entry_name, rules=(),
+        codeability=codeability,
+        codeability_confidence=path_conf if codeability != page_result.NEEDS_REVIEW else None,
+        sources=sources,
+        title_l1=leaf_canon.title_l1(text, headings),
         paths=tuple({"rank": i, "path": leaf, "points": total,
                      "model_rank": decision.model_rank.get(leaf), "keyword_rank": decision.keyword_rank.get(leaf)}
                     for i, (leaf, total) in enumerate(decision.totals.items(), start=1)),
+        under_l1=under_l1(leaves, decision, model, kw, l1),
         leaf={
             "leaf": decision.path, "how": decision.how, "confidence": decision.confidence,
             "strength": decision.strength,
@@ -557,17 +589,16 @@ def describe() -> dict[str, Any]:
 
     folder = model_dir()
     missing = [f for f in MODEL_FILES if not (folder / f).is_file()]
-    stand_in = "page-axes model" if axes.describe().get("ready") else "keywords only"
     if missing:
-        return {"ready": False, "path": str(folder), "classifier": "leaf" if enabled() else "axes",
-                "reason": f"missing {', '.join(missing)}; {stand_in} + leaf keywords decide"}
+        return {"ready": False, "path": str(folder), "classifier": "leaf",
+                "reason": f"missing {', '.join(missing)}; the keywords decide alone"}
     try:
         space = json.loads((folder / "label_space.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return {"ready": False, "path": str(folder), "reason": str(exc)}
     if not (find_spec("transformers") and find_spec("torch")):
-        return {"ready": False, "path": str(folder), "reason": f"transformers / torch not installed; {stand_in}"}
-    return {"ready": True, "path": str(folder), "classifier": "leaf" if enabled() else "axes",
+        return {"ready": False, "path": str(folder), "reason": "transformers / torch not installed; the keywords decide alone"}
+    return {"ready": True, "path": str(folder), "classifier": "leaf",
             "taxonomy_version": space.get("taxonomy_version"), "leaf_classes": len(space.get("leaf") or [])}
 
 
@@ -576,6 +607,6 @@ def status() -> dict[str, Any]:
     loaded = _load()
     if loaded is None:
         return {"ready": False, "reason": _failed, "path": str(model_dir()),
-                "stand_in": "page-axes model" if axes.status().get("ready") else "keywords only"}
+                "stand_in": "keywords only"}
     return {"ready": True, "path": str(model_dir()), "leaf_classes": len(loaded["space"]["leaf"]),
             "taxonomy_version": loaded["space"].get("taxonomy_version")}

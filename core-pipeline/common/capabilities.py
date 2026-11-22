@@ -273,16 +273,6 @@ def hw_model_status() -> dict[str, Any]:
     }
 
 
-def page_axes_model_status() -> dict[str, Any]:
-    """Page-axes model in models/page-family/page-axes. Never raises; never loads the weights."""
-    try:
-        from modules.page_classify.axes import describe
-
-        return describe()
-    except Exception as exc:
-        return {"ready": False, "loaded": False, "reason": str(exc)}
-
-
 def page_leaf_model_status() -> dict[str, Any]:
     """Page-leaf model in models/page-family/page-leaf. Never raises; never loads the weights."""
     try:
@@ -425,7 +415,6 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
-        "page_axes_model": page_axes_model_status(),
         "page_leaf_model": page_leaf_model_status(),
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),
@@ -479,7 +468,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw = caps.get("hw_model") or {}
     rapid = caps.get("rapidocr_models") or {}
     bj = caps.get("blank_junk_model") or {}
-    page_axes = caps.get("page_axes_model") or {}
     page_leaf = caps.get("page_leaf_model") or {}
     encounter = caps.get("encounter_model") or {}
     kv = caps.get("extraction") or {}
@@ -493,10 +481,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
     rapid_on = "OK"
     bj_on = f"OK — {bj.get('model_version') or 'ready'}"
-    axes_on = (
-        f"OK — {page_axes.get('taxonomy_version')}, {page_axes.get('l1_classes')} L1 classes, "
-        f"{page_axes.get('specialties')} specialties"
-    )
     leaf_on = f"OK — {page_leaf.get('taxonomy_version')}, {page_leaf.get('leaf_classes')} leaf classes"
     encounter_on = f"OK — {encounter.get('label_version') or 'ready'}"
     kv_on = f"OK — {kv.get('model_version')}"
@@ -528,7 +512,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("7 KV extract", _one_line(kv, kv_on)),
         ("9 member NER", _one_line(ner, ner_on)),
         ("10 page leaf", _one_line(page_leaf, leaf_on)),
-        ("10 page axes", _one_line(page_axes, axes_on)),
         ("13 encounter", _one_line(encounter, encounter_on)),
         ("skip OCR", skip_line),
     ]

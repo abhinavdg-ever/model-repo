@@ -1,4 +1,4 @@
-"""Page classification: the page taxonomy, keyword matching, and the Final page
+"""Page classification: the page taxonomy, keyword matching (page_keywords.json), and the Final page
 type per continuity document.
 
 Made-up text only.
@@ -17,7 +17,7 @@ if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
 from modules.canon_store import CANON_DIR  # noqa: E402
-from modules.page_classify import axes, keywords, taxonomy  # noqa: E402
+from modules.page_classify import leaf_canon, taxonomy  # noqa: E402
 from modules.page_classify.arbitration import FinalPage, agree_document_type, decide_final, note_sections  # noqa: E402
 
 PN = "Progress Note"
@@ -44,7 +44,7 @@ class TestTaxonomy:
         """One taxonomy and one canon everywhere: the trainer's, the annotation
         tool's and the training copy of taxonomy.json are one file, and its label
         space is the pipeline's (page_taxonomy.json → label_space); the training
-        copy of page_canon.json is the pipeline's."""
+        copy of page_keywords.json (the one keyword canon) is the pipeline's."""
         copies = [REPO / "training" / folder / "taxonomy.json"
                   for folder in ("taxonomy", "bert-training", "bert-training-leaf", "annotation-tool")]
         assert len({path.read_text(encoding="utf-8") for path in copies}) == 1, \
@@ -58,9 +58,9 @@ class TestTaxonomy:
 
         for key in ("L1", "L2", "L3", "specialty"):
             assert names(training[key]) == names(pipeline[key]), key
-        canon = [REPO / "training" / "taxonomy" / "page_canon.json", CANON_DIR / "page_canon.json"]
+        canon = [REPO / "training" / "taxonomy" / "page_keywords.json", CANON_DIR / "page_keywords.json"]
         assert len({path.read_text(encoding="utf-8") for path in canon}) == 1, \
-            "copy core-pipeline/resources/canon/page_canon.json into training/taxonomy/"
+            "copy core-pipeline/resources/canon/page_keywords.json into training/taxonomy/"
 
 
 
@@ -68,39 +68,67 @@ class TestTaxonomy:
 # --- keyword matching ---------------------------------------------------------------
 
 
-def classify(text, headings=()):
-    canon = axes._CANON.get()
-    return keywords.classify(text, headings, canon=canon.keywords)
+def found(text, headings=()):
+    """node -> {list -> {term -> where}} for every node with a hit."""
+    return {path: {k: dict(v) for k, v in hits.found.items()}
+            for path, hits in leaf_canon.score_nodes(text, headings).items()}
+
+
+DSN = "Discharge Summary > Depart/Discharge Note"
 
 
 class TestKeywords:
+    """page_keywords.json matching (2026-11-22): whole words, longest match, titles in the title
+    zone x1.5, a one-word title only as a heading, Shared never alone."""
+
     def test_a_title_in_the_title_zone_is_a_title_hit(self):
-        hit = classify("DISCHARGE SUMMARY\nHospital course was uneventful.")
-        assert hit.page_type == "Discharge Summary"
-        assert hit.title_hit is True
+        hit = found("DISCHARGE SUMMARY\nHospital course was uneventful.")
+        assert hit[DSN]["deciding"]["Discharge Summary"] == "title_zone"
+        assert leaf_canon.title_l1("DISCHARGE SUMMARY\nHospital course was uneventful.") == "Discharge Summary"
 
     def test_the_same_title_far_below_the_title_zone_is_not_a_title_hit(self):
-        body = "\n".join(f"line {i} of filler text" for i in range(30))
-        hit = classify(body + "\nDischarge Summary\n")
-        assert hit is not None and hit.page_type == "Discharge Summary"
-        assert hit.title_hit is False
+        body = "\n".join(f"line {i} of filler text" for i in range(30)) + "\nDischarge Summary\n"
+        assert found(body)[DSN]["deciding"]["Discharge Summary"] == "page"
+        assert leaf_canon.title_l1(body) is None
+
+    def test_the_title_zone_counts_more(self):
+        top = leaf_canon.score_nodes("DISCHARGE SUMMARY\nmade up body")[DSN].score
+        low = leaf_canon.score_nodes("\n".join(["filler"] * 30) + "\nDISCHARGE SUMMARY")[DSN].score
+        assert top == 1.5 * low
 
     def test_whole_words_only(self):
-        assert classify("xdischarge summaryx") is None
+        assert not found("xdischarge summaryx")
 
-    def test_a_title_inside_a_sentence_is_not_a_title(self):
-        """"informed consent was obtained" is a sentence, not a consent title."""
-        hit = classify("OFFICE NOTE\nThe risks were explained and informed consent was obtained.")
-        assert not (hit and hit.page_type == "Consent and Authorization" and hit.title_hit)
+    def test_a_one_word_title_counts_only_as_a_heading(self):
+        hit = found("SUPERBILL\nmade up body")
+        assert any("superbill" in {t.lower() for t in v.get("deciding", {})} for v in hit.values())
+        inline = found("the superbill was mailed to the office")
+        assert not any("superbill" in {t.lower() for t in v.get("deciding", {})} for v in inline.values())
 
     def test_a_layout_detected_heading_counts(self):
-        text = "Discharge Summary Of The Patient Admitted In Spring Of This Year\nmade up body text"
-        assert classify(text).title_hit is False
-        assert classify(text, headings=["Discharge Summary Of The Patient Admitted In Spring Of This Year"]).title_hit is True
+        text = "made up body text\n" * 20 + "Discharge Summary Of The Patient\n"
+        assert leaf_canon.title_l1(text) is None
+        assert leaf_canon.title_l1(text, headings=["Discharge Summary"]) == "Discharge Summary"
 
-    def test_nothing_matched_is_none(self):
-        assert classify("zzz qqq") is None
-        assert classify("") is None
+    def test_the_longest_match_wins(self):
+        """A term inside a longer term matched at the same place is not counted."""
+        assert leaf_canon._covered((5, 9), [(0, 20), (5, 9)])
+        assert not leaf_canon._covered((5, 9), [(5, 9)])
+        assert not leaf_canon._covered((5, 9), [(10, 20)])
+
+    def test_shared_words_never_count_alone(self):
+        c = leaf_canon.canon()
+        node, term = next((path, n.lists["shared"][0]) for path, n in c.nodes.items() if n.lists["shared"])
+        alone = leaf_canon.score_nodes(f"zzz {term} qqq").get(node)
+        assert alone is None or "shared" not in alone.found
+
+    def test_specialty_titles(self):
+        assert leaf_canon.specialty_title("Audiology Report\nmade up body") == "Audiology"
+        assert leaf_canon.specialty_title("\n".join(["filler"] * 30) + "\nAudiology Report") is None
+
+    def test_nothing_matched_is_empty(self):
+        assert found("zzz qqq") == {}
+        assert found("") == {}
 
 
 # --- the Final answer ------------------------------------------------------------

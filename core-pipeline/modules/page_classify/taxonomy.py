@@ -1,11 +1,10 @@
 """The page taxonomy pages are named in: ``resources/canon/page_taxonomy.json``
-→ ``label_space`` (the page-axes model's L1 list, L2s per L1, L3s per
-"L1 > L2", specialties). The canon (``page_canon.json``) is converted into the
-same names by ``canon_convert``.
+→ ``label_space`` (the L1 list, L2s per L1, L3s per "L1 > L2", specialties). The keyword
+canon (``page_keywords.json``) is keyed by the same nodes.
 
-Page names written per page: ``page_type`` / ``page_subtype`` from the axes
-(L1 / Others, L1 / L2, or "L1 (L2)" / L3) and ``classification_category`` from
-the axes' codeability.
+Page names written per page: ``page_type`` / ``page_subtype`` from the page classifier's
+answer (L1 / Others, L1 / L2, or "L1 (L2)" / L3) and ``classification_category`` from its
+codeability.
 """
 from __future__ import annotations
 

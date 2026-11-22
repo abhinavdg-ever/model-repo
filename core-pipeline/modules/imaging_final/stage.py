@@ -57,7 +57,7 @@ from apps.worker.stages._support import (
 )
 from modules import confidence as conf
 from modules.continuity.engine import document_finals
-from modules.page_classify import axes
+from modules.page_classify import result as page_result
 from modules.page_classify.arbitration import FinalPage, decide_final, note_sections, packets, path_of
 from modules.non_codable_credentials import only_non_codable
 from modules.page_classify.taxonomy import CATEGORY
@@ -182,7 +182,7 @@ def encounter_specialties(
     for document_pages in documents.values():
         if not document_pages:
             continue
-        first = axes.stored(classification.get(document_pages[0]) or {}).get("specialty")
+        first = page_result.stored(classification.get(document_pages[0]) or {}).get("specialty")
         found = first if first and first not in ("Unknown", "Others") else DEFAULT_SPECIALTY
         for pid in document_pages:
             out[pid] = found
@@ -242,7 +242,7 @@ def final_confidences(
     if specialty_page is not None:
         out["specialty"] = _own_or_carried(
             page_id, specialty_page,
-            _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence")))
+            _number(page_result.stored(classification.get(specialty_page) or {}).get("specialty_confidence")))
     if dos_page is not None:
         out["dos"] = _own_or_carried(page_id, dos_page, _number((dos.get(dos_page) or {}).get("confidence")))
     encounter = encounters.get(encounter_page) or {}
@@ -274,7 +274,7 @@ def _anchor(type_pages: list[int], page_type: Optional[str], page_subtype: Optio
             classification: dict[int, dict[str, Any]]) -> int:
     """The page the document's Final page type came from: its first page of that L1."""
     l1 = path_of(page_type, page_subtype)[0]
-    return next((pid for pid in type_pages if axes.family_of(classification.get(pid) or {}) == l1), type_pages[0])
+    return next((pid for pid in type_pages if page_result.family_of(classification.get(pid) or {}) == l1), type_pages[0])
 
 
 def review_fields(confidences: dict[str, float]) -> list[str]:
@@ -303,19 +303,19 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any], *,
         page_id=page_id,
         page_type=kind.get("page_type"),
         page_subtype=kind.get("page_subtype"),
-        family=axes.family_of(kind) or None,
-        names=axes.names_of(kind),
-        l2=axes.l2_of(kind),
-        under_l1=axes.under_l1_of(kind),
+        family=page_result.family_of(kind) or None,
+        names=page_result.names_of(kind),
+        l2=page_result.l2_of(kind),
+        under_l1=page_result.under_l1_of(kind),
         category=kind.get("classification_category"),
-        codeability_rule=axes.stored(kind).get("codeability_rule"),
-        title_l1=axes.title_of(kind),
+        codeability_rule=page_result.stored(kind).get("codeability_rule"),
+        title_l1=page_result.title_of(kind),
         model_type=kind.get("model_type"),
         document_seq=link.get("document_seq"),
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
         # The pre-2026-11-14 confidence: the vote weight (no decision changes with the new one).
-        confidence=weight if weight is not None else axes.decision_confidence(kind),
+        confidence=weight if weight is not None else page_result.decision_confidence(kind),
         sections=note_sections(text),
         signed=signed,
     )
@@ -365,7 +365,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # A stand-alone non-visit document takes the default DOS.
                 "page_type": kind.get("page_type"),
                 "page_subtype": kind.get("page_subtype"),
-                "names": axes.names_of(kind),
+                "names": page_result.names_of(kind),
                 "encounter_type": _visit_setting((encounters.get(page["id"]) or {}).get("encounter_type")),
             }
         junk_pages = frozenset(
@@ -467,7 +467,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # Codability is the Final type's (verdict); the Extracted row's flag counts
                 # only for a page type nobody was sure of, not for its own codability.
                 "needs_review": bool(verdict.needs_review or (
-                    kind.get("needs_review") and axes.decided_by_of(kind) in (None, axes.BY_OTHERS))),
+                    kind.get("needs_review") and page_result.decided_by_of(kind) in (None, page_result.BY_OTHERS))),
                 "dos_from": dates["dos_from"],
                 "dos_to": dates["dos_to"],
                 "dos_source": dos_origin if dates["dos_from"] else None,
@@ -483,7 +483,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # The page's own, like the sub-type; not carried across the document.
                 # Unknown on a classified page the axes gave no specialty.
                 "specialty": (
-                    (specialty_of.get(page_id) if page_id in specialty_of else axes.stored(kind).get("specialty"))
+                    (specialty_of.get(page_id) if page_id in specialty_of else page_result.stored(kind).get("specialty"))
                     or (DEFAULT_SPECIALTY if kind else None)
                 ) if with_specialty else None,
             }

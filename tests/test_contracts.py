@@ -1310,8 +1310,7 @@ class TestCapabilityReporting:
             "5 final OCR 2",
             "7 KV extract",
             "9 member NER",
-            "10 page leaf",
-            "10 page axes",
+            "10 page leaf",  # the page-axes line went with the cascade (2026-11-22)
             "13 encounter",
             "skip OCR",
         ]

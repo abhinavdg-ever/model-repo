@@ -313,24 +313,15 @@ BLANK_JUNK_MODEL_DIR = _path_under_core(
     os.environ.get("BLANK_JUNK_MODEL_DIR"),
     "models/blank-junk",
 )
-# Page-axes model (L1 / L2 / L3 / specialty / codeability; folder written by
-# training/bert-training/train_axes.py: encoder/, heads.pt, label_space.json).
-# Decides page_type / page_subtype. Missing folder, or no transformers / torch,
-# means the keyword canon (resources/canon/page_canon.json) decides alone.
-PAGE_AXES_MODEL_DIR = _path_under_core(
-    os.environ.get("PAGE_AXES_MODEL_DIR"),
-    "models/page-family/page-axes",
-)
 # Page-leaf model (training/bert-training-leaf/train_leaf.py: encoder/, heads.pt,
-# label_space.json with kind "leaf"): one class per whole path L1 > L2 > L3. With it the
-# page-axes model is not run. Missing: the page-axes model's paths stand in for it.
+# label_space.json with kind "leaf"): one class per whole path L1 > L2 > L3; with the keyword
+# canon (resources/canon/page_keywords.json) it decides page_type / page_subtype
+# (modules/page_classify/leaf.py). Missing folder, or no transformers / torch: the keywords
+# decide alone.
 PAGE_LEAF_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_LEAF_MODEL_DIR"),
     "models/page-family/page-leaf",
 )
-# How page_subtype decides a page's type: "leaf" (2026-11-01: the leaf model / its stand-in
-# + the per-leaf keyword canon, modules/page_classify/leaf.py) or "axes" (the cascade).
-PAGE_CLASSIFIER = (os.environ.get("PAGE_CLASSIFIER") or "leaf").strip().lower()
 # Encounter model (folder written by training/bert-training-encounter/train_encounter.py:
 # encoder/, head.pt, label_space.json). One more vote per page in the encounter stage,
 # where the rules found no evidence (encounter_canon.json -> model_vote). Missing folder,

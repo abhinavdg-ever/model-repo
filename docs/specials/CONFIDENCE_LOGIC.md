@@ -460,13 +460,13 @@ checked (`stage.py:695`), which is a different number from the database column.
 
 ## 6. Page classification, sub-type, codability, specialty (stage 10)
 
-The default classifier is the **leaf** classifier (`PAGE_CLASSIFIER=leaf`,
-`core-pipeline/common/config.py:323`): one leaf L1 > L2 > L3 from a page-leaf model and the
-per-leaf keyword canon.
+The page classifier is the **leaf** classifier (`core-pipeline/modules/page_classify/leaf.py`;
+the only one since 2026-11-22, when the page-axes cascade was removed): one leaf L1 > L2 > L3
+from the page-leaf model and the keyword canon `page_keywords.json`.
 
 ### 6.1 Page type confidence (`leaf_confidence`)
 
-`core-pipeline/modules/page_classify/leaf.py:377`, settings in `leaf_keywords.json`
+`core-pipeline/modules/page_classify/leaf.py`, settings in `page_keywords.json`
 (`confidence`), defaults `core-pipeline/modules/page_classify/leaf_canon.py:57`.
 
 Keyword support for the winner (`leaf.py:356`):
@@ -502,22 +502,15 @@ the bands, `core-pipeline/common/db/__init__.py:1273`), `needs_review`, `axes` J
 Blank / junk / duplicate pages carry the blank / junk confidence; an invoice page kept
 Main carries the INVOICE rule's confidence (`stage.py:230`, `:246`).
 
-**Legacy cascade (`PAGE_CLASSIFIER=axes`).** Level confidence: model p backed by keywords
-or a title pin; without a model, keyword share x strength; Others: folded OTHER p or
-1 - best, x fallback (`core-pipeline/modules/page_classify/axes.py:459`, `:486`). Keyword canon
-confidence: title 0.6 + 0.05 per margin point, cap 0.9; body 0.3 + 0.05, cap 0.6
-(`core-pipeline/modules/page_classify/arbitration.py:65`, `page_arbitration.json`).
-
 ### 6.2 Sub-type, codability, specialty
 
 - **Sub-type** (review-ui): the deepest named L2 / L3 confidence; with the leaf classifier
   all levels carry the same path confidence (`leaf.py:465`).
 - **Codability** (Codable / Non Codable): the path confidence (`codeability_confidence`).
   In Final it is re-scaled by the Final page type's confidence (section 9).
-- **Specialty** (`axes.py:560`): model p backed by specialty keywords, x keywords_disagree
-  when they name another; keywords only: their own value (x no_model without a model);
-  General fallback: 1 - best named specialty, x fallback. The leaf path takes the leaf
-  model's own specialty probability when >= 0.5, as a raw value (`leaf.py:473`).
+- **Specialty** (`leaf.page_specialty`): the leaf model's own specialty probability when it
+  is >= `specialty_min` (0.5) and not Unknown / Others; else a `specialty_titles` phrase in the
+  title zone, else the specialty keywords, else General -- each of those a backup (0.40).
 
 **Shown.** Page Details Page Type, Sub-type, Specialty, Codable rows.
 
@@ -906,7 +899,7 @@ V-curve (section 4.3). The cut points 0.80 / 0.90 and the floor 0.30 go in
 | `core-pipeline/modules/member/stage.py` | one confidence per field (name, DOB, member ID) = its KV `model_score`; NER / rules only -> backup; chart value renamed agreement rate (DB and CSV the same) |
 | `core-pipeline/modules/blank_junk/method.py`, `stage.py`, `classify.py` | verdict confidence = the service's p for the final class; rule-decided -> backup; against the model's top class -> flipped; remove `RULE_SUPPORT` / fixed 0.90 / 0.95 as confidences |
 | `core-pipeline/modules/blank_junk/dup_rules.py` / `stage.py`; `review-ui/.../duplicate_label.py`, `duplicateLabel.ts` | Yes / Partial = max(0.30, 1 - 10 x (1 - match)); No by 12.2.1 (1.0 under 80%, 1.0 -> 0.80 to 90%, 0.80 -> 0.30 to 100%); remove the V-curve |
-| `core-pipeline/modules/page_classify/leaf.py`, `stage.py`, `axes.py` | page type = leaf model p; keywords only / Others -> backup; keyword vs model override -> flipped; drop the handwritten / thin-text multipliers |
+| `core-pipeline/modules/page_classify/leaf.py`, `stage.py` | page type = leaf model p; keywords only / Others -> backup; keyword vs model override -> flipped; drop the handwritten / thin-text multipliers |
 | `core-pipeline/modules/dos/dos_logic.py` | KV pair `model_score`; every other source -> backup; default date -> NA |
 | `core-pipeline/modules/encounter/encounter_classify.py` | model p for the setting; family rule / keywords / default -> backup; vote against the model -> flipped |
 | `core-pipeline/modules/image_preprocess/hw_printed.py` | handwritten-share rule changing the type -> flipped |
@@ -981,9 +974,7 @@ confidence uses the new curves (`duplicateLabel.ts`, `services/duplicate_label.p
 3. Specialty: the leaf model's own specialty (>= 0.5) bypasses the keyword check, as before.
 4. The Final page type's anchor is the first page of the document whose L1 is the Final L1;
    a page whose own L1 matches but is not the anchor is "carried" (x 0.90).
-5. The legacy cascade (`PAGE_CLASSIFIER=axes`) keeps its own level confidences (only the
-   handwritten / thin-text multipliers were dropped); only the default leaf classifier follows
-   the new rule.
+5. (2026-11-22) The legacy page-axes cascade was removed; the leaf classifier is the only one.
 6. `page_classification.needs_review` (< 0.50) now reads the new confidence, so more pages are
    flagged; it decides no value.
 7. No schema change: the member split lives in the `imaging_final.confidences` JSONB and is

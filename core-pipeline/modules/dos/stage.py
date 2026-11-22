@@ -201,10 +201,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # Every page's Tesseract text, read only for print stamps (never a DOS).
             prelim = get_ocr_texts(conn, chart_id, "tesseract")
 
-        from modules.page_classify import axes
+        from modules.page_classify import result as page_result
 
         # The page kind (discharge / lab / other) is its classification L1.
-        families = {page["page_name"]: axes.family_of(classification.get(page["id"]) or {}) for page in ctx.pages}
+        families = {page["page_name"]: page_result.family_of(classification.get(page["id"]) or {}) for page in ctx.pages}
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
         from modules.extraction.stage import ensure_staging

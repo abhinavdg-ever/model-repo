@@ -60,7 +60,7 @@ from modules.continuity.signature import has_signature_section, signed_page_name
 from modules.extraction.dos.extract import TIER_RANK
 from modules.extraction.member_id.id_types import guess_id_type
 from modules.extraction.util.dates import canonical_date
-from modules.page_classify import axes
+from modules.page_classify import result as page_result
 
 logger = logging.getLogger(__name__)
 
@@ -575,14 +575,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     lines=lines,
                     section_headers=headers + _staged_sections(staged),
                     # Pages are compared on their family (L1) and full type path.
-                    page_type=axes.family_of(kind_row),
+                    page_type=page_result.family_of(kind_row),
                     page_subtype=kind_row.get("page_subtype") or "",
-                    names=axes.names_of(kind_row),
+                    names=page_result.names_of(kind_row),
                     page_confidence=(
                         junk_weights[name] if kind_row.get("decided_by") == INVOICE_DECIDED_BY and name in junk_weights
-                        else axes.decision_confidence(kind_row)
+                        else page_result.decision_confidence(kind_row)
                     ),
-                    title_hit=bool(axes.title_of(kind_row)) if axes.stored(kind_row) else bool(kind_row.get("keyword_title_hit")),
+                    title_hit=bool(page_result.title_of(kind_row)) if page_result.stored(kind_row) else bool(kind_row.get("keyword_title_hit")),
                     dos_from=dos_from if kind == "main" else "",
                     dos_to=_iso(page_dos.get("date_of_service_to")) if kind == "main" else "",
                     dos_trust=(_staged_trust(staged, dos_from) or trust_points(None, rules)) if dos_from else None,

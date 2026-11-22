@@ -130,9 +130,9 @@ class TestDecide:
         alone = leaf.decide(LEAVES, _model(("Progress Note > Others", 0.9)), leaf_canon.score_leaves(LEAVES, "x"), SETTINGS)
         assert alone.path == "Progress Note > Others"
 
-    def test_a_node_from_the_stand_in_model_goes_to_the_keywords_leaf_or_its_others(self, canon):
+    def test_a_node_candidate_goes_to_the_keywords_leaf_or_its_others(self, canon):
         canon({"Progress Note > CC/HPI": {"good_to_have": ["hpi"]}})
-        node = _model(("Progress Note", 0.8), source=leaf.AXES_FALLBACK)
+        node = _model(("Progress Note", 0.8), source=leaf.LEAF_MODEL)
         assert leaf.decide(LEAVES, node, leaf_canon.score_leaves(LEAVES, "hpi"), SETTINGS).path == "Progress Note > CC/HPI"
         assert leaf.decide(LEAVES, node, leaf_canon.score_leaves(LEAVES, "x"), SETTINGS).path == "Progress Note > Others"
 
@@ -155,7 +155,7 @@ class TestDecide:
         assert d.path == "Progress Note > CC/HPI"
 
 
-def test_the_drafted_canon_covers_the_taxonomy():
+def test_the_keyword_canon_covers_the_taxonomy():
     import json
 
     data = json.loads(leaf_canon.PATH.read_text(encoding="utf-8"))

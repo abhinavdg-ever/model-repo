@@ -52,7 +52,7 @@ from modules.continuity.stage import scores_path as continuity_scores_path
 from modules.encounter.encounter_classify import classify_pages, visit_date
 from modules.encounter import model_vote
 from modules.encounter.encounter_classify import load_canon as load_encounter_canon
-from modules.page_classify import axes
+from modules.page_classify import result as page_result
 from modules.page_classify.stage import _DOS_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -206,14 +206,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         tier1 = load_encounter_canon().tier1
         for page_input in page_inputs:
             kind = classification.get(page_input["page_id"]) or {}
-            names = axes.names_of(kind)
-            page_input["page_type_id"] = next((n for n in names if n in tier1), axes.family_of(kind))
+            names = page_result.names_of(kind)
+            page_input["page_type_id"] = next((n for n in names if n in tier1), page_result.family_of(kind))
             page_input["page_type_name"] = page_input["page_type_id"]
             # Encounter type applies only to some families (canon applies_to). A page
             # neither the model nor the canon was sure of (decided_by others) has no
             # family: it votes its own evidence, as an Unknown page did.
-            unsure = axes.decided_by_of(kind) == axes.BY_OTHERS
-            page_input["page_family"] = "" if unsure else axes.family_of(kind)
+            unsure = page_result.decided_by_of(kind) == page_result.BY_OTHERS
+            page_input["page_family"] = "" if unsure else page_result.family_of(kind)
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
 

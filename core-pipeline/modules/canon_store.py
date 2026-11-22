@@ -8,7 +8,7 @@ page processed — no pipeline restart, no re-OCR:
     member_keywords_canon.json   member key groups / ignore / label words
     section_header_canon.json    section-header catalog (stage 6)
     page_taxonomy.json           page taxonomy: label space (L1 / L2 / L3) + conversion tables
-    page_canon.json              page keyword canon (page types, lexicons, paths, codeability)
+    page_keywords.json           the page keyword canon (one per taxonomy node; priority rules, specialty titles)
     page_arbitration.json        page axes gates and rules + Final (per document) rules
     continuity_canon.json        document continuity signals
     encounter_canon.json         encounter-type keywords

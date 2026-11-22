@@ -1,6 +1,6 @@
 """The Final page type, per continuity document: ``page_arbitration.json``.
 
-The **Extracted** page type is the page axes (``axes.py``), decided from the
+The **Extracted** page type is the page classifier's (``leaf.py``), decided from the
 page alone. The **Final** page type (``decide_final``, run by
 ``imaging_final`` on the continuity stage's documents) re-places each page for
 the document it sits in. The **family** (L1) is agreed across a document's
@@ -51,30 +51,16 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 from modules.canon_store import CANON_DIR, CanonFile
-from modules.page_classify import axes
+from modules.page_classify import result as page_result
 from modules.page_classify import taxonomy as tax
-from modules.page_classify.keywords import KeywordResult
 
 _ARBITRATION: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "page_arbitration.json")
 
 
 UNKNOWN = "Unknown"
-OTHERS = axes.OTHERS
+OTHERS = page_result.OTHERS
 # 2026-11-15 (user): an Invoice page never sets the type of the document it sits in, and keeps its own.
 INVOICE = "Invoice"
-
-
-def keyword_confidence(keyword: Optional[KeywordResult]) -> Optional[float]:
-    """The keyword canon's own confidence: a base for a title hit or body terms,
-    plus a step per point of margin over the next candidate, capped."""
-    if keyword is None:
-        return None
-    c = _ARBITRATION.get()["confidence"]
-    if keyword.title_hit:
-        base, cap = float(c["keyword_title_base"]), float(c["keyword_title_cap"])
-    else:
-        base, cap = float(c["keyword_body_base"]), float(c["keyword_body_cap"])
-    return round(min(cap, base + float(c["keyword_per_margin"]) * max(0.0, keyword.margin)), 4)
 
 
 # --- the Final answer ---------------------------------------------
@@ -91,9 +77,9 @@ class FinalPage:
     page_type: Optional[str]  # as written: L1, or "L1 (L2)"
     page_subtype: Optional[str]
     family: Optional[str] = None  # L1; None reads page_type
-    names: tuple[str, ...] = ()  # canon page type, L3, L2, L1 (axes.names_of)
-    l2: Optional[str] = None  # its own L2 (axes.l2_of)
-    under_l1: dict[str, Any] = field(default_factory=dict)  # axes.under_l1_of
+    names: tuple[str, ...] = ()  # canon page type, L3, L2, L1 (page_result.names_of)
+    l2: Optional[str] = None  # its own L2 (page_result.l2_of)
+    under_l1: dict[str, Any] = field(default_factory=dict)  # page_result.under_l1_of
     category: Optional[str] = None  # its own classification_category (from the canon)
     codeability_rule: Optional[str] = None  # page_type_tag | context | source
     title_l1: Optional[str] = None  # the L1 whose canon title heads the page
@@ -147,7 +133,7 @@ def _placement(agreed: str, family: Optional[str]) -> Optional[str]:
     row = table.get(agreed) or {}
     found = row.get(family or "") or row.get("*")  # "*": any other family (2026-11-01, user)
     # Only an L2 the taxonomy has under that L1: the Final path must stay a valid one.
-    return found if isinstance(found, str) and found and found in axes.l2_names(agreed) else None
+    return found if isinstance(found, str) and found and found in page_result.l2_names(agreed) else None
 
 
 def _note_rules() -> dict[str, Any]:
@@ -155,7 +141,7 @@ def _note_rules() -> dict[str, Any]:
 
 
 def _section_l1() -> str:
-    return (_ARBITRATION.get().get("axes") or {}).get("section_L1", tax.PROGRESS_NOTE)
+    return _ARBITRATION.get().get("section_L1") or tax.PROGRESS_NOTE
 
 
 _CATEGORY_OF_TAG = {"codeable": "codeable", "non_codeable": "non_codeable", "discharge": "discharge_summary"}
@@ -211,7 +197,7 @@ def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
     placed = _placement(agreed, _family(page))
     if placed:
         return agreed, placed
-    permitted = axes.l2_names(agreed)
+    permitted = page_result.l2_names(agreed)
     own = (page.l2, *page.names) if page.names else (page.l2, page.page_subtype, page.page_type)
     own_name = next((name for name in own if name and name != OTHERS and name in permitted), None)
     if agreed == _section_l1():

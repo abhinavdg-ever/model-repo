@@ -13,7 +13,7 @@ keeps its own `core-pipeline/models/`, copied by hand (scp / robocopy) or from B
 | `layout_heron/` | 7 KV extraction (headings) | yes | `model.safetensors` (164 MB) |
 | `kv-extraction/` | 7 KV extraction | yes | the whole folder (14 MB) |
 | `ner/gliner_low/` or `ner/gliner_medium-v2.1/` | 9 member NER (`MEMBER_NER_MODEL_ID`) | the one in use | `pytorch_model.bin` (582 / 745 MB) |
-| `page-family/page-leaf/`, `page-axes/` | 10 page type | yes | `encoder/model.safetensors` (413 MB each) |
+| `page-family/page-leaf/` | 10 page type | yes | `encoder/model.safetensors` (413 MB) |
 | `encounter/` | 13 encounter type | yes | `encoder/model.safetensors` (413 MB) |
 | `semantic-model/` | 6 section headers (and review-ui's local run) | yes | `model.safetensors` (87 MB); review-ui local run also `onnx/model.onnx` |
 
@@ -43,10 +43,11 @@ formats (`pytorch_model.bin`, `tf_model.h5`, `rust_model.ot`, `openvino/`, the o
 #       Needs torch + transformers. Decision rules: default.json -> decision.
 #   blank-junk/default.json   model version. Without bert/ or torch the vote runs on keywords alone.
 #       /health -> blank_junk_model.engine says bert or keywords.
-#   page-family/page-axes/   page-axes model (PAGE_AXES_MODEL_DIR): decides page_type /
-#       page_subtype. encoder/, heads.pt, label_space.json from
-#       training/bert-training/train_axes.py. Weights (*.safetensors, heads.pt) stay
-#       local. Missing ⇒ the keyword canon (page_canon.json) decides alone.
+#   page-family/page-leaf/   page-leaf model (PAGE_LEAF_MODEL_DIR): with the keyword canon
+#       (resources/canon/page_keywords.json) decides page_type / page_subtype. encoder/,
+#       heads.pt, label_space.json from training/bert-training-leaf/train_leaf.py.
+#       Missing ⇒ the keywords decide alone. (page-family/page-axes/ is no longer read:
+#       its cascade was removed 2026-11-22; the folder can be deleted from each host.)
 #   page-family/family.joblib
 #       TF-IDF + XGBoost page family. Keywords choose the subtype; no hit
 #       leaves the subtype equal to the family. Missing file ⇒ keywords choose

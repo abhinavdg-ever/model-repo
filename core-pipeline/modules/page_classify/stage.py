@@ -1,9 +1,9 @@
 """Stage: page classification → ``page_classification`` (the Extracted answer).
 
 Every page that is not blank, junk or duplicate is classified on its own,
-from the page's text (Final2 → Final1 → Tesseract, plain text), by its page
-axes (``axes.predict``): the page-axes model's best paths where it is sure, the
-keyword canon (``page_canon.json``) elsewhere, Others when neither is. They are
+from the page's text (Final2 → Final1 → Tesseract, plain text), by the page classifier
+(``leaf.predict``): the page-leaf model and the keyword canon (``page_keywords.json``)
+choose one leaf L1 > L2 > L3, Others when neither names one. They are
 written as ``page_type`` / ``page_subtype`` — L1 / Others with one level, L1 /
 L2 with two, "L1 (L2)" / L3 with three — with the axes' codeability as the
 category, ``decided_by`` model / canon / rule / others, and the whole answer
@@ -56,7 +56,7 @@ from apps.worker.stages._support import (
 )
 from modules import confidence as conf
 from modules.canon_store import CANON_DIR, CanonFile
-from modules.page_classify import axes, leaf
+from modules.page_classify import result as page_result, leaf
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ def staging_path(chart_name: str) -> Path:
     return staging_dir(chart_name) / STAGING_FILE
 
 
-def _staged_entry(row: dict[str, Any], page_axes: Optional[axes.AxesResult], source: str) -> dict[str, Any]:
+def _staged_entry(row: dict[str, Any], page_axes: Optional[page_result.PageResult], source: str) -> dict[str, Any]:
     """One page of ``page_classification.json``: the Extracted value, who decided
     it, the model's best paths (5, at most 3 per L1), and the whole axes answer."""
     whole = page_axes.as_json() if page_axes else (row.get("axes") or None)
@@ -260,15 +260,15 @@ def _invoice_row(confidence: Any) -> dict[str, Any]:
     }
 
 
-def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
+def _page_row(page_axes: Optional[page_result.PageResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
     """The page's row: names, category and decided_by from its axes. The confidence
     (2026-11-14, user; CONFIDENCE_LOGIC.md section 12) is the page type's own (the leaf
     model's probability, backup or flipped: leaf.chosen_confidence), with no handwritten /
     thin-text multipliers; below the review band the page needs review. The older value
     (the leaf's strength x the page's doubts, ``reasons``) is kept as
-    ``axes.decision_confidence``, the weight continuity and the Final vote read."""
-    page_type, page_subtype = axes.page_names(page_axes)
-    codeability = page_axes.codeability if page_axes else axes.NEEDS_REVIEW
+    ``page_result.decision_confidence``, the weight continuity and the Final vote read."""
+    page_type, page_subtype = page_result.page_names(page_axes)
+    codeability = page_axes.codeability if page_axes else page_result.NEEDS_REVIEW
     path = [x for x in (page_axes.l1, page_axes.l2, page_axes.l3) if x] if page_axes else []
     confidence = conf.chosen(page_axes.page_type_confidence) if page_axes else None
     stored_axes = page_axes.as_json() if page_axes else None
@@ -283,8 +283,8 @@ def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = (
         "confidence": confidence,
         "duplicate_flag": False,
         "decided_by": page_axes.decided_by if page_axes else "no_text",
-        "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW or conf.needs_review(confidence) or (
-            page_axes is not None and page_axes.decided_by == axes.BY_OTHERS),
+        "needs_review": page_type is None or codeability == page_result.NEEDS_REVIEW or conf.needs_review(confidence) or (
+            page_axes is not None and page_axes.decided_by == page_result.BY_OTHERS),
         "axes": stored_axes,
     }
 
@@ -298,7 +298,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
 
-        counts = {"main": 0, "blank_junk": 0, "invoice": 0, "review": 0, "axes_model": 0, "canon": 0, "others": 0, "specialty": 0}
+        counts = {"main": 0, "blank_junk": 0, "invoice": 0, "review": 0, "model": 0, "canon": 0, "others": 0, "specialty": 0}
         # Every page's row first: a duplicate takes its original's page type, and the
         # original can come later in the chart.
         built: dict[int, tuple[dict[str, Any], Any, str]] = {}
@@ -321,15 +321,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             else:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                 headings = tuple(_headings(f2, f1))
-                # 2026-11-01 (user): one leaf from the model and the per-leaf keyword canon
-                # (leaf.py); PAGE_CLASSIFIER=axes keeps the cascade.
-                page_axes = (leaf.predict if leaf.enabled() else axes.predict)(text, headings)
+                # One leaf from the page-leaf model and the keyword canon (leaf.py; the
+                # page-axes cascade was removed 2026-11-22, user).
+                page_axes = leaf.predict(text, headings)
                 row = _page_row(page_axes, conf.page_reasons(
                     text, (quality.get(page_id) or {}).get("printed_or_handwritten")))
                 if page_axes is not None:
-                    counts["axes_model"] += int(page_axes.decided_by == axes.MODEL)
-                    counts["canon"] += int(page_axes.decided_by == axes.CANON)
-                    counts["others"] += int(page_axes.decided_by == axes.BY_OTHERS)
+                    counts["model"] += int(page_axes.decided_by == page_result.MODEL)
+                    counts["canon"] += int(page_axes.decided_by == page_result.CANON)
+                    counts["others"] += int(page_axes.decided_by == page_result.BY_OTHERS)
                     counts["specialty"] += int(page_axes.specialty is not None)
                 counts["main"] += 1
                 counts["review"] += int(row["needs_review"])
@@ -380,7 +380,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "page_subtype chart=%s main=%d blank_junk=%d invoice=%d review=%d model=%d canon=%d others=%d "
             "specialty=%d → %s",
             ctx.chart_name, counts["main"], counts["blank_junk"], counts["invoice"], counts["review"],
-            counts["axes_model"], counts["canon"], counts["others"], counts["specialty"], path,
+            counts["model"], counts["canon"], counts["others"], counts["specialty"], path,
         )
         return {
             "chart_id": chart_id,
@@ -389,7 +389,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
             **counts,
-            "page_axes": axes.status().get("ready", False),
-            "page_classifier": "leaf" if leaf.enabled() else "axes",
-            **({"page_leaf": leaf.status()} if leaf.enabled() else {}),
+            "page_classifier": "leaf",
+            "page_leaf": leaf.status(),
         }
