@@ -237,19 +237,39 @@ def _opens_continuation(line):
     return bool((nxt and nxt.search(line)) or (add and add.search(line)))
 
 
+# Sections only a visit note prints. A lab / imaging report also heads Exam, Diagnosis, Orders and
+# Impression, so those do not make a page a note (2026-11-22: the reviewed lab pages, as the family
+# priority rule's subjective-or-plan condition).
+NOTE_ONLY_SECTIONS = {'Chief complaint', 'History of present illness', 'Review of systems', 'Past medical history',
+                      'Past surgical history', 'Family history', 'Social history', 'Vitals',
+                      'Assessment and plan (combined)', 'Plan', 'Follow-up and next appointment',
+                      'Patient instructions and education', 'Medical decision making and time'}
+
+
+def _note_page(ls):
+    """The page carries a section only a visit note prints."""
+    from modules.blank_junk.pn_headers import section_of
+
+    return any(section_of(l.split(':', 1)[0] if ':' in l else l) in NOTE_ONLY_SECTIONS for l in ls)
+
+
 def signature_kinds(t):
     """Each signature line on the page, typed: header (in the head zone), embedded (inside a
     result block), before_section (a section header follows later on the page) or end."""
     ls = lines(t)
     _nxt, add, res, window = _signature_settings()
     result_at = [i for i, l in enumerate(ls) if res and res.search(l)]
+    in_note = _note_page(ls)
     kinds = []
     for i, l in enumerate(ls):
         if not _is_signature(l):
             continue
         if i < HEAD_LINES:
             kinds.append((i, 'header'))
-        elif any(0 <= i - r <= window for r in result_at):
+        elif in_note and any(0 <= i - r <= window for r in result_at):
+            # A result block's signature closes the block only on a page of a visit note; on a
+            # stand-alone lab / imaging report it is the report's own end (2026-11-22, reviewer:
+            # consecutive Lab Report pages signed by the lab are separate documents).
             kinds.append((i, 'embedded'))
         elif any(_opens_section(x) for x in ls[i + 1:]):
             kinds.append((i, 'before_section'))

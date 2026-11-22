@@ -14,6 +14,9 @@ REPO = Path(__file__).resolve().parents[1]
 CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
+# blank_junk/method.py imports card_rules from its own folder (as the blank / junk tests set up).
+if str(CORE / "modules" / "blank_junk") not in sys.path:
+    sys.path.insert(0, str(CORE / "modules" / "blank_junk"))
 
 from modules.continuity.ml import clues, viterbi  # noqa: E402
 

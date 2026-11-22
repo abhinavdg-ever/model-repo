@@ -49,8 +49,30 @@ def page_types(path: Optional[Path]) -> dict[str, dict[str, Any]]:
     return out
 
 
+CORRECTIONS = "label_corrections.csv"
+
+
+def apply_corrections(pairs: list[dict[str, str]], labels: Path) -> int:
+    """A reviewer's corrections (``label_corrections.csv`` beside the labels: chart_id, page_n, page_n1,
+    doc_breaks, reviewed_on, reason) applied over the built labels -- the label files themselves are
+    never edited. Returns how many meeting points changed."""
+    path = labels / CORRECTIONS
+    if not path.is_file():
+        return 0
+    fixes = {(r["chart_id"], r["page_n"], r["page_n1"]): r for r in _read_csv(path)}
+    changed = 0
+    for p in pairs:
+        fix = fixes.get((p["chart_id"], p["page_n"], p["page_n1"]))
+        if fix and p["doc_breaks"] != fix["doc_breaks"]:
+            p["doc_breaks"] = fix["doc_breaks"]
+            p["doc_continues"] = str(1 - int(fix["doc_breaks"]))
+            changed += 1
+    return changed
+
+
 def build(labels: Path, text: Path, types_file: Optional[Path]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     pairs = _read_csv(labels / "document_pairs.csv")
+    corrected = apply_corrections(pairs, labels)
     wanted = {p["image_n"] for p in pairs} | {p["image_n1"] for p in pairs}
     pages: dict[str, dict[str, Any]] = {}
     with text.open(encoding="utf-8") as handle:
@@ -88,6 +110,7 @@ def build(labels: Path, text: Path, types_file: Optional[Path]) -> tuple[list[di
                                  **{k: clue.get(k) for k in REPORT_ONLY}})
             chain = [p] if p is not None else []
     return rows, {"pairs_in": len(pairs), "rows_out": len(rows), "pages_without_text": len(missing),
+                  "reviewer_corrections_applied": corrected,
                   "page_types": "predicted" if predicted else "reviewed"}
 
 
