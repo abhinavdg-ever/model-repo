@@ -66,5 +66,7 @@
         "note": "2026-11-21 (user): a blank / junk rule's confidence from its evidence, not a flat number (modules/blank_junk/evidence.py). rule = 0.5 + rule_span x margin x support; logit(c) = rule_weight x ocr_factor x logit(rule) + model_weight x logit(model p for the verdict); ocr_factor = ocr_min_factor + (1 - ocr_min_factor) x OCR match rate. margin: how far past the rule's own cut (0 on it, 1 far past); support: neighbours compared, same OCR engine, share of lines the neighbours' (Junk) or its own (Main). Used for the short-page rules, contents pages, cards and any rule that goes against the model (was 0.60 / 0.40). Then calibration.blank_junk (fit on labelled pages) and the floor."
       }
     }
-  }
+  },
+  "member_not_found": 0.8,
+  "member_not_found_note": "2026-11-23 (user): a member Name / DOB / ID not found on the page, with no measured 'not found' accuracy (modules.member.calibration): 0.80."
 }

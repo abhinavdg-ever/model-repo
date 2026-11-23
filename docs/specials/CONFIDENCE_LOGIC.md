@@ -15,6 +15,9 @@ History is in git; this page is only the current logic.
 | **Medium** | 0.50 to under 0.80 | amber |
 | **Low** | under 0.50 | red: listed in `imaging_final.review_fields` |
 
+**Blank / Junk, Provider Signature and Orientation** (2026-11-23, user) are stricter: **High 0.95 and above,
+Medium 0.75 to under 0.95, Low under 0.75** (page and chart levels, Confidence Analysis).
+
 No confidence is shown below **0.20** (the floor; a lower value is raised to it). A field with no
 value read (no DOS, nothing extracted, a default date) has **no confidence**, not a number.
 
@@ -49,7 +52,7 @@ All numbers are in `core-pipeline/resources/canon/confidence_canon.json` and rel
 
 | Field | Confidence |
 |---|---|
-| **Member name / DOB** | raw: the KV row the shown value came from: score x `model_score` (score 0: `model_score`); found by the rules / GLiNER with no row: 0.60; dropped by post-processing: 0.60 or lower. Then **calibrated** per source (section 5a); once fitted, a name / DOB not read carries the measured chance "not found" is right |
+| **Member name / DOB** | raw: the KV row the shown value came from: score x `model_score` (score 0: `model_score`); found by the rules / GLiNER with no row: 0.60; dropped by post-processing: 0.60 or lower. Then **calibrated** per source (section 5a); a name / DOB / ID **not found: 0.80** (`member_not_found`, 2026-11-23, user), or once fitted the measured chance "not found" is right |
 | **Member ID** | the mean of every ID row KV Extract accepted and selected |
 | **Member verification (chart)** | not a confidence: the agreement rate (pages agreeing / pages checked) |
 | **Provider signature** | the signature row's score x `model_score` (rules only: 0.60); several signers: their mean; a facility read as the provider: 0.60 or lower. No signature: 1 - the best model-scored candidate; KV read the page and offered none: 1.0 |
@@ -155,10 +158,12 @@ A source with under 30 labelled pages keeps its raw value. The raw value and sou
 ## 6. Confidence Analysis (review-ui, Accuracy)
 
 Over the filtered charts' pages with ground truth, by confidence band (**95-100, 90-95, 85-90,
-80-85, 75-80, 70-75, 60-70, 50-60, 40-50, 30-40, <30%**). Overview (2026-11-23, user): (1) pages by
-their own confidence band: Pages, Match, No Match, Accuracy, where Match = every metric on the page
-matches; (2) each metric's accuracy by its own confidence band, one column per metric. Each metric's
-tab: its own band table. Accuracy should rise with confidence.
+80-85, 75-80, 70-75, 60-70, 50-60, 40-50, 30-40, <30%**). Header: the average chart confidence, charts
+and pages. Overview (2026-11-23, user): (1) charts by chart confidence band; (2) pages by their own
+confidence band: Pages, Match, No Match, Accuracy, where Match = every metric on the page matches;
+(3) by page confidence band, each metric's accuracy, one column per metric. Each metric's tab: its
+accuracy by its own confidence; Blank / Junk, Provider Signature and Orientation split 95-100 into
+**99-100, 98-99, 97-98, 96-97, 95-96**. Accuracy should rise with confidence.
 
 ---
 

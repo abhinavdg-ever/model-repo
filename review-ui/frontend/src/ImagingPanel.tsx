@@ -19,7 +19,7 @@ import {
   savePageSequences,
 } from "./api";
 import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue, pageTypeOut } from "./accuracy";
-import { levelLabel, pageConfidence } from "./confidenceLevel";
+import { MEMBER_NOT_FOUND, levelLabel, pageConfidence } from "./confidenceLevel";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -288,15 +288,15 @@ const REVIEW_BELOW = 50;
 const MEMBER_CONF_KEYS = ["member_name", "member_dob", "member_id"];
 
 /** A member field's confidence (2026-11-23, user: a Not Found DOB showed the page's 55.7%): its own
- * Final confidence; once the Final confidences carry any member field, a field without one has
- * none. Only rows from before the per-field confidences show the page's one member confidence,
- * and only on a field that was read. */
+ * Final confidence; a field not found with none reads MEMBER_NOT_FOUND (80%); a field read without
+ * one shows the page's one member confidence only on rows from before the per-field confidences. */
 function memberFieldConfidence(page: ImagingPageResult, key: string, value: string | null | undefined): number | null {
   const stored = page.finalConfidences?.[key];
   if (typeof stored === "number") return stored;
+  const found = (value ?? "").trim() !== "" && (value ?? "").trim().toLowerCase() !== "not found";
+  if (!found) return MEMBER_NOT_FOUND;  // 2026-11-23 (user): not found, no confidence -> 80%
   if (MEMBER_CONF_KEYS.some((k) => typeof page.finalConfidences?.[k] === "number")) return null;
-  const read = (value ?? "").trim() !== "" && (value ?? "").trim().toLowerCase() !== "not found";
-  return read ? page.memberConfidence ?? null : null;
+  return page.memberConfidence ?? null;
 }
 
 function finalOr(page: ImagingPageResult, key: string, extracted: number | null | undefined): number | null {

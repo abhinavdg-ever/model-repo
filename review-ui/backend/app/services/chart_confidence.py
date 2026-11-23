@@ -31,12 +31,27 @@ CRITICAL_PAGE_TYPES = ("Discharge Summary", "Operative Note", "Procedure Note")
 CHART_WEIGHTS = {"high": 1.0, "medium": 0.6, "low": 0.0}
 CRITICAL_WEIGHT = 2.0
 
+# 2026-11-23 (user): a member field with no confidence (not found) reads this.
+MEMBER_NOT_FOUND = 0.8
 FEATURES = ["member", "dos", "blank_junk", "page_type", "codability", "provider", "orientation"]
 BLANK_JUNK_FEATURES = {"blank_junk", "codability"}
 
 
 def band(value: float) -> str:
     return "high" if value >= HIGH_AT else "medium" if value >= LOW_BELOW else "low"
+
+
+# 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation are High from 95%, Low under 75%.
+STRICT_FEATURES = {"blank_junk", "provider", "orientation"}
+STRICT_HIGH_AT = 0.95
+STRICT_LOW_BELOW = 0.75
+
+
+def band_for(key: str, value: float) -> str:
+    """A feature's level: the strict cuts for STRICT_FEATURES, else the usual 80% / 50%."""
+    if key in STRICT_FEATURES:
+        return "high" if value >= STRICT_HIGH_AT else "medium" if value >= STRICT_LOW_BELOW else "low"
+    return band(value)
 
 
 def _num(value: Any) -> Optional[float]:
@@ -73,8 +88,12 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
         if blank_junk_or_duplicate and key not in BLANK_JUNK_FEATURES:
             continue
         if key == "member":
-            parts = [v for v in (_num(conf.get("member_name")), _num(conf.get("member_dob"))) if v is not None]
-            value = sum(parts) / len(parts) if parts else None  # 2026-11-23 (user): the average
+            # 2026-11-23 (user): the average of Name and DOB; one with no confidence (not found) reads
+            # MEMBER_NOT_FOUND (0.80).
+            parts = [MEMBER_NOT_FOUND if v is None else v
+                     for v in (_num(conf.get("member_name")), _num(conf.get("member_dob")))]
+            # Only on a page the Final stage scored (any confidence of its own).
+            value = sum(parts) / len(parts) if any(_num(v) is not None for v in conf.values()) else None
         else:
             value = _num(conf.get(key))
         if value is not None:
@@ -82,8 +101,8 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
     if not values:
         return None
     counts = {"high": 0, "medium": 0, "low": 0}
-    for v in values.values():
-        counts[band(v)] += 1
+    for key, v in values.items():
+        counts[band_for(key, v)] += 1
     # 2026-11-22 (user): like an NPS over the page's features, as the chart over its pages.
     scored = nps_level(counts)
     return scored["level"], scored["value"], is_critical(page_type)

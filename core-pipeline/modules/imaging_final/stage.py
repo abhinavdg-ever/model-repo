@@ -256,8 +256,9 @@ def final_confidences(
         # No extraction staging to read the fields' own confidences from: the row's one value
         # for each identifier it has.
         single = _number(member.get("confidence"))
+        # 2026-11-23 (user): a field not found reads member_not_found (0.80).
         member_fields = {
-            field: single if member.get(column) not in (None, "") else None
+            field: single if member.get(column) not in (None, "") else (conf.member_not_found() if member else None)
             for field, column in (("name", "extracted_name"), ("dob", "extracted_dob"),
                                   ("member_id", "extracted_member_id"))
         }

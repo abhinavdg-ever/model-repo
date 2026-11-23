@@ -41,6 +41,9 @@ export function capToLevel(level: Level, value: number): number {
   return Math.min(value, LEVEL_CAP[level]);
 }
 
+/** A member Name / DOB / ID with no confidence -- not found on the page (2026-11-23, user). */
+export const MEMBER_NOT_FOUND = 0.8;
+
 /** The features counted, in the accuracy list's order: [key, label]. */
 export const CONFIDENCE_FIELDS: [string, string][] = [
   ["member", "Member Verification"],
@@ -55,6 +58,17 @@ const BLANK_JUNK_FIELDS = new Set(["blank_junk", "codability"]);
 
 export function band(value: number): Level {
   return value >= HIGH_AT ? "high" : value >= LOW_BELOW ? "medium" : "low";
+}
+
+/** 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation are High from 95%, Low under 75%. */
+export const STRICT_FEATURES = new Set(["blank_junk", "provider", "orientation"]);
+export const STRICT_HIGH_AT = 0.95;
+export const STRICT_LOW_BELOW = 0.75;
+
+/** A feature's level: the strict cuts for STRICT_FEATURES, else the usual 80% / 50%. */
+export function bandFor(key: string, value: number): Level {
+  if (STRICT_FEATURES.has(key)) return value >= STRICT_HIGH_AT ? "high" : value >= STRICT_LOW_BELOW ? "medium" : "low";
+  return band(value);
 }
 
 export type FieldConfidence = { key: string; label: string; value: number; level: Level };
@@ -73,9 +87,13 @@ function num(value: unknown): number | null {
 
 function fieldValue(page: ImagingPageResult, key: string): number | null {
   if (key === "member") {
-    const parts = [rawValue(page, "member_name"), rawValue(page, "member_dob")].filter((v): v is number => v != null);
-    // 2026-11-23 (user): the average of Member Name and Member DOB (was the lower of the two).
-    return parts.length ? parts.reduce((sum, v) => sum + v, 0) / parts.length : null;
+    // 2026-11-23 (user): the average of Member Name and Member DOB (was the lower of the two); a field
+    // with no confidence (not found) reads MEMBER_NOT_FOUND (80%).
+    // Only on a page the Final stage scored (any Final confidence).
+    const scored = Object.values(page.finalConfidences ?? {}).some((v) => typeof v === "number");
+    const parts = [rawValue(page, "member_name"), rawValue(page, "member_dob")];
+    if (!scored && parts.every((v) => v == null)) return null;
+    return parts.map((v) => v ?? MEMBER_NOT_FOUND).reduce((sum, v) => sum + v, 0) / parts.length;
   }
   return rawValue(page, key);
 }
@@ -115,7 +133,7 @@ export function pageConfidence(page: ImagingPageResult): PageConfidence {
     if (only && !only.has(key)) continue;
     const value = fieldValue(page, key);
     if (value == null) continue;
-    fields.push({ key, label, value, level: band(value) });
+    fields.push({ key, label, value, level: bandFor(key, value) });
   }
   const counts: Record<Level, number> = { high: 0, medium: 0, low: 0 };
   for (const f of fields) counts[f.level] += 1;

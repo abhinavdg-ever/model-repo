@@ -107,7 +107,9 @@ def test_member_name_dob_and_id_each_have_their_own_confidence():
     assert member_field_confidences(whole, None)["name"] == 0.6
     # A database row (rule_based / extracted_*) reads the same.
     row = {"extracted_name": "Carl Rogers", "detection_source_name": "rule_based", "extracted_dob": None}
-    assert member_field_confidences(row, staged) == {"name": 0.744, "dob": None, "member_id": None}
+    # 2026-11-23 (user): a field not found, nothing measured: 0.80; the page column keeps read fields only.
+    assert member_field_confidences(row, staged) == {"name": 0.744, "dob": 0.8, "member_id": 0.8}
+    assert _page_confidence(row, staged) == 0.744
     assert _page_confidence(_member_page("not_verified")) is None  # nothing read, nothing decided
 
 
@@ -149,7 +151,8 @@ def test_final_values_take_the_anchor_pages_confidence_and_carry_it():
     assert final_confidences(2, members={}, replaced=True, **common)["page_type"] == 0.3
     # Rows written before the split: the page's one member confidence for each value it has.
     old = final_confidences(2, members={2: {"confidence": 0.84, "extracted_name": "A B"}}, **common)
-    assert old["member_name"] == 0.84 and "member_dob" not in old
+    # 2026-11-23 (user): a member field not found reads 0.80.
+    assert old["member_name"] == 0.84 and old["member_dob"] == 0.8
     # 2026-11-02 (user): a document encounter type does not apply to is blank, confidence too.
     blank = final_confidences(
         2, **{**common, "encounters": {1: {"encounter_type": "not_applicable", "confidence": 0.9}}}, members={})

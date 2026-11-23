@@ -219,6 +219,12 @@ def kv_row(score: Optional[float], model: Optional[float]) -> Optional[float]:
     return _out(float(score) * float(model))
 
 
+def member_not_found() -> float:
+    """A member Name / DOB / ID not found on the page (2026-11-23, user): ``member_not_found``
+    (0.80), until the member calibration measures how often "not found" is right."""
+    return round(float(settings().get("member_not_found", 0.8)), 4)
+
+
 def dropped(value: Optional[float] = None) -> float:
     """A value post-processing dropped as wrong (a clinic read as the provider, a DOB far from
     the manifest's): ``dropped_value`` (0.60; 2026-11-22, user -- was flipped_low, 0.30), or the

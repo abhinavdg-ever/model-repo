@@ -263,12 +263,16 @@ def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Op
     """``{"name", "dob", "member_id"}`` -> each identifier's confidence: its raw value
     (``member_field_raw``) through the member calibration (2026-11-23, ``calibration.apply``; Name
     and DOB, identity until fitted). A field not read has the measured chance "not found" is right
-    once fitted, else none."""
+    once fitted, else ``confidence.member_not_found`` (0.80, 2026-11-23, user)."""
     from modules.member import calibration
 
     out: dict[str, Optional[float]] = {}
     for field_id, (raw, source) in member_field_raw(page, staged_page).items():
-        out[field_id] = calibration.apply(field_id, source, raw) if field_id in calibration.FIELDS else raw
+        value = calibration.apply(field_id, source, raw) if field_id in calibration.FIELDS else raw
+        if value is None and source == "not_found":
+            # 2026-11-23 (user): not found and nothing measured -> 0.80.
+            value = conf.member_not_found()
+        out[field_id] = value
     return out
 
 

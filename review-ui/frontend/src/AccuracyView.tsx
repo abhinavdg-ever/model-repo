@@ -17,7 +17,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { band, chartScore, levelLabel, type Level } from "./confidenceLevel";
+import { STRICT_FEATURES, bandFor, chartScore, levelLabel, type Level } from "./confidenceLevel";
 import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1012,10 +1012,21 @@ const BANDS: [string, number][] = [
   ["<30%", 0],
 ];
 
-/** The band a confidence falls in (index into BANDS). */
-function bandIndex(value: number): number {
-  const i = BANDS.findIndex(([, lo]) => value >= lo);
-  return i < 0 ? BANDS.length - 1 : i;
+/** 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation -- 1-point bands from 95. */
+const STRICT_BANDS: [string, number][] = [
+  ...[99, 98, 97, 96, 95].map((lo) => [`${lo}-${lo + 1}%`, lo / 100] as [string, number]),
+  ...BANDS.slice(1),
+];
+
+/** The band a confidence falls in (index into ``bands``, BANDS by default). */
+function bandIndex(value: number, bands: [string, number][] = BANDS): number {
+  const i = bands.findIndex(([, lo]) => value >= lo);
+  return i < 0 ? bands.length - 1 : i;
+}
+
+/** A metric's bands and the level of a band's lower edge (its row colour). */
+function metricBands(id: MetricId): [string, number][] {
+  return STRICT_FEATURES.has(METRIC_FEATURE[id]) ? STRICT_BANDS : BANDS;
 }
 
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
@@ -1046,7 +1057,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     for (const metric of LIVE_METRICS) byMetric.set(metric.id, { high: emptyScore(), medium: emptyScore(), low: emptyScore() });
     // Per metric, its pages by their own confidence band (BANDS, top first).
     const deciles = new Map<MetricId, LevelScore[]>();
-    for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
+    for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: metricBands(metric.id).length }, emptyScore));
     // 2026-11-23 (user): charts by their own confidence band; Match = a page with every metric matching.
     const chartBands = Array.from({ length: BANDS.length }, () => ({ charts: 0, pages: 0, yes: 0 }));
     const chartValues: number[] = [];
@@ -1081,12 +1092,12 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
           const key = METRIC_FEATURE[metric.id];
           const value = page.features?.[key];
           if (verdict == null || value == null) continue;
-          const level = band(value);
+          const level = bandFor(key, value);
           const counts = perFeature.get(key) ?? { high: 0, medium: 0, low: 0 };
           counts[level] += 1;
           perFeature.set(key, counts);
           addVerdict(byMetric.get(metric.id)![level], verdict);
-          addVerdict(deciles.get(metric.id)![bandIndex(value)], verdict);
+          addVerdict(deciles.get(metric.id)![bandIndex(value, metricBands(metric.id))], verdict);
         }
       }
     }
@@ -1157,9 +1168,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {BANDS.map(([label, lo], i) => {
+                          {metricBands(metric.id).map(([label, lo], i) => {
                             const b = buckets[i];
-                            const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
+                            const level = bandFor(METRIC_FEATURE[metric.id], lo);
                             return (
                               <tr key={label}>
                                 <td className={`level-text-${level}`}>{label}</td>

@@ -9,7 +9,7 @@ Seven fields are scored on every page, the same seven the accuracy report measur
 
 | Field | Its confidence |
 |---|---|
-| Member Verification | the average of Member Name and Member DOB |
+| Member Verification | the average of Member Name and Member DOB (one not found: 80%) |
 | Date of Service (DOS) | its own |
 | Blank / Junk | its own |
 | Page Type | its own |
