@@ -1244,9 +1244,10 @@ def _ocr_json(raw: Optional[str]) -> Optional[dict[str, Any]]:
 
 def _page_lines(
     final2: Optional[str], final1: Optional[str], *, page: dict[str, Any], chart_name: str
-) -> tuple[Optional[list["method.Line"]], Optional[float]]:
+) -> tuple[Optional[list["method.Line"]], Optional[float], Optional[float]]:
     """The page's text lines with their height on the page (final2 word boxes, else final1),
-    and the share of the page the text covers (method.text_area)."""
+    the share of the page inside the box round the text (method.text_area) and the share its
+    lines cover (method.content_area, RA)."""
     from modules.extraction.ocr_input import page_for_extraction
 
     found = page_for_extraction(
@@ -1255,9 +1256,26 @@ def _page_lines(
         image_path=page_image_path(chart_name, page["page_name"]),
     )
     if not found or not found.get("height"):
-        return None, None
+        return None, None, None
     return (method.lines_from_words(found["words"], float(found["height"])) or None,
-            method.text_area(found["words"], found.get("width"), found.get("height")))
+            method.text_area(found["words"], found.get("width"), found.get("height")),
+            method.content_area(found["words"], found.get("width"), found.get("height")))
+
+
+def _page_ink(chart_name: str, page_name: str) -> Optional[float]:
+    """The whole page's dark-ink share (hw_printed.page_marks strong_fraction), None when the
+    image cannot be read (RA then does not decide)."""
+    try:
+        from PIL import Image
+
+        from modules.image_preprocess.hw_printed import _image_bgr, page_marks
+
+        with Image.open(page_image_path(chart_name, page_name)) as image:
+            marks = page_marks(_image_bgr(image.convert("RGB")))
+        return round(float(marks["strong_fraction"]), 6)
+    except Exception as exc:  # noqa: BLE001 - a missing image only switches the rule off
+        logger.warning("page ink check failed for %s/%s: %s", chart_name, page_name, exc)
+        return None
 
 
 def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) -> tuple[Optional[bool], Optional[float]]:
@@ -1433,9 +1451,13 @@ def _page_inputs(
             inputs.provider_spot = spots.get(page["page_name"])
             inputs.headings = headings.get(page["page_name"], ())
             inputs.header_canon = header_canon.get(page["page_name"], ())
-            inputs.lines, inputs.text_area = _page_lines(
+            inputs.lines, inputs.text_area, inputs.content_area = _page_lines(
                 (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
             )
+            # RA (2026-11-23, user): the whole page's ink, read only for a page of little text.
+            low = method.canon().raw.get("low_content") or {}
+            if inputs.content_area is not None and inputs.content_area < float(low.get("area_below", 0.05)):
+                inputs.page_ink = _page_ink(ctx.chart_name, page["page_name"])
             bottom = method.content_bottom(inputs.lines) if inputs.lines else None
             inputs.content_bottom = bottom
             if bottom is not None and bottom <= max(top, short_top):

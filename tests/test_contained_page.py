@@ -615,3 +615,22 @@ def test_rf_a_financial_summary_page_is_junk(monkeypatch):
                  3: "Financial Summary\nCharges"})
     assert rows[2]["flag"] == "junk" and "RF" in rows[2]["reason"]
     assert rows[3]["flag"] == "junk" and "RF" in rows[3]["reason"]
+
+
+def test_ra_a_page_whose_text_covers_under_5_percent_is_junk(monkeypatch):
+    """2026-11-23 (user): text covering < 5% of the page, no other ink, nothing of its own signed
+    -> Junk / Others; a picture / handwriting (ink), a signature or a provider keep it out of RA."""
+    _keep(monkeypatch)
+    words = [{"content": "From", "polygon": [10, 10, 900, 10, 900, 30, 10, 30]},
+             {"content": "Patient", "polygon": [10, 1250, 900, 1250, 900, 1270, 10, 1270]}]
+    area = method.content_area(words, 1000, 1300)
+    assert 0.02 < area < 0.04
+    assert method.content_area([], 1000, 1300) == 0.0
+    page = method.PageInputs(text="Page 3\nPatient: Madeup DOB 09/07/1992", pass_no=2, document_type="printed",
+                             content_area=area, page_ink=0.004)
+    verdict = method.decide(page)
+    assert verdict.rule == "RA" and verdict.code != method.CODE_MAIN
+    for kw in ({"page_ink": 0.03}, {"signed": True}, {"provider": True}, {"content_area": 0.08}, {"page_ink": None}):
+        other = method.PageInputs(**{**dict(text=page.text, pass_no=2, document_type="printed",
+                                             content_area=area, page_ink=0.004), **kw})
+        assert method.decide(other).rule != "RA", kw

@@ -853,5 +853,10 @@
     "social_history": true
   },
   "keep_veto_at": 0.99,
-  "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled."
+  "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled.",
+  "low_content": {
+    "area_below": 0.05,
+    "ink_max": 0.015,
+    "note": "2026-11-23 (user): a page whose text covers less than area_below of it (the OCR lines' boxes: each line's width x height, summed, over the page) is Junk / Others (rule RA, pass 2, after RF). Not when the image has more than ink_max dark ink (hw_printed.page_marks strong_fraction: a picture, handwriting or stamp OCR did not read), a visual page, a handwritten page over handwritten_veto, or a page with its own signature or provider."
+  }
 }
