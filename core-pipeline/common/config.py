@@ -236,7 +236,9 @@ BLANK_JUNK_LLM = _flag("BLANK_JUNK_LLM", False)
 AZURE_OPENAI_ENDPOINT = (os.environ.get("AZURE_OPENAI_ENDPOINT") or "").strip()
 AZURE_OPENAI_KEY = (os.environ.get("AZURE_OPENAI_KEY") or "").strip()
 AZURE_OPENAI_DEPLOYMENT = (os.environ.get("AZURE_OPENAI_DEPLOYMENT") or "").strip()
-AZURE_OPENAI_API_VERSION = (os.environ.get("AZURE_OPENAI_API_VERSION") or "2024-10-21").strip()
+AZURE_OPENAI_API_VERSION = (os.environ.get("AZURE_OPENAI_API_VERSION") or "2025-04-01-preview").strip()
+# GPT-5 / o-series deployments only: minimal | low | medium | high.
+AZURE_OPENAI_REASONING_EFFORT = (os.environ.get("AZURE_OPENAI_REASONING_EFFORT") or "minimal").strip()
 MEMBER_NER_MODEL_ID = (
     os.environ.get("MEMBER_NER_MODEL_ID") or "gliner_medium"
 ).strip()

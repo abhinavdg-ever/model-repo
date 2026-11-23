@@ -81,3 +81,13 @@ def test_off_or_unconfigured_is_reported_without_the_key(monkeypatch):
     s = llm_judge.status()
     assert s["ready"] is False and "AZURE_OPENAI_ENDPOINT" in s["reason"] and "secret" not in str(s)
     assert llm_judge.parse("not json") is None and llm_judge.parse('{"verdict": "maybe"}') is None
+
+
+def test_a_gpt5_deployment_gets_the_reasoning_parameters():
+    """2026-11-23 (user): gpt-5-mini on Azure OpenAI -- no temperature, max_completion_tokens with
+    room for the reasoning, a reasoning effort; older models keep temperature 0 / max_tokens."""
+    body = llm_judge.request_body([], "gpt-5-mini", "minimal")
+    assert "temperature" not in body and "max_tokens" not in body
+    assert body["max_completion_tokens"] >= 1000 and body["reasoning_effort"] == "minimal"
+    old = llm_judge.request_body([], "gpt-4o-mini")
+    assert old["temperature"] == 0 and old["max_tokens"] == 200 and "reasoning_effort" not in old

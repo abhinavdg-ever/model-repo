@@ -116,7 +116,7 @@ its position on the page (y = share of the height), and answers Main / Junk / Bl
 Junk / Others) with a confidence (capped at 90%) and a reason; the rule is `LLM` and the rules' verdict is kept in
 the votes. The hard rules (RF, RA, RB, SH, SN, R1 ...) decide first and are never sent. A failed call keeps the
 rules' verdict. Every call's tokens are recorded on the run's `run_usage` row (price:
-`PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000`). `/health` -> `blank_junk_llm` says whether it is on and why not.
+`PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000`). `/health` -> `blank_junk_llm` says whether it is on and why not. A GPT-5 / o-series deployment (e.g. gpt-5-mini) is sent no temperature, `max_completion_tokens` 2000 and `reasoning_effort` (`AZURE_OPENAI_REASONING_EFFORT`, default minimal); API version default `2025-04-01-preview`.
 
 ### Rule 5: cards (`card_rules.py`)
 

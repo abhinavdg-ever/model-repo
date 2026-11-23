@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 REVIEWABLE = ("S1", "S1S", "S2", "S3", "S4", "S5", "S6", "S7", "R5")
 PREVIOUS_CHARS = 4000
 PAGE_CHARS = 2500
-TIMEOUT_SECONDS = 30
+TIMEOUT_SECONDS = 60
 ATTEMPTS = 3
 
 SYSTEM = (
@@ -59,8 +59,26 @@ def settings() -> dict[str, Any]:
         "endpoint": (getattr(config, "AZURE_OPENAI_ENDPOINT", "") or "").rstrip("/"),
         "key": getattr(config, "AZURE_OPENAI_KEY", "") or "",
         "deployment": getattr(config, "AZURE_OPENAI_DEPLOYMENT", "") or "",
-        "api_version": getattr(config, "AZURE_OPENAI_API_VERSION", "") or "2024-10-21",
+        "api_version": getattr(config, "AZURE_OPENAI_API_VERSION", "") or "2025-04-01-preview",
+        "reasoning_effort": getattr(config, "AZURE_OPENAI_REASONING_EFFORT", "") or "minimal",
     }
+
+
+def reasoning_model(deployment: str) -> bool:
+    """GPT-5 / o-series (2026-11-23, user: gpt-5-mini): no temperature, max_completion_tokens with the
+    reasoning tokens in it, and a reasoning effort. Told by the deployment name."""
+    name = (deployment or "").lower()
+    return "gpt-5" in name or "gpt5" in name or name.startswith(("o1", "o3", "o4"))
+
+
+def request_body(messages: list[dict[str, str]], deployment: str, reasoning_effort: str = "minimal") -> dict[str, Any]:
+    body: dict[str, Any] = {"messages": messages, "response_format": {"type": "json_object"}}
+    if reasoning_model(deployment):
+        # Room for the hidden reasoning as well as the short JSON answer.
+        body.update(max_completion_tokens=2000, reasoning_effort=reasoning_effort)
+    else:
+        body.update(temperature=0, max_tokens=200)
+    return body
 
 
 def status() -> dict[str, Any]:
@@ -127,7 +145,7 @@ def judge(chart_id: Optional[int], messages: list[dict[str, str]]) -> dict[str, 
     if not ready():
         return {"error": status()["reason"]}
     url = f"{s['endpoint']}/openai/deployments/{s['deployment']}/chat/completions?api-version={s['api_version']}"
-    body = {"messages": messages, "temperature": 0, "max_tokens": 200, "response_format": {"type": "json_object"}}
+    body = request_body(messages, s["deployment"], s.get("reasoning_effort") or "minimal")
     last = ""
     for attempt in range(ATTEMPTS):
         try:
