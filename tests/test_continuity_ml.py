@@ -213,3 +213,25 @@ class TestMlModeInTheStage:
         assert rows[1]["decided_by"] == "model" and "new visit header" in rows[1]["evidence"]
         assert set(rows[0]) == set(rules_rows[0])  # the same columns as the rules write
         assert (tmp_path / "c1" / "staging" / "continuity_shadow.json").is_file()
+
+
+class TestMlFailureKeepsTheRules:
+    def test_an_error_in_the_model_keeps_the_rules_rows(self, tmp_path, monkeypatch):
+        """2026-11-23 (user: continuity did not run): an exception while the model runs keeps the
+        rules' documents instead of failing the stage."""
+        from common import config
+        from modules.continuity import stage
+        from modules.continuity.engine import PageInput, assign, text_lines
+        from modules.continuity.ml import model as ml_model
+
+        pages = [PageInput(page_id=i, page_name=f"p{i}", page_number=i, text=BODY, lines=text_lines(BODY),
+                           page_type="Progress Note") for i in (1, 2)]
+        rules_rows = assign(pages)
+
+        def boom(records, gaps=None):
+            raise ValueError("made up failure")
+
+        monkeypatch.setattr(ml_model, "decide", boom)
+        monkeypatch.setattr(config, "CONTINUITY_MODE", "ml")
+        rows, summary = stage._continuity_ml("c1", pages, rules_rows, None, {})
+        assert rows is rules_rows and summary["ran"] is False and "made up failure" in summary["reason"]

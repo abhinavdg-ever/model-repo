@@ -550,6 +550,21 @@ def _ml_pages(inputs: list[PageInput], classification: dict[Any, dict[str, Any]]
 
 def _continuity_ml(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any,
                    classification: dict[Any, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The clue model's documents (``_continuity_ml_run``); any error in it keeps the rules' rows
+    (2026-11-23, user: continuity must always run)."""
+    from common.config import CONTINUITY_MODE
+
+    try:
+        return _continuity_ml_run(chart_name, inputs, rows, rules, classification)
+    except Exception as exc:  # noqa: BLE001 - the model must never stop continuity
+        reason = f"{type(exc).__name__}: {(str(exc).splitlines() or [''])[0][:200]}"
+        logger.error("continuity chart=%s: the clue model failed (%s); the rules' documents are kept",
+                     chart_name, reason)
+        return rows, {"mode": CONTINUITY_MODE, "ran": False, "reason": f"model failed: {reason}"}
+
+
+def _continuity_ml_run(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any,
+                       classification: dict[Any, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """CONTINUITY_MODE: rules -> the rows as they are; shadow -> the clue model runs too and every
     meeting point where it disagrees with the rules goes to staging/continuity_shadow.json (page
     names, both decisions, P(break), the top clues; no text); ml -> the engine again with the
