@@ -67,10 +67,12 @@ SIGNALS = (
     "cut_mid_sentence", "starts_mid_thought", "same_page_type", "visit_heading",
 )
 DECISIVE = frozenset({"different_dos", "same_dos", "pagination_follows", "junk_run"})
-# Every decided_by the engine writes (page_continuity_results' CHECK must allow each).
+# Every decided_by continuity writes (page_continuity_results' CHECK must allow each); the
+# last two are the ML mode's (ml/model.py MODEL, ml/viterbi.py VISUAL).
 DECIDED_BY = (
     "chart_start", "decisive", "decisive_conflict", "sum", "tie",
     "conflict_a", "conflict_b", "final_pass", "attached",
+    "model", "visual_continues",
 )
 
 

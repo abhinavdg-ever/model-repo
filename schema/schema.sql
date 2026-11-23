@@ -961,6 +961,8 @@ CREATE TABLE page_continuity_results (
                              -- the gap scorer (2026-10-20)
                              'chart_start','decisive','decisive_conflict','sum','tie',
                              'conflict_a','conflict_b','final_pass','attached',
+                             -- the ML mode (CONTINUITY_MODE=ml, 2026-11-22)
+                             'model','visual_continues',
                              -- earlier engines; old rows
                              'first_page','blank_junk','same_dos','new_dos','pagination',
                              'signature','page_number_end','weighted',

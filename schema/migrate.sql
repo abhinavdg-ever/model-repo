@@ -43,4 +43,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-11-15.sql
 \echo '2026-11-19  accuracy view: each metric''s Final confidence'
 \ir migrations/2026-11-19.sql
+\echo '2026-11-23  continuity decided_by: the ML mode''s model / visual_continues'
+\ir migrations/2026-11-23.sql
 \echo 'Done: the database matches schema/schema.sql.'

@@ -4,6 +4,8 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * page_continuity_results.decided_by (2026-11-23, migrations/2026-11-23.sql): the CHECK allows
+   the ML continuity mode's 'model' and 'visual_continues'; the insert failed without them.
  * v_accuracy_page (2026-11-19, migrations/2026-11-19.sql): new last columns final_confidences
    (imaging_final.confidences) and measured_confidences (ocr_quality_results.quality_detail ->
    'confidences': orientation) for the Accuracy View's page / chart confidence.
