@@ -1037,6 +1037,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     const scored: { level: Level; critical: boolean }[] = [];
     // 2026-11-23 (user): pages by their own confidence band, against Match = every metric matching.
     const pageBands: LevelScore[] = Array.from({ length: BANDS.length }, emptyScore);
+    // 2026-11-23 (user): per metric, its accuracy on the pages of each PAGE confidence band.
+    const pageMetricBands = new Map<MetricId, LevelScore[]>();
+    for (const metric of LIVE_METRICS) pageMetricBands.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
     const perFeature = new Map<string, Record<Level, number>>();
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
@@ -1065,6 +1068,10 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
           pageLevels[pc.level] += 1;
           scored.push({ level: pc.level, critical: Boolean(page.critical) });
           if (page.overall) addVerdict(pageBands[bandIndex(pc.value)], page.overall);
+          for (const metric of LIVE_METRICS) {
+            const verdict = page.scores[metric.id];
+            if (verdict != null) addVerdict(pageMetricBands.get(metric.id)![bandIndex(pc.value)], verdict);
+          }
           addVerdict(cross[pc.level], page.overall);
         }
         // Each metric on every page the accuracy scores it (2026-11-19, user): Blank / Junk
@@ -1094,7 +1101,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const chartMean = chartValues.length ? Math.round((100 * chartValues.reduce((s, x) => s + x, 0)) / chartValues.length) : null;
-    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, chartBands, chartMean,
+    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, chartBands, chartMean,
              mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles };
   }, [open, rows]);
 
@@ -1248,7 +1255,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 </section>
 
                 <section>
-                  <h3>Each metric: accuracy by its own confidence band</h3>
+                  <h3>Pages: each metric's accuracy by page confidence band</h3>
                   <table className="chart-details-table">
                     <thead>
                       <tr><th>Confidence</th>
@@ -1262,8 +1269,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                           <tr key={label}>
                             <td className={`level-text-${level}`}>{label}</td>
                             {LIVE_METRICS.map((m) => {
-                              const b = data.deciles.get(m.id)![i];
-                              return <td key={m.id} className="num">{b.pages ? scorePct(b) : "—"} <small>({b.pages.toLocaleString()})</small></td>;
+                              const b = data.pageMetricBands.get(m.id)![i];
+                              return <td key={m.id} className="num">{b.pages ? scorePct(b) : "—"}</td>;
                             })}
                           </tr>
                         );
@@ -1271,8 +1278,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                       <tr className="chart-details-total">
                         <td>Total</td>
                         {LIVE_METRICS.map((m) => {
-                          const all = data.deciles.get(m.id)!.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes, maybe: acc.maybe + b.maybe, no: acc.no + b.no }), emptyScore());
-                          return <td key={m.id} className="num">{scorePct(all)} <small>({all.pages.toLocaleString()})</small></td>;
+                          const all = data.pageMetricBands.get(m.id)!.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes, maybe: acc.maybe + b.maybe, no: acc.no + b.no }), emptyScore());
+                          return <td key={m.id} className="num">{scorePct(all)}</td>;
                         })}
                       </tr>
                     </tbody>
