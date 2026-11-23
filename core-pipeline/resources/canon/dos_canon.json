@@ -207,5 +207,10 @@
     "below": 0.5,
     "factor": 0.9
   },
-  "note_neighbours": "2026-11-01 (user): dates are kept consistent across pages. A page (not lab) with no DOS, one under neighbours.below, or a fallback DOS (keyword pass, signature, dictation): when the sure dated pages within max_gap before and after agree on one date it takes that date (confidence = the weaker neighbour's x factor); otherwise a date of its own outside the neighbours' dates is dropped (no DOS rather than a stray one)."
+  "note_neighbours": "2026-11-01 (user): dates are kept consistent across pages. A page (not lab) with no DOS, one under neighbours.below, or a fallback DOS (keyword pass, signature, dictation): when the sure dated pages within max_gap before and after agree on one date it takes that date (confidence = the weaker neighbour's x factor); otherwise a date of its own outside the neighbours' dates is dropped (no DOS rather than a stray one).",
+  "old_dates": {
+    "before_year": 2020,
+    "strong_at": 0.5,
+    "note": "2026-11-23 (user): a DOS before before_year is deprioritised -- each page's chain (key/value, edge labels, keyword pass, dictation, signature) runs without such dates first; an old date is taken only when nothing recent was found, or only a recent one under strong_at and the old one is stronger. 0 switches it off."
+  }
 }

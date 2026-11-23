@@ -80,6 +80,9 @@ class DosProfile:
     report_as_discharge_keys: frozenset[str] = frozenset()
     keyword_pass_kinds: frozenset[str] = frozenset()
     signature_fallback_below: float = 0.0
+    # 2026-11-23 (user): a date before this year is taken only when nothing recent is strong.
+    old_before_year: int = 0
+    old_strong_at: float = 0.5
     neighbours: dict[str, float] = field(default_factory=dict)
 
 
@@ -125,6 +128,8 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         report_as_discharge_keys=frozenset(k.casefold() for k in data.get("report_as_discharge_keys") or []),
         keyword_pass_kinds=frozenset(data.get("keyword_pass_kinds") or []),
         signature_fallback_below=float(data.get("signature_fallback_below", 0.0)),
+        old_before_year=int((data.get("old_dates") or {}).get("before_year", 0) or 0),
+        old_strong_at=float((data.get("old_dates") or {}).get("strong_at", 0.5)),
         neighbours={k: float(v) for k, v in (data.get("neighbours") or {}).items()},
     )
 
@@ -754,6 +759,13 @@ def consistent_with_neighbours(found: list[Optional[PageDate]], kinds: list[str]
 # --- date formats ------------------------------------------------------------
 
 
+def is_old(iso: Optional[str], prof: Optional[DosProfile] = None) -> bool:
+    """A date before the profile's old_before_year (2026-11-23, user: 2011 dates read as DOS)."""
+    prof = prof or profile()
+    match = re.match(r"(\d{4})-", str(iso or ""))
+    return bool(prof.old_before_year and match and int(match.group(1)) < prof.old_before_year)
+
+
 def iso_to_mdy(iso: str) -> str:
     """YYYY-MM-DD as MM-DD-YYYY; '' for anything that is not a real ISO date."""
     if not is_iso_date(iso):
@@ -896,37 +908,61 @@ def detect_dos_per_page(
         # page counts; elsewhere only in its first / last edge_words words.
         whole = kind in prof.keyword_pass_kinds
         hits = [hit for hit in edge_dates(page_text, prof, whole_page=whole) if hit.iso not in printed]
-        found = None
-        if kind == "discharge":
-            dated = kv_dated(candidates, printed)
-            reports = [it for it in dated if str(it.get("keyword") or "").strip().casefold()
-                       in prof.report_as_discharge_keys]
-            found = admit_discharge_date(_kv_stay(dated), hits, prof, reports)
-        if found is None:
-            found = kv_page_date(candidates, kind, prof, printed)
-        # State 2: no key/value date; the edge keyword.
-        if found is None:
-            found = edge_page_date(page_text, prof, hits)
-        if found is None and tesseract_text:
-            tesseract_hits = [hit for hit in edge_dates(tesseract_text, prof) if hit.iso not in printed]
-            found = edge_page_date(tesseract_text, prof, tesseract_hits)
-            if found is not None:
-                found.source = "edge_tesseract"
-                for hit in tesseract_hits:
-                    hit.edge = f"tesseract_{hit.edge}"
-                hits = hits + tesseract_hits
-        # 2026-11-01 (user): discharge / Progress Note pages: a keyword pass over the page.
-        if found is None:
-            found = keyword_pass_date(page_text, candidates, kind, prof, printed)
-        if found is None and kind in ("other", "note"):
-            found = dictation_page_date(page_text, prof)
-            if found is not None and found.dos_from in printed:
-                found = None
-        # 2026-11-01 (user): no DOS, or a weak one: the last electronic signature's date.
-        if found is None or found.confidence < prof.signature_fallback_below:
-            signed = signature_page_date((signature_dates or {}).get(page_name) or [], prof, printed)
-            if signed is not None:
-                found = signed
+        def choose(cands: list[dict[str, Any]], page_hits: list[LabelledDate], allow_old: bool
+                   ) -> tuple[Optional[PageDate], list[LabelledDate]]:
+            """The decision chain; without ``allow_old`` a date before old_before_year is no
+            candidate anywhere in it (2026-11-23, user)."""
+            def recent(iso: Optional[str]) -> bool:
+                return allow_old or not is_old(iso, prof)
+
+            cands = [c for c in cands if recent(str(c.get("iso") or ""))]
+            page_hits = [h for h in page_hits if recent(h.iso)]
+            found = None
+            if kind == "discharge":
+                dated = kv_dated(cands, printed)
+                reports = [it for it in dated if str(it.get("keyword") or "").strip().casefold()
+                           in prof.report_as_discharge_keys]
+                found = admit_discharge_date(_kv_stay(dated), page_hits, prof, reports)
+            if found is None:
+                found = kv_page_date(cands, kind, prof, printed)
+            # State 2: no key/value date; the edge keyword.
+            if found is None:
+                found = edge_page_date(page_text, prof, page_hits)
+            if found is None and tesseract_text:
+                tesseract_hits = [hit for hit in edge_dates(tesseract_text, prof)
+                                  if hit.iso not in printed and recent(hit.iso)]
+                found = edge_page_date(tesseract_text, prof, tesseract_hits)
+                if found is not None:
+                    found.source = "edge_tesseract"
+                    for hit in tesseract_hits:
+                        hit.edge = f"tesseract_{hit.edge}"
+                    page_hits = page_hits + tesseract_hits
+            # 2026-11-01 (user): discharge / Progress Note pages: a keyword pass over the page.
+            if found is None:
+                found = keyword_pass_date(page_text, cands, kind, prof, printed)
+                if found is not None and not recent(found.dos_from):
+                    found = None
+            if found is None and kind in ("other", "note"):
+                found = dictation_page_date(page_text, prof)
+                if found is not None and (found.dos_from in printed or not recent(found.dos_from)):
+                    found = None
+            # 2026-11-01 (user): no DOS, or a weak one: the last electronic signature's date.
+            if found is None or found.confidence < prof.signature_fallback_below:
+                sig = [d for d in (signature_dates or {}).get(page_name) or [] if recent(to_iso_date(d) or d)]
+                signed = signature_page_date(sig, prof, printed)
+                if signed is not None:
+                    found = signed
+            return found, page_hits
+
+        # 2026-11-23 (user): dates before old_before_year (2020) are deprioritised -- the chain runs
+        # without them first; an old date is taken only when nothing recent was found, or only a
+        # weak one (under old_strong_at) and the old one is stronger.
+        found, chosen_hits = choose(candidates, hits, allow_old=not prof.old_before_year)
+        if prof.old_before_year and (found is None or found.confidence < prof.old_strong_at):
+            old_found, old_hits = choose(candidates, hits, allow_old=True)
+            if old_found is not None and (found is None or old_found.confidence > found.confidence):
+                found, chosen_hits = old_found, old_hits
+        hits = chosen_hits
         if found is not None and found.dos_to in printed:
             # A written range never ends on a print date.
             found.dos_to, found.is_pair = found.dos_from, False

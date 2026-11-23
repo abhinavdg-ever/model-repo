@@ -198,3 +198,23 @@ def test_a_leading_by_street_or_road_is_not_part_of_a_name():
     assert trim_name("ROAD Jane Doe") == "Jane Doe"
     assert trim_provider_name("Legal Authenticator By Jane Doe") == "Jane Doe"
     assert trim_name("Byron Smith") == "Byron Smith" and trim_name("John Street") == "John Street"
+
+
+class TestOldDates:
+    """2026-11-23 (user): a date before 2020 is deprioritised -- taken only when nothing recent is
+    strong on the page."""
+
+    def test_a_recent_date_beats_a_stronger_old_one(self):
+        rows = [_kv("Date of Service", "service", "2011-04-02", "Date of Service: 04/02/2011", 0.95),
+                _kv("Visit Date", "service", "2025-06-10", "Visit Date: 06/10/2025", 0.7)]
+        hit = _pages("x", kv_dates={"1.jpg": rows}, page_families={"1.jpg": "Progress Note"})[0]
+        assert hit["dos_from_iso"] == "2025-06-10"
+
+    def test_an_old_date_alone_is_still_taken(self):
+        rows = [_kv("Date of Service", "service", "2011-04-02", "Date of Service: 04/02/2011", 0.95)]
+        hit = _pages("x", kv_dates={"1.jpg": rows}, page_families={"1.jpg": "Progress Note"})[0]
+        assert hit["dos_from_iso"] == "2011-04-02"
+
+    def test_an_old_edge_label_gives_way_to_a_recent_one(self):
+        hit = _pages("Date of Service: 04/02/2011\nnote text\nVisit Date: 06/10/2025")[0]
+        assert hit["dos_from_iso"] == "2025-06-10"

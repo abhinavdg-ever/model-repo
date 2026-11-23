@@ -3,6 +3,11 @@
 One row per page, in the DB and in `imaging/<chart>_dos.csv`. Per page, two
 states:
 
+**Old dates (2026-11-23, user).** A date before 2020 (`old_dates.before_year` in
+`dos_canon.json`) is deprioritised: the whole chain below runs without such dates first; an
+old date is taken only when nothing recent was found, or only a recent one under 0.50
+(`old_dates.strong_at`) and the old one is stronger. `before_year: 0` switches it off.
+
 1. **Key/value.** Among the dates the extractor accepted, grouped by the tier it
    gave them (`staging/extraction.json`), the first group in the page kind's
    order (`kv_priority` in `dos_canon.json`). The kind is the page
