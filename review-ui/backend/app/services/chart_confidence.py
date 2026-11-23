@@ -2,7 +2,7 @@
 
 The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
 
-* Features: the accuracy list's seven -- Member Verification (the lower of Member Name and
+* Features: the accuracy list's seven -- Member Verification (the average of Member Name and
   Member DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation -- each
   from ``imaging_final.confidences``. A Blank / Junk or duplicate page counts Blank / Junk and
   Codability only. High >= 0.80, Medium 0.50-0.80, Low < 0.50.
@@ -77,7 +77,7 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
             continue
         if key == "member":
             parts = [v for v in (_num(conf.get("member_name")), _num(conf.get("member_dob"))) if v is not None]
-            value = min(parts) if parts else None
+            value = sum(parts) / len(parts) if parts else None  # 2026-11-23 (user): the average
         else:
             value = _num(conf.get(key))
         if value is not None:

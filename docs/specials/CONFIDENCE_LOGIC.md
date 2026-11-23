@@ -103,8 +103,8 @@ ocr_factor  = 0.5 + 0.5 x the page's OCR match rate
 
 ## 5. Page and chart levels
 
-**Features:** the seven accuracy metrics: Member Verification (the lower of Member Name and
-DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. A Blank / Junk
+**Features:** the seven accuracy metrics: Member Verification (the average of Member Name
+and DOB, 2026-11-23), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. A Blank / Junk
 or duplicate page counts Blank / Junk and Codability only. Each feature is banded High / Medium /
 Low as in section 1.
 
@@ -131,10 +131,11 @@ Code: `review-ui/frontend/src/confidenceLevel.ts`, twin `review-ui/backend/app/s
 
 ## 6. Confidence Analysis (review-ui, Accuracy)
 
-Over the filtered charts' pages with ground truth: the distribution of page and field levels,
-page level against the page's overall match, each metric's accuracy per level, and each metric's
-accuracy by confidence band: **95-100, 90-95, 85-90, 80-85, 75-80, 70-75, 60-70, 50-60, 40-50,
-30-40, <30%**. Accuracy should rise with confidence.
+Over the filtered charts' pages with ground truth, by confidence band (**95-100, 90-95, 85-90,
+80-85, 75-80, 70-75, 60-70, 50-60, 40-50, 30-40, <30%**). Overview (2026-11-23, user): (1) pages by
+their own confidence band: Pages, Match, No Match, Accuracy, where Match = every metric on the page
+matches; (2) each metric's accuracy by its own confidence band, one column per metric. Each metric's
+tab: its own band table. Accuracy should rise with confidence.
 
 ---
 

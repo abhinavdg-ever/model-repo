@@ -3,7 +3,7 @@
  *
  * Only the features of the final accuracy list count (2026-11-19, user): Member Verification,
  * DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation. Each has its Final
- * confidence (Member Verification: the lower of Member Name and Member DOB), banded as
+ * confidence (Member Verification: the average of Member Name and Member DOB), banded as
  * everywhere: High >= 0.80, Medium 0.50-0.80, Low < 0.50. A feature with no confidence
  * (nothing read, a default value) is not counted.
  *
@@ -75,7 +75,8 @@ function num(value: unknown): number | null {
 function fieldValue(page: ImagingPageResult, key: string): number | null {
   if (key === "member") {
     const parts = [rawValue(page, "member_name"), rawValue(page, "member_dob")].filter((v): v is number => v != null);
-    return parts.length ? Math.min(...parts) : null;
+    // 2026-11-23 (user): the average of Member Name and Member DOB (was the lower of the two).
+    return parts.length ? parts.reduce((sum, v) => sum + v, 0) / parts.length : null;
   }
   return rawValue(page, key);
 }

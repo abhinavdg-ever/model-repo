@@ -11,9 +11,10 @@ def test_page_level_uses_the_seven_features():
 
     high = {"member_name": 0.9, "member_dob": 0.95, "dos": 0.9, "page_type": 0.85}
     assert page_level(high, False)[0] == "high"
-    # Member Verification = the lower of name and DOB: a Low DOB is a Low key feature.
     # 2026-11-22 (user): like an NPS over the features -- (High - Low) / features, % (1 + score) / 2.
-    assert page_level({**high, "member_dob": 0.3}, False)[:2] == ("medium", 0.6667)  # 2 High, 1 Low
+    # 2026-11-23: member = the average of name and DOB, (0.9 + 0.3) / 2 = 0.6 Medium -> 2 High, 1 Medium
+    assert page_level({**high, "member_dob": 0.3}, False)[:2] == ("high", 0.8333)
+    assert page_level({**high, "member_name": 0.3, "member_dob": 0.3}, False)[:2] == ("medium", 0.6667)  # 2 High, 1 Low
     assert page_level({**high, "provider": 0.3}, False)[:2] == ("medium", 0.75)  # 3 High, 1 Low
     assert page_level({**high, "provider": 0.6}, False)[0] == "high"  # 3 High, 1 Medium: 87.5%
     assert page_level({**high, "provider": 0.3, "orientation": 0.2}, False)[:2] == ("medium", 0.6)

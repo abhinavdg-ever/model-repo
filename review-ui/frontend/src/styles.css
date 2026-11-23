@@ -7042,7 +7042,7 @@ input {
 .level-text-low { color: var(--status-error-fg); }
 .accuracy-col-confidence { white-space: nowrap; font-size: 0.8rem; }
 .accuracy-extra-links { display: inline-flex; gap: 0.9rem; align-items: baseline; }
-.confidence-metrics-card { width: min(52rem, calc(100vw - 2rem)); }
+.confidence-metrics-card { width: min(57rem, calc(100vw - 2rem)); } /* 2026-11-23: +10% (was 52rem) */
 .confidence-tabs { margin: 0.2rem 0 0.4rem; }
 .confidence-metrics-card h2 { display: flex; align-items: center; gap: 0.4rem; }
 .action-icon-btn.action-icon-only { padding-left: 0.4rem; padding-right: 0.4rem; }
