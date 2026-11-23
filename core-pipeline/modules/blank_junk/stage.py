@@ -587,6 +587,10 @@ def short_verdict(
 
       SC a document cover sheet: its own lines only label / value fields (Date, Type, Subject,
          Approved By, Comments ...), 3+, one naming the document -> Junk / Cover Page
+      SH (2026-11-23, user) nothing but a running header / footer: every OCR line in the header or
+         footer band, each a running line (page number, fax header, Patient / DOB / Visit labels,
+         dates, times, numbers, at most 2 other words), no signature / provider / credentials ->
+         Junk / Others
       S1 the previous page ends in a Progress Note header: in its bottom third, one of its last
          3 headers -> Main (this page carries that section on) -- only with 2+ words of its own
       S2 a Progress Note header and 3+ other words on the page -> Main
@@ -613,14 +617,18 @@ def short_verdict(
         return None
     text = texts.get(pid) or ""
     prev_id, next_id = around.get(pid, (None, None))
+    # 2026-11-23 (user): a "Financials" / "Financial Summary" page is Junk: the method's RF decides
+    # it, not the short page's keeps.
+    if method.financial_heading(text, own.headings):
+        return None
 
     neighbours = [n for n in (prev_id, next_id) if n is not None]
 
     def pair(other_id: int) -> tuple[str, str]:
-        """This page's and the neighbour's text from the same OCR engine (2026-11-20, user):
-        Doc Intel vs Doc Intel, else Docling vs Docling, else the best text of each."""
+        """This page's and the neighbour's text from the same OCR engine: Docling vs Docling
+        (2026-11-23, user: Docling first), else Doc Intel vs Doc Intel, else the best text of each."""
         mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
-        for engine in ("azuredocintel", "docling"):
+        for engine in ("docling", "azuredocintel"):
             if (mine_by.get(engine) or "").strip() and (theirs_by.get(engine) or "").strip():
                 return mine_by[engine], theirs_by[engine]
         return text, texts.get(other_id) or ""
@@ -682,10 +690,34 @@ def short_verdict(
     report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
     if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
         return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
+    def added_over_previous() -> set[str]:
+        """2026-11-23 (user): what this page adds over the previous page -- its own lines (not the
+        previous page's, by repeated_lines; not its section headings) on Docling vs Docling
+        (``pair``), their words without dates and numbers, less every word the previous page has."""
+        if prev_id is None:
+            return set()
+        mine_text, prev_text = pair(prev_id)
+        mine_lines = [line for line in mine_text.splitlines() if _line_key(line)]
+        flags = repeated_lines(mine_text, prev_text, own, inputs.get(prev_id))
+        kept = [line for line, theirs in zip(mine_lines, flags)
+                if not theirs and not EMPTY_VALUE_LINE.match(line.strip()) and not a_heading(line)]
+        words = set().union(*(_plain_words(line) for line in kept)) if kept else set()
+        return words - set(unique_words(prev_text))
+
+    added = added_over_previous()
+
+    # SH (2026-11-23, user): nothing but a running header and footer -- every text line at the
+    # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
+    # DOB: / Visit:" labels, a date / time, a number) -- and no signature, provider or credentials:
+    # Junk / Others, before the keeps that a date on it would otherwise trigger (S1S, S6).
+    edge = edge_only(own, text)
+    if edge and pid not in signed and not own.provider and not method.CREDENTIAL.search(text):
+        return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
     # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
     # with content of its own (2026-11-21, user: a page with only the running header and the
     # page number carries nothing on).
-    if prev_id is not None and len(own_words) > 1:
+    # 2026-11-23 (user): carrying a section on needs 2+ words the previous page does not have.
+    if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY:
         prev_text = texts.get(prev_id) or ""
         prev_lines = [line for line in prev_text.splitlines() if line.strip()]
         found = pn_headers.header_lines(prev_text, headers.get(prev_id) or ())
@@ -702,7 +734,10 @@ def short_verdict(
     # S1S (2026-11-21, user): the previous page ends in a signature ("Signed By ...", "Signed",
     # "Electronically signed") and this page's own text is its signer and date ("Rajinder Grover
     # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
-    if prev_id is not None and own_words and any(method.ANY_DATE.search(line) for line in own_lines):
+    # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
+    # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
+    if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
+            method.ANY_DATE.search(line) and not running_line(line) for line in own_lines):
         prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
         signing = next((line for line in prev_tail if SIGNATURE_LINE.search(line)), None)
         if signing is not None:
@@ -819,6 +854,48 @@ def short_verdict(
 PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
 
 
+# SH (2026-11-23): a running header / footer line -- page numbers, fax headers, patient labels.
+RUNNING_LABEL = re.compile(
+    r"(?i)\b(?:patient(?:\s+name)?|pt|name|dob|d\.o\.b|birth\s*date|mrn|med\s*rec|acct|account|fin|visit|"
+    r"encounter|enc|from|to|fax|printed|print\s+date|received|sent|page|pg)\b\s*[:#.]?")
+TIME_OF_DAY = re.compile(r"(?i)\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\b")
+RUNNING_FREE_WORDS = 2  # words a running line may carry besides its labels (a name, a time zone)
+STAMP_FREE_WORDS = 6  # a fax / print stamp (page number + date or time) also carries its sender
+
+
+def running_line(line: str) -> bool:
+    """A line of a running header / footer: its labels, dates, times and numbers out, leave at
+    most RUNNING_FREE_WORDS (a patient's name, "PDT"); a fax / print stamp -- a page number with a
+    date or time -- at most STAMP_FREE_WORDS (the sender's name)."""
+    stamp = bool(PAGE_NUMBER_IN_LINE.search(line or "")) and bool(
+        method.ANY_DATE.search(line or "") or TIME_OF_DAY.search(line or ""))
+    text = PAGE_NUMBER_IN_LINE.sub(" ", line or "")
+    text = method.ANY_DATE.sub(" ", text)
+    text = TIME_OF_DAY.sub(" ", text)
+    text = RUNNING_LABEL.sub(" ", text)
+    words = [w for w in re.findall(r"[A-Za-z]+", text) if len(w) > 1]
+    return len(words) <= (STAMP_FREE_WORDS if stamp else RUNNING_FREE_WORDS)
+
+
+def edge_only(page: Optional["method.PageInputs"], text: str) -> Optional[str]:
+    """SH: every OCR line of the page sits in its header band (top) or footer band (bottom) and
+    every text line is a running line, with at least one page number / label among them. The
+    measured line positions decide; without them, no verdict. Returns a short description."""
+    if page is None or not page.lines:
+        return None
+    zones = method.canon().raw["zones"]
+    header, footer = float(zones["header_band"]), float(zones["footer_band"])
+    if not all(line.top < header or line.bottom > 1.0 - footer for line in page.lines):
+        return None
+    lines = [line for line in (text or "").splitlines() if _line_key(line)]
+    if not lines or not all(running_line(line) for line in lines):
+        return None
+    if not any(PAGE_NUMBER_IN_LINE.search(line) or RUNNING_LABEL.search(line) for line in lines):
+        return None
+    top = sum(1 for line in page.lines if line.top < header)
+    return f"{top} line(s) at the top, {len(page.lines) - top} at the bottom"
+
+
 def _plain_words(line: str) -> set[str]:
     """A line's unique words without its dates and numbers (2026-11-21, user)."""
     text = method.ANY_DATE.sub(" ", line or "")
@@ -911,6 +988,9 @@ def cover_sheet_fields(lines: list[str]) -> Optional[list[str]]:
 # S1S: a signature in the previous page's last lines (its footer included).
 SIGNATURE_LINE = re.compile(r"(?i)\b(?:electronically\s+signed|e-?signed|signed\s+by|signed|signature)\b")
 SIGNATURE_TAIL_LINES = 4
+# S1 / S1S (2026-11-23, user): a page carries the previous page's section or signature on only
+# when it adds this many words the previous page does not have (dates and numbers left out).
+ADDED_WORDS_TO_CARRY = 2
 
 # 2026-11-21 (user): placeholder values ("None recorded.", "No information", "N/A") are no
 # content of the page's own.

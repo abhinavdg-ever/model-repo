@@ -854,6 +854,13 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
 
+    # ---- pass 2, first (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
+    # Junk / Others, whatever else is on it.
+    if pass2:
+        heading = financial_heading(text, inputs.headings)
+        if heading:
+            return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
+
     # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
     # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.
     # 1. a contents / index page (before the keeps: its entries read like a medication list).
@@ -1353,6 +1360,20 @@ def provider_or_date(text: str, provider: bool, signer: str = "") -> Optional[st
     date = ANY_DATE.search(text or "")
     if date:
         return f"date '{date.group(0)}'"
+    return None
+
+
+# RF (2026-11-23, user): a "Financials" / "Financial Summary" heading -- a line that is the
+# heading alone (markdown / table markup aside) or a stage 6 section heading.
+FINANCIAL_HEADING = re.compile(r"^\W*(financials?|financial\s+summary)\W*$", re.IGNORECASE)
+
+
+def financial_heading(text: str, headings: Any = ()) -> Optional[str]:
+    """The page's "Financials" / "Financial Summary" heading, or None."""
+    for line in [*(str(h) for h in headings or ()), *(text or "").splitlines()]:
+        found = FINANCIAL_HEADING.match(re.sub(r"[#*|_]", " ", line).strip())
+        if found:
+            return found.group(1)
     return None
 
 
