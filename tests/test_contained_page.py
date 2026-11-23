@@ -670,3 +670,15 @@ def test_rb_the_model_sure_of_blank_is_junk_others():
     assert verdict.rule == "RB" and verdict.code != method.CODE_MAIN
     page.bert = {**bert, "p_blank": 0.94, "p_keep": 0.03}
     assert method.decide(page).rule != "RB"
+
+
+def test_sn_a_short_page_of_only_continued_on_next_page_is_junk(monkeypatch):
+    """2026-11-23 (user): "Content on Next Page", "Continued on the following page" ... -> Junk / Others."""
+    _keep(monkeypatch)
+    for note in ("Content on Next Page", "Continued on the following page", "See next page", "(Continued)",
+                 "Report continues on next page", "Please turn over", "Continued on Following Page"):
+        assert stage.NEXT_PAGE_NOTE.search(note), note
+    assert not stage.NEXT_PAGE_NOTE.search("Patient will continue on the next dose of metformin")
+    full = HEADER + "\n" + BODY + "\n" + FOOTER
+    rows = _run({1: full, 2: HEADER + "\nContent on Next Page\n" + FOOTER, 3: full})
+    assert rows[2]["flag"] == "junk" and "SN" in rows[2]["reason"], rows[2]["reason"]

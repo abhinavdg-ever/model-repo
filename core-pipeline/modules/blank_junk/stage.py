@@ -717,6 +717,11 @@ def short_verdict(
 
     added = added_over_previous()
 
+    # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
+    # next page", "Continued on the following page", "See next page") -> Junk / Others.
+    pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
+    if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_line(line) for line in own_lines):
+        return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
     # SH (2026-11-23, user): nothing but a running header and footer -- every text line at the
     # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
     # DOB: / Visit:" labels, a date / time, a number) -- and no signature, provider or credentials:
@@ -863,6 +868,17 @@ def short_verdict(
 # page, so it is left out when lines are compared (2026-11-20, user: a footer "Printed on ...
 # Page 13" is page 12's "... Page 12").
 PAGE_NUMBER_IN_LINE = re.compile(r"\b(?:page|pg)\.?\s*[:#]?\s*\d+(?:\s*(?:of|/)\s*\d+)?\b|\b\d+\s+of\s+\d+\b", re.IGNORECASE)
+
+
+# SN (2026-11-23, user): a line pointing to another page, with at most a few words around it.
+NEXT_PAGE_NOTE = re.compile(
+    r"(?i)^\W*(?:\(?\s*)?(?:(?:the\s+)?(?:content|contents|text|report|note|results?|document|form|information)s?\s+)?"
+    r"(?:is\s+|are\s+)?(?:continued|continues|continue|cont'?d?\.?|see|please\s+see|refer\s+to|turn\s+to|"
+    r"(?:is\s+)?on|(?:printed\s+)?on)\s+(?:on\s+|to\s+)?(?:the\s+)?(?:next|following|reverse|other|back)\s+"
+    r"(?:page|side|sheet)s?\W*$"
+    r"|^\W*(?:please\s+)?turn\s+over\W*$|^\W*p\.?t\.?o\.?\W*$"
+    r"|^\W*\(?\s*continued\s*\)?\W*$"
+    r"|^\W*(?:content|contents|text)\s+(?:on|in)\s+(?:the\s+)?(?:next|following)\s+page\W*$")
 
 
 # SH (2026-11-23): a running header / footer line -- page numbers, fax headers, patient labels.
