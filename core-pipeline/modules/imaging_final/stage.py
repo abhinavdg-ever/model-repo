@@ -218,7 +218,8 @@ def final_confidences(
     quality: dict[int, dict[str, Any]],
     replaced: bool = False,
     member_fields: Optional[dict[str, Optional[float]]] = None,
-) -> dict[str, float]:
+    member_raw: Optional[dict[str, tuple[Optional[float], str]]] = None,
+) -> dict[str, Any]:
     """Each Final value's confidence (2026-11-14, user; CONFIDENCE_LOGIC.md section 12),
     from the page that decided it (the anchor): the anchor keeps its own; every other page
     of the document carries the anchor's x ``carried_factor`` (0.90). Page type and
@@ -267,7 +268,14 @@ def final_confidences(
     out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
     out["handwriting"] = _number((quality.get(page_id) or {}).get("hw_confidence"))
     # 2026-11-19 (user): no Final confidence below the floor (0.20), whichever stage gave it.
-    return {k: conf.at_least_floor(v) for k, v in out.items() if v is not None}
+    final: dict[str, Any] = {k: conf.at_least_floor(v) for k, v in out.items() if v is not None}
+    if member_raw:
+        # 2026-11-23: each member field's raw value and source, so the calibration is refitted on
+        # raw scores (modules/member/calibration.py). Not a number: readers that take numbers skip it.
+        final["member_raw"] = {key: {"raw": member_raw[field][0], "source": member_raw[field][1]}
+                               for field, key in MEMBER_CONFIDENCE_KEYS.items()
+                               if field in member_raw and field != "member_id"}
+    return final
 
 
 def _anchor(type_pages: list[int], page_type: Optional[str], page_subtype: Optional[str],
@@ -279,7 +287,8 @@ def _anchor(type_pages: list[int], page_type: Optional[str], page_subtype: Optio
 
 def review_fields(confidences: dict[str, float]) -> list[str]:
     """The Final values below the review line."""
-    return sorted(k for k, v in confidences.items() if conf.needs_review(v))
+    return sorted(k for k, v in confidences.items()
+                  if isinstance(v, (int, float)) and not isinstance(v, bool) and conf.needs_review(v))
 
 
 def page_texts(conn: Any, chart_id: int, pages: list[dict[str, Any]], quality: dict[int, Any]) -> dict[int, str]:
@@ -336,7 +345,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             texts = page_texts(conn, chart_id, ctx.pages, quality)
         signatures = _signatures(provider_rows)
         from modules.extraction import staging as extraction_staging
-        from modules.member.stage import member_field_confidences
+        from modules.member.stage import member_field_confidences, member_field_raw
 
         # Member name / DOB / member ID confidences from the extraction rows they came from.
         staged = extraction_staging.read(ctx.chart_name)
@@ -502,6 +511,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 replaced=verdict.source in ("continuation", "embedded"),
                 member_fields=(
                     member_field_confidences(member, staged.page(page["page_name"])) if staged is not None and member
+                    else None
+                ),
+                member_raw=(
+                    member_field_raw(member, staged.page(page["page_name"])) if staged is not None and member
                     else None
                 ),
                 type_pages=type_pages,

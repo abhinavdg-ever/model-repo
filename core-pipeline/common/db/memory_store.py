@@ -1274,6 +1274,10 @@ class MemoryStore(StoreBackend):
         """common.db.blank_junk_truth_rows: the in-memory store keeps no page ground truth."""
         return []
 
+    def member_calibration_rows(self) -> list[dict[str, Any]]:
+        """common.db.member_calibration_rows: the in-memory store keeps no page ground truth."""
+        return []
+
     def charts_with_tags(self, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
         """common.db.charts_with_tags over the chart rows' ``tags`` (a Cosmos chart doc's tags)."""
         wanted = {t.strip().casefold() for t in tags if t and t.strip()}

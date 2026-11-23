@@ -1934,6 +1934,37 @@ def blank_junk_truth_rows(conn: Any) -> list[tuple[Any, ...]]:
 
 
 @_dispatch
+def member_calibration_rows(conn: Any) -> list[dict[str, Any]]:
+    """Every page with a ground truth row and a Final row, for the member confidence calibration
+    (2026-11-23, modules/member/calibration.py): the ground truth's member name / DOB sides and
+    Blank / Junk / duplicate labels, the Final member values and confidences, the member row's key
+    sources, the pass-2 blank / junk flag and the chart's manifest member."""
+    rows = conn.execute(
+        """
+        SELECT g.member_name AS gt_name, g.member_dob AS gt_dob, g.blank_page AS gt_blank_page,
+               g.junk_page AS gt_junk_page, g.is_duplicate AS gt_is_duplicate,
+               f.member_name AS final_name, f.member_dob AS final_dob, f.confidences,
+               f.duplicate_of_page_id,
+               m.ner_key_source_name AS key_source_name, m.ner_key_source_dob AS key_source_dob,
+               b.blank_junk_flag,
+               ml.member_name AS manifest_member_name, ml.first_name AS manifest_first_name,
+               ml.middle_name AS manifest_middle_name, ml.last_name AS manifest_last_name,
+               ml.member_dob AS manifest_member_dob
+          FROM imaging_final f
+          JOIN page_list p ON p.id = f.page_id
+          JOIN chart_list c ON c.id = f.chart_id
+          JOIN page_ground_truth g ON g.chart_name = c.chart_name AND g.page_number = p.page_number
+          LEFT JOIN member_extraction_results m ON m.page_id = f.page_id
+          LEFT JOIN blank_junk_classification b ON b.page_id = f.page_id AND b.pass_no = 2
+          LEFT JOIN LATERAL (
+                SELECT * FROM manifest_member_list x WHERE x.record_id = c.chart_name ORDER BY x.id DESC LIMIT 1
+          ) ml ON TRUE
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@_dispatch
 def charts_with_tags(conn: Any, tags: list[str], match_all: bool = False) -> list[dict[str, Any]]:
     """Charts carrying the tags (chart_list.tags, case-insensitive; 2026-11-21, user: run every
     chart of a tag, across runs and batches): any of them, or all with ``match_all``. Each row

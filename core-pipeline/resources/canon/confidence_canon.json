@@ -49,7 +49,8 @@
         "rule": 0.6,
         "ner": 0.4
       },
-      "note": "Unused since 2026-11-14 (section 12): member name, DOB and member ID each take their own KV model_score; rules only / NER -> backup_low."
+      "note": "Unused since 2026-11-14 (section 12): member name, DOB and member ID each take their own KV model_score; rules only / NER -> backup_low.",
+      "calibration_note": "2026-11-23: member Name / DOB calibration per source, fitted on the ground truth by python -m modules.member.calibration --write (stored here as calibration; absent = raw values)."
     },
     "image_preprocess": {
       "osd_scale": 3.0,

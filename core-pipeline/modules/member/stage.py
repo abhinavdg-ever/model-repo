@@ -205,8 +205,10 @@ def _chosen(row: dict[str, Any]) -> bool:
     return bool(row.get("accepted")) and bool(row.get("selected"))
 
 
-def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, staged_page: Any) -> Optional[float]:
-    """One member identifier's confidence (2026-11-19, user):
+def _field_raw(field_id: str, value: Any, source: Any, key_source: Any,
+               staged_page: Any) -> tuple[Optional[float], str]:
+    """One member identifier's raw confidence and its source (2026-11-19, user; sources for the
+    calibration, 2026-11-23: ``kv_row`` / ``whole_page`` / ``dropped`` / ``not_found``):
 
     * read from a key / value row (its value, or the member found in its sentence, key
       source "sentence: <key>"): THAT row's rule score x model_score (``row_confidence``),
@@ -217,7 +219,9 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
     value = _clean(value)
     if not value:
         # A DOB post-processing dropped (dob_filter.py, 2026-11-19, user): Not Found, 0.30.
-        return conf.dropped() if str(key_source or "").startswith("dropped:") else None
+        if str(key_source or "").startswith("dropped:"):
+            return conf.dropped(), "dropped"
+        return None, "not_found"
     from modules.extraction.results import row_confidence
 
     if field_id == "member_id" and staged_page is not None:
@@ -226,20 +230,19 @@ def _field_confidence(field_id: str, value: Any, source: Any, key_source: Any, s
         rows = [r for r in staged_page.rows("member_id") if isinstance(r, dict) and str(r.get("value") or "").strip()]
         found = conf.mean(row_confidence(r) for r in rows if _chosen(r))
         if found is not None:
-            return found
+            return found, "kv_row"
     # The row the member stage took the value from: its key ("Patient Name", or
     # "sentence: Patient Name" when the member was found in that row's sentence).
     key = str(key_source or "").split(":", 1)[1].strip() if str(key_source or "").startswith("sentence:") \
         else str(key_source or "").strip()
     row = _field_row(field_id, value, staged_page, key)
     found = row_confidence(row) if row is not None else None
-    return conf.whole_page() if found is None else found
+    return (conf.whole_page(), "whole_page") if found is None else (found, "kv_row")
 
 
-def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Optional[float]]:
-    """``{"name", "dob", "member_id"}`` -> each identifier's own confidence
-    (``_field_confidence``). ``page`` is a PageResult or a member_extraction_results row
-    (``extracted_*`` / ``detection_source_*`` keys)."""
+def member_field_raw(page: Any, staged_page: Any = None) -> dict[str, tuple[Optional[float], str]]:
+    """``{"name", "dob", "member_id"}`` -> (raw confidence, source) (``_field_raw``). ``page`` is a
+    PageResult or a member_extraction_results row (``extracted_*`` / ``detection_source_*`` keys)."""
     def get(obj: Any, *names: str) -> Any:
         for name in names:
             found = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
@@ -252,7 +255,20 @@ def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Op
         value = get(page, detected, f"extracted_{short}")
         if isinstance(value, date):
             value = value.isoformat()
-        out[field_id] = _field_confidence(field_id, value, get(page, source), get(page, key_source), staged_page)
+        out[field_id] = _field_raw(field_id, value, get(page, source), get(page, key_source), staged_page)
+    return out
+
+
+def member_field_confidences(page: Any, staged_page: Any = None) -> dict[str, Optional[float]]:
+    """``{"name", "dob", "member_id"}`` -> each identifier's confidence: its raw value
+    (``member_field_raw``) through the member calibration (2026-11-23, ``calibration.apply``; Name
+    and DOB, identity until fitted). A field not read has the measured chance "not found" is right
+    once fitted, else none."""
+    from modules.member import calibration
+
+    out: dict[str, Optional[float]] = {}
+    for field_id, (raw, source) in member_field_raw(page, staged_page).items():
+        out[field_id] = calibration.apply(field_id, source, raw) if field_id in calibration.FIELDS else raw
     return out
 
 
@@ -261,7 +277,10 @@ def _page_confidence(page: Any, staged_page: Any = None) -> Optional[float]:
     DOB and member ID confidences (``member_field_confidences``), so the column keeps one
     number; None when nothing was read. Final keeps the three apart
     (``imaging_final.confidences.member_name`` / ``member_dob`` / ``member_id``)."""
-    return conf.weakest(member_field_confidences(page, staged_page).values())
+    raw = member_field_raw(page, staged_page)
+    calibrated = member_field_confidences(page, staged_page)
+    # Only the values read (a calibrated "not found" is not a value on the page).
+    return conf.weakest(v for k, v in calibrated.items() if raw[k][1] != "not_found")
 
 
 def _agreement_rate(result: Any, status: str) -> Optional[float]:

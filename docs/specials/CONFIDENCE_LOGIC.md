@@ -49,7 +49,7 @@ All numbers are in `core-pipeline/resources/canon/confidence_canon.json` and rel
 
 | Field | Confidence |
 |---|---|
-| **Member name / DOB** | the KV row the shown value came from: score x `model_score` (score 0: `model_score`); found by the rules / GLiNER with no row: 0.60; dropped by post-processing: 0.60 or lower |
+| **Member name / DOB** | raw: the KV row the shown value came from: score x `model_score` (score 0: `model_score`); found by the rules / GLiNER with no row: 0.60; dropped by post-processing: 0.60 or lower. Then **calibrated** per source (section 5a); once fitted, a name / DOB not read carries the measured chance "not found" is right |
 | **Member ID** | the mean of every ID row KV Extract accepted and selected |
 | **Member verification (chart)** | not a confidence: the agreement rate (pages agreeing / pages checked) |
 | **Provider signature** | the signature row's score x `model_score` (rules only: 0.60); several signers: their mean; a facility read as the provider: 0.60 or lower. No signature: 1 - the best model-scored candidate; KV read the page and offered none: 1.0 |
@@ -129,6 +129,29 @@ Code: `review-ui/frontend/src/confidenceLevel.ts`, twin `review-ui/backend/app/s
 
 ---
 
+## 5a. Member calibration (2026-11-23)
+
+Member confidence was out of step with how often it is right (the 0.60 whole-page find right about
+96%; pages at 95-100% right about 57%, suspected: a sure name beside a missed DOB that carried no
+confidence). `core-pipeline/modules/member/calibration.py` measures each field (Name, DOB) by source
+on the ground truth, with "right" as the Accuracy View's member call (Yes / No / Not Found, against
+the manifest member; Blank / Junk and duplicate pages left out):
+
+| Source | Calibrated confidence |
+|---|---|
+| `kv_row` (a key / value row) | the raw score through an increasing curve fitted on the labelled pages |
+| `whole_page` (rules / GLiNER, no row) | that source's measured accuracy |
+| `dropped` (post-processing dropped it) | that source's measured accuracy |
+| `not_found` (nothing read) | how often "not found" was right |
+
+A source with under 30 labelled pages keeps its raw value. The raw value and source are kept in
+`imaging_final.confidences.member_raw`, so a refit uses raw scores. On the VM:
+`python -m modules.member.calibration` (table), `--write` (stores it in `confidence_canon.json` ->
+`modules.member.calibration`), then re-run the charts with `only: ["member_verify", "imaging_final"]`,
+`skip_ocr: true`.
+
+---
+
 ## 6. Confidence Analysis (review-ui, Accuracy)
 
 Over the filtered charts' pages with ground truth, by confidence band (**95-100, 90-95, 85-90,
@@ -145,5 +168,5 @@ tab: its own band table. Accuracy should rise with confidence.
   `confidence_canon.json` is empty; fit it per metric on the ground-truth charts. The continuity
   clue model is the one calibrated score so far (isotonic; out-of-fold calibration error 0.007).
 * **The fixed values are set, not measured.** 0.60 / 0.40 / 0.30 should become each rule's
-  measured accuracy on the ground truth, as the blank / junk rules now can (section 4); next the
-  family priority rules and the DOS / member backups.
+  measured accuracy on the ground truth, as the blank / junk rules (section 4) and the member
+  fields (section 5a) now can; next the family priority rules and the DOS backups.
