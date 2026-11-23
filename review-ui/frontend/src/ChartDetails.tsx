@@ -153,7 +153,7 @@ export default function ChartDetails({
                 </thead>
                 <tbody>
                   <tr className="chart-details-total">
-                    <td>Overall (page level) · chart {levelLabel(cc.level)}</td>
+                    <td>Overall (page level) · chart {levelLabel(cc.level)}{cc.reason ? ` (${cc.reason})` : ""}</td>
                     {LEVELS.map((l) => <td key={l} className="num">{cc.counts[l]}</td>)}
                   </tr>
                   {fieldRows.map((row) => (

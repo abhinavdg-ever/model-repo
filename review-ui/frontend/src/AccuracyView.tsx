@@ -1035,6 +1035,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const data = useMemo(() => {
     if (!open) return null;
     const pageLevels: Record<Level, number> = { high: 0, medium: 0, low: 0 };
+    const scored: { level: Level; critical: boolean }[] = [];
     const perFeature = new Map<string, Record<Level, number>>();
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
@@ -1047,6 +1048,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         const pc = page.confidence;
         if (pc?.level && pc.value != null) {
           pageLevels[pc.level] += 1;
+          scored.push({ level: pc.level, critical: Boolean(page.critical) });
           addVerdict(cross[pc.level], page.overall);
         }
         // Each metric on every page the accuracy scores it (2026-11-19, user): Blank / Junk
@@ -1066,8 +1068,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
-    // 2026-11-21 (user): NPS-like -- (High - Low) / pages; the % is (1 + score) / 2.
-    const score = chartScore(pageLevels);
+    // 2026-11-23 (user): weighted page levels (High 1, Medium 0.6, Low 0; critical pages x2) + guardrails.
+    const score = chartScore(scored);
     // Every metric pooled, per level (each metric on each page it scores counts once).
     const pooled: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     for (const by of byMetric.values()) {
@@ -1075,7 +1077,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         pooled[l].pages += by[l].pages; pooled[l].yes += by[l].yes; pooled[l].maybe += by[l].maybe; pooled[l].no += by[l].no;
       }
     }
-    return { pageLevels, total, level: score?.level ?? null, nps: score?.nps ?? null,
+    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null,
              mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles };
   }, [open, rows]);
 
@@ -1093,7 +1095,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <div className="modal-card-header">
                   <h2 id="confidence-metrics-title">
                     Confidence Analysis · {data.mean == null ? "—" : `${data.mean}%`}{" "}
-                    {data.nps != null ? <small title="(High pages - Low pages) / pages">score {data.nps >= 0 ? "+" : ""}{Math.round(100 * data.nps)}</small> : null}{" "}
+                    {data.reason ? <small title="why the level">{data.reason}</small> : null}{" "}
                     {data.level ? <span className={`chart-glance-pill level-${data.level}`}>{levelLabel(data.level)}</span> : null}
                   </h2>
                   <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">
@@ -1103,8 +1105,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <p className="chart-details-note">
                   {rows.length.toLocaleString()} charts, {data.total.toLocaleString()} pages with ground truth (the filters apply).
                   Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: score = (High fields − Low fields) / fields, shown
-                  as (1 + score) / 2, banded like any field. Overall: score = (High pages − Low pages) / pages (−100..+100, like an
-                  NPS), shown as (1 + score) / 2: all High 100%, all Medium 50%, all Low 0% (at least 20%).
+                  as (1 + score) / 2, banded like any field. Overall: the pages' levels averaged (High 1, Medium 0.6, Low 0; a Discharge Summary, Operative or
+                  Procedure Note page counts twice); Low if under 50%, over 15% of pages Low or a critical page Low;
+                  Medium if under 80%, any page Low or over 30% Medium; else High.
                 </p>
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
                   {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (

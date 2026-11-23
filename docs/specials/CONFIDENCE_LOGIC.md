@@ -108,13 +108,23 @@ DOB), DOS, Blank / Junk, Page Type, Codability, Provider Signature, Orientation.
 or duplicate page counts Blank / Junk and Codability only. Each feature is banded High / Medium /
 Low as in section 1.
 
-| | Score | % shown | Level |
-|---|---|---|---|
-| **Page** | (High features - Low features) / features | (1 + score) / 2, at least 20% | the % banded like any confidence |
-| **Chart** | (High pages - Low pages) / pages | (1 + score) / 2, at least 20% | the % banded like any confidence |
+**Page:** score = (High features - Low features) / features (like an NPS: Medium counts 0); the page's
+% = (1 + score) / 2, at least 20%, and its level is that % banded like any confidence.
 
-Like an NPS: Medium counts 0. All High is 100%, all Medium 50%, all Low 0% (shown at the 20%
-floor). High needs a score of +0.6 or more; Low means more Low than High.
+**Chart** (2026-11-23, user):
+
+1. **Score** = the pages' levels averaged with weights **High 1.0, Medium 0.6, Low 0**. A **critical
+   page** (Final page type Discharge Summary, Operative Note or Procedure Note) counts **twice**.
+2. **Level**, strictest rule first:
+
+| Chart level | When | Review |
+|---|---|---|
+| **Low** | score under 50%, **or** more than 15% of pages Low, **or** any critical page Low | full manual review |
+| **Medium** | score under 80%, **or** any page Low, **or** more than 30% of pages Medium | review the flagged Medium / Low pages |
+| **High** | score 80% or more, **and** no Low page, **and** 30% or fewer pages Medium | straight through |
+
+Examples (100 pages): 75 High, 25 Medium -> 90%, **High**. 82 High, 12 Medium, 6 Low -> 89.2%, **Medium**
+(Low pages). 40 High, 15 Medium, 45 Low -> 49%, **Low**. The reason that decided is shown with the level.
 Code: `review-ui/frontend/src/confidenceLevel.ts`, twin `review-ui/backend/app/services/chart_confidence.py`.
 
 ---
