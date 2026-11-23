@@ -667,11 +667,22 @@ def short_verdict(
     # The page's own lines (2026-11-21, user): not the previous / next page's (repeated_lines:
     # a running header / footer in the same band, or a block carried over), not a placeholder
     # value ("None recorded."). Measured on every text of the neighbours (each OCR engine).
-    page_lines = [line for line in text.splitlines() if _line_key(line)]
+    # 2026-11-23 (user): compared on the same OCR engine -- the page's Docling lines against the
+    # neighbour's Docling text, else Doc Intel against Doc Intel (``pair``); only when the two have
+    # no engine in common, the page's best text against every text of the neighbour.
+    mine_by = (engine_texts or {}).get(pid) or {}
+    base_engine = next((e for e in ("docling", "azuredocintel") if (mine_by.get(e) or "").strip()), None)
+    base_text = mine_by[base_engine] if base_engine else text
+    page_lines = [line for line in base_text.splitlines() if _line_key(line)]
     theirs_flags = [False] * len(page_lines)
     for other_id in neighbours:
-        for other_text in [texts.get(other_id) or "", *((engine_texts or {}).get(other_id) or {}).values()]:
-            flags = repeated_lines(text, other_text, own, inputs.get(other_id))
+        theirs_by = (engine_texts or {}).get(other_id) or {}
+        if base_engine and (theirs_by.get(base_engine) or "").strip():
+            others = [theirs_by[base_engine]]
+        else:
+            others = [texts.get(other_id) or "", *theirs_by.values()]
+        for other_text in others:
+            flags = repeated_lines(base_text, other_text, own, inputs.get(other_id))
             theirs_flags = [a or b for a, b in zip(theirs_flags, flags)]
     own_lines = [line for line, theirs in zip(page_lines, theirs_flags)
                  if not theirs and not EMPTY_VALUE_LINE.match(line.strip())]

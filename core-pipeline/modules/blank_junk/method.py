@@ -918,6 +918,12 @@ def decide(inputs: PageInputs) -> Verdict:
         if sparse:
             votes["low_content"] = sparse
             return ruled(_junk_code("Others"), "RA", f"RA {sparse} -> Junk / Others", 1.0)
+        # RB (2026-11-23, user): the model over 95% sure the page is blank -- Junk / Others, never
+        # overturned by a keep or a short-page rule.
+        blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.95))
+        if p_blank is not None and p_blank > blank_at:
+            return ruled(_junk_code("Others"), "RB", f"RB model p(blank) {p_blank:.1%} > {blank_at:.0%} -> Junk / Others",
+                         confidence=round(p_blank, 4))
 
     # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
     # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.

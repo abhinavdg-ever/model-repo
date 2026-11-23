@@ -634,3 +634,39 @@ def test_ra_a_page_whose_text_covers_under_5_percent_is_junk(monkeypatch):
         other = method.PageInputs(**{**dict(text=page.text, pass_no=2, document_type="printed",
                                              content_area=area, page_ink=0.004), **kw})
         assert method.decide(other).rule != "RA", kw
+
+
+RESULT_BLOCK = ("Result type: Orthopedic Progress Note\nResult date: January 30, 2024 9:17 EST\nResult status: Auth (Verified)\n"
+                "Result title: Orthopedic Office/Clinic Note\nPerformed by: Madeup, Made A MD on February 20, 2024 14:01 EST\n"
+                "Encounter info: 5665966, Made Up Clinic, 1/30/2024 - 1/30/2024\nContributor system: MADE_UP_SYSTEM\n"
+                "Printed by: Madeup Person\nPrinted on: 6/20/2025 12:11 EDT")
+RUN_HEAD = "Orthopedic Progress Note\n* Final Report *\nMadeup Person 1285711"
+
+
+def test_own_lines_compare_the_same_ocr_engine(monkeypatch):
+    """2026-11-23 (user): page 6 of 6 is the running header and page 5's result block: compared on
+    one OCR engine (Docling vs Docling) it adds nothing, whatever another engine's lines look like."""
+    _keep(monkeypatch)
+    page5 = RUN_HEAD + "\n" + BODY + "\n" + RESULT_BLOCK + "\nPage 5 of 6"
+    page6 = RUN_HEAD + "\n" + RESULT_BLOCK + "\nPage 6 of 6"
+    joined6 = page6.replace("\nResult", " Result").replace("\nPerformed", " Performed")  # another engine's lines
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in (5, 6)]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in (5, 6)}
+    inputs[5].content_bottom, inputs[6].content_bottom = 0.9, 0.12
+    rows = stage._classify(pages, {5: page5, 6: joined6}, {5, 6}, inputs=inputs, signed_ids=set(), signatures={},
+                           find_duplicates=True,
+                           engine_texts={5: {"docling": page5, "azuredocintel": page5},
+                                         6: {"docling": page6, "azuredocintel": joined6}})
+    by = {row["page_id"]: row for row in rows}
+    assert by[6]["flag"] == "junk", by[6]["reason"]
+
+
+def test_rb_the_model_sure_of_blank_is_junk_others():
+    """2026-11-23 (user): p(blank) > 95% -> Junk / Others, before every keep."""
+    bert = {"p_keep": 0.01, "p_junk": 0.03, "p_blank": 0.96, "top_junk_label": ""}
+    page = method.PageInputs(text="Signed by Made Up MD 1/2/2025\nPatient Madeup DOB 1/1/1950", pass_no=2,
+                             document_type="printed", bert=bert, signed=True)
+    verdict = method.decide(page)
+    assert verdict.rule == "RB" and verdict.code != method.CODE_MAIN
+    page.bert = {**bert, "p_blank": 0.94, "p_keep": 0.03}
+    assert method.decide(page).rule != "RB"
