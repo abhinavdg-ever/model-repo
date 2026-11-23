@@ -41,17 +41,16 @@ def band(value: float) -> str:
     return "high" if value >= HIGH_AT else "medium" if value >= LOW_BELOW else "low"
 
 
-# 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation are High from 95%, Low under 75%.
-STRICT_FEATURES = {"blank_junk", "provider", "orientation"}
-STRICT_HIGH_AT = 0.95
-STRICT_LOW_BELOW = 0.75
+# 2026-11-23 (user): per-feature cuts (High at, Low below): Blank / Junk, Provider Signature and
+# Orientation High from 95%, Low under 75%; DOS High from 75%. Others: 80% / 50%.
+FEATURE_CUTS = {"blank_junk": (0.95, 0.75), "provider": (0.95, 0.75), "orientation": (0.95, 0.75),
+                "dos": (0.75, 0.50)}
 
 
 def band_for(key: str, value: float) -> str:
-    """A feature's level: the strict cuts for STRICT_FEATURES, else the usual 80% / 50%."""
-    if key in STRICT_FEATURES:
-        return "high" if value >= STRICT_HIGH_AT else "medium" if value >= STRICT_LOW_BELOW else "low"
-    return band(value)
+    """A feature's level by its own cuts (FEATURE_CUTS), else the usual 80% / 50%."""
+    high_at, low_below = FEATURE_CUTS.get(key, (HIGH_AT, LOW_BELOW))
+    return "high" if value >= high_at else "medium" if value >= low_below else "low"
 
 
 def _num(value: Any) -> Optional[float]:

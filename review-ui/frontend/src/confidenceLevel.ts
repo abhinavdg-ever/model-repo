@@ -60,15 +60,18 @@ export function band(value: number): Level {
   return value >= HIGH_AT ? "high" : value >= LOW_BELOW ? "medium" : "low";
 }
 
-/** 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation are High from 95%, Low under 75%. */
+/** 2026-11-23 (user): per-feature cuts [High at, Low below]: Blank / Junk, Provider Signature and
+ * Orientation High from 95%, Low under 75%; DOS High from 75%. Others: 80% / 50%. */
+export const FEATURE_CUTS: Record<string, [number, number]> = {
+  blank_junk: [0.95, 0.75], provider: [0.95, 0.75], orientation: [0.95, 0.75], dos: [0.75, 0.5],
+};
+/** The features with 1-point bands from 95% in the Confidence Analysis. */
 export const STRICT_FEATURES = new Set(["blank_junk", "provider", "orientation"]);
-export const STRICT_HIGH_AT = 0.95;
-export const STRICT_LOW_BELOW = 0.75;
 
-/** A feature's level: the strict cuts for STRICT_FEATURES, else the usual 80% / 50%. */
+/** A feature's level by its own cuts (FEATURE_CUTS), else the usual 80% / 50%. */
 export function bandFor(key: string, value: number): Level {
-  if (STRICT_FEATURES.has(key)) return value >= STRICT_HIGH_AT ? "high" : value >= STRICT_LOW_BELOW ? "medium" : "low";
-  return band(value);
+  const [highAt, lowBelow] = FEATURE_CUTS[key] ?? [HIGH_AT, LOW_BELOW];
+  return value >= highAt ? "high" : value >= lowBelow ? "medium" : "low";
 }
 
 export type FieldConfidence = { key: string; label: string; value: number; level: Level };

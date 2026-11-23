@@ -16,7 +16,8 @@ History is in git; this page is only the current logic.
 | **Low** | under 0.50 | red: listed in `imaging_final.review_fields` |
 
 **Blank / Junk, Provider Signature and Orientation** (2026-11-23, user) are stricter: **High 0.95 and above,
-Medium 0.75 to under 0.95, Low under 0.75** (page and chart levels, Confidence Analysis).
+Medium 0.75 to under 0.95, Low under 0.75** (page and chart levels, Confidence Analysis). **DOS** is High from **0.75**
+(Medium 0.50 to under 0.75, Low under 0.50).
 
 No confidence is shown below **0.20** (the floor; a lower value is raised to it). A field with no
 value read (no DOS, nothing extracted, a default date) has **no confidence**, not a number.

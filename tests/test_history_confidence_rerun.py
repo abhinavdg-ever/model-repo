@@ -111,3 +111,10 @@ def test_strict_features_and_member_not_found():
     # name 0.96, DOB not found (0.80): member = 0.88, High.
     assert page_level({"member_name": 0.96, "dos": 0.9}, False)[0] == "high"
     assert page_level({"member_name": 0.3, "dos": 0.9}, False)[:2] == ("medium", 0.75)  # (0.3 + 0.8) / 2 = 0.55 Medium
+
+
+def test_dos_is_high_from_75():
+    """2026-11-23 (user): DOS High from 75%."""
+    from app.services.chart_confidence import band_for
+
+    assert [band_for("dos", v) for v in (0.76, 0.74, 0.49)] == ["high", "medium", "low"]
