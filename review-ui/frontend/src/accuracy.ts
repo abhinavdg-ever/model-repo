@@ -1160,11 +1160,11 @@ export function pageAccuracyTable(charts: ChartAccuracy[], withValues = false): 
         // "6 of 7", not "6/7": Excel reads that as a date (2026-11-09, user).
         page.matches == null ? "" : `${page.matches} of ${OVERALL_STREAMS}`,
         page.confidence ? levelLabel(page.confidence.level) : "",
-        page.confidence?.value == null ? "" : `${Math.round(page.confidence.value * 100)}%`,
-        ...CONFIDENCE_FIELDS.map(([key]) => {
-          const field = page.confidence?.fields.find((f) => f.key === key);
-          return field ? `${Math.round(field.value * 100)}%` : "";
-        }),
+        pct1(page.confidence?.value),
+        // 2026-11-23 (user: the download must match the Confidence Analysis): each metric's
+        // confidence as the analysis reads it (page.features, on every scored page, Blank / Junk
+        // pages included), to one decimal so a page sits in the same band (94.6% is 90-95%).
+        ...CONFIDENCE_FIELDS.map(([key]) => pct1(page.features?.[key])),
         ...values.map((column) => page.values?.[column] ?? ""),
       ]);
     }
@@ -1186,11 +1186,18 @@ export function chartAccuracyTable(charts: ChartAccuracy[]): Table {
       chart.chartName, chart.runId ?? "", chart.batchId ?? "", chart.chartCluster ?? "", chart.pages.length,
       ...live.map((metric) => pct(accuracyPercent(chart.metrics[metric.id]))),
       pct(accuracyPercent(chart.overall)),
-      cc ? levelLabel(cc.level) : "", cc?.value == null ? "" : `${Math.round(cc.value * 100)}%`,
+      cc ? levelLabel(cc.level) : "", pct1(cc?.value),
       cc ? cc.counts.high : "", cc ? cc.counts.medium : "", cc ? cc.counts.low : "",
     ];
   });
   return { header, rows };
+}
+
+/** A 0-1 confidence as a % with one decimal ("94.6%"), "" when none: the Confidence Analysis
+ * bands it unrounded, so the download must not round it into the next band. */
+function pct1(value: number | null | undefined): string {
+  // Cut, not rounded (94.96% stays 94.9%, never 95.0%); the epsilon keeps an exact 0.95 at 95.0%.
+  return value == null || !Number.isFinite(value) ? "" : `${(Math.floor(value * 1000 + 1e-6) / 10).toFixed(1)}%`;
 }
 
 export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): string {
