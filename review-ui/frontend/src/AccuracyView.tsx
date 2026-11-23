@@ -1044,7 +1044,21 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     // Per metric, its pages by their own confidence band (BANDS, top first).
     const deciles = new Map<MetricId, LevelScore[]>();
     for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
+    // 2026-11-23 (user): charts by their own confidence band; Match = a page with every metric matching.
+    const chartBands = Array.from({ length: BANDS.length }, () => ({ charts: 0, pages: 0, yes: 0 }));
+    const chartValues: number[] = [];
     for (const row of rows) {
+      const cv = row.confidence?.value;
+      if (cv != null) {
+        chartValues.push(cv);
+        const cb = chartBands[bandIndex(cv)];
+        cb.charts += 1;
+        for (const page of row.pages) {
+          if (!page.overall) continue;
+          cb.pages += 1;
+          if (page.overall === "yes") cb.yes += 1;
+        }
+      }
       for (const page of row.pages) {
         const pc = page.confidence;
         if (pc?.level && pc.value != null) {
@@ -1079,7 +1093,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         pooled[l].pages += by[l].pages; pooled[l].yes += by[l].yes; pooled[l].maybe += by[l].maybe; pooled[l].no += by[l].no;
       }
     }
-    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands,
+    const chartMean = chartValues.length ? Math.round((100 * chartValues.reduce((s, x) => s + x, 0)) / chartValues.length) : null;
+    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, chartBands, chartMean,
              mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles };
   }, [open, rows]);
 
@@ -1096,20 +1111,14 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                    aria-labelledby="confidence-metrics-title" onClick={(event) => event.stopPropagation()}>
                 <div className="modal-card-header">
                   <h2 id="confidence-metrics-title">
-                    Confidence Analysis · {data.mean == null ? "—" : `${data.mean}%`}{" "}
-                    {data.reason ? <small title="why the level">{data.reason}</small> : null}{" "}
-                    {data.level ? <span className={`chart-glance-pill level-${data.level}`}>{levelLabel(data.level)}</span> : null}
+                    Confidence Analysis · {data.chartMean == null ? "—" : `${data.chartMean}%`}
                   </h2>
                   <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">
                     <X size={16} />
                   </button>
                 </div>
                 <p className="chart-details-note">
-                  {rows.length.toLocaleString()} charts, {data.total.toLocaleString()} pages with ground truth (the filters apply).
-                  Field: High &gt;80%, Medium 50-80%, Low &lt;50%. Page: score = (High fields − Low fields) / fields, shown
-                  as (1 + score) / 2, banded like any field. Overall: the pages' levels averaged (High 1, Medium 0.6, Low 0; a Discharge Summary, Operative or
-                  Procedure Note page counts twice); Low if under 50%, over 15% of pages Low or a critical page Low;
-                  Medium if under 80%, any page Low or over 30% Medium; else High.
+                  Average chart confidence · {rows.length.toLocaleString()} charts · {data.total.toLocaleString()} pages
                 </p>
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
                   {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
@@ -1168,10 +1177,44 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 })() : (
                 <>
                 <section>
+                  <h3>Charts: accuracy by chart confidence band</h3>
+                  <p className="chart-details-note">Match = every metric on the page matches.</p>
+                  <table className="chart-details-table">
+                    <thead>
+                      <tr><th>Confidence</th><th className="num">Charts</th><th className="num">Pages</th><th className="num">Match</th>
+                        <th className="num">No Match</th><th className="num">Accuracy</th></tr>
+                    </thead>
+                    <tbody>
+                      {BANDS.map(([label, lo], i) => {
+                        const b = data.chartBands[i];
+                        const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
+                        return (
+                          <tr key={label}>
+                            <td className={`level-text-${level}`}>{label}</td>
+                            <td className="num">{b.charts.toLocaleString()}</td>
+                            <td className="num">{b.pages.toLocaleString()}</td>
+                            <td className="num">{b.yes.toLocaleString()}</td>
+                            <td className="num">{(b.pages - b.yes).toLocaleString()}</td>
+                            <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                      {(() => {
+                        const t = data.chartBands.reduce((acc, b) => ({ charts: acc.charts + b.charts, pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { charts: 0, pages: 0, yes: 0 });
+                        return (
+                          <tr className="chart-details-total">
+                            <td>Total</td><td className="num">{t.charts.toLocaleString()}</td><td className="num">{t.pages.toLocaleString()}</td>
+                            <td className="num">{t.yes.toLocaleString()}</td><td className="num">{(t.pages - t.yes).toLocaleString()}</td>
+                            <td className="num">{share(t.yes, t.pages)}</td>
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
                   <h3>Pages: accuracy by page confidence band</h3>
-                  <p className="chart-details-note">
-                    Pages with ground truth, by the page's own confidence. Match = every metric on the page matches.
-                  </p>
                   <table className="chart-details-table">
                     <thead>
                       <tr><th>Confidence</th><th className="num">Pages</th><th className="num">Match</th>
@@ -1206,9 +1249,6 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
 
                 <section>
                   <h3>Each metric: accuracy by its own confidence band</h3>
-                  <p className="chart-details-note">
-                    Rows: the metric's own confidence band. Each cell: that metric's accuracy there (pages in brackets).
-                  </p>
                   <table className="chart-details-table">
                     <thead>
                       <tr><th>Confidence</th>
