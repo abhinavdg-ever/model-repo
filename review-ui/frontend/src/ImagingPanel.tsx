@@ -285,6 +285,20 @@ const GOOD_AT = 80;
 const REVIEW_BELOW = 50;
 
 /** A Final value's confidence when the run stored one, else the Extracted value's. */
+const MEMBER_CONF_KEYS = ["member_name", "member_dob", "member_id"];
+
+/** A member field's confidence (2026-11-23, user: a Not Found DOB showed the page's 55.7%): its own
+ * Final confidence; once the Final confidences carry any member field, a field without one has
+ * none. Only rows from before the per-field confidences show the page's one member confidence,
+ * and only on a field that was read. */
+function memberFieldConfidence(page: ImagingPageResult, key: string, value: string | null | undefined): number | null {
+  const stored = page.finalConfidences?.[key];
+  if (typeof stored === "number") return stored;
+  if (MEMBER_CONF_KEYS.some((k) => typeof page.finalConfidences?.[k] === "number")) return null;
+  const read = (value ?? "").trim() !== "" && (value ?? "").trim().toLowerCase() !== "not found";
+  return read ? page.memberConfidence ?? null : null;
+}
+
 function finalOr(page: ImagingPageResult, key: string, extracted: number | null | undefined): number | null {
   const stored = page.finalConfidences?.[key];
   return typeof stored === "number" ? stored : extracted ?? null;
@@ -2035,7 +2049,9 @@ function PageDetails({
   // 2026-11-14 (user): name, DOB and member ID each carry their own confidence (Final);
   // rows written before that show the page's one member confidence on all three.
   const memberConfOf = (key: string) =>
-    fmtConfidence(finalOr(page, key, page.memberConfidence), sections.member, memberShownSkip);
+    fmtConfidence(memberFieldConfidence(page, key,
+      key === "member_name" ? page.memberName : key === "member_dob" ? page.memberDob : page.memberId),
+    sections.member, memberShownSkip);
   // Scored against the manifest: a name or DOB that is not the member's counts as none
   // (2026-10-27, user). The values shown stay as read.
   const scoredPage = asManifestMember(page, manifest);
@@ -3254,7 +3270,7 @@ function DocSummary({
               <td className="imaging-mono">{p.fileName}</td>
               <td>
                 <GtCell text={fmt(p.memberName && memberDisplayName(p.memberName), sections.member, mskip)} bits={bits.memberName} />
-                <ConfLine value={fmtConfidence(finalOr(p, "member_name", p.memberConfidence), sections.member, mskip)} />
+                <ConfLine value={fmtConfidence(memberFieldConfidence(p, "member_name", p.memberName), sections.member, mskip)} />
               </td>
               <td>
                 <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, mskip))} bits={bits.memberDob} />
