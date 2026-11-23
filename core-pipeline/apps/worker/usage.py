@@ -6,7 +6,8 @@ One ``run_usage`` row per chart run, written when the run ends (``run_stats.reco
 * time: the run's seconds and each stage's (``stage_seconds``), pages, whether OCR ran;
 * Azure Document Intelligence: pages sent (Final OCR 2) and their cost;
 * LLM: prompt / completion tokens and cost per deployment, from :func:`add_llm_tokens`
-  (nothing calls it yet; every future LLM call must).
+  (the blank / junk short-page judge, modules/blank_junk/llm_judge.py, since 2026-11-23; every
+  LLM call must).
 
 Prices come from ``.env`` and are stored with the row:
 

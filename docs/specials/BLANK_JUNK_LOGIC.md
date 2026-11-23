@@ -108,6 +108,16 @@ The first that matches decides:
 
 **Short page confidence** (2026-11-23, user): any verdict on a short page reads **at most 90%** (`short_page.confidence_cap`).
 
+**LLM judge** (2026-11-23, user; `BLANK_JUNK_LLM=true`, off by default): a short page with some content of its own
+(2+ words), after a **full** page with **Progress Note headers**, whose verdict came from a soft short-page rule
+(S1-S7) or the classifier, is judged by an LLM (Azure OpenAI in the client's tenant: `AZURE_OPENAI_ENDPOINT`,
+`_KEY`, `_DEPLOYMENT`, `_API_VERSION`). It is given the previous page's text and this page's lines, each with
+its position on the page (y = share of the height), and answers Main / Junk / Blank (Blank and Junk are filed
+Junk / Others) with a confidence (capped at 90%) and a reason; the rule is `LLM` and the rules' verdict is kept in
+the votes. The hard rules (RF, RA, RB, SH, SN, R1 ...) decide first and are never sent. A failed call keeps the
+rules' verdict. Every call's tokens are recorded on the run's `run_usage` row (price:
+`PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000`). `/health` -> `blank_junk_llm` says whether it is on and why not.
+
 ### Rule 5: cards (`card_rules.py`)
 
 **Strong evidence** (a licence or state ID, 3+ insurance groups, 3+ card-back lines, a Medicare /

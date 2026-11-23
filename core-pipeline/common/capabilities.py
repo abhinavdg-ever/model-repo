@@ -404,6 +404,13 @@ def code_version_line(version: dict[str, Any]) -> str:
     return max(times) if times else "unknown"
 
 
+def _blank_junk_llm_status() -> dict[str, Any]:
+    """The short-page LLM judge (2026-11-23): on, and if not, why. Never the key."""
+    from modules.blank_junk.llm_judge import status
+
+    return status()
+
+
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
     from modules.ocr.docling_ocr import docling_status
@@ -415,6 +422,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
+        "blank_junk_llm": _blank_junk_llm_status(),
         "page_leaf_model": page_leaf_model_status(),
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),

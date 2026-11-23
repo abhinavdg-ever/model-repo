@@ -229,6 +229,14 @@ KV_DEBUG = _flag("KV_DEBUG", False)
 # Rejected — and /health says member_ner.ready=false. See
 # modules/member/engine.py.
 MEMBER_NER_ENABLED = _flag("MEMBER_NER_ENABLED", True)
+
+# 2026-11-23 (user): the LLM judge for short pages in blank / junk pass 2 (modules/blank_junk/
+# llm_judge.py). Off by default; Azure OpenAI in the client's tenant only. Tokens go to run_usage.
+BLANK_JUNK_LLM = _flag("BLANK_JUNK_LLM", False)
+AZURE_OPENAI_ENDPOINT = (os.environ.get("AZURE_OPENAI_ENDPOINT") or "").strip()
+AZURE_OPENAI_KEY = (os.environ.get("AZURE_OPENAI_KEY") or "").strip()
+AZURE_OPENAI_DEPLOYMENT = (os.environ.get("AZURE_OPENAI_DEPLOYMENT") or "").strip()
+AZURE_OPENAI_API_VERSION = (os.environ.get("AZURE_OPENAI_API_VERSION") or "2024-10-21").strip()
 MEMBER_NER_MODEL_ID = (
     os.environ.get("MEMBER_NER_MODEL_ID") or "gliner_medium"
 ).strip()

@@ -278,8 +278,10 @@ def _classify(
     exact_near: bool = False,
     headers_by_id: Optional[dict[int, tuple[str, ...]]] = None,
     engine_texts: Optional[dict[int, dict[str, str]]] = None,
+    chart_id: Optional[int] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages (dup_rules.find).
+    ``chart_id``: for the LLM judge's token usage (BLANK_JUNK_LLM, llm_judge.py).
     ``engine_texts``: each page's text per OCR engine, for the short page's comparisons.
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
@@ -376,6 +378,40 @@ def _classify(
                              repeated=_repeated_signature(pid) is not None, words=_words,
                              engine_texts=engine_texts)
 
+    from modules.blank_junk import llm_judge
+
+    llm_on = llm_judge.ready()
+
+    def _llm_review(page_id: int, verdict: "method.Verdict", page_inputs: "method.PageInputs") -> "method.Verdict":
+        """2026-11-23 (user, BLANK_JUNK_LLM): a short page with some content of its own after a full
+        page with Progress Note headers -- the LLM judges it from the previous page and this page's
+        positioned lines, over the short rules' soft verdicts and the classifier."""
+        if not llm_on or verdict.rule not in llm_judge.REVIEWABLE:
+            return verdict
+        from modules.blank_junk import pn_headers
+
+        prev_id = around.get(page_id, (None, None))[0]
+        text = texts.get(page_id) or ""
+        if prev_id is None or len(re.findall(r"[A-Za-z]{2,}", text)) < 2:
+            return verdict
+        prev_inputs = (inputs or {}).get(prev_id)
+        prev_text = texts.get(prev_id) or ""
+        if prev_inputs is not None and is_short(prev_inputs):
+            return verdict
+        if not pn_headers.clinical_sections_on(prev_text, (headers_by_id or {}).get(prev_id) or ()):
+            return verdict
+        answer = llm_judge.judge(chart_id, llm_judge.prompt(
+            prev_text, getattr(prev_inputs, "lines", None), text, page_inputs.lines))
+        if "error" in answer:
+            verdict.votes["llm"] = {"error": answer["error"], "kept": verdict.rule}
+            return verdict
+        code = CODE_MAIN if answer["verdict"] == "main" else method._junk_code("Others")
+        votes = {**verdict.votes, "llm": {**answer, "rules_rule": verdict.rule, "rules_reason": verdict.reason}}
+        votes["rule"] = "LLM"
+        return method.Verdict(code, float(answer["confidence"]), "LLM",
+                              f"LLM {answer['verdict']}: {answer['reason']} (rules: {verdict.rule})",
+                              votes, strength=float(answer["confidence"]))
+
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
@@ -406,6 +442,8 @@ def _classify(
                     and len(_words(page_id)) <= CARD_BARCODE_MAX_WORDS and (image_paths or {}).get(page_id)):
                 page_inputs.barcode = read_barcode((image_paths or {})[page_id])
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
+        if page_inputs.pass_no == 2 and page_inputs.short_verdict:
+            verdict = _llm_review(page_id, verdict, page_inputs)
         if page_inputs.short_verdict:
             # 2026-11-23 (user): a short page's verdict reads at most short_page.confidence_cap (90%).
             cap = float(method.canon().raw["short_page"].get("confidence_cap", 0.9))
@@ -1941,6 +1979,7 @@ def _run_pass(
             exact_near=pass_no == 1,
             headers_by_id=_headers_by_id(ctx) if pass_no == 2 else None,
             engine_texts=engine_texts,
+            chart_id=chart_id,
         )
 
         with connect() as conn:
