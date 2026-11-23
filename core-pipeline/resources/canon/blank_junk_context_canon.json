@@ -74,7 +74,9 @@
       "^\\s*(?:fax|from|to)\\b.*\\d{3}.*\\d{4}",
       "^\\s*confidential"
     ],
-    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
+    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line.",
+    "confidence_cap": 0.9,
+    "confidence_cap_note": "2026-11-23 (user): any verdict on a short page reads at most this confidence."
   },
   "visual": {
     "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type). Rule R3, before signature, DistilBERT, short page, retrieval and clinical: on every visual page, card evidence (card_group, id_card: a card term or card-number pattern) is required; with it, card + vendor + insurer + retrieval + invoice wording (veto_junk_groups) >= veto_min_score -> Junk / Others, whatever the word count. Vendors and insurers only add weight: without a card term they never fire R3. Else fewer than max_words words -> Main. Else (a visual page with more text) the rest of the ladder and the vote decide. Pass 2 skips visual pages under max_words (decided in pass 1). Changed 2026-10-19: was R8, after R7, veto at 7.",

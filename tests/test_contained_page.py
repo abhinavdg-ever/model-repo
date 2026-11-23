@@ -177,9 +177,9 @@ def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monke
     before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Plan", FOOTER])
     rows = _run({1: before, 2: FOOTER + " " + HEADER + "\ncontinue current medications, follow up"})
     assert rows[2]["flag"] == "not_blank_junk" and "S1" in rows[2]["reason"]
-    # 2026-11-23 (user): a page adding nothing over the previous one (its words are all there,
-    # numbers and dates aside) carries nothing on.
-    assert "S1" not in (_run({1: before, 2: FOOTER + " " + HEADER + " 12/01/2025 4"})[2]["reason"] or "")
+    # 2026-11-23 (user): a page with under 2 words on lines of its own (numbers and dates aside)
+    # carries nothing on.
+    assert "S1" not in (_run({1: before, 2: HEADER + "\n12/01/2025 4\n" + FOOTER})[2]["reason"] or "")
     early = "\n".join([HEADER, "## Plan"] + [f"line {i} {BODY[:40]}" for i in range(20)] + [FOOTER])
     assert "S1" not in _run({1: early, 2: FOOTER + " " + HEADER})[2]["reason"]
 
@@ -682,3 +682,17 @@ def test_sn_a_short_page_of_only_continued_on_next_page_is_junk(monkeypatch):
     full = HEADER + "\n" + BODY + "\n" + FOOTER
     rows = _run({1: full, 2: HEADER + "\nContent on Next Page\n" + FOOTER, 3: full})
     assert rows[2]["flag"] == "junk" and "SN" in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_s1_needs_two_words_of_its_own_and_a_short_page_caps_at_90(monkeypatch):
+    """2026-11-23 (user): the previous page ends in Visit Diagnosis -- the short page carries it on
+    with 2+ words on lines of its own (numbers, dates, running footer lines out), even words the
+    previous page has; any short page's verdict reads at most 90%."""
+    _keep(monkeypatch)
+    before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Visit Diagnosis", FOOTER])
+    rows = _run({1: before, 2: HEADER + "\n2. knee effusion\n" + FOOTER})
+    assert "S1" in rows[2]["reason"] and rows[2]["confidence"] <= 0.9
+    rows = _run({1: before, 2: HEADER + "\n3.\nPatient: Madeup DOB: 01/02/1950 Page: 2\n" + FOOTER})
+    assert "S1" not in (rows[2]["reason"] or "")
+    assert not stage.running_marker_line("Hypertension") and not stage.running_marker_line("Dr Grover 7/30/2025")
+    assert stage.running_marker_line(PT_FOOT)

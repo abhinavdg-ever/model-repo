@@ -394,6 +394,12 @@ def _classify(
                     and len(_words(page_id)) <= CARD_BARCODE_MAX_WORDS and (image_paths or {}).get(page_id)):
                 page_inputs.barcode = read_barcode((image_paths or {})[page_id])
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
+        if page_inputs.short_verdict:
+            # 2026-11-23 (user): a short page's verdict reads at most short_page.confidence_cap (90%).
+            cap = float(method.canon().raw["short_page"].get("confidence_cap", 0.9))
+            if verdict.confidence is not None and verdict.confidence > cap:
+                verdict.votes["short_page_confidence_cap"] = f"{verdict.confidence:.4f} -> {cap}"
+                verdict.confidence = cap
         if repeated_sig is not None:
             verdict.votes["signature_repeated"] = (
                 f"same signature spot as page {page_by_number.get(repeated_sig, repeated_sig)}")
@@ -702,25 +708,25 @@ def short_verdict(
     if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
         return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
     def added_over_previous() -> set[str]:
-        """2026-11-23 (user): what this page adds over the previous page -- its own lines (not the
-        previous page's, by repeated_lines; not its section headings) on Docling vs Docling
-        (``pair``), their words without dates and numbers, less every word the previous page has."""
+        """2026-11-23 (user): the words this page adds of its own -- its lines that are not the
+        previous page's (repeated_lines, Docling vs Docling by ``pair``), not its section headings and
+        not a running header / footer line; their words without dates and numbers."""
         if prev_id is None:
             return set()
         mine_text, prev_text = pair(prev_id)
         mine_lines = [line for line in mine_text.splitlines() if _line_key(line)]
         flags = repeated_lines(mine_text, prev_text, own, inputs.get(prev_id))
         kept = [line for line, theirs in zip(mine_lines, flags)
-                if not theirs and not EMPTY_VALUE_LINE.match(line.strip()) and not a_heading(line)]
-        words = set().union(*(_plain_words(line) for line in kept)) if kept else set()
-        return words - set(unique_words(prev_text))
+                if not theirs and not EMPTY_VALUE_LINE.match(line.strip()) and not a_heading(line)
+                and not running_marker_line(line)]
+        return set().union(*(_plain_words(line) for line in kept)) if kept else set()
 
     added = added_over_previous()
 
     # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
     # next page", "Continued on the following page", "See next page") -> Junk / Others.
     pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
-    if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_line(line) for line in own_lines):
+    if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_marker_line(line) for line in own_lines):
         return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
     # SH (2026-11-23, user): nothing but a running header and footer -- every text line at the
     # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
@@ -753,7 +759,7 @@ def short_verdict(
     # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
     # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
     if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
-            method.ANY_DATE.search(line) and not running_line(line) for line in own_lines):
+            method.ANY_DATE.search(line) and not running_marker_line(line) for line in own_lines):
         prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
         signing = next((line for line in prev_tail if SIGNATURE_LINE.search(line)), None)
         if signing is not None:
@@ -902,6 +908,13 @@ def running_line(line: str) -> bool:
     text = RUNNING_LABEL.sub(" ", text)
     words = [w for w in re.findall(r"[A-Za-z]+", text) if len(w) > 1]
     return len(words) <= (STAMP_FREE_WORDS if stamp else RUNNING_FREE_WORDS)
+
+
+def running_marker_line(line: str) -> bool:
+    """A running header / footer line by its content alone (no position): a running line that
+    carries a page number or a running label (Patient / DOB / Visit / Printed / Fax ...). A short
+    content line ("Hypertension", "Dr Grover 7/30/2025") is not one."""
+    return running_line(line) and bool(PAGE_NUMBER_IN_LINE.search(line or "") or RUNNING_LABEL.search(line or ""))
 
 
 def edge_only(page: Optional["method.PageInputs"], text: str) -> Optional[str]:
