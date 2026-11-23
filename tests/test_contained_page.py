@@ -696,3 +696,14 @@ def test_s1_needs_two_words_of_its_own_and_a_short_page_caps_at_90(monkeypatch):
     assert "S1" not in (rows[2]["reason"] or "")
     assert not stage.running_marker_line("Hypertension") and not stage.running_marker_line("Dr Grover 7/30/2025")
     assert stage.running_marker_line(PT_FOOT)
+
+
+def test_the_same_timestamped_signature_on_the_previous_page_is_repeated(monkeypatch):
+    """2026-11-23 (user): page 2 is only page 1's last line, "Electronically Signed By ... on
+    2/17/2026 10:11:42" -- filed in another region there, still a repeat: no signature keep."""
+    _keep(monkeypatch)
+    line = "Electronically Signed By Made Up, M.D. on 2/17/2026 10:11:42"
+    sig1 = {"region": "mid", "sentence": line, "provider_name": "Made Up"}
+    sig2 = {"region": "footer", "sentence": line, "provider_name": "Made Up"}
+    rows = _run({1: HEADER + "\n" + BODY + "\n" + line, 2: line}, signed={1, 2}, signatures={1: sig1, 2: sig2})
+    assert rows[2]["flag"] == "junk", rows[2]["reason"]

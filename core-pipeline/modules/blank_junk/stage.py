@@ -325,6 +325,13 @@ def _classify(
     near = [pid for pid in order if not _blank(pid)]
     place = {pid: i for i, pid in enumerate(near)}
 
+    def _stamp(page_id: Optional[int]) -> str:
+        """The signature sentence with its date and time, letters and digits only ("electronically
+        signed by peter hale md on 2 17 2026 10 11 42"); "" without one or without a digit."""
+        sig = sigs.get(page_id) if page_id is not None and page_id in signed else None
+        found = " ".join(re.findall(r"[a-z0-9]+", ((sig or {}).get("sentence") or "").lower()))
+        return found if re.search(r"\d", found) else ""
+
     def _spot(page_id: Optional[int]) -> Optional[tuple[str, frozenset[str], str]]:
         sig = sigs.get(page_id) if page_id is not None and page_id in signed else None
         if not sig:
@@ -339,7 +346,12 @@ def _classify(
         if mine is None or page_id not in place:
             return None
         i = place[page_id]
+        stamp = _stamp(page_id)
         for other in near[max(0, i - 1): i] + near[i + 1: i + 2]:
+            # 2026-11-23 (user): the same signature sentence with the same date and time on the
+            # previous / next page is that page's signing repeated, whatever region each was filed in.
+            if stamp and stamp == _stamp(other):
+                return other
             theirs = _spot(other)
             if theirs is None or theirs[0] != mine[0]:
                 continue
