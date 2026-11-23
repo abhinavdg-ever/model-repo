@@ -13,9 +13,8 @@
  * and Codability.
  *
  * Chart (2026-11-23, user): score = the pages' levels averaged with weights High 1.0, Medium 0.6,
- * Low 0, a critical page (CRITICAL_PAGE_TYPES, its Final page type) counting twice; then guardrails,
- * strictest first -- Low: score < 50%, or more than 15% of pages Low, or any critical page Low;
- * Medium: score < 80%, or any page Low, or more than 30% of pages Medium; else High.
+ * Low 0, a critical page (CRITICAL_PAGE_TYPES, its Final page type) counting twice; the level is
+ * that score banded (High 80%+, Medium 50-80%, Low under 50%; no guardrails since 2026-11-23).
  */
 import type { ImagingPageResult } from "./api";
 
@@ -131,47 +130,33 @@ export function pageConfidence(page: ImagingPageResult): PageConfidence {
 export const CRITICAL_PAGE_TYPES = ["Discharge Summary", "Operative Note", "Procedure Note"];
 export const CHART_WEIGHTS: Record<Level, number> = { high: 1.0, medium: 0.6, low: 0 };
 export const CRITICAL_WEIGHT = 2;
-/** Guardrails (2026-11-23, user). */
-export const LOW_PAGES_LOW_ABOVE = 0.15;
-export const MEDIUM_PAGES_MEDIUM_ABOVE = 0.3;
-
 export function isCriticalPageType(pageType: string | null | undefined): boolean {
   const family = (pageType ?? "").split(" (")[0].trim().toLowerCase();
   return CRITICAL_PAGE_TYPES.some((t) => t.toLowerCase() === family);
 }
 
-/** A chart's (or any set of pages') confidence from its pages' levels (2026-11-23, user). */
+/** A chart's (or any set of pages') confidence from its pages' levels (2026-11-23, user): the
+ * weighted score (High 1.0, Medium 0.6, Low 0; a critical page counts twice), and the level is that
+ * score banded like any confidence (High 80%+, Medium 50-80%, Low under 50%). No guardrails. */
 export function chartScore(pages: { level: Level; critical: boolean }[]):
     { value: number; level: Level; reason: string; criticalLow: number } | null {
   if (!pages.length) return null;
-  let sum = 0, weight = 0, low = 0, medium = 0, criticalLow = 0;
+  let sum = 0, weight = 0, criticalLow = 0;
   for (const p of pages) {
     const w = p.critical ? CRITICAL_WEIGHT : 1;
     sum += CHART_WEIGHTS[p.level] * w;
     weight += w;
-    if (p.level === "low") { low += 1; if (p.critical) criticalLow += 1; }
-    if (p.level === "medium") medium += 1;
+    if (p.level === "low" && p.critical) criticalLow += 1;
   }
-  const value = Math.max(FLOOR, sum / weight);
-  const lowShare = low / pages.length, mediumShare = medium / pages.length;
-  const pct = (x: number) => `${Math.round(100 * x)}%`;
-  if (value < LOW_BELOW || lowShare > LOW_PAGES_LOW_ABOVE || criticalLow > 0) {
-    const reason = value < LOW_BELOW ? `score ${pct(value)} under 50%`
-      : criticalLow > 0 ? `${criticalLow} critical page(s) Low` : `${pct(lowShare)} of pages Low (over 15%)`;
-    return { value, level: "low", reason, criticalLow };
-  }
-  if (value < HIGH_AT || low > 0 || mediumShare > MEDIUM_PAGES_MEDIUM_ABOVE) {
-    const reason = value < HIGH_AT ? `score ${pct(value)} under 80%`
-      : low > 0 ? `${low} page(s) Low` : `${pct(mediumShare)} of pages Medium (over 30%)`;
-    return { value, level: "medium", reason, criticalLow };
-  }
-  return { value, level: "high", reason: "score 80%+, no Low page, Medium 30% or less", criticalLow };
+  // Rounded first, so a score of exactly 80% is High (not 79.99999...).
+  const value = Math.round(Math.max(FLOOR, sum / weight) * 10000) / 10000;
+  return { value, level: band(value), reason: "", criticalLow };
 }
 
 export type ChartConfidence = {
   level: Level | null;
   value: number | null;
-  /** Why the chart has its level (the guardrail that decided). */
+  /** Kept for callers; empty since the level is the score's band (2026-11-23). */
   reason: string | null;
   /** Pages per level; pages with nothing to score are not counted. */
   counts: Record<Level, number>;

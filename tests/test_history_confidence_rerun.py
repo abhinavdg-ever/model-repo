@@ -28,22 +28,22 @@ def test_page_level_uses_the_seven_features():
 
 
 def test_chart_level():
-    """2026-11-23 (user): weighted page levels (High 1.0, Medium 0.6, Low 0; critical pages x2), then
-    guardrails: Low under 50%, over 15% Low pages or a critical page Low; Medium under 80%, any Low
-    page or over 30% Medium; else High. The spec's three 100-page examples."""
+    """2026-11-23 (user): weighted page levels (High 1.0, Medium 0.6, Low 0; critical pages x2); the
+    level is the score's band (High 80%+, Medium 50-80%, Low under 50%), no guardrails."""
     from app.services.chart_confidence import chart_level
 
     H, M, L = ("high", 0.9, False), ("medium", 0.6, False), ("low", 0.3, False)
     out = chart_level([H] * 75 + [M] * 25)
     assert (out["level"], out["value"]) == ("high", 0.9)
     out = chart_level([H] * 82 + [M] * 12 + [L] * 6)
-    assert (out["level"], out["value"]) == ("medium", 0.892) and "Low" in out["reason"]
+    assert (out["level"], out["value"]) == ("high", 0.892)  # 89.2%: High (was Medium by a guardrail)
     out = chart_level([H] * 40 + [M] * 15 + [L] * 45)
     assert (out["level"], out["value"]) == ("low", 0.49)
-    # More than 30% Medium caps at Medium even with a high score; one critical Low page is Low.
-    assert chart_level([H] * 65 + [M] * 35)["level"] == "medium"
-    out = chart_level([H] * 99 + [("low", 0.3, True)])
-    assert out["level"] == "low" and "critical" in out["reason"]
+    # No guardrails: 35% Medium at 86% is High; one critical Low page among 99 High stays High.
+    assert chart_level([H] * 65 + [M] * 35)["level"] == "high"
+    assert chart_level([H] * 99 + [("low", 0.3, True)])["level"] == "high"
+    assert chart_level([H] * 50 + [M] * 50)["level"] == "high"  # exactly 80%
+    assert chart_level([H] * 49 + [M] * 51)["level"] == "medium"
     # A critical page counts twice in the score.
     assert chart_level([("high", 0.9, True), M])["value"] == round((2 * 1.0 + 0.6) / 3, 4)
     assert chart_level([L] * 4)["value"] == 0.2  # the floor

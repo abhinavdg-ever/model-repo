@@ -115,16 +115,16 @@ Low as in section 1.
 
 1. **Score** = the pages' levels averaged with weights **High 1.0, Medium 0.6, Low 0**. A **critical
    page** (Final page type Discharge Summary, Operative Note or Procedure Note) counts **twice**.
-2. **Level**, strictest rule first:
+2. **Level** = the score banded like any confidence (2026-11-23, user: no guardrails):
 
-| Chart level | When | Review |
+| Chart level | Score | Review |
 |---|---|---|
-| **Low** | score under 50%, **or** more than 15% of pages Low, **or** any critical page Low | full manual review |
-| **Medium** | score under 80%, **or** any page Low, **or** more than 30% of pages Medium | review the flagged Medium / Low pages |
-| **High** | score 80% or more, **and** no Low page, **and** 30% or fewer pages Medium | straight through |
+| **High** | 80% or more | straight through |
+| **Medium** | 50% to under 80% | review the flagged Medium / Low pages |
+| **Low** | under 50% | full manual review |
 
-Examples (100 pages): 75 High, 25 Medium -> 90%, **High**. 82 High, 12 Medium, 6 Low -> 89.2%, **Medium**
-(Low pages). 40 High, 15 Medium, 45 Low -> 49%, **Low**. The reason that decided is shown with the level.
+Examples (100 pages): 75 High, 25 Medium -> 90%, **High**. 82 High, 12 Medium, 6 Low -> 89.2%, **High**.
+40 High, 15 Medium, 45 Low -> 49%, **Low**.
 Code: `review-ui/frontend/src/confidenceLevel.ts`, twin `review-ui/backend/app/services/chart_confidence.py`.
 
 ---

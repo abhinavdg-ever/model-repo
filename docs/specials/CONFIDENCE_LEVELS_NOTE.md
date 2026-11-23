@@ -42,13 +42,13 @@ Like an NPS, from how many of its fields are High, Medium and Low:
 **Chart confidence %** = the average of its pages' levels, counting a High page 1.0, a Medium page 0.6
 and a Low page 0. A critical page (Discharge Summary, Operative Note, Procedure Note) counts twice.
 
-| Level | When (checked in this order) |
+| Level | Chart confidence % |
 |---|---|
-| **Low** | under 50%, or more than 15% of pages Low, or any critical page Low |
-| **Medium** | under 80%, or any page Low, or more than 30% of pages Medium |
-| **High** | 80% or more, no Low page, and 30% or fewer pages Medium |
+| **High** | 80% or more |
+| **Medium** | 50% to under 80% |
+| **Low** | under 50% |
 
 ## Example
 
 A 100-page chart: 75 High, 25 Medium, 0 Low -> 90%: **High**. 82 High, 12 Medium, 6 Low -> 89.2%:
-**Medium** (it has Low pages). 40 High, 15 Medium, 45 Low -> 49%: **Low**.
+**High**. 40 High, 15 Medium, 45 Low -> 49%: **Low**.

@@ -1091,7 +1091,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const total = pageLevels.high + pageLevels.medium + pageLevels.low;
-    // 2026-11-23 (user): weighted page levels (High 1, Medium 0.6, Low 0; critical pages x2) + guardrails.
+    // 2026-11-23 (user): weighted page levels (High 1, Medium 0.6, Low 0; critical pages x2), banded.
     const score = chartScore(scored);
     // Every metric pooled, per level (each metric on each page it scores counts once).
     const pooled: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };

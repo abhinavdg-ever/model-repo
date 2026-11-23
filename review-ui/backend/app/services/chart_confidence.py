@@ -9,9 +9,8 @@ The same rule as the frontend's ``confidenceLevel.ts`` (keep the two in step):
 * Page (2026-11-22, user: like an NPS, as the chart): score = (High features - Low features) /
   features, -1..+1; its value = (1 + score) / 2, at least the 20% floor, banded like any confidence.
 * Chart (2026-11-23, user): score = the pages' levels averaged with weights High 1.0, Medium 0.6,
-  Low 0, a critical page (CRITICAL_PAGE_TYPES by its Final page type) counting twice; then
-  guardrails, strictest first -- Low: score < 0.50, or more than 15% of pages Low, or any critical
-  page Low; Medium: score < 0.80, or any page Low, or more than 30% of pages Medium; else High.
+  Low 0, a critical page (CRITICAL_PAGE_TYPES by its Final page type) counting twice; the level is
+  that score banded (High 0.80+, Medium 0.50-0.80, Low under 0.50; no guardrails since 2026-11-23).
 * A page's % is capped by its level: Medium at most 79%, Low at most 49% (LEVEL_CAP).
 """
 
@@ -31,8 +30,6 @@ LEVEL_CAP = {"high": 1.0, "medium": 0.79, "low": 0.49}
 CRITICAL_PAGE_TYPES = ("Discharge Summary", "Operative Note", "Procedure Note")
 CHART_WEIGHTS = {"high": 1.0, "medium": 0.6, "low": 0.0}
 CRITICAL_WEIGHT = 2.0
-LOW_PAGES_LOW_ABOVE = 0.15
-MEDIUM_PAGES_MEDIUM_ABOVE = 0.30
 
 FEATURES = ["member", "dos", "blank_junk", "page_type", "codability", "provider", "orientation"]
 BLANK_JUNK_FEATURES = {"blank_junk", "codability"}
@@ -103,10 +100,9 @@ def nps_level(counts: dict[str, int]) -> dict[str, Any]:
 
 def chart_level(pages: Iterable[Optional[tuple]]) -> dict[str, Any]:
     """{level, value, reason, counts} of a chart from its pages' (level, value, critical); None =
-    a page not scored (2026-11-23, user: weighted levels + guardrails)."""
+    a page not scored (2026-11-23, user: weighted levels; the level is the score's band)."""
     counts = {"high": 0, "medium": 0, "low": 0}
     total = weight = 0.0
-    critical_low = 0
     for page in pages:
         if page is None:
             continue
@@ -115,24 +111,12 @@ def chart_level(pages: Iterable[Optional[tuple]]) -> dict[str, Any]:
         w = CRITICAL_WEIGHT if critical else 1.0
         total += CHART_WEIGHTS[level] * w
         weight += w
-        critical_low += int(critical and level == "low")
     n = sum(counts.values())
     if not n:
         return {"level": None, "value": None, "reason": None, "counts": counts}
-    value = max(FLOOR, total / weight)
-    low_share, medium_share = counts["low"] / n, counts["medium"] / n
-    if value < LOW_BELOW or low_share > LOW_PAGES_LOW_ABOVE or critical_low:
-        level = "low"
-        reason = (f"score {value:.0%} under 50%" if value < LOW_BELOW
-                  else f"{critical_low} critical page(s) Low" if critical_low
-                  else f"{low_share:.0%} of pages Low (over 15%)")
-    elif value < HIGH_AT or counts["low"] or medium_share > MEDIUM_PAGES_MEDIUM_ABOVE:
-        level = "medium"
-        reason = (f"score {value:.0%} under 80%" if value < HIGH_AT
-                  else f"{counts['low']} page(s) Low" if counts["low"]
-                  else f"{medium_share:.0%} of pages Medium (over 30%)")
-    else:
-        level, reason = "high", "score 80%+, no Low page, Medium 30% or less"
+    value = round(max(FLOOR, total / weight), 4)  # rounded first: 80% exactly is High
+    # 2026-11-23 (user): the level is the score's band, no guardrails.
+    level, reason = ("high" if value >= HIGH_AT else "medium" if value >= LOW_BELOW else "low"), ""
     return {"level": level, "value": round(value, 4), "reason": reason, "counts": counts}
 
 
