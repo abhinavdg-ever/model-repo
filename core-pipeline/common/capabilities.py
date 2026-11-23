@@ -360,7 +360,16 @@ def tesseract_status() -> dict[str, Any]:
 
     found = shutil.which(TESSERACT_CMD or "tesseract")
     if found:
-        return {"ready": True, "reason": None}
+        # 2026-11-23 (user): the banner says which Tesseract loaded (it is run once here).
+        version = None
+        try:
+            import pytesseract
+
+            pytesseract.pytesseract.tesseract_cmd = found
+            version = str(pytesseract.get_tesseract_version()).split()[0]
+        except Exception:  # noqa: BLE001 - a probe never raises; the binary is there
+            version = None
+        return {"ready": True, "reason": None, "version": version}
     return {"ready": False, "reason": f"{TESSERACT_CMD or 'tesseract'} not found (set TESSERACT_CMD)"}
 
 
@@ -404,6 +413,51 @@ def code_version_line(version: dict[str, Any]) -> str:
     return max(times) if times else "unknown"
 
 
+def _continuity_status() -> dict[str, Any]:
+    """Stage 12 (2026-11-23, user: show continuity = ml at startup): CONTINUITY_MODE and whether the
+    clue model and the page-pair text model loaded (ml without the clue model runs the rules)."""
+    from common.config import CONTINUITY_MODE
+
+    out: dict[str, Any] = {"mode": CONTINUITY_MODE}
+    if CONTINUITY_MODE not in ("ml", "shadow"):
+        return {**out, "enabled": False, "ready": True, "reason": None}
+    try:
+        from modules.continuity.ml import model, text_model
+
+        clue, text = model.status(), text_model.status()
+    except Exception as exc:  # noqa: BLE001 - a probe never raises
+        return {**out, "enabled": True, "ready": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
+    return {**out, "enabled": True, "ready": bool(clue.get("ready")), "reason": clue.get("reason"),
+            "text_model_ready": bool(text.get("ready")), "text_model_reason": text.get("reason")}
+
+
+def _sequencing_status() -> dict[str, Any]:
+    """Stage 14: SEQUENCING_MODE and whether its pair model loaded."""
+    from common.config import SEQUENCING_MODE
+
+    out: dict[str, Any] = {"mode": SEQUENCING_MODE}
+    if SEQUENCING_MODE not in ("ml", "shadow"):
+        return {**out, "enabled": False, "ready": True, "reason": None}
+    try:
+        from modules.sequencing.ml import model
+
+        found = model.status()
+    except Exception as exc:  # noqa: BLE001 - a probe never raises
+        return {**out, "enabled": True, "ready": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
+    return {**out, "enabled": True, "ready": bool(found.get("ready")), "reason": found.get("reason")}
+
+
+def _model_mode_line(st: dict[str, Any], extra: str = "") -> str:
+    """'ml — OK (...)', 'shadow — model missing: ...', 'rules'."""
+    mode = st.get("mode") or "?"
+    if not st.get("enabled"):
+        return mode
+    if st.get("ready"):
+        return f"{mode} — OK{extra}"
+    fallback = " (the rules decide)" if mode == "ml" else ""
+    return f"{mode} — model not loaded: {st.get('reason') or 'unknown'}{fallback}"
+
+
 def _blank_junk_llm_status() -> dict[str, Any]:
     """The short-page LLM judge (2026-11-23): on, and if not, why. Never the key."""
     from modules.blank_junk.llm_judge import status
@@ -423,6 +477,8 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
         "blank_junk_llm": _blank_junk_llm_status(),
+        "continuity": _continuity_status(),
+        "sequencing": _sequencing_status(),
         "page_leaf_model": page_leaf_model_status(),
         "encounter_model": encounter_model_status(),
         "rapidocr_models": rapidocr_models_status(),
@@ -479,6 +535,15 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     page_leaf = caps.get("page_leaf_model") or {}
     encounter = caps.get("encounter_model") or {}
     kv = caps.get("extraction") or {}
+    continuity = caps.get("continuity") or {}
+    sequencing = caps.get("sequencing") or {}
+    llm = caps.get("blank_junk_llm") or {}
+    text_part = ""
+    if continuity.get("enabled") and continuity.get("ready"):
+        text_part = (" (clue model + text model)" if continuity.get("text_model_ready")
+                     else f" (clue model; text model off: {continuity.get('text_model_reason') or 'not loaded'})")
+    llm_line = (f"ON — {llm.get('deployment')}" if llm.get("ready")
+                else "off" if not llm.get("enabled") else f"off — {llm.get('reason')}")
 
     di_on = "OK"
     if di.get("features"):
@@ -513,13 +578,16 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     # In the order the stages run (2026-11-10, user).
     return [
         ("1 rotation/HW", _one_line(hw, hw_on)),
-        ("2 prelim OCR", _one_line(tess, "OK — Tesseract") if tess else "unknown"),
+        ("2 prelim OCR", _one_line(tess, f"OK — Tesseract {tess.get('version') or ''}".rstrip()) if tess else "unknown"),
         ("3,8 blank/junk", _one_line(bj, bj_on)),
+        ("8 blank/junk LLM", llm_line),
         ("4 final OCR 1", final1_line),
         ("5 final OCR 2", _one_line(di, di_on) + " (Azure Doc Intel)" if di.get("ready") else _one_line(di, di_on)),
         ("7 KV extract", _one_line(kv, kv_on)),
         ("9 member NER", _one_line(ner, ner_on)),
         ("10 page leaf", _one_line(page_leaf, leaf_on)),
+        ("12 continuity", _model_mode_line(continuity, text_part)),
         ("13 encounter", _one_line(encounter, encounter_on)),
+        ("14 sequencing", _model_mode_line(sequencing)),
         ("skip OCR", skip_line),
     ]

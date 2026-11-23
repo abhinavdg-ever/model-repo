@@ -1306,12 +1306,15 @@ class TestCapabilityReporting:
             "1 rotation/HW",
             "2 prelim OCR",
             "3,8 blank/junk",
+            "8 blank/junk LLM",  # 2026-11-23: the short-page LLM judge, on / off
             "4 final OCR 1",
             "5 final OCR 2",
             "7 KV extract",
             "9 member NER",
             "10 page leaf",  # the page-axes line went with the cascade (2026-11-22)
+            "12 continuity",  # 2026-11-23 (user): its mode (ml / shadow / rules) and models
             "13 encounter",
+            "14 sequencing",
             "skip OCR",
         ]
         assert caps.blob_line(snapshot["blob"])
