@@ -534,3 +534,77 @@ def test_the_api_logs_which_worker_took_a_chart_and_when_it_finished(caplog):
     done = caplog.messages[-1]
     assert done.startswith(f"run {run_id}: CHART COMPLETED: C1 | status completed") and "took 0s" in done
     assert done.endswith("| worker-2") and not runs
+
+
+# --- large worker spill-over (2026-11-24, user: small charts may go to the large queue, not back) ---
+
+
+class _Timeout(Exception):
+    pass
+
+
+_Timeout.__name__ = "OperationTimeoutError"
+
+
+class _SessionClient:
+    """get_queue_receiver yields a receiver when ``queue`` has a session, else times out."""
+
+    def __init__(self, waiting, opened):
+        self.waiting, self.opened = waiting, opened
+
+    def get_queue_receiver(self, queue_name, session_id, max_wait_time):
+        self.opened.append((queue_name, max_wait_time))
+        if not self.waiting.get(queue_name):
+            raise _Timeout()
+        self.waiting[queue_name] -= 1
+        return _Ctx_(SimpleNamespace(session=queue_name))
+
+
+class _Ctx_:
+    def __init__(self, value):
+        self.value = value
+
+    def __enter__(self):
+        return self.value
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _spill(waiting, queues):
+    from apps.worker import queue_worker
+
+    opened, served = [], []
+    renewer = SimpleNamespace(register=lambda *a, **k: None)
+    clients = [(q, _SessionClient(waiting, opened)) for q in queues]
+    got = queue_worker.serve_next(clients, renewer, 60, "next", serve=lambda r: served.append(r.session))
+    return got, opened
+
+
+def test_the_large_worker_takes_its_own_queue_first():
+    got, opened = _spill({"large": 1, "small": 1}, ["large", "small"])
+    assert got == "large" and [q for q, _ in opened] == ["large"]
+
+
+def test_the_large_worker_takes_a_small_chart_when_no_large_one_waits():
+    from apps.worker import queue_worker
+
+    got, opened = _spill({"large": 0, "small": 1}, ["large", "small"])
+    assert got == "small"
+    assert opened == [("large", queue_worker.SESSION_WAIT_SECONDS), ("small", queue_worker.MESSAGE_WAIT_SECONDS)]
+
+
+def test_a_normal_worker_never_reads_the_large_queue(monkeypatch):
+    from apps.worker import queue_worker
+    from common import config
+
+    monkeypatch.setattr(config, "SERVICEBUS_QUEUE", "chart-runs")
+    monkeypatch.setattr(config, "SERVICEBUS_QUEUE_LARGE", "chart-runs-large")
+    monkeypatch.setattr(config, "SERVICEBUS_QUEUE_SPARE", "")
+    assert queue_worker.queues_to_read() == ["chart-runs"]
+    got, _ = _spill({"chart-runs-large": 1}, queue_worker.queues_to_read())
+    assert got is None
+    # worker-large (compose: SERVICEBUS_QUEUE = the large queue, SPARE = the normal one)
+    monkeypatch.setattr(config, "SERVICEBUS_QUEUE", "chart-runs-large")
+    monkeypatch.setattr(config, "SERVICEBUS_QUEUE_SPARE", "chart-runs")
+    assert queue_worker.queues_to_read() == ["chart-runs-large", "chart-runs"]

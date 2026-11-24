@@ -127,6 +127,7 @@ services:
 
   # Large charts (2026-11-19, user): charts over LARGE_CHART_PAGES pages are queued on
   # SERVICEBUS_QUEUE_LARGE and only this service runs them, so they never hold a normal worker.
+  # When none waits it runs small charts from SERVICEBUS_QUEUE too; normal workers never take large ones.
   # Off unless asked for:  docker compose --profile large up -d --scale worker=3 --scale worker-large=1
   worker-large:
     profiles: ["large"]
@@ -137,6 +138,8 @@ services:
     environment:
       <<: *core-env
       SERVICEBUS_QUEUE: ${SERVICEBUS_QUEUE_LARGE:-chart-runs-large}
+      # No large chart waiting: take a small one (never the other way round, 2026-11-24).
+      SERVICEBUS_QUEUE_SPARE: ${SERVICEBUS_QUEUE:-chart-runs}
     volumes: *core-volumes
     extra_hosts:
       - "host.docker.internal:host-gateway"

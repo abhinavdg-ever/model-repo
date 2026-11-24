@@ -132,7 +132,11 @@ after that comes back on the queue and another worker runs it.
 **Large charts on their own queue** (2026-11-19). Charts over `LARGE_CHART_PAGES` (100) pages go to
 a second queue that only `worker-large` reads, so they never hold up the normal workers. The page
 count is `chart_list.page_count` from an earlier run, else the chart's images counted in Blob when
-it is queued. Off while `SERVICEBUS_QUEUE_LARGE` is empty.
+it is queued. Off while `SERVICEBUS_QUEUE_LARGE` is empty. One way only (2026-11-24): when no large
+chart waits, `worker-large` takes the next small chart from `chart-runs` (it checks its own queue
+first again after every chart); the normal workers never take a large one. A large chart queued while
+`worker-large` runs a small one waits for that chart to finish. With a queue-scoped key, the small
+queue is read with `SERVICEBUS_CONNECTION_STRING`, the large one with `SERVICEBUS_CONNECTION_STRING_LARGE`.
 
 1. In Azure (portal, Service Bus namespace `codingbusstd` → Queues → + Queue): create
    `chart-runs-large` with the **same settings as `chart-runs`** (Enable sessions on, the same

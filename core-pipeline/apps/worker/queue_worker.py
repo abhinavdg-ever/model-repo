@@ -183,31 +183,63 @@ def _is_timeout(exc: BaseException) -> bool:
     return type(exc).__name__ in {"OperationTimeoutError", "SessionCannotBeLockedError"}
 
 
-def run_forever(client_factory: Optional[Callable[[], Any]] = None, renewer_factory: Optional[Callable[[], Any]] = None) -> None:
-    from common.config import SERVICEBUS_QUEUE, WORKER_LOCK_RENEW_HOURS
+def queues_to_read() -> list[str]:
+    """The queues this worker reads, its own first: SERVICEBUS_QUEUE, then SERVICEBUS_QUEUE_SPARE
+    when set and different (the worker-large service: small charts when no large one waits)."""
+    from common.config import SERVICEBUS_QUEUE, SERVICEBUS_QUEUE_SPARE
+
+    queues = [SERVICEBUS_QUEUE]
+    if SERVICEBUS_QUEUE_SPARE and SERVICEBUS_QUEUE_SPARE != SERVICEBUS_QUEUE:
+        queues.append(SERVICEBUS_QUEUE_SPARE)
+    return queues
+
+
+def serve_next(clients: list[tuple[str, Any]], renewer: Any, renew_seconds: float,
+               next_session: Any, serve: Callable[[Any], int] = serve_session) -> Optional[str]:
+    """Take one session from the first queue that has one (in order) and serve it. Returns the
+    queue it came from, None when every queue was empty. The own queue waits the full
+    SESSION_WAIT_SECONDS; a spare queue only MESSAGE_WAIT_SECONDS, so a large chart queued
+    meanwhile is seen soon."""
+    for i, (queue, client) in enumerate(clients):
+        try:
+            with client.get_queue_receiver(
+                queue_name=queue,
+                session_id=next_session,
+                max_wait_time=SESSION_WAIT_SECONDS if i == 0 else MESSAGE_WAIT_SECONDS,
+            ) as receiver:
+                renewer.register(receiver, receiver.session, max_lock_renewal_duration=renew_seconds)
+                if i:
+                    logger.info("own queue empty: a chart from %s", queue)
+                serve(receiver)
+                return queue
+        except Exception as exc:
+            if _is_timeout(exc):
+                continue
+            raise
+    return None
+
+
+def run_forever(client_factory: Optional[Callable[[str], Any]] = None, renewer_factory: Optional[Callable[[], Any]] = None) -> None:
+    from contextlib import ExitStack
+
+    from common.config import WORKER_LOCK_RENEW_HOURS
     from common import queue as q
 
     from azure.servicebus import NEXT_AVAILABLE_SESSION, AutoLockRenewer
 
-    client_factory = client_factory or (lambda: q.client_for(SERVICEBUS_QUEUE))
+    client_factory = client_factory or q.client_for
     renewer_factory = renewer_factory or AutoLockRenewer
 
     renew_seconds = WORKER_LOCK_RENEW_HOURS * 3600
-    with client_factory() as client:
+    with ExitStack() as stack:
+        # Each queue its own client: a key scoped to one queue reaches only that queue.
+        clients = [(queue, stack.enter_context(client_factory(queue))) for queue in queues_to_read()]
         renewer = renewer_factory()
         try:
             while not _stop.is_set():
                 try:
-                    with client.get_queue_receiver(
-                        queue_name=SERVICEBUS_QUEUE,
-                        session_id=NEXT_AVAILABLE_SESSION,
-                        max_wait_time=SESSION_WAIT_SECONDS,
-                    ) as receiver:
-                        renewer.register(receiver, receiver.session, max_lock_renewal_duration=renew_seconds)
-                        serve_session(receiver)
+                    serve_next(clients, renewer, renew_seconds, NEXT_AVAILABLE_SESSION)
                 except Exception as exc:
-                    if _is_timeout(exc):
-                        continue
                     logger.warning("queue receive failed (%s); retrying in %ds", exc, ERROR_PAUSE_SECONDS)
                     _stop.wait(ERROR_PAUSE_SECONDS)
         finally:
@@ -235,6 +267,8 @@ def main() -> None:
     conn_str = q.connection_for(SERVICEBUS_QUEUE)
     logger.info("queue worker starting (%s)", worker_id())
     logger.info("  queue       : %s on %s", SERVICEBUS_QUEUE, q.mask(conn_str))
+    for spare in queues_to_read()[1:]:
+        logger.info("  spare queue : %s on %s (when %s is empty)", spare, q.mask(q.connection_for(spare)), SERVICEBUS_QUEUE)
     logger.info("  lock renew  : up to %.1f h per session", WORKER_LOCK_RENEW_HOURS)
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)

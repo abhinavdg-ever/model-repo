@@ -181,6 +181,11 @@ SERVICEBUS_QUEUE_LARGE = (os.environ.get("SERVICEBUS_QUEUE_LARGE") or "").strip(
 # (a namespace-level key, no EntityPath, reaches both).
 SERVICEBUS_CONNECTION_STRING_LARGE = (os.environ.get("SERVICEBUS_CONNECTION_STRING_LARGE") or "").strip()
 LARGE_CHART_PAGES = int((os.environ.get("LARGE_CHART_PAGES") or "100").strip() or 100)
+# One-way spill-over (2026-11-24, user: "small charts can go to the large queue but large not to
+# small"). Set only on the worker-large service (docker-compose.yml, = SERVICEBUS_QUEUE): when its
+# own queue has no chart waiting, it takes the next one from this queue, and checks its own first
+# again after every chart. Normal workers leave it empty and never read the large queue.
+SERVICEBUS_QUEUE_SPARE = (os.environ.get("SERVICEBUS_QUEUE_SPARE") or "").strip()
 # A chart can take longer than one 5-minute message lock: the worker renews it up to this long.
 WORKER_LOCK_RENEW_HOURS = float(os.environ.get("WORKER_LOCK_RENEW_HOURS") or "6")
 # X-API-Key on every POST, only when both are set (review-ui's Playground does not send it yet).
