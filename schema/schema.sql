@@ -1207,6 +1207,23 @@ CREATE INDEX idx_pipeline_jobs_claim ON pipeline_jobs(status, queue_name, queued
 -- tokens and cost. Written by core-pipeline when a run ends (core-pipeline/apps/worker/usage.py). Prices
 -- come from .env (PRICE_*) and are stored with the row, so a later price change never
 -- rewrites history. v_run_usage_daily / v_run_usage_hourly add them up.
+-- Page Type / Codability confidence calibration (2026-11-24): one increasing curve per feature,
+-- knots [[raw, measured accuracy], ...] fitted by review-ui's Confidence Analysis on the ground
+-- truth and saved by an admin; review-ui maps the raw imaging_final confidences through it on read.
+CREATE TABLE confidence_calibration (
+    id          BIGSERIAL PRIMARY KEY,
+    feature     VARCHAR(40) NOT NULL UNIQUE,
+    knots       JSONB NOT NULL,
+    pages       INT NOT NULL,
+    user_id     BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_confidence_calibration_updated_at
+    BEFORE UPDATE ON confidence_calibration
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE TABLE run_usage (
     id                       BIGSERIAL PRIMARY KEY,
     chart_id                 BIGINT REFERENCES chart_list(id) ON DELETE SET NULL,

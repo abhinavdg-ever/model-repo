@@ -17,8 +17,9 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { STRICT_FEATURES, bandFor, chartScore, levelLabel, type Level } from "./confidenceLevel";
-import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
+import { CALIBRATED_FEATURES, STRICT_FEATURES, bandFor, chartScore, currentCalibration, fitKnots, levelLabel, type Level } from "./confidenceLevel";
+import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport, saveCalibration } from "./api";
+import { isScoringAdmin } from "./clientView";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
 import {
@@ -1034,6 +1035,66 @@ function metricBands(id: MetricId): [string, number][] {
   return TOP_FEATURES.has(feature) ? TOP_BANDS : STRICT_FEATURES.has(feature) ? STRICT_BANDS : BANDS;
 }
 
+/** 2026-11-24 (user): fit Page Type / Codability's confidence curves on these pages' raw
+ * confidences and verdicts (yes 1, partial 0.5, no 0). feature -> {knots, pages}; a feature with
+ * under 30 scored pages is left out. */
+function fitCalibration(rows: ChartAccuracy[]): Record<string, { knots: number[][]; pages: number }> {
+  const out: Record<string, { knots: number[][]; pages: number }> = {};
+  for (const feature of CALIBRATED_FEATURES) {
+    const metric = (Object.keys(METRIC_FEATURE) as MetricId[]).find((id) => METRIC_FEATURE[id] === feature);
+    if (!metric) continue;
+    const points: [number, number][] = [];
+    for (const row of rows) {
+      for (const page of row.pages) {
+        const verdict = page.scores[metric];
+        const raw = page.rawFeatures?.[feature];
+        if (raw == null || (verdict !== "yes" && verdict !== "maybe" && verdict !== "no")) continue;
+        points.push([raw, verdict === "yes" ? 1 : verdict === "maybe" ? 0.5 : 0]);
+      }
+    }
+    const knots = fitKnots(points);
+    if (knots) out[feature] = { knots, pages: points.length };
+  }
+  return out;
+}
+
+function CalibrationControls({ rows }: { rows: ChartAccuracy[] }) {
+  const [state, setState] = useState<string | null>(null);
+  if (!isScoringAdmin()) return null;
+  const table = currentCalibration();
+  const on = CALIBRATED_FEATURES.filter((f) => table[f]);
+  const run = (clear: boolean) => {
+    const features = clear
+      ? Object.fromEntries(CALIBRATED_FEATURES.map((f) => [f, { knots: [], pages: 0 }]))
+      : fitCalibration(rows);
+    if (!Object.keys(features).length) {
+      setState("Not enough scored pages (30+ per metric) to calibrate.");
+      return;
+    }
+    setState(clear ? "Clearing…" : "Calibrating…");
+    saveCalibration(features)
+      .then(() => window.location.reload())
+      .catch((err: unknown) => setState(`Could not save: ${err instanceof Error ? err.message : String(err)}`));
+  };
+  return (
+    <p className="chart-details-note">
+      Page Type / Codability calibration: {on.length ? on.map((f) => (f === "page_type" ? "Page Type" : "Codability")).join(", ") : "off (raw confidence)"}
+      {" · "}
+      <button type="button" className="accuracy-extra-link" onClick={() => run(false)}
+              title="Fit each metric's confidence to its measured accuracy on the pages shown (the current filter)">
+        Calibrate on these pages
+      </button>
+      {on.length ? (
+        <>
+          {" · "}
+          <button type="button" className="accuracy-extra-link" onClick={() => run(true)}>Reset</button>
+        </>
+      ) : null}
+      {state ? ` · ${state}` : null}
+    </p>
+  );
+}
+
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const [open, setOpen] = useState(false);
   // 2026-11-19 (user): Overview, then one tab per metric with its accuracy by confidence decile.
@@ -1143,6 +1204,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <p className="chart-details-note">
                   Average chart confidence · {rows.length.toLocaleString()} charts · {data.total.toLocaleString()} pages
                 </p>
+                <CalibrationControls rows={rows} />
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
                   {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
                     <button key={id} type="button" role="tab" aria-selected={tab === id}

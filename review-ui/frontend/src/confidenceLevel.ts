@@ -96,7 +96,77 @@ function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Page Type / Codability confidence curves (2026-11-24, user: a higher band must be more accurate;
+ * fewer pages High is fine, High must be right). feature -> knots [[raw, measured accuracy], ...],
+ * fitted on the ground truth by the Confidence Analysis and stored by the backend
+ * (confidence_calibration); a raw confidence is read through its curve. None: the raw value. */
+export const CALIBRATED_FEATURES = ["page_type", "codability"] as const;
+export type Calibration = Record<string, number[][]>;
+let calibration: Calibration = {};
+
+export function setCalibration(table: Calibration | null | undefined): void {
+  calibration = table ?? {};
+}
+
+export function currentCalibration(): Calibration {
+  return calibration;
+}
+
+/** ``value`` through ``knots`` (linear between them, flat beyond the ends), 4 decimals. */
+export function applyKnots(knots: number[][] | undefined, value: number): number {
+  if (!knots || knots.length < 2) return value;
+  const pts = [...knots].sort((a, b) => a[0] - b[0]);
+  if (value <= pts[0][0]) return round4(pts[0][1]);
+  if (value >= pts[pts.length - 1][0]) return round4(pts[pts.length - 1][1]);
+  for (let i = 1; i < pts.length; i += 1) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    if (value <= x1) return round4(x1 <= x0 ? y0 : y0 + ((y1 - y0) * (value - x0)) / (x1 - x0));
+  }
+  return value;
+}
+
+/** One curve from (raw confidence, right 0 / 0.5 / 1) points: bins of about 25 pages by raw value,
+ * pooled until accuracy never falls as the raw value rises (pool adjacent violators); one knot
+ * per pool, (mean raw, smoothed accuracy). Fewer than 30 points: null. */
+export function fitKnots(points: [number, number][], binPages = 25, minPages = 30): number[][] | null {
+  if (points.length < minPages) return null;
+  const sorted = [...points].sort((a, b) => a[0] - b[0]);
+  const bins: [number, number, number][] = []; // [sum raw, pages, right]
+  for (let start = 0; start < sorted.length; start += binPages) {
+    const chunk = sorted.slice(start, start + binPages);
+    const sumRaw = chunk.reduce((s, [r]) => s + r, 0);
+    const right = chunk.reduce((s, [, ok]) => s + ok, 0);
+    if (bins.length && chunk.length < Math.floor(binPages / 2)) {
+      const last = bins[bins.length - 1];
+      bins[bins.length - 1] = [last[0] + sumRaw, last[1] + chunk.length, last[2] + right];
+    } else {
+      bins.push([sumRaw, chunk.length, right]);
+    }
+  }
+  const pools: [number, number, number][] = [];
+  for (const b of bins) {
+    pools.push([...b]);
+    while (pools.length > 1) {
+      const a = pools[pools.length - 2];
+      const c = pools[pools.length - 1];
+      if (a[2] / a[1] < c[2] / c[1]) break;
+      pools.splice(pools.length - 2, 2, [a[0] + c[0], a[1] + c[1], a[2] + c[2]]);
+    }
+  }
+  const knots = pools.map(([sumRaw, n, right]) => [round4(sumRaw / n), round4((right + 1) / (n + 2))]);
+  // One pool: a flat line at the measured accuracy (two knots, so it is a curve).
+  if (knots.length === 1) return [[0, knots[0][1]], [1, knots[0][1]]];
+  return knots;
+}
+
 function fieldValue(page: ImagingPageResult, key: string): number | null {
+  const value = rawFieldValue(page, key);
+  return value == null || !calibration[key] ? value : applyKnots(calibration[key], value);
+}
+
+/** A feature's confidence as the pipeline stored it (no calibration): what a refit measures. */
+export function rawFieldValue(page: ImagingPageResult, key: string): number | null {
   if (key === "member") {
     // 2026-11-23 (user): the average of Member Name and Member DOB (was the lower of the two); a field
     // with no confidence (not found) reads MEMBER_NOT_FOUND (80%).
@@ -129,6 +199,16 @@ export function featureConfidences(page: ImagingPageResult): Record<string, numb
   const out: Record<string, number> = {};
   for (const [key] of CONFIDENCE_FIELDS) {
     const value = fieldValue(page, key);
+    if (value != null) out[key] = value;
+  }
+  return out;
+}
+
+/** The calibrated features' raw confidences (before their curve), for a refit. */
+export function rawFeatureConfidences(page: ImagingPageResult): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of CALIBRATED_FEATURES) {
+    const value = rawFieldValue(page, key);
     if (value != null) out[key] = value;
   }
   return out;

@@ -4,6 +4,8 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * confidence_calibration (2026-11-24, migrations/2026-11-24.sql): new Part 1 table, one row per
+   calibrated feature (page_type, codability): knots JSONB, pages, user_id. review-ui writes and reads it.
  * page_continuity_results.decided_by (2026-11-23, migrations/2026-11-23.sql): the CHECK allows
    the ML continuity mode's 'model' and 'visual_continues'; the insert failed without them.
  * v_accuracy_page (2026-11-19, migrations/2026-11-19.sql): new last columns final_confidences

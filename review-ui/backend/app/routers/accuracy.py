@@ -8,6 +8,8 @@ from app.services.backend import NotOnCosmos, store_usable
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import load_report
 from app.services.ground_truth import GroundTruthSource
+from app.routers.deps import _admin_with_db, current_user
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger("review_ui.api")
 router = APIRouter()
@@ -27,13 +29,59 @@ def get_accuracy(
     if not store_usable(settings, database_url_usable):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
-        return load_report(settings, ground_truth, fresh=refresh)
+        report = load_report(settings, ground_truth, fresh=refresh)
+        return report.model_copy(update={"calibration": _calibration(settings, refresh)})
     except NotOnCosmos as exc:
         raise HTTPException(status_code=501, detail=exc.detail) from exc
     except Exception as exc:
         logger.warning("accuracy report failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not load accuracy") from exc
 
+
+
+
+def _calibration(settings: Settings, fresh: bool = False) -> dict:
+    """The Page Type / Codability confidence curves; {} without Postgres (raw values)."""
+    from app.services import confidence_calibration
+
+    if not database_url_usable(settings.database_url):
+        return {}
+    return confidence_calibration.load(settings.database_url, settings.db_schema, fresh=fresh)
+
+
+@router.get("/accuracy/calibration")
+def get_calibration(settings: Settings = Depends(get_settings)) -> dict:
+    """feature -> knots [[raw, accuracy], ...] (2026-11-24, user: higher bands more accurate)."""
+    return {"features": _calibration(settings)}
+
+
+class CalibrationEntry(BaseModel):
+    knots: list[list[float]] = Field(default_factory=list)
+    pages: int = 0
+
+
+class CalibrationRequest(BaseModel):
+    features: dict[str, CalibrationEntry]
+
+
+@router.put("/accuracy/calibration")
+def put_calibration(body: CalibrationRequest, user=Depends(current_user),
+                    settings: Settings = Depends(get_settings)) -> dict:
+    """An admin stores the curves the Confidence Analysis fitted; empty knots clear a feature."""
+    from app.services import confidence_calibration
+    from app.services.accuracy_cache import clear_report_cache
+
+    admin = _admin_with_db(user, settings, "calibrate confidence", "Calibration is kept")
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=501, detail="Calibration is kept in Postgres")
+    try:
+        table = confidence_calibration.save(settings.database_url, settings.db_schema,
+                                            {k: v.model_dump() for k, v in body.features.items()}, admin.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    clear_report_cache()
+    logger.info("confidence calibration saved by %s: %s", admin.username, sorted(body.features))
+    return {"features": table}
 
 
 # --- the Accuracy View's download as an .xlsx (2026-11-19, user: page level and chart level,

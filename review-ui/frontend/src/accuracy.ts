@@ -1,4 +1,4 @@
-import { CONFIDENCE_FIELDS, chartConfidence, featureConfidences, isCriticalPageType, levelLabel, pageConfidence, type ChartConfidence, type PageConfidence } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, chartConfidence, featureConfidences, rawFeatureConfidences, isCriticalPageType, levelLabel, pageConfidence, type ChartConfidence, type PageConfidence } from "./confidenceLevel";
 import type { ImagingManifestDetails,
   ImagingDocumentResponse,
   ImagingPageResult,
@@ -335,6 +335,8 @@ export type PageAccuracy = {
   confidence?: PageConfidence;
   /** Every feature's confidence, Blank / Junk pages included (Confidence Analysis). */
   features?: Record<string, number>;
+  /** Page Type / Codability confidences before their calibration curve (a refit's input). */
+  rawFeatures?: Record<string, number>;
   /** A critical page (CRITICAL_PAGE_TYPES, its Final page type; 2026-11-23, user). */
   critical?: boolean;
 };
@@ -1076,6 +1078,7 @@ export function scoreChart(
       values: pageValues(raw, doc.manifest),
       confidence: pageConfidence(raw),
       features: featureConfidences(raw),
+      rawFeatures: rawFeatureConfidences(raw),
       critical: isCriticalPageType(raw.finalPageType),
     });
     if (pageOverall) {

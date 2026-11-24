@@ -1,6 +1,7 @@
 import { dbChoiceHeader, type DbBackendInfo } from "./dbBackend";
 import { groundTruthQuery, readGroundTruthSource } from "./groundTruthSource";
 import { readSession, type Session } from "./session";
+import { setCalibration, type Calibration } from "./confidenceLevel";
 
 export type OcrRunStatus =
   | "QUEUED"
@@ -791,7 +792,11 @@ export type AccuracyChartPayload = {
 export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChartPayload[] }> {
   const query = groundTruthQuery();
   const refresh = fresh ? `${query ? "&" : "?"}refresh=true` : "";
-  return api<{ charts: AccuracyChartPayload[] }>(`/api/accuracy${query}${refresh}`).then((report) => ({
+  return api<{ charts: AccuracyChartPayload[]; calibration?: Calibration }>(`/api/accuracy${query}${refresh}`).then((report) => {
+    // 2026-11-24: the Page Type / Codability curves, set before any chart is scored.
+    setCalibration(report.calibration);
+    return report;
+  }).then((report) => ({
     ...report,
     charts: report.charts.map((chart) =>
       chart.document ? { ...chart, document: withDuplicateValues(chart.document) } : chart,
@@ -799,6 +804,24 @@ export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChar
   }));
 }
 
+
+/** The Page Type / Codability confidence curves (confidenceLevel.ts), loaded once at start. */
+export function loadCalibration(): Promise<void> {
+  return api<{ features: Calibration }>("/api/accuracy/calibration")
+    .then((body) => setCalibration(body.features))
+    .catch(() => undefined);
+}
+
+/** An admin stores fitted curves; an empty knots list clears a feature (raw values again). */
+export function saveCalibration(features: Record<string, { knots: number[][]; pages: number }>): Promise<Calibration> {
+  return api<{ features: Calibration }>("/api/accuracy/calibration", {
+    method: "PUT",
+    body: JSON.stringify({ features }),
+  }).then((body) => {
+    setCalibration(body.features);
+    return body.features;
+  });
+}
 
 /** Fired on window after a ground-truth save succeeds (detail: the folder id), so the
  * "Last Updated By" banner reloads. */

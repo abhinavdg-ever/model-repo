@@ -30,6 +30,10 @@ export function setScoringAdmin(isAdmin: boolean): void {
   admin = isAdmin;
 }
 
+export function isScoringAdmin(): boolean {
+  return admin;
+}
+
 function choice(): boolean | null {
   try {
     const stored = localStorage.getItem(CHOICE_KEY);

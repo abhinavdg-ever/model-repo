@@ -562,6 +562,8 @@ class AccuracyChartPayload(BaseModel):
 
 class AccuracyReportResponse(BaseModel):
     charts: list[AccuracyChartPayload] = Field(default_factory=list)
+    # Page Type / Codability confidence curves (services/confidence_calibration.py), feature -> knots.
+    calibration: dict[str, list[list[float]]] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):

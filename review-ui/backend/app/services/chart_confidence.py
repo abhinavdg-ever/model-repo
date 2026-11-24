@@ -75,7 +75,8 @@ def is_critical(page_type: Any) -> bool:
 
 
 def page_level(confidences: Any, blank_junk_or_duplicate: bool,
-               measured: Any = None, page_type: Any = None) -> Optional[tuple[str, float, bool]]:
+               measured: Any = None, page_type: Any = None,
+               calibration: Optional[dict[str, Any]] = None) -> Optional[tuple[str, float, bool]]:
     """(level, mean) of one page, or None when it has no feature with a confidence. ``measured``:
     stage 1's measured confidences, for Orientation when the Final ones lack it (as the
     frontend's fieldValue)."""
@@ -99,6 +100,11 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
         if value is not None:
             # 2026-11-24: 4 decimals before banding, as the frontend (round4): 0.79999... is 0.80.
             values[key] = round(value, 4)
+            if key in (calibration or {}):
+                # 2026-11-24 (user): Page Type / Codability through their fitted curve, as the frontend.
+                from app.services.confidence_calibration import apply
+
+                values[key] = apply(calibration[key], values[key])
     if not values:
         return None
     counts = {"high": 0, "medium": 0, "low": 0}
@@ -157,12 +163,15 @@ _BLANK_JUNK_FLAGS = {"blank", "junk", "duplicate"}
 def for_charts_postgres(database_url: str, db_schema: str, names: list[str]) -> dict[str, dict[str, Any]]:
     from app.services.db import connection
 
+    from app.services import confidence_calibration
+
+    calibration = confidence_calibration.load(database_url, db_schema)
     pages: dict[str, list[Optional[tuple]]] = {name: [] for name in names}
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute(_PAGES_SQL, (names,))
         for chart, confidences, flag, measured, page_type in cur.fetchall():
             bj = str(flag or "").strip().lower() in _BLANK_JUNK_FLAGS
-            pages.setdefault(str(chart), []).append(page_level(confidences, bj, measured, page_type))
+            pages.setdefault(str(chart), []).append(page_level(confidences, bj, measured, page_type, calibration))
     return {name: chart_level(found) for name, found in pages.items()}
 
 

@@ -10,7 +10,7 @@ import SearchView from "./SearchView";
 import ReviewLogView from "./ReviewLogView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
-import { fetchDbBackendInfo, getAppConfig, type AppConfig, type OutputMode } from "./api";
+import { fetchDbBackendInfo, getAppConfig, loadCalibration, type AppConfig, type OutputMode } from "./api";
 import { readDbChoice, readsFrom, storeLabel, writeDbChoice, type DbBackendInfo, type DbStore } from "./dbBackend";
 import { ClientViewContext, isClientCopy, scoreFinalOnly, setFinalOnlyChoice, setScoreFinalOnly, setScoringAdmin } from "./clientView";
 import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
@@ -137,8 +137,9 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    getAppConfig()
-      .then((cfg) => {
+    // The Page Type / Codability confidence curves load with the config, so the first scoring has them.
+    Promise.all([getAppConfig(), loadCalibration()])
+      .then(([cfg]) => {
         if (cancelled) return;
         setScoreFinalOnly(Boolean(cfg.client_view));
         setAppConfig(cfg);
