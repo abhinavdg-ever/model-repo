@@ -88,7 +88,7 @@ rules: `CONTINUITY_MODE` and `SEQUENCING_MODE` = `rules` | `ml` | `shadow`. **Co
 breaks, in the same tables and columns, and where it disagrees with the rules the chart's
 `staging/continuity_shadow.json` lists it. **Sequencing runs `shadow`**: the rules' order is written and
 the repair's moves go to `staging/sequencing_shadow.json` (page names and scores, no text). The models are
-`core-pipeline/models/continuity/` (clue model in git, the int8 text model via Git LFS) and
+`core-pipeline/models/continuity/` (clue model and int8 text model; copied onto each host, not in git) and
 `models/sequencing/pair_model/`; without them the stages run on rules. Trainers: `training/continuity/`,
 `training/sequencing/`. The continuity rules count only a typed signature (an end-of-note one; not a
 header "Signed by" or a lab signature in a results block) for the signed-page break.

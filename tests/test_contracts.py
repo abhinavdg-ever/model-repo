@@ -2493,9 +2493,9 @@ class TestNoModelWeightsInGit:
                "core-pipeline/models/rapidocr/PP-OCRv6_det_small.pth",
                "core-pipeline/models/rapidocr/PP-OCRv6_rec_small.pth",
                "core-pipeline/models/rapidocr/ch_ptocr_mobile_v2.0_cls_mobile.pth"}
-    # The three encoders were in git LFS 2026-11-02 to 2026-11-04 (user). Since 2026-11-22 (user) the
-    # int8 page-pair text model is (the VM gets it with `git lfs pull`).
-    LFS: set[str] = {"core-pipeline/models/continuity/text_model/model.int8.onnx"}
+    # The three encoders were in git LFS 2026-11-02 to 2026-11-04 (user); the int8 page-pair text
+    # model 2026-11-22 to 2026-11-24 (user: out again, copied onto each host). Nothing is now.
+    LFS: set[str] = set()
     MAX_TRACKED_BYTES = 50 * 1024 * 1024  # 2026-11-10 (user): was 20 MB
 
     @staticmethod

@@ -29,5 +29,5 @@ Dockerfile  text eol=lf
 # No git LFS (2026-10-26, user): model weights are copied onto each host.
 # 2026-11-04 (user): the encoders are out of git LFS again; copy them onto each host.
 
-# 2026-11-22 (user): the page-pair text model (109 MB) goes through Git LFS; `git lfs pull` on the VM.
-core-pipeline/models/continuity/text_model/model.int8.onnx filter=lfs diff=lfs merge=lfs -text
+# 2026-11-22 .. 11-24 (user): the page-pair text model went through Git LFS; out of git again since,
+# copied onto each host.
