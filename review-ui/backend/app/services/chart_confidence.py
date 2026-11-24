@@ -96,7 +96,8 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
         else:
             value = _num(conf.get(key))
         if value is not None:
-            values[key] = value
+            # 2026-11-24: 4 decimals before banding, as the frontend (round4): 0.79999... is 0.80.
+            values[key] = round(value, 4)
     if not values:
         return None
     counts = {"high": 0, "medium": 0, "low": 0}
@@ -112,7 +113,7 @@ def nps_level(counts: dict[str, int]) -> dict[str, Any]:
     with the floor, banded. Pages over their features and charts over their pages alike."""
     n = sum(counts.values())
     nps = (counts["high"] - counts["low"]) / n
-    value = max(FLOOR, (1 + nps) / 2)
+    value = round(max(FLOOR, (1 + nps) / 2), 4)
     return {"level": band(value), "value": round(value, 4), "nps": round(nps, 4)}
 
 

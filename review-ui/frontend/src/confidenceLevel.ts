@@ -30,7 +30,7 @@ export function npsScore(counts: Record<Level, number>): { nps: number; value: n
   const n = counts.high + counts.medium + counts.low;
   if (!n) return null;
   const nps = (counts.high - counts.low) / n;
-  const value = Math.max(FLOOR, (1 + nps) / 2);
+  const value = round4(Math.max(FLOOR, (1 + nps) / 2));
   return { nps, value, level: band(value) };
 }
 /** The % never contradicts the level (2026-11-19, user): a Medium page / chart shows at most
@@ -55,6 +55,13 @@ export const CONFIDENCE_FIELDS: [string, string][] = [
   ["orientation", "Orientation"],
 ];
 const BLANK_JUNK_FIELDS = new Set(["blank_junk", "codability"]);
+
+/** 2026-11-24 (user: the download's % must agree with the level): every confidence is rounded to
+ * the database's 4 decimals before it is banded or shown, so a float average a hair under a cut
+ * (0.79999...) is 80% and High, never "80.0%" and Medium. */
+export function round4(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
 
 export function band(value: number): Level {
   return value >= HIGH_AT ? "high" : value >= LOW_BELOW ? "medium" : "low";
@@ -96,9 +103,10 @@ function fieldValue(page: ImagingPageResult, key: string): number | null {
     const scored = Object.values(page.finalConfidences ?? {}).some((v) => typeof v === "number");
     const parts = [rawValue(page, "member_name"), rawValue(page, "member_dob")];
     if (!scored && parts.every((v) => v == null)) return null;
-    return parts.map((v) => v ?? MEMBER_NOT_FOUND).reduce((sum, v) => sum + v, 0) / parts.length;
+    return round4(parts.map((v) => v ?? MEMBER_NOT_FOUND).reduce((sum, v) => sum + v, 0) / parts.length);
   }
-  return rawValue(page, key);
+  const value = rawValue(page, key);
+  return value == null ? null : round4(value);
 }
 
 function rawValue(page: ImagingPageResult, key: string): number | null {

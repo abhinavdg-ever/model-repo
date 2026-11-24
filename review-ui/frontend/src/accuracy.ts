@@ -1196,8 +1196,10 @@ export function chartAccuracyTable(charts: ChartAccuracy[]): Table {
 /** A 0-1 confidence as a % with one decimal ("94.6%"), "" when none: the Confidence Analysis
  * bands it unrounded, so the download must not round it into the next band. */
 function pct1(value: number | null | undefined): string {
-  // Cut, not rounded (94.96% stays 94.9%, never 95.0%); the epsilon keeps an exact 0.95 at 95.0%.
-  return value == null || !Number.isFinite(value) ? "" : `${(Math.floor(value * 1000 + 1e-6) / 10).toFixed(1)}%`;
+  // The value banded (4 decimals, round4), then cut, not rounded, to one decimal: 94.96% stays
+  // 94.9%, never 95.0%, so the % never reads a band the level does not.
+  if (value == null || !Number.isFinite(value)) return "";
+  return `${(Math.floor(Math.round(value * 10000) / 10 + 1e-6) / 10).toFixed(1)}%`;
 }
 
 export function pageAccuracyCsv(charts: ChartAccuracy[], withValues = false): string {
