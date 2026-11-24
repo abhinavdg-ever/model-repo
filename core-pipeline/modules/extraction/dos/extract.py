@@ -52,7 +52,7 @@ from ..util.dates import (
 )
 from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, median_height
 from ..util.keys import KeyHit, linked, load_key_tiers, trusted_field_hits
-from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
+from ..util.tokens import Token, edit_distance, key_token_span, ordered_tokens, same_line
 
 TIER_RANK = {
     "service": 0, "collected": 0, "admit": 1, "discharge": 1,
@@ -87,6 +87,10 @@ _FUTURE = frozenset(
      "tentative", "projected"}
 )
 _AMENDED = frozenset({"amended", "amendment", "amend"})
+# A problem list's column words before a bare 'Date' ('Onset Date', 'Resolution Date'): other events' dates.
+_COLUMN_WORDS = frozenset({"onset", "resolution", "resolved"})
+# One-word keys that name a date themselves: repeated down a column they still label each row.
+_DATE_WORDS = frozenset({"date", "dos", "dt", "dated", "time"})
 OTHER_TIME = _PAST | _FUTURE | _AMENDED
 _OTHER_TIME_BEFORE = 2
 # A date this many words after 'Amended' on its line is the amendment's date.
@@ -212,6 +216,10 @@ def _pick(
             return spans[0], 0.85, "next_line"
     if tier in _NEAR_TIERS:
         return _column_below(tokens, spans, key_start, key_end, line_h) if header_row else None
+    # The key's own line goes on with a date OCR could not read ('Encounter Date:July 13. 2025.'):
+    # its value is that date, not a table cell further down the page.
+    if _unread_date_after(tokens, key_last, line_h):
+        return None
     key_left = key_start.word.box.left
     key_right = key_end.word.box.right
     key_cx = (key_left + key_right) / 2.0
@@ -234,6 +242,28 @@ def _pick(
         return None
     _, _, span = min(below, key=lambda item: (item[0], item[1]))
     return span, 0.8, "below"
+
+
+def _unread_date_after(tokens: list[Token], key_last: int, line_h: float) -> bool:
+    """One of the two tokens right after the key on its line (past a colon) starts a date: a digit
+    or a month name ('Date:July 13. 2025.', or a misread month 'Date:fanuary 23. 2026')."""
+    previous = tokens[key_last]
+    seen = 0
+    for token in tokens[key_last + 1 :]:
+        if token.text.strip() in {":", "-", "–"}:
+            continue
+        on_line = abs(token.word.box.cy - previous.word.box.cy) <= 0.6 * line_h and (
+            -0.5 * line_h <= token.word.box.left - previous.word.box.right <= 2.0 * line_h
+        )
+        if not on_line:
+            return False
+        if re.match(r"\d", token.text) or _MONTH_NAME.match(token.text):
+            return True
+        seen += 1
+        if seen == 2:
+            return False
+        previous = token
+    return False
 
 
 def _column_below(
@@ -586,14 +616,78 @@ def drop_shared_values(rows: list[DosHit]) -> list[DosHit]:
     return rows
 
 
+def _table_cell(hit: KeyHit, words: list[Word]) -> bool:
+    """A one-word key printed without a colon that repeats down its column is a table value, not
+    a label: a problem list's Source column ('Encounter  01/27/2015' on row after row) holds the
+    dates those problems were recorded, not this visit's. 'Encounter: 06/12/2024' stays a key.
+    Only a service word that is not itself a date label: 'DOS' or 'Date' repeated row after row
+    labels each row's own date, and admit / discharge words keep their pairing."""
+    parts = _parts_of(hit.key)
+    if len(parts) != 1 or len(hit.word_indexes) != 1:
+        return False
+    if load_key_tiers("dos").get(hit.key.strip().casefold()) != "service" or parts[0] in _DATE_WORDS:
+        return False
+    word = next((word for word in words if word.index == hit.word_indexes[0]), None)
+    if word is None or ":" in word.content:
+        return False
+    height = max(word.box.height(), 1.0)
+    after = sorted(
+        (other for other in words if abs(other.box.cy - word.box.cy) < 0.6 * height and other.box.left > word.box.left),
+        key=lambda other: other.box.left,
+    )
+    if after and after[0].content.startswith(":"):
+        return False
+    target = parts[0]
+    max_dist = 1 if len(target) >= 6 else 0
+    return any(
+        other.index != word.index
+        and abs(other.box.left - word.box.left) <= height
+        and abs(other.box.cy - word.box.cy) >= 0.6 * height
+        and edit_distance("".join(_parts_of(other.content)), target) <= max_dist
+        for other in words
+    )
+
+
+def _column_qualified(hit: KeyHit, words: list[Word]) -> bool:
+    """A bare 'Date' right after a problem list's column word ('Onset Date', 'Resolution Date'):
+    that column's dates are other events, not this visit."""
+    if _parts_of(hit.key) != ["date"]:
+        return False
+    key_words = [word for word in words if word.index in set(hit.word_indexes)]
+    if not key_words:
+        return False
+    first = min(key_words, key=lambda word: word.box.left)
+    height = max(first.box.height(), 1.0)
+    left = [
+        word for word in words
+        if word.index not in set(hit.word_indexes)
+        and abs(word.box.cy - first.box.cy) < 0.6 * height
+        and 0 <= first.box.left - word.box.right <= 1.5 * height
+    ]
+    # The word before 'Date': inside the key's own OCR word ('Onset-Date'), else the word to its left.
+    own = _parts_of(" ".join(word.content for word in key_words))[:-1]
+    if own:
+        before = own
+    elif left:
+        before = _parts_of(max(left, key=lambda word: word.box.right).content)
+    else:
+        return False
+    return bool(before) and before[-1] in _COLUMN_WORDS
+
+
 def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[DosHit]:
     """Keyed DOS rows (all tiers), keyless header/footer dates only if none accepted. Keys that say
-    another time than this visit give no row, and their dates (and amended dates) are no one's."""
+    another time than this visit give no row, and their dates (and amended dates) are no one's.
+    A key that is a table's repeated cell value (_table_cell) gives no row either."""
     tiers = load_key_tiers("dos")
     blocked = _dob_values(hits)
-    dos_hits = [hit for hit in hits if hit.field == "dos"]
+    cells = {
+        id(hit) for hit in hits
+        if hit.field == "dos" and (_table_cell(hit, words) or _column_qualified(hit, words))
+    }
+    dos_hits = [hit for hit in hits if hit.field == "dos" and id(hit) not in cells]
     elsewhere = [hit for hit in dos_hits if other_time(hit, words)]
-    skip = {id(hit) for hit in elsewhere}
+    skip = {id(hit) for hit in elsewhere} | cells
     dos_keys = {index for hit in dos_hits if id(hit) not in skip for index in hit.word_indexes}
     excluded = other_time_dates(elsewhere, words, tiers, blocked, dos_keys)
     rows = [
