@@ -56,9 +56,6 @@ Then, the first rule that matches decides:
 | # | Rule | Check | Verdict |
 |---|---|---|---|
 | 0 | Stage 1 Blank | Only when the page has **no text** (under 15 characters). **2026-11-20 (user): stage 1's Blank never blanks a page with text** (the header-only Blank and the fallback are removed); the rules below decide. review-ui shows such a page's Type as **Printed** | Blank |
-| 0 | **Financials** (2026-11-23, user) | A "Financials" or "Financial Summary" heading: a line that is the heading alone, or a stage 6 section heading. First, before every keep and the short-page rules (RF) | Junk / Others |
-| 0a | **Little text** (2026-11-23, user) | The OCR lines' boxes cover **under 5% of the page**, and the image has at most 1.5% dark ink (no picture, handwriting or stamp the OCR missed); not a visual page, not handwritten over the veto, no signature or provider of its own (RA; `blank_junk_context_canon.json` -> `low_content`) | Junk / Others |
-| 0b | **Model sure of blank** (2026-11-23, user) | DistilBERT p(blank) **over 95%** (`low_content.model_blank_above`); no keep or short-page rule overturns it (RB) | Junk / Others |
 | 1 | **Contents page** | "Index" / "Contents" / "Table of Contents" (2026-11-21: also "Documents" / "Document List", a list of the chart's documents by date) as a heading **in the top third of the page** (2026-11-20, user), **followed by** 3+ entries with page numbers or dates: a line ending in a page number (dot leaders, spaces, or a table cell such as Docling's "\| Progress Note \| 12 \|"), "Page 3" / "Pages 4-7", or a page number on a line of its own. The entries must be **at least 40% of the lines after the title** (a note that opens with a "Table of Contents" bar and then has its own content is not a contents page). Checked **before** the keeps, because its entries read like a medication list. The next page carrying the list on is Junk too | Junk / Others |
 | 2 | Fax cover sheet | "Fax" plus 2+ routing boxes: Urgent, For Review, Please Comment, Please Reply, Please Recycle, As Requested (even when signed); or a short "Fax" title line with a From and a To label (2026-11-21: the two may share a line, "TO: … FROM: …") | Junk / Letter/Fax |
 | 3 | **Short page** | see below: decided by S1–S6, else straight to the classifier (rule 8) | see below |
@@ -94,27 +91,23 @@ The first that matches decides:
 |---|---|---|
 | SC | (2026-11-21, user) A **document cover sheet**: its own lines are only label / value fields (Date, Type, Subject, Approved By, Comments, Category …; a title line such as "Document Details" aside), 3+ fields, one naming the document (Type / Document Type / Subject / Category), each value 6 words or fewer | Junk / Cover Page |
 | SE | (2026-11-21, user) **"End of Report"** is all the page has of its own | Junk / Cover Page |
-| SH | (2026-11-23, user) **Only a running header / footer**: every OCR line in the header band (top 15%) or footer band (bottom 8%), each a running line (page number, fax / print stamp, Patient / DOB / MRN / Visit labels, dates, times, numbers; at most 2 other words, a stamp 6), at least one page number or label, and no signature, provider or credentials. Decided before S1–S6, so the dates in the stamp and footer no longer keep it (S1S / S6) | Junk / Others |
-| SN | (2026-11-23, user) Its only content of its own is a **pointer to another page**: "Content on Next Page", "Continued on the following page", "See next page", "(Continued)", "Please turn over" (the running header / footer and headings aside) | Junk / Others |
-| S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on, **if it has 2+ words on lines of its own** (lines not the previous page's, Docling vs Docling; dates, numbers, headings and running header / footer lines -- a page number or a Patient / DOB / Visit / Printed label -- left out; 2026-11-23, user) | Main |
-| S1S | (2026-11-21, user) The **previous page ends in a signature** ("Signed By …", "Signed", "Electronically signed" in its last 4 lines) and this page's own text has a date (its signer and date carried over: "Rajinder Grover on 7/30/2025 at 1:12 PM"); since 2026-11-23 the page must have 2+ words of its own (as S1) and the date must be on a line of content, not a running header / footer line ("Patient: … DOB: … Visit: … Page: 3") | Main |
+| S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on, **if it has 2+ words of its own** (2026-11-21: a page with only the running header and the page number carries nothing on) | Main |
+| S1S | (2026-11-21, user) The **previous page ends in a signature** ("Signed By …", "Signed", "Electronically signed" in its last 4 lines) and this page's own text has a date (its signer and date carried over: "Rajinder Grover on 7/30/2025 at 1:12 PM") | Main |
 | S2 | The page has a **Progress Note header and 3+ other words** on **its own lines** (2026-11-20: lines not repeated on the previous / next page; a running "Labs (continued)" header does not count) | Main |
 | SF | A **fax routing block**: a fax number ("Fax: (330) 555-0142") and a To / Attn / From line, and no note content (Progress Note header, ICD-10 codes, doses). Checked **before S3**, so a provider named on it ("To: Dr Roe") does not keep it (2026-11-19, user) | Junk / Letter/Fax |
 | S3 | An **Electronic Signature**, or a **provider name** (kv_extract), **not in the same spot** (same region and the same name or signature sentence) on the previous / next page: a provider line printed on every page does not count. No provider position known: a provider the previous / next page does not have | Main |
 | S4 | Its **own lines** (not repeated on a neighbour) hold **measurements**: glucose / vitamin / lab values with units, doses, ICD-10 codes | Main |
-| S5 | **98%+ of its words, in the same order**, are on the previous or next page (each pair compared on the **same OCR engine**: Docling vs Docling, else Doc Intel vs Doc Intel; 2026-11-23, user: Docling first, and the page's own lines too are found on the same engine as the neighbour's) | Junk / Others |
+| S5 | **98%+ of its words, in the same order**, are on the previous or next page (each pair compared on the **same OCR engine**: Doc Intel vs Doc Intel, else Docling vs Docling; 2026-11-20) | Junk / Others |
 | S6 | (2026-11-20 / 21, user) Its **own lines** (above; each pair on the same OCR engine) and not its own stage 6 section headers; the unique words left, **dates and numbers left out**: **1 or none** → Junk / Others; only section headers, all header words, or **only a title** (1–5 capitalised words, no digits, e.g. "EKG/Stress Test") → Junk / Others; 2–4 → Main | Main / Junk |
 | — | 5 or more words left and nothing above | the classifier (rule 8) decides |
-
-**Short page confidence** (2026-11-23, user): any verdict on a short page reads **at most 90%** (`short_page.confidence_cap`).
 
 **LLM judge** (2026-11-23, user; `BLANK_JUNK_LLM=true`, off by default): a short page with some content of its own
 (2+ words), after a **full** page with **Progress Note headers**, whose verdict came from a soft short-page rule
 (S1-S7) or the classifier, is judged by an LLM (Azure OpenAI in the client's tenant: `AZURE_OPENAI_ENDPOINT`,
 `_KEY`, `_DEPLOYMENT`, `_API_VERSION`). It is given the previous page's text and this page's lines, each with
 its position on the page (y = share of the height), and answers Main / Junk / Blank (Blank and Junk are filed
-Junk / Others) with a confidence (capped at 90%) and a reason; the rule is `LLM` and the rules' verdict is kept in
-the votes. The hard rules (RF, RA, RB, SH, SN, R1 ...) decide first and are never sent. A failed call keeps the
+Junk / Others) with a confidence and a reason; the rule is `LLM` and the rules' verdict is kept in
+the votes. The hard rules (R1 ...) decide first and are never sent. A failed call keeps the
 rules' verdict. Every call's tokens are recorded on the run's `run_usage` row (price:
 `PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000`). `/health` -> `blank_junk_llm` says whether it is on and why not. A GPT-5 / o-series deployment (e.g. gpt-5-mini) is sent no temperature, `max_completion_tokens` 2000 and `reasoning_effort` (`AZURE_OPENAI_REASONING_EFFORT`, default minimal); API version default `2025-04-01-preview`.
 

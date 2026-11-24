@@ -74,9 +74,7 @@
       "^\\s*(?:fax|from|to)\\b.*\\d{3}.*\\d{4}",
       "^\\s*confidential"
     ],
-    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line.",
-    "confidence_cap": 0.9,
-    "confidence_cap_note": "2026-11-23 (user): any verdict on a short page reads at most this confidence."
+    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
   },
   "visual": {
     "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type). Rule R3, before signature, DistilBERT, short page, retrieval and clinical: on every visual page, card evidence (card_group, id_card: a card term or card-number pattern) is required; with it, card + vendor + insurer + retrieval + invoice wording (veto_junk_groups) >= veto_min_score -> Junk / Others, whatever the word count. Vendors and insurers only add weight: without a card term they never fire R3. Else fewer than max_words words -> Main. Else (a visual page with more text) the rest of the ladder and the vote decide. Pass 2 skips visual pages under max_words (decided in pass 1). Changed 2026-10-19: was R8, after R7, veto at 7.",
@@ -855,12 +853,5 @@
     "social_history": true
   },
   "keep_veto_at": 0.99,
-  "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled.",
-  "low_content": {
-    "area_below": 0.05,
-    "ink_max": 0.015,
-    "note": "2026-11-23 (user): a page whose text covers less than area_below of it (the OCR lines' boxes: each line's width x height, summed, over the page) is Junk / Others (rule RA, pass 2, after RF). Not when the image has more than ink_max dark ink (hw_printed.page_marks strong_fraction: a picture, handwriting or stamp OCR did not read), a visual page, a handwritten page over handwritten_veto, or a page with its own signature or provider.",
-    "model_blank_above": 0.95,
-    "model_blank_note": "2026-11-23 (user): DistilBERT p(blank) above this -> Junk / Others (RB), before every keep and short-page rule."
-  }
+  "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled."
 }

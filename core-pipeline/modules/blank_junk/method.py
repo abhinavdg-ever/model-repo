@@ -266,58 +266,6 @@ def text_area(words: list[dict[str, Any]], width: Any, height: Any) -> Optional[
     return round(max(0.0, min(1.0, area)), 4)
 
 
-def content_area(words: list[dict[str, Any]], width: Any, height: Any) -> Optional[float]:
-    """The share of the page the text covers (2026-11-23, user: RA): the OCR words grouped into
-    lines as ``lines_from_words``, each line's box (left of its first word to right of its last,
-    top to bottom), summed over the page. None when unknown."""
-    try:
-        w, h = float(width or 0), float(height or 0)
-    except (TypeError, ValueError):
-        return None
-    if w <= 0 or h <= 0:
-        return None
-    boxes = []
-    for word in words or []:
-        polygon = word.get("polygon") or []
-        if len(polygon) < 8 or not str(word.get("content") or "").strip():
-            continue
-        xs, ys = [float(v) for v in polygon[0::2]], [float(v) for v in polygon[1::2]]
-        boxes.append((min(ys), max(ys), min(xs), max(xs)))
-    if not boxes:
-        return 0.0
-    heights = sorted(b[1] - b[0] for b in boxes)
-    half = max(heights[len(heights) // 2] / 2.0, 1.0)
-    boxes.sort(key=lambda b: ((b[0] + b[1]) / 2.0, b[2]))
-    rows: list[list[tuple[float, float, float, float]]] = []
-    for box in boxes:
-        centre = (box[0] + box[1]) / 2.0
-        if rows and abs(centre - sum((b[0] + b[1]) / 2.0 for b in rows[-1]) / len(rows[-1])) <= half:
-            rows[-1].append(box)
-        else:
-            rows.append([box])
-    area = sum((max(b[3] for b in row) - min(b[2] for b in row)) * (max(b[1] for b in row) - min(b[0] for b in row))
-               for row in rows)
-    return round(max(0.0, min(1.0, area / (w * h))), 4)
-
-
-def low_content(inputs: "PageInputs", visual: bool) -> Optional[str]:
-    """RA (2026-11-23, user): the page's text covers under ``low_content.area_below`` (5%) of it, the
-    image shows no other ink (a picture, handwriting, a stamp), not visual or handwritten, and no
-    signature or provider of its own. Returns the reason, or None."""
-    cfg = canon().raw.get("low_content") or {}
-    area_below, ink_max = float(cfg.get("area_below", 0.05)), float(cfg.get("ink_max", 0.015))
-    if inputs.content_area is None or inputs.content_area >= area_below or visual:
-        return None
-    if inputs.page_ink is None or inputs.page_ink > ink_max:
-        return None
-    hw_limit = float(canon().raw["handwritten_veto"]["min_handwritten_area_pct"])
-    if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
-        return None
-    if (inputs.signed and not inputs.neighbour_signed) or inputs.provider:
-        return None
-    return f"text covers {inputs.content_area:.1%} of the page (< {area_below:.0%}), ink {inputs.page_ink:.2%}"
-
-
 def lines_from_words(words: list[dict[str, Any]], height: float) -> list[Line]:
     """OCR word boxes (``{content, polygon}``, top-left origin) grouped into text lines."""
     boxes = []
@@ -558,8 +506,6 @@ class PageInputs:
     barcode: Optional[str] = None
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
     body_ink_fraction: Optional[float] = None  # the share of that band that is ink
-    content_area: Optional[float] = None  # share of the page the OCR lines' boxes cover (RA, 2026-11-23)
-    page_ink: Optional[float] = None  # the whole page's dark-ink share, measured when content_area is low
     # Pass 2: the page's Tesseract text, read for junk terms only (score_text also_junk).
     prelim_text: str = ""
     # Pass 2: the page's section headers (stage 6, in the Final OCR JSON), for the fax rule.
@@ -907,23 +853,6 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
-
-    # ---- pass 2, first (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
-    # Junk / Others, whatever else is on it.
-    if pass2:
-        heading = financial_heading(text, inputs.headings)
-        if heading:
-            return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
-        sparse = low_content(inputs, visual)
-        if sparse:
-            votes["low_content"] = sparse
-            return ruled(_junk_code("Others"), "RA", f"RA {sparse} -> Junk / Others", 1.0)
-        # RB (2026-11-23, user): the model over 95% sure the page is blank -- Junk / Others, never
-        # overturned by a keep or a short-page rule.
-        blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.95))
-        if p_blank is not None and p_blank > blank_at:
-            return ruled(_junk_code("Others"), "RB", f"RB model p(blank) {p_blank:.1%} > {blank_at:.0%} -> Junk / Others",
-                         confidence=round(p_blank, 4))
 
     # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
     # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.
@@ -1424,20 +1353,6 @@ def provider_or_date(text: str, provider: bool, signer: str = "") -> Optional[st
     date = ANY_DATE.search(text or "")
     if date:
         return f"date '{date.group(0)}'"
-    return None
-
-
-# RF (2026-11-23, user): a "Financials" / "Financial Summary" heading -- a line that is the
-# heading alone (markdown / table markup aside) or a stage 6 section heading.
-FINANCIAL_HEADING = re.compile(r"^\W*(financials?|financial\s+summary)\W*$", re.IGNORECASE)
-
-
-def financial_heading(text: str, headings: Any = ()) -> Optional[str]:
-    """The page's "Financials" / "Financial Summary" heading, or None."""
-    for line in [*(str(h) for h in headings or ()), *(text or "").splitlines()]:
-        found = FINANCIAL_HEADING.match(re.sub(r"[#*|_]", " ", line).strip())
-        if found:
-            return found.group(1)
     return None
 
 

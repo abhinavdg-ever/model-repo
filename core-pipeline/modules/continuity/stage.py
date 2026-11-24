@@ -371,9 +371,7 @@ UNJUNK_IN_NOTES = False
 # Junk that stays junk inside a note: blank / tiny / cover mark (R1, R2), a short page (blank_junk
 # SHORT_MARK; the 2026-11-03 contained mark on older rows), a contents page (INDEX), and cards
 # (junk_subtype Cards).
-_KEEP_JUNK = ("R1", "R2", "short_page:", "short_page_contained_in_page_id:", "INDEX",
-              # 2026-11-23 (user): Financials heading, little text, model p(blank) > 95% -- never undone.
-              "RF", "RA", "RB")
+_KEEP_JUNK = ("R1", "R2", "short_page:", "short_page_contained_in_page_id:", "INDEX")
 
 
 def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:
