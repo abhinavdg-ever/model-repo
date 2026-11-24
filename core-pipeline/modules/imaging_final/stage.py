@@ -153,26 +153,43 @@ def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return out
 
 
-def placed_signatures(signatures: dict[int, dict[str, Any]], provider_rows: dict[int, dict[str, Any]],
-                      document_of: dict[int, list[int]]) -> dict[int, dict[str, Any]]:
-    """2026-11-24 (user): a provider signature counts only on the first or last page of its
-    encounter, or in the top / bottom band of the page (the extraction's header / footer region).
-    One found mid-page on a middle page (a lab or radiology block's signer, a quoted 'signed by')
-    is dropped from the Final values; provider_signature_results keeps it."""
-    from modules.extraction.util.geometry import is_edge_region
+# 2026-11-24 (user): inside a Progress Note encounter, a middle page's signature is a lab's or a
+# medication list's when the page is one; otherwise it is kept, less sure.
+SIGNATURE_SKIP_L1 = frozenset({"Lab Report", "Medication Record"})
+SIGNATURE_SKIP_L2 = frozenset({"Lab and Imaging Results", "Medication List"})
+MIDDLE_SIGNATURE_FACTOR = 0.80
 
+
+def progress_note_signatures(signatures: dict[int, dict[str, Any]], documents: dict[int, list[int]],
+                             verdicts: dict[int, Any], classification: dict[int, dict[str, Any]]
+                             ) -> dict[int, dict[str, Any]]:
+    """2026-11-24 (user): in a Progress Note encounter the first and last pages keep their provider
+    signature; a middle page's is dropped when the page is a lab or medication page (its own type
+    Lab Report / Medication Record, or its Progress Note sub-type Lab and Imaging Results /
+    Medication List), else kept at its confidence x MIDDLE_SIGNATURE_FACTOR. Other encounters are
+    unchanged. provider_signature_results keeps every signature as extracted."""
     out = dict(signatures)
-    for page_id, row in signatures.items():
-        if not (row.get("signature_present") or row.get("provider_name")):
+    for pages in documents.values():
+        if len(pages) < 3:
             continue
-        pages = document_of.get(page_id) or [page_id]
-        if page_id in (pages[0], pages[-1]):
+        first = verdicts.get(pages[0])
+        if first is None or path_of(first.page_type, first.page_subtype)[0] != "Progress Note":
             continue
-        if is_edge_region(str((provider_rows.get(page_id) or {}).get("region") or "")):
-            continue
-        out[page_id] = {**row, "signature_present": False, "provider_name": None, "provider_credentials": None,
-                        "signers": None, "provider_confidence": None,
-                        "provider_dropped": "mid-page signature on a middle page of its encounter"}
+        for page_id in pages[1:-1]:
+            row = signatures.get(page_id) or {}
+            if not (row.get("signature_present") or row.get("provider_name")):
+                continue
+            verdict = verdicts.get(page_id)
+            kind = classification.get(page_id) or {}
+            own_l1 = path_of(kind.get("page_type"), kind.get("page_subtype"))[0]
+            l2 = path_of(verdict.page_type, verdict.page_subtype)[1] if verdict is not None else None
+            if own_l1 in SIGNATURE_SKIP_L1 or l2 in SIGNATURE_SKIP_L2:
+                out[page_id] = {**row, "signature_present": False, "provider_name": None,
+                                "provider_credentials": None, "signers": None, "provider_confidence": None,
+                                "provider_dropped": "a lab / medication page in the middle of a Progress Note"}
+            elif row.get("provider_confidence") is not None:
+                out[page_id] = {**row, "provider_confidence": round(
+                    float(row["provider_confidence"]) * MIDDLE_SIGNATURE_FACTOR, 4)}
     return out
 
 
@@ -435,7 +452,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 type_document_of[p.page_id] = [q.page_id for q in packet]
 
         document_of = {pid: pages for pages in documents.values() for pid in pages}
-        signatures = placed_signatures(signatures, provider_rows, document_of)
+        signatures = progress_note_signatures(
+            signatures, documents,
+            {pid: decide_final(final_pages[pid], [final_pages[q] for q in type_document_of.get(pid, [])] or None)
+             for pages in documents.values() for pid in pages},
+            classification)
         rows: dict[int, dict[str, Any]] = {}
         non_codable_pages = 0
         # Every row first: a duplicate copies its reference page's, which can
