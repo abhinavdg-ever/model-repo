@@ -857,7 +857,7 @@
   "keep_veto_at": 0.99,
   "keep_veto_note": "2026-11-19 (user): on a page that is not short, no rule files it Junk / Letter/Fax or Junk / Cover Page while DistilBERT's p(keep) is at or above this; other junk rules, R1 / R2 (no text), the short-page rules and the classifier are not overruled.",
   "low_content": {
-    "model_blank_above": 0.95,
-    "model_blank_note": "2026-11-23 (user): DistilBERT p(blank) above this -> Junk / Others (RB), before every keep and short-page rule."
+    "model_blank_above": 0.98,
+    "model_blank_note": "2026-11-23 (user): DistilBERT p(blank) above this (98% since 2026-11-24, user; was 95%) -> Junk / Others (RB), before every keep and short-page rule."
   }
 }

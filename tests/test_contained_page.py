@@ -643,13 +643,13 @@ def test_own_lines_compare_the_same_ocr_engine(monkeypatch):
 
 
 def test_rb_the_model_sure_of_blank_is_junk_others():
-    """2026-11-23 (user): p(blank) > 95% -> Junk / Others, before every keep."""
-    bert = {"p_keep": 0.01, "p_junk": 0.03, "p_blank": 0.96, "top_junk_label": ""}
+    """2026-11-23 (user): p(blank) > 98% (95% until 2026-11-24) -> Junk / Others, before every keep."""
+    bert = {"p_keep": 0.01, "p_junk": 0.03, "p_blank": 0.985, "top_junk_label": ""}
     page = method.PageInputs(text="Signed by Made Up MD 1/2/2025\nPatient Madeup DOB 1/1/1950", pass_no=2,
                              document_type="printed", bert=bert, signed=True)
     verdict = method.decide(page)
     assert verdict.rule == "RB" and verdict.code != method.CODE_MAIN
-    page.bert = {**bert, "p_blank": 0.94, "p_keep": 0.03}
+    page.bert = {**bert, "p_blank": 0.97, "p_keep": 0.03}
     assert method.decide(page).rule != "RB"
 
 

@@ -860,9 +860,9 @@ def decide(inputs: PageInputs) -> Verdict:
         heading = financial_heading(text, inputs.headings)
         if heading:
             return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
-        # RB (2026-11-23, user): the model over 95% sure the page is blank -- Junk / Others, never
+        # RB (2026-11-23, user; 98% since 2026-11-24): the model over 98% sure the page is blank -- Junk / Others, never
         # overturned by a keep or a short-page rule.
-        blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.95))
+        blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.98))
         if p_blank is not None and p_blank > blank_at:
             return ruled(_junk_code("Others"), "RB", f"RB model p(blank) {p_blank:.1%} > {blank_at:.0%} -> Junk / Others",
                          confidence=round(p_blank, 4))
