@@ -36,6 +36,7 @@ from typing import Any, Optional, Sequence
 from modules import confidence as conf
 from modules.canon_store import CANON_DIR, CanonFile
 
+from . import running_header
 from .signals import (
     Corpus,
     Semantic,
@@ -559,9 +560,11 @@ def score_gap(
     if (a.visit_ids | visit_numbers(a.text)) & (b.visit_ids | visit_numbers(b.text)):
         P["same_visit_number"] = pts("same_visit_number")
     min_chars = rules.semantic.furniture_min_chars
-    if repeated_line(head(a, rules), head(b, rules), min_chars):
+    ids_a, ids_b = running_header.header_ids(head(a, rules)), running_header.header_ids(head(b, rules))
+    other_visit = bool(ids_a and ids_b and not ids_a & ids_b)  # 2026-11-24: same template, another visit
+    if repeated_line(head(a, rules), head(b, rules), min_chars) and not other_visit:
         P["same_header_line"] = pts("same_header_line")
-    if repeated_line(foot(a, rules), foot(b, rules), min_chars):
+    if repeated_line(foot(a, rules), foot(b, rules), min_chars) and not other_visit:
         P["same_footer_line"] = pts("same_footer_line")
     shared = furniture([l.text for l in a.lines], [l.text for l in b.lines], min_chars)
     a_rest = [t for t in a_body_text if normalized_line(t) not in shared]
@@ -1048,6 +1051,7 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None,
             decision = (model or {}).get((pages[prev].page_id, page.page_id))
             if decision is not None:
                 _apply_model(gap, decision)
+            _running_header_rule(gap, pages[prev], page, rules, a_opens)
             gaps[(prev, i)] = gap
             if gap.is_break:
                 segments.append(_Segment(kind, [i]))
@@ -1065,6 +1069,26 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None,
     if model is None:
         segments = _final_pass(pages, segments, gaps, rules)
     return _rows(pages, scored, segments, gaps, rules)
+
+
+def _running_header_rule(gap: Gap, a: PageInput, b: PageInput, rules: Rules, a_opens: bool) -> None:
+    """The running header / footer's hard rules (2026-11-24, user; running_header.py): the
+    encounter id or date in the header changes -> a break; a bare footer page number restarts at
+    1 -> a break, follows -> joined. Over the rules' score and the clue model alike."""
+    if a.kind != "main" or b.kind != "main":
+        return
+    feet = (foot(a, rules), foot(b, rules)) if a.located and b.located else (None, None)
+    signed_ends = bool(rules.signature_breaks and a.signed and not a_opens)
+    ruled = running_header.decision(head(a, rules), head(b, rules), feet[0], feet[1], signed_ends)
+    if ruled is None:
+        return
+    brk, rule, why = ruled
+    if not brk and gap.evidence.get("consent_boundary"):
+        return  # a consent page and a note are never one document
+    gap.is_break, gap.decided_by, gap.level = brk, "decisive", "high"
+    gap.confidence = _ruled_confidence(gap, rules)
+    gap.evidence["running_header"] = f"{rule}: {why}"
+    gap.flags.append(f"{why}: always a {'break' if brk else 'join'}")
 
 
 def _apply_model(gap: Gap, decision: dict[str, Any]) -> None:
