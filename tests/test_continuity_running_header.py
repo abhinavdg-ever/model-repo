@@ -89,3 +89,17 @@ class TestChart:
         pages = [ccd_page(1, "1111111", "January 15, 2025", 1),
                  ccd_page(2, "1111111", "January 15, 2025", 2, body=body2)]
         assert documents(assign(pages)) == [1]
+
+
+def test_a_signed_ccd_page_one_and_its_page_two_stay_one_document():
+    """2026-11-24 (user: two Progress Notes with the same DOS split): page 1 of a CCD print carries
+    'Legal authenticator ... signed at' and page 2 opens with a note heading; the clue model split
+    them. Same encounter id, footer 1 -> 2: one document."""
+    prev = ccd_page(38, "1111111", "March 17, 2026", 3, signed=True)
+    a = ccd_page(39, "2222222", "April 01, 2026", 1, body=["legal authenticator signed at april 10, 2026",
+                                                            "allergies"], signed=True)
+    b = ccd_page(40, "2222222", "April 01, 2026", 2, body=["patient care coordination note", "problem"],
+                 signed=True)
+    model = {(38, 39): {"break": True, "p_break": 0.9, "score": 4.0, "decided_by": "model", "evidence": ""},
+             (39, 40): {"break": True, "p_break": 0.7, "score": 1.7, "decided_by": "model", "evidence": ""}}
+    assert documents(assign([prev, a, b], model=model)) == [1, 2]
