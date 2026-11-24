@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from modules import confidence as conf
-from modules.page_classify import leaf_canon, priority, specialty_keywords
+from modules.page_classify import agreement, leaf_canon, priority, specialty_keywords
 from modules.page_classify import result as page_result
 from modules.page_classify import taxonomy as tax
 
@@ -376,7 +376,19 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     )
     if how == "priority" and model_first:
         confidence, rule = conf.flipped(), f"priority rule {fired.rule} against the model's family: flipped"
-    why = {**why, "strength": strength, "rule_2026_11_14": rule}
+    # 2026-11-24 (user): the agreement of the model and the keywords on the chosen type sets the
+    # confidence (agreement.py); a Deciding word the model overruled and an Others leaf keep theirs.
+    agree_cfg = agreement.settings(((settings.get("confidence") or {}).get("agreement")))
+    has_model = model.source != NO_MODEL and bool(model_first)
+    mr = min((r for path, r in model_rank_raw.items() if stands_for(model, winner, path)), default=None)
+    agreement_tier = agreement.tier(mr, keyword_rank.get(winner),
+                                    bool(model_first) and str(model_first).split(SEP)[0] == winner.split(SEP)[0],
+                                    has_model)
+    if agree_cfg["enabled"] and not overruled and not is_others(winner):
+        confidence = agreement.page_type_confidence(agreement_tier, _prob(model, winner), agree_cfg)
+        rule = f"agreement tier {agreement_tier}"
+    why = {**why, "strength": strength, "rule_2026_11_14": rule, "agreement_tier": agreement_tier,
+           "model_rank": mr, "keyword_rank": keyword_rank.get(winner)}
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
                     deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength,
@@ -572,13 +584,25 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
            else page_result.MODEL if decision.how in ("agree", "model")
            else page_result.RULE if decision.how == "priority" else page_result.CANON)
     specialty, specialty_conf, specialty_by = page_specialty(model, text, headings)
+    # 2026-11-24 (user): codability's own confidence -- the model's probability for every type with
+    # this codability, checked against both approaches' firsts (agreement.py).
+    agree_cfg = agreement.settings(((settings.get("confidence") or {}).get("agreement")))
+
+    def _codeability(path: str) -> Optional[str]:
+        a1, a2, a3 = leaves.get(path) or _split(path)
+        return tax.codeability_of(a1, a2, a3)
+
+    cod_conf, cod_why = (path_conf, "page type's") if not agree_cfg["enabled"] else agreement.codability_confidence(
+        codeability if codeability != page_result.NEEDS_REVIEW else None, dict(model.probs),
+        decision.model_rank, decision.keyword_rank, model.source != NO_MODEL and bool(decision.model_rank),
+        _codeability, agree_cfg)
     sources = (who, who if l2 else "-", who if l3 else "-", specialty_by, who)
     return page_result.PageResult(
         l1=l1, l1_confidence=path_conf, l2=l2, l2_confidence=path_conf if l2 else None,
         l3=l3, l3_confidence=path_conf if l3 else None, page_type_confidence=path_conf,
         specialty=specialty, specialty_confidence=specialty_conf,
         codeability=codeability,
-        codeability_confidence=path_conf if codeability != page_result.NEEDS_REVIEW else None,
+        codeability_confidence=cod_conf if codeability != page_result.NEEDS_REVIEW else None,
         sources=sources,
         title_l1=leaf_canon.title_l1(text, headings),
         paths=tuple({"rank": i, "path": leaf, "points": total,
@@ -588,6 +612,10 @@ def predict(text: str, headings: tuple[str, ...] = ()) -> Optional[page_result.P
         rules=(decision.priority_rule["rule"],) if decision.priority_rule and decision.priority_rule.get("rule") else (),
         leaf={
             "leaf": decision.path, "how": decision.how, "confidence": decision.confidence,
+            "agreement": {"tier": decision.confidence_why.get("agreement_tier"),
+                          "model_rank": decision.confidence_why.get("model_rank"),
+                          "keyword_rank": decision.confidence_why.get("keyword_rank"),
+                          "codability_confidence": cod_conf, "codability_why": cod_why},
             "strength": decision.strength,
             "confidence_why": decision.confidence_why,
             "model_source": model.source,

@@ -337,6 +337,8 @@ export type PageAccuracy = {
   features?: Record<string, number>;
   /** Page Type / Codability confidences before their calibration curve (a refit's input). */
   rawFeatures?: Record<string, number>;
+  /** The page classifier's model / keyword agreement tier (A-E), for the Agreement view. */
+  tier?: string | null;
   /** A critical page (CRITICAL_PAGE_TYPES, its Final page type; 2026-11-23, user). */
   critical?: boolean;
 };
@@ -1079,6 +1081,7 @@ export function scoreChart(
       confidence: pageConfidence(raw),
       features: featureConfidences(raw),
       rawFeatures: rawFeatureConfidences(raw),
+      tier: raw.classificationTier ?? null,
       critical: isCriticalPageType(raw.finalPageType),
     });
     if (pageOverall) {

@@ -1402,7 +1402,13 @@ SELECT
     -- Each metric's Final confidence (2026-11-19): the page / chart confidence level.
     to_jsonb(f) -> 'confidences'                              AS final_confidences,
     -- Stage 1's measured confidences (orientation ...), 2026-11-19.
-    q.quality_detail -> 'confidences'                          AS measured_confidences
+    q.quality_detail -> 'confidences'                          AS measured_confidences,
+    -- The page classifier's model / keyword agreement (2026-11-24): its leaf, both rankings and
+    -- the tier, for the Confidence Analysis' Agreement view.
+    jsonb_build_object('tier', pc.axes #>> '{leaf,agreement,tier}', 'leaf', pc.axes #>> '{leaf,leaf}',
+                       'model_source', pc.axes #>> '{leaf,model_source}',
+                       'model_top', pc.axes #> '{leaf,model_top}', 'keyword_top', pc.axes #> '{leaf,keyword_top}')
+                                                              AS classification_agreement
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

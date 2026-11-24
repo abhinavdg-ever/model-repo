@@ -179,6 +179,8 @@ export type ImagingPageResult = {
   mirrored: boolean | null;
   /** Stage 1's measured values' confidences: orientation, mirrored, tilt, visibility, handwritten_area. */
   measuredConfidences?: Record<string, number> | null;
+  /** The page classifier's model / keyword agreement tier, A (both #1) to E (2026-11-24). */
+  classificationTier?: string | null;
   /** The subtype's own confidence (the deepest named level), apart from the page type's. */
   subtypeConfidence?: number | null;
   pageQualityTag?: string | null;

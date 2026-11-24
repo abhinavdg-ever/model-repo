@@ -324,6 +324,8 @@ class ImagingPageResult(BaseModel):
     # Stage 1's measured values' confidences (2026-10-26): orientation, mirrored, tilt,
     # visibility, handwritten_area (ocr_quality_results.quality_detail.confidences).
     measuredConfidences: dict[str, float] | None = None
+    # The page classifier's model / keyword agreement tier, A (both #1) to E (2026-11-24).
+    classificationTier: str | None = None
     # The subtype's own confidence (the deepest named level, conditional on its parent).
     subtypeConfidence: float | None = None
     pageQualityTag: str | None = None

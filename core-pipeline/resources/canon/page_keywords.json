@@ -44,7 +44,16 @@
    "close_call_margin": 0.1,
    "close_call": 0.9,
    "model_disagree": 0.8,
-   "others_cap": 0.6
+   "others_cap": 0.6,
+   "agreement": {
+     "enabled": true,
+     "b_factor": 0.9,
+     "c_factor": 0.75,
+     "c_cap": 0.79,
+     "d_value": 0.55,
+     "e_value": 0.3,
+     "note": "2026-11-24 (user): page type / codability confidence by how the model and the keywords agree on the chosen type (page_classify/agreement.py): A both #1 -> model p; B model #1, keywords 2-3 -> p x b_factor; C model #1 only -> p x c_factor, at most c_cap; D model 2-3 or same L1 -> d_value; E another L1 -> e_value. Codability: the model p over every type with that codability, x c_factor (cap c_cap) when one first differs, e_value when both do."
+   }
   },
   "title_zone_lines": 12,
   "title_zone_multiplier": 1.5,

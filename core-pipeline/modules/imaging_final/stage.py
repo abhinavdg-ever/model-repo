@@ -261,8 +261,12 @@ def final_confidences(
         else:
             out["page_type"] = _own_or_carried(
                 page_id, decider, _number((classification.get(decider) or {}).get("confidence")))
-        # Codability is a lookup from the page type: the same confidence.
-        out["codability"] = out["page_type"]
+        # 2026-11-24 (user): codability's own confidence (page_classify/agreement.py: the model's
+        # probability over every type with that codability, checked against the keywords), carried
+        # like the page type's; rows written before it: the page type's.
+        own_cod = _number(page_result.stored(classification.get(decider) or {}).get("codeability_confidence"))
+        out["codability"] = (out["page_type"] if replaced or own_cod is None
+                             else _own_or_carried(page_id, decider, own_cod))
     if specialty_page is not None:
         out["specialty"] = _own_or_carried(
             page_id, specialty_page,

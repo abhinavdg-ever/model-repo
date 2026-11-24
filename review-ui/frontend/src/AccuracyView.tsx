@@ -1005,6 +1005,9 @@ function scorePct(score: LevelScore): string {
  * pages, how confidence is spread (overall and per metric), the cross tab of page confidence
  * against the page's overall match, and each metric's accuracy at each of its confidence levels
  * -- High should be the most accurate. */
+/** The page classifier's model / keyword agreement tiers, best first (2026-11-24). */
+const AGREEMENT_TIERS = ["A", "B", "C", "D", "E"] as const;
+
 /** Confidence bands, top first: [label, lowest value] (2026-11-22, user): steps of 5 above 70%,
  * of 10 from 30% to 70%, one band under 30%. */
 const BANDS: [string, number][] = [
@@ -1098,7 +1101,7 @@ function CalibrationControls({ rows }: { rows: ChartAccuracy[] }) {
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const [open, setOpen] = useState(false);
   // 2026-11-19 (user): Overview, then one tab per metric with its accuracy by confidence decile.
-  const [tab, setTab] = useState<"overview" | MetricId>("overview");
+  const [tab, setTab] = useState<"overview" | "agreement" | MetricId>("overview");
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -1177,9 +1180,25 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         pooled[l].pages += by[l].pages; pooled[l].yes += by[l].yes; pooled[l].maybe += by[l].maybe; pooled[l].no += by[l].no;
       }
     }
+    // 2026-11-24 (user): Page Type and Codability accuracy per model / keyword agreement tier.
+    const agreement = new Map<string, { pageType: LevelScore; codable: LevelScore; conf: number; confN: number }>();
+    for (const t of AGREEMENT_TIERS) agreement.set(t, { pageType: emptyScore(), codable: emptyScore(), conf: 0, confN: 0 });
+    for (const row of rows) {
+      for (const page of row.pages) {
+        const entry = page.tier ? agreement.get(page.tier) : undefined;
+        if (!entry) continue;
+        addVerdict(entry.pageType, page.scores.pageType);
+        addVerdict(entry.codable, page.scores.codeable);
+        const value = page.features?.page_type;
+        if (value != null && page.scores.pageType != null) {
+          entry.conf += value;
+          entry.confN += 1;
+        }
+      }
+    }
     const chartMean = chartValues.length ? Math.round((100 * chartValues.reduce((s, x) => s + x, 0)) / chartValues.length) : null;
     return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, chartBands, chartMean,
-             mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles };
+             mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles, agreement };
   }, [open, rows]);
 
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
@@ -1206,15 +1225,44 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 </p>
                 <CalibrationControls rows={rows} />
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
-                  {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
+                  {(["overview", "agreement", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | "agreement" | MetricId)[]).map((id) => (
                     <button key={id} type="button" role="tab" aria-selected={tab === id}
                             className={tab === id ? "active" : undefined} onClick={() => setTab(id)}>
-                      {id === "overview" ? "Overview" : (LIVE_METRICS.find((m) => m.id === id)?.tableLabel
+                      {id === "overview" ? "Overview" : id === "agreement" ? "Agreement" : (LIVE_METRICS.find((m) => m.id === id)?.tableLabel
                         ?? LIVE_METRICS.find((m) => m.id === id)?.label)}
                     </button>
                   ))}
                 </div>
-                {tab !== "overview" ? (() => {
+                {tab === "agreement" ? (
+                  <section>
+                    <h3>Page Type / Codability: accuracy by model and keyword agreement</h3>
+                    <p className="chart-details-note">
+                      A: the model's and the keywords' first choice are both the page type · B: model first, keywords
+                      2nd-3rd · C: model first only · D: model 2nd-3rd, or same family · E: they disagree on the family.
+                      Accuracy should fall from A to E.
+                    </p>
+                    <table className="chart-details-table">
+                      <thead>
+                        <tr><th>Agreement</th><th className="num">Pages</th><th className="num">Page Type Accuracy</th>
+                          <th className="num">Codability Accuracy</th><th className="num">Avg Page Type Confidence</th></tr>
+                      </thead>
+                      <tbody>
+                        {AGREEMENT_TIERS.map((t) => {
+                          const e = data.agreement.get(t)!;
+                          return (
+                            <tr key={t}>
+                              <td>{t}</td>
+                              <td className="num">{e.pageType.pages.toLocaleString()}</td>
+                              <td className="num">{scorePct(e.pageType)}</td>
+                              <td className="num">{scorePct(e.codable)}</td>
+                              <td className="num">{e.confN ? `${Math.round((100 * e.conf) / e.confN)}%` : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </section>
+                ) : tab !== "overview" ? (() => {
                   const metric = LIVE_METRICS.find((m) => m.id === tab)!;
                   const buckets = data.deciles.get(metric.id)!;
                   const partial = buckets.some((b) => b.maybe > 0);

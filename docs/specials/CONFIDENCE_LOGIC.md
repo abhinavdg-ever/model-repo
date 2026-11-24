@@ -21,6 +21,11 @@ under 0.99, Low under 0.75**; the Confidence Analysis shows them in a 99-100% ba
 1-point bands from 95% (page and chart levels, Confidence Analysis). **DOS** is High from **0.75**
 (Medium 0.50 to under 0.75, Low under 0.50).
 
+**Calibration** (2026-11-24, user; review-ui): an admin can fit Page Type and Codability to their measured
+accuracy in the Confidence Analysis ("Calibrate on these pages"); the curves (`confidence_calibration`) are applied
+on read, so the stored values stay the pipeline's. The **Agreement** tab shows Page Type / Codability accuracy per
+tier A-E.
+
 No confidence is shown below **0.20** (the floor; a lower value is raised to it). A field with no
 value read (no DOS, nothing extracted, a default date) has **no confidence**, not a number.
 
@@ -62,9 +67,9 @@ All numbers are in `core-pipeline/resources/canon/confidence_canon.json` and rel
 | **DOS** | the KV row the shown date came from: score x `model_score`. Label backups (edge label, keyword pass, dictated date, an admit / discharge side from rules): 0.60. Signature date: 0.40. Neighbours' agreed date, the document's carried date: the source x 0.90. No DOS / default: none |
 | **Blank / Junk** | section 4 |
 | **Duplicate** | from the match score s to the original: Yes `max(0.30, 1 - 10 x (1 - s))` (exact 1.0, 98% 0.80, 95% 0.50); Partial (a blocked exact match) 1.0. No: s < 0.80 -> 1.0; 0.80-0.90 -> 1.0 falling to 0.80; 0.90-1.00 -> 0.80 falling to 0.30; nothing to compare: 1.0 |
-| **Page type / sub-type** (Extracted) | the page-leaf model's probability for the chosen leaf. Progress Note model guard (model >= 0.50 Progress Note): the model's probability. Keywords only, an Others leaf, no model: 0.40. A Deciding title or a family priority rule against the model's family: 0.30 (`decided_by = rule`). A Deciding title against the model within the same family: the model's probability for that family |
+| **Page type / sub-type** (Extracted) | **By agreement of the leaf model and the keywords** (2026-11-24, user; `page_classify/agreement.py`, settings in `page_keywords.json` -> `confidence.agreement`): **A** both rank the chosen type first: the model's probability; **B** model first, keywords 2nd-3rd: probability x 0.90; **C** model first only: probability x 0.75, at most 0.79; **D** model 2nd-3rd or its first in the same family (a Deciding word / priority rule / the keywords chose it), or no model and the keywords' first: 0.55; **E** the model's first in another family: 0.30. An Others leaf: 0.40; the model overruling a Deciding keyword: 0.30 |
 | **Page type / sub-type** (Final) | the anchor page (the document's first page of the Final family): its own; other pages: anchor x 0.90; a page re-placed into a Progress Note (lab page inside a note): 0.30 |
-| **Codability** | the page type's confidence (a Blank / Junk page: Non-Codable with the Blank / Junk confidence) |
+| **Codability** | its own (2026-11-24, user): the model's probability summed over every type with the chosen codability; both approaches' first choices share that codability -> that sum; one does -> x 0.75, at most 0.79; neither -> 0.30; no model: keywords' first shares it 0.55, else 0.30. Carried like the page type (other pages of the document x 0.90). Rows from before: the page type's. A Blank / Junk page: Non-Codable with the Blank / Junk confidence |
 | **Specialty** | the page-leaf model's specialty probability (>= 0.50, not Unknown / Others); else a specialty title, specialty keywords or General: 0.40. Final: the encounter's first page; other pages x 0.90 |
 | **Encounter type** | the encounter model's probability for the setting on the deciding page; family rule / keywords / default: 0.40; another setting than the model's top: 0.30; carried x 0.90 |
 | **Handwritten / printed / form / visual** | the page-tag model's probability; the handwritten-share rule changed the type: 0.30; no ink: 1.0; faint marks / ink upgrade: 0.40 |
