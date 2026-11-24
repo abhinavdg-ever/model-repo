@@ -153,6 +153,29 @@ def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return out
 
 
+def placed_signatures(signatures: dict[int, dict[str, Any]], provider_rows: dict[int, dict[str, Any]],
+                      document_of: dict[int, list[int]]) -> dict[int, dict[str, Any]]:
+    """2026-11-24 (user): a provider signature counts only on the first or last page of its
+    encounter, or in the top / bottom band of the page (the extraction's header / footer region).
+    One found mid-page on a middle page (a lab or radiology block's signer, a quoted 'signed by')
+    is dropped from the Final values; provider_signature_results keeps it."""
+    from modules.extraction.util.geometry import is_edge_region
+
+    out = dict(signatures)
+    for page_id, row in signatures.items():
+        if not (row.get("signature_present") or row.get("provider_name")):
+            continue
+        pages = document_of.get(page_id) or [page_id]
+        if page_id in (pages[0], pages[-1]):
+            continue
+        if is_edge_region(str((provider_rows.get(page_id) or {}).get("region") or "")):
+            continue
+        out[page_id] = {**row, "signature_present": False, "provider_name": None, "provider_credentials": None,
+                        "signers": None, "provider_confidence": None,
+                        "provider_dropped": "mid-page signature on a middle page of its encounter"}
+    return out
+
+
 def _documents(
     pages: list[dict[str, Any]],
     continuity: dict[int, dict[str, Any]],
@@ -408,6 +431,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 type_document_of[p.page_id] = [q.page_id for q in packet]
 
         document_of = {pid: pages for pages in documents.values() for pid in pages}
+        signatures = placed_signatures(signatures, provider_rows, document_of)
         rows: dict[int, dict[str, Any]] = {}
         non_codable_pages = 0
         # Every row first: a duplicate copies its reference page's, which can

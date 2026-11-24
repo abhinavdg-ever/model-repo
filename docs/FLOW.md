@@ -80,7 +80,7 @@ Final OCR 2, else Final OCR 1, else the preliminary text (only on printed pages)
 | 12 | `continuity` | every page | page types, dates, signatures | `page_continuity_results` | `staging/continuity.json`, `imaging/_continuity.csv` |
 | 13 | `encounter_type` | not blank / junk | best text + documents | `encounter_type_results` | `imaging/_encounter.csv` |
 | 14 | `page_sequencing` | every page (junk set aside) | best text + documents | `page_sequencing_results` | `imaging/_sequencing.csv` |
-| 15 | `imaging_final` | every page | all of the above | `imaging_final` | `imaging/_final.csv` |
+| 15 | `imaging_final` | every page | all of the above (a provider signature counts only on its encounter's first / last page or in the page's top / bottom band, 2026-11-24) | `imaging_final` | `imaging/_final.csv` |
 
 **Learned models (2026-11-22).** Continuity and sequencing each have a learned model beside the
 rules: `CONTINUITY_MODE` and `SEQUENCING_MODE` = `rules` | `ml` | `shadow`. **Continuity runs `ml`**
