@@ -1012,11 +1012,15 @@ const BANDS: [string, number][] = [
   ["<30%", 0],
 ];
 
-/** 2026-11-23 (user): Blank / Junk, Provider Signature and Orientation -- 1-point bands from 95. */
+/** 2026-11-23 (user): Orientation -- 1-point bands from 95. */
 const STRICT_BANDS: [string, number][] = [
   ...[99, 98, 97, 96, 95].map((lo) => [`${lo}-${lo + 1}%`, lo / 100] as [string, number]),
   ...BANDS.slice(1),
 ];
+
+/** 2026-11-24 (user): Blank / Junk and Provider Signature -- 99-100% (High), 95-99% as one band. */
+const TOP_BANDS: [string, number][] = [["99-100%", 0.99], ["95-99%", 0.95], ...BANDS.slice(1)];
+const TOP_FEATURES = new Set(["blank_junk", "provider"]);
 
 /** The band a confidence falls in (index into ``bands``, BANDS by default). */
 function bandIndex(value: number, bands: [string, number][] = BANDS): number {
@@ -1026,7 +1030,8 @@ function bandIndex(value: number, bands: [string, number][] = BANDS): number {
 
 /** A metric's bands and the level of a band's lower edge (its row colour). */
 function metricBands(id: MetricId): [string, number][] {
-  return STRICT_FEATURES.has(METRIC_FEATURE[id]) ? STRICT_BANDS : BANDS;
+  const feature = METRIC_FEATURE[id];
+  return TOP_FEATURES.has(feature) ? TOP_BANDS : STRICT_FEATURES.has(feature) ? STRICT_BANDS : BANDS;
 }
 
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {

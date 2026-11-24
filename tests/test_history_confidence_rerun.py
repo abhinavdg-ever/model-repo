@@ -24,7 +24,7 @@ def test_page_level_uses_the_seven_features():
     # Member ID is not a feature.
     assert page_level({**high, "member_id": 0.1}, False)[0] == "high"
     # Blank / junk page: only Blank / Junk and Codability count.
-    assert page_level({"dos": 0.1, "blank_junk": 0.96}, True)[0] == "high"
+    assert page_level({"dos": 0.1, "blank_junk": 0.995}, True)[0] == "high"
     assert page_level({"dos": 0.1, "blank_junk": 0.9}, True)[0] == "medium"  # 90%: Medium for Blank / Junk
     assert page_level({}, False) is None
     assert page_level('{"dos": 0.9}', False)[0] == "high"
@@ -106,7 +106,10 @@ def test_strict_features_and_member_not_found():
     Name / DOB with no confidence (not found) reads 80% in the member average."""
     from app.services.chart_confidence import band_for, page_level
 
-    assert [band_for("blank_junk", v) for v in (0.96, 0.9, 0.7)] == ["high", "medium", "low"]
+    # 2026-11-24 (user): Blank / Junk and Provider High from 99%; Orientation stays at 95%.
+    assert [band_for("blank_junk", v) for v in (0.99, 0.96, 0.7)] == ["high", "medium", "low"]
+    assert [band_for("provider", v) for v in (0.995, 0.98, 0.74)] == ["high", "medium", "low"]
+    assert band_for("orientation", 0.96) == "high"
     assert [band_for("dos", v) for v in (0.9, 0.6, 0.4)] == ["high", "medium", "low"]
     # name 0.96, DOB not found (0.80): member = 0.88, High.
     assert page_level({"member_name": 0.96, "dos": 0.9}, False)[0] == "high"
