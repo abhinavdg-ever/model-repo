@@ -46,7 +46,7 @@ def test_the_judge_decides_a_short_page_after_a_full_note(monkeypatch):
     assert len(calls) == 1 and calls[0][0] == 7
     assert "CURRENT PAGE" in calls[0][1][1]["content"] and "PREVIOUS PAGE" in calls[0][1][1]["content"]
     assert rows[2]["flag"] == "junk" and rows[2]["reason"].startswith("LLM junk")
-    assert rows[2]["confidence"] == 0.97
+    assert rows[2]["confidence"] <= 0.9  # the short page cap
 
 
 def test_not_asked_without_note_headers_on_the_previous_page(monkeypatch):

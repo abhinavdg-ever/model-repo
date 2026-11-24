@@ -10,10 +10,11 @@ answers Main / Junk / Blank with a confidence and a reason.
   ``AZURE_OPENAI_DEPLOYMENT``, ``AZURE_OPENAI_API_VERSION``. Off, or not configured: the rules
   decide, and ``status()`` says why.
 * It overrules only the short page's soft verdicts and the classifier (``REVIEWABLE``); the hard
-  junk rules (R1 ...) decide before it is asked.
+  junk rules (RF, RB, SH, SN, R1 ...) decide before it is asked.
 * Every call's tokens go to ``run_usage`` (``apps.worker.usage.add_llm_tokens``), priced by
   ``PRICE_LLM_<DEPLOYMENT>_IN/OUT_PER_1000``.
 * A failed call keeps the rules' verdict and records the error in the page's votes.
+* Its confidence is capped by ``short_page.confidence_cap`` (90%).
 """
 from __future__ import annotations
 

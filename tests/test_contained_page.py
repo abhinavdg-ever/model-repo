@@ -175,8 +175,11 @@ def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monke
     last 3) -> the short page carries that section on: Main."""
     _keep(monkeypatch)
     before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Plan", FOOTER])
-    rows = _run({1: before, 2: FOOTER + " " + HEADER})
+    rows = _run({1: before, 2: FOOTER + " " + HEADER + "\ncontinue current medications, follow up"})
     assert rows[2]["flag"] == "not_blank_junk" and "S1" in rows[2]["reason"]
+    # 2026-11-23 (user): a page with under 2 words on lines of its own (numbers and dates aside)
+    # carries nothing on.
+    assert "S1" not in (_run({1: before, 2: HEADER + "\n12/01/2025 4\n" + FOOTER})[2]["reason"] or "")
     early = "\n".join([HEADER, "## Plan"] + [f"line {i} {BODY[:40]}" for i in range(20)] + [FOOTER])
     assert "S1" not in _run({1: early, 2: FOOTER + " " + HEADER})[2]["reason"]
 
@@ -537,3 +540,151 @@ def test_end_of_report_alone_is_a_cover_page(monkeypatch):
     rows = _placed({1: "\n".join(p33), 2: "\n".join(p34)}, tops)
     assert rows[2]["flag"] == "junk" and "SE" in rows[2]["reason"], rows[2]["reason"]
     assert rows[2]["subtype"] == "Cover Page" if "subtype" in rows[2] else True
+
+
+def _run_lines(texts, lines, signed=()):
+    """_run with measured OCR line positions (SH reads them)."""
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in texts]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in texts}
+    for i in texts:
+        inputs[i].lines = [method.Line(text=t, top=top, bottom=bottom) for t, top, bottom in lines[i]]
+        inputs[i].signed = i in signed
+    rows = stage._classify(pages, texts, set(texts), inputs=inputs, signed_ids=set(signed), signatures={},
+                           find_duplicates=True)
+    return {row["page_id"]: row for row in rows}
+
+
+FAX_HEAD = "From: Made Up Clinic 18885550100 6/1/2026 10:26:57 PDT Page 17 of 17"
+PT_FOOT = "Patient: Madeup, Eli DOB: 09/07/1992 Visit: 06/02/2025 Page: 3"
+
+
+def test_sh_a_page_of_only_a_fax_header_and_a_patient_footer_is_junk(monkeypatch):
+    """2026-11-23 (user): the fax header and the patient footer carry dates, which kept the page
+    (S1S / S6): every line at the page edges, each a running line -> Junk / Others."""
+    _keep(monkeypatch)
+    note = "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025"
+    texts = {1: "From: Made Up Clinic 18885550100 6/1/2026 10:26:50 PDT Page 16 of 17\n" + note
+                + "\nPatient: Madeup, Eli DOB: 09/07/1992 Visit: 05/30/2025 Page: 2",
+             2: FAX_HEAD + "\n" + PT_FOOT}
+    lines = {1: [("x", 0.01, 0.02), ("y", 0.3, 0.5), ("z", 0.95, 0.96)],
+             2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
+    rows = _run_lines(texts, lines)
+    assert rows[2]["flag"] == "junk" and "SH" in rows[2]["reason"]
+
+
+def test_sh_needs_every_line_at_an_edge_and_running(monkeypatch):
+    _keep(monkeypatch)
+    assert stage.running_line(FAX_HEAD) and stage.running_line(PT_FOOT)
+    assert not stage.running_line("Patient called back, pain improved after the new dose")
+    page = method.PageInputs(text="", pass_no=2)
+    page.lines = [method.Line(FAX_HEAD, 0.01, 0.02), method.Line(PT_FOOT, 0.94, 0.95)]
+    assert stage.edge_only(page, FAX_HEAD + "\n" + PT_FOOT)
+    page.lines = [method.Line(FAX_HEAD, 0.01, 0.02), method.Line("Addendum", 0.5, 0.52), method.Line(PT_FOOT, 0.94, 0.95)]
+    assert stage.edge_only(page, FAX_HEAD + "\nAddendum\n" + PT_FOOT) is None
+    page.lines = [method.Line("Seen today, stable, continue plan", 0.02, 0.03)]
+    assert stage.edge_only(page, "Seen today, stable, continue plan") is None
+
+
+def test_sh_a_signed_edge_page_is_not_junked_by_it(monkeypatch):
+    _keep(monkeypatch)
+    texts = {1: "Progress note\n" + BODY, 2: FAX_HEAD + "\n" + PT_FOOT}
+    lines = {1: [("x", 0.3, 0.5)], 2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
+    rows = _run_lines(texts, lines, signed={2})
+    assert "SH" not in (rows[2]["reason"] or "")
+
+
+def test_s1s_ignores_a_date_in_a_running_footer(monkeypatch):
+    """2026-11-23 (user): page 16 after a signed page, only its patient footer of its own (no line
+    positions, so SH cannot decide): the footer's dates are no signer carried over."""
+    _keep(monkeypatch)
+    rows = _run({1: "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025\nPatient: Madeup, Eli Page: 2",
+                 2: PT_FOOT})
+    assert "S1S" not in (rows[2]["reason"] or "")
+    rows = _run({1: "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025",
+                 2: "Made Up Signer MD on 7/30/2025 at 1:12 PM"})
+    assert "S1S" in rows[2]["reason"]
+
+
+def test_rf_a_financial_summary_page_is_junk(monkeypatch):
+    """2026-11-23 (user): a page headed "Financials" / "Financial Summary" is Junk / Others."""
+    _keep(monkeypatch)
+    assert method.financial_heading("Visit\n## Financial Summary\nCharges 120.00") == "Financial Summary"
+    assert method.financial_heading("Financials") == "Financials"
+    assert method.financial_heading("Discussed financial summary with patient") is None
+    rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + "\n**Financials**\nGuarantor Balance 120.00\n" + BODY + FOOTER,
+                 3: "Financial Summary\nCharges"})
+    assert rows[2]["flag"] == "junk" and "RF" in rows[2]["reason"]
+    assert rows[3]["flag"] == "junk" and "RF" in rows[3]["reason"]
+
+
+RESULT_BLOCK = ("Result type: Orthopedic Progress Note\nResult date: January 30, 2024 9:17 EST\nResult status: Auth (Verified)\n"
+                "Result title: Orthopedic Office/Clinic Note\nPerformed by: Madeup, Made A MD on February 20, 2024 14:01 EST\n"
+                "Encounter info: 5665966, Made Up Clinic, 1/30/2024 - 1/30/2024\nContributor system: MADE_UP_SYSTEM\n"
+                "Printed by: Madeup Person\nPrinted on: 6/20/2025 12:11 EDT")
+RUN_HEAD = "Orthopedic Progress Note\n* Final Report *\nMadeup Person 1285711"
+
+
+def test_own_lines_compare_the_same_ocr_engine(monkeypatch):
+    """2026-11-23 (user): page 6 of 6 is the running header and page 5's result block: compared on
+    one OCR engine (Docling vs Docling) it adds nothing, whatever another engine's lines look like."""
+    _keep(monkeypatch)
+    page5 = RUN_HEAD + "\n" + BODY + "\n" + RESULT_BLOCK + "\nPage 5 of 6"
+    page6 = RUN_HEAD + "\n" + RESULT_BLOCK + "\nPage 6 of 6"
+    joined6 = page6.replace("\nResult", " Result").replace("\nPerformed", " Performed")  # another engine's lines
+    pages = [{"id": i, "page_name": f"{i}.jpg", "page_number": i} for i in (5, 6)]
+    inputs = {i: method.PageInputs(text="", pass_no=2) for i in (5, 6)}
+    inputs[5].content_bottom, inputs[6].content_bottom = 0.9, 0.12
+    rows = stage._classify(pages, {5: page5, 6: joined6}, {5, 6}, inputs=inputs, signed_ids=set(), signatures={},
+                           find_duplicates=True,
+                           engine_texts={5: {"docling": page5, "azuredocintel": page5},
+                                         6: {"docling": page6, "azuredocintel": joined6}})
+    by = {row["page_id"]: row for row in rows}
+    assert by[6]["flag"] == "junk", by[6]["reason"]
+
+
+def test_rb_the_model_sure_of_blank_is_junk_others():
+    """2026-11-23 (user): p(blank) > 95% -> Junk / Others, before every keep."""
+    bert = {"p_keep": 0.01, "p_junk": 0.03, "p_blank": 0.96, "top_junk_label": ""}
+    page = method.PageInputs(text="Signed by Made Up MD 1/2/2025\nPatient Madeup DOB 1/1/1950", pass_no=2,
+                             document_type="printed", bert=bert, signed=True)
+    verdict = method.decide(page)
+    assert verdict.rule == "RB" and verdict.code != method.CODE_MAIN
+    page.bert = {**bert, "p_blank": 0.94, "p_keep": 0.03}
+    assert method.decide(page).rule != "RB"
+
+
+def test_sn_a_short_page_of_only_continued_on_next_page_is_junk(monkeypatch):
+    """2026-11-23 (user): "Content on Next Page", "Continued on the following page" ... -> Junk / Others."""
+    _keep(monkeypatch)
+    for note in ("Content on Next Page", "Continued on the following page", "See next page", "(Continued)",
+                 "Report continues on next page", "Please turn over", "Continued on Following Page"):
+        assert stage.NEXT_PAGE_NOTE.search(note), note
+    assert not stage.NEXT_PAGE_NOTE.search("Patient will continue on the next dose of metformin")
+    full = HEADER + "\n" + BODY + "\n" + FOOTER
+    rows = _run({1: full, 2: HEADER + "\nContent on Next Page\n" + FOOTER, 3: full})
+    assert rows[2]["flag"] == "junk" and "SN" in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_s1_needs_two_words_of_its_own_and_a_short_page_caps_at_90(monkeypatch):
+    """2026-11-23 (user): the previous page ends in Visit Diagnosis -- the short page carries it on
+    with 2+ words on lines of its own (numbers, dates, running footer lines out), even words the
+    previous page has; any short page's verdict reads at most 90%."""
+    _keep(monkeypatch)
+    before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Visit Diagnosis", FOOTER])
+    rows = _run({1: before, 2: HEADER + "\n2. knee effusion\n" + FOOTER})
+    assert "S1" in rows[2]["reason"] and rows[2]["confidence"] <= 0.9
+    rows = _run({1: before, 2: HEADER + "\n3.\nPatient: Madeup DOB: 01/02/1950 Page: 2\n" + FOOTER})
+    assert "S1" not in (rows[2]["reason"] or "")
+    assert not stage.running_marker_line("Hypertension") and not stage.running_marker_line("Dr Grover 7/30/2025")
+    assert stage.running_marker_line(PT_FOOT)
+
+
+def test_the_same_timestamped_signature_on_the_previous_page_is_repeated(monkeypatch):
+    """2026-11-23 (user): page 2 is only page 1's last line, "Electronically Signed By ... on
+    2/17/2026 10:11:42" -- filed in another region there, still a repeat: no signature keep."""
+    _keep(monkeypatch)
+    line = "Electronically Signed By Made Up, M.D. on 2/17/2026 10:11:42"
+    sig1 = {"region": "mid", "sentence": line, "provider_name": "Made Up"}
+    sig2 = {"region": "footer", "sentence": line, "provider_name": "Made Up"}
+    rows = _run({1: HEADER + "\n" + BODY + "\n" + line, 2: line}, signed={1, 2}, signatures={1: sig1, 2: sig2})
+    assert rows[2]["flag"] == "junk", rows[2]["reason"]
