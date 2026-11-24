@@ -688,3 +688,17 @@ def test_the_same_timestamped_signature_on_the_previous_page_is_repeated(monkeyp
     sig2 = {"region": "footer", "sentence": line, "provider_name": "Made Up"}
     rows = _run({1: HEADER + "\n" + BODY + "\n" + line, 2: line}, signed={1, 2}, signatures={1: sig1, 2: sig2})
     assert rows[2]["flag"] == "junk", rows[2]["reason"]
+
+
+def test_rc_a_retrieval_cover_sheet_is_junk_cover_page():
+    """2026-11-24 (user): the retrieval vendor's cover sheet (page 1) is Junk / Cover Page."""
+    text = ("Retrieved by Madeup Vendor\nPatient name: Madeup, Person\nPatient date of birth: Wed 01/02/1950\n"
+            "Measure/Dates of service:\nProvider: MADEUP, PERSON")
+    verdict = method.decide(method.PageInputs(text=text, pass_no=2, document_type="printed", provider=True))
+    # Junk / Cover Page; over 20 words the cover-to-Others step files it Junk / Others.
+    assert verdict.rule == "RC" and verdict.code in (method._junk_code("Cover Page"), method._junk_code("Others"))
+    assert verdict.confidence >= 0.9
+    # A note that names its provider and DOB but was not retrieved-by is not touched.
+    note = "Patient name: Madeup, Person\nDate of birth: 01/02/1950\nProvider: Made Up MD\nAssessment\nStable"
+    assert method.retrieval_cover(note) is None
+    assert method.retrieval_cover(text + "\n" + " word" * 80) is None

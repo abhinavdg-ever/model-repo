@@ -118,7 +118,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95, "INDEX": 0.95, "R1E": 1.0}
+RULE_SUPPORT = {"RC": 1.0, "R1": 1.0, "R2": 0.99, "R3": 0.95, "R4": 0.95, "R6": 0.95, "CONTENT": 0.95, "FAX": 0.85, "LAB": 0.95, "INVOICE": 0.95, "INDEX": 0.95, "R1E": 1.0}
 NO_TEXT_RULES = ("R1", "R2")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -860,6 +860,12 @@ def decide(inputs: PageInputs) -> Verdict:
         heading = financial_heading(text, inputs.headings)
         if heading:
             return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
+        # RC (2026-11-24, user): a chart-retrieval cover sheet ("Retrieved by <vendor>", Patient name,
+        # Date of birth, Measure / Dates of service, Provider) is Junk / Cover Page.
+        cover = retrieval_cover(text)
+        if cover:
+            return ruled(_junk_code("Cover Page"), "RC", f"RC retrieval cover sheet ({cover}) -> Junk / Cover Page", 1.0,
+                         confidence=conf.pass1_rule())
         # RB (2026-11-23, user; 98% since 2026-11-24): the model over 98% sure the page is blank -- Junk / Others, never
         # overturned by a keep or a short-page rule.
         blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.98))
@@ -1381,6 +1387,24 @@ def financial_heading(text: str, headings: Any = ()) -> Optional[str]:
         if found:
             return found.group(1)
     return None
+
+
+# RC (2026-11-24, user): the cover sheet a chart-retrieval vendor puts on top of the records.
+RETRIEVAL_MARK = re.compile(r"^\W*(retrieved\s+by\b|measure\s*/\s*dates?\s+of\s+service\b)", re.IGNORECASE | re.MULTILINE)
+RETRIEVAL_LABELS = re.compile(r"^\W*(patient\s+name|patient\s+date\s+of\s+birth|date\s+of\s+birth|dob|provider|"
+                              r"measure|dates?\s+of\s+service)\s*:", re.IGNORECASE | re.MULTILINE)
+RETRIEVAL_COVER_MAX_WORDS = 60
+
+
+def retrieval_cover(text: str) -> Optional[str]:
+    """A retrieval cover sheet: a page of at most RETRIEVAL_COVER_MAX_WORDS words with a "Retrieved
+    by" or "Measure/Dates of service" line and 2+ patient / provider label lines. Its mark, or None."""
+    if _word_count(text or "") > RETRIEVAL_COVER_MAX_WORDS:
+        return None
+    mark = RETRIEVAL_MARK.search(text or "")
+    if not mark or len({m.group(1).lower() for m in RETRIEVAL_LABELS.finditer(text or "")}) < 2:
+        return None
+    return re.sub(r"\s+", " ", mark.group(1)).strip()
 
 
 ANY_DATE = re.compile(

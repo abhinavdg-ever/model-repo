@@ -372,8 +372,8 @@ UNJUNK_IN_NOTES = False
 # SHORT_MARK; the 2026-11-03 contained mark on older rows), a contents page (INDEX), and cards
 # (junk_subtype Cards).
 _KEEP_JUNK = ("R1", "R2", "short_page:", "short_page_contained_in_page_id:", "INDEX",
-              # 2026-11-23 (user): Financials heading, model p(blank) > 95% -- never undone.
-              "RF", "RB")
+              # 2026-11-23 (user): Financials heading, model p(blank) over the cut; 2026-11-24: retrieval cover (RC) -- never undone.
+              "RF", "RB", "RC")
 
 
 def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:
