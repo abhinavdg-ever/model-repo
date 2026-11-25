@@ -1384,6 +1384,10 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   );
 }
 
+/** The Overview tables' Band and Charts column widths (2026-11-25, user: aligned across groups). */
+const BAND_COL = "7rem";
+const CHARTS_COL = "4.6rem";
+
 /** 0/7 .. 7/7: pages by how many of the seven streams match (2026-11-25, user). */
 const STREAM_HEADS = Array.from({ length: OVERALL_STREAMS + 1 }, (_, k) => `${k}/${OVERALL_STREAMS}`);
 
@@ -1409,7 +1413,17 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
       <p className="chart-details-note">{note} Match = every metric on the page matches.</p>
       <section>
         <h4>{unit} level: accuracy by band <CopySectionTable /></h4>
-        <table className="chart-details-table">
+        <table className="chart-details-table confidence-band-table">
+          {/* 2026-11-25 (user): the same column widths in all three groups; without a Charts
+              column the Band column takes its width, so every later column lines up. */}
+          <colgroup>
+            <col style={{ width: charts ? BAND_COL : `calc(${BAND_COL} + ${CHARTS_COL})` }} />
+            {charts ? <col style={{ width: CHARTS_COL }} /> : null}
+            <col style={{ width: "5rem" }} />
+            {STREAM_HEADS.map((h) => <col key={h} style={{ width: "3.4rem" }} />)}
+            <col style={{ width: "4.6rem" }} /><col style={{ width: "5rem" }} />
+            <col style={{ width: "5.2rem" }} /><col style={{ width: "6rem" }} />
+          </colgroup>
           <thead>
             <tr><th>Band</th>{charts ? <th className="num">Charts</th> : null}<th className="num">Pages</th>
               {STREAM_HEADS.map((h) => <th key={h} className="num">{h}</th>)}
@@ -1448,7 +1462,11 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
       </section>
       <section>
         <h4>Metric level: each metric's accuracy by band <CopySectionTable /></h4>
-        <table className="chart-details-table">
+        <table className="chart-details-table confidence-band-table">
+          <colgroup>
+            <col style={{ width: `calc(${BAND_COL} + ${CHARTS_COL})` }} />
+            {LIVE_METRICS.map((m) => <col key={m.id} />)}
+          </colgroup>
           <thead>
             <tr><th>Band</th>
               {LIVE_METRICS.map((m) => <th key={m.id} className="num">{m.tableLabel ?? m.label}</th>)}

@@ -7052,7 +7052,7 @@ input {
 .level-text-low { color: var(--status-error-fg); }
 .accuracy-col-confidence { white-space: nowrap; font-size: 0.8rem; }
 .accuracy-extra-links { display: inline-flex; gap: 0.9rem; align-items: baseline; }
-.confidence-metrics-card { width: min(57rem, calc(100vw - 2rem)); } /* 2026-11-23: +10% (was 52rem) */
+.confidence-metrics-card { width: min(72rem, calc(100vw - 2rem)); } /* 2026-11-25, user: wider (was 57rem) */
 .confidence-tabs { margin: 0.2rem 0 0.4rem; }
 .confidence-metrics-card h2 { display: flex; align-items: center; gap: 0.4rem; }
 .action-icon-btn.action-icon-only { padding-left: 0.4rem; padding-right: 0.4rem; }
@@ -7143,3 +7143,9 @@ input {
 
 /* Copy a Confidence Analysis table (2026-11-25): the icon after the table's heading. */
 .confidence-copy { display: inline-flex; vertical-align: middle; margin-left: 0.35rem; }
+
+/* The Overview's tables (2026-11-25): fixed column widths, the same in every group; a narrow
+   screen scrolls the table instead of squeezing it. */
+.confidence-band-table { table-layout: fixed; min-width: 65rem; }
+.confidence-band-table th, .confidence-band-table td { overflow-wrap: anywhere; }
+.confidence-group section { overflow-x: auto; }
