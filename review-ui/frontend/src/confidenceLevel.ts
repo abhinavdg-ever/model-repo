@@ -67,11 +67,11 @@ export function band(value: number): Level {
   return value >= HIGH_AT ? "high" : value >= LOW_BELOW ? "medium" : "low";
 }
 
-/** Per-feature cuts [High at, Low below] (2026-11-23, user): Orientation High from 95%, Low under
- * 75%; DOS High from 75%. Blank / Junk and Provider Signature High from 99% (2026-11-24, user; was
+/** Per-feature cuts [High at, Low below]: Orientation High from 90%, Low under 60% (2026-11-25,
+ * user; was 95% / 75%); DOS High from 75%. Blank / Junk and Provider Signature High from 99% (2026-11-24, user; was
  * 95%), Low under 75%. Others: 80% / 50%. */
 export const FEATURE_CUTS: Record<string, [number, number]> = {
-  blank_junk: [0.99, 0.75], provider: [0.99, 0.75], orientation: [0.95, 0.75], dos: [0.75, 0.5],
+  blank_junk: [0.99, 0.75], provider: [0.99, 0.75], orientation: [0.9, 0.6], dos: [0.75, 0.5],
 };
 /** The features with 1-point bands from 95% in the Confidence Analysis. */
 export const STRICT_FEATURES = new Set(["blank_junk", "provider", "orientation"]);

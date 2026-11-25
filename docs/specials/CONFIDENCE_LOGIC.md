@@ -17,8 +17,9 @@ History is in git; this page is only the current logic.
 
 **Blank / Junk and Provider Signature** (2026-11-24, user) are strictest: **High 0.99 and above, Medium 0.75 to
 under 0.99, Low under 0.75**; the Confidence Analysis shows them in a 99-100% band and one 95-99% band.
-**Orientation** (2026-11-23, user): **High 0.95 and above, Medium 0.75 to under 0.95, Low under 0.75**, with
-1-point bands from 95% (page and chart levels, Confidence Analysis). **DOS** is High from **0.75**
+**Orientation** (2026-11-25, user; was 0.95 / 0.75): **High 0.90 and above, Medium 0.60 to under 0.90, Low under 0.60**, with
+1-point bands from 95% (page and chart levels, Confidence Analysis). The Pages view's ☰ "Colour by Confidence"
+can colour the thumbnails by Page Confidence or by any one metric (e.g. Orientation), each by its own cuts. **DOS** is High from **0.75**
 (Medium 0.50 to under 0.75, Low under 0.50).
 
 **Calibration** (2026-11-24, user; review-ui): an admin can fit Page Type and Codability to their measured

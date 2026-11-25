@@ -5299,6 +5299,16 @@ input {
   color: var(--muted);
 }
 
+.viewer-menu-select {
+  margin-bottom: 0.15rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--neutral-200, #ddd);
+  border-radius: 5px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
 .viewer-menu-key span {
   display: inline-flex;
   align-items: center;

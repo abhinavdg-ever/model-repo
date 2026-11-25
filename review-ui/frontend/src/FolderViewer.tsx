@@ -57,7 +57,7 @@ import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
 import ChartDetails from "./ChartDetails";
-import { levelLabel, pageConfidence, type Level } from "./confidenceLevel";
+import { CONFIDENCE_FIELDS, levelLabel, pageConfidence, type Level } from "./confidenceLevel";
 import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
@@ -247,6 +247,9 @@ export default function FolderViewer({
   const [highlightDuplicate, setHighlightDuplicate] = useState(false);
   // 2026-11-19 (user): the ☰ menu can colour the thumbnails by page confidence.
   const [colorByConfidence, setColorByConfidence] = useState(false);
+  // 2026-11-25 (user): colour by the page's confidence or by one metric's (e.g. Orientation:
+  // High from 90%, Low under 60%), each by its own cuts.
+  const [confidenceBasis, setConfidenceBasis] = useState("page");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
@@ -465,9 +468,12 @@ export default function FolderViewer({
   const pageLevels = useMemo<(Level | null)[]>(
     () => (folder?.pages ?? []).map((p) => {
       const imaging = findImagingPage(imagingDoc, p);
-      return imaging ? pageConfidence(imaging).level : null;
+      if (!imaging) return null;
+      const conf = pageConfidence(imaging);
+      if (confidenceBasis === "page") return conf.level;
+      return conf.fields.find((field) => field.key === confidenceBasis)?.level ?? null;
     }),
-    [folder, imagingDoc],
+    [folder, imagingDoc, confidenceBasis],
   );
 
   function goToPage(idx: number | ((i: number) => number)) {
@@ -1420,6 +1426,17 @@ export default function FolderViewer({
                       </label>
                       {colorByConfidence ? (
                         <div className="viewer-menu-key" aria-label="Confidence colours">
+                          <select
+                            className="viewer-menu-select"
+                            aria-label="Confidence to colour by"
+                            value={confidenceBasis}
+                            onChange={(event) => setConfidenceBasis(event.target.value)}
+                          >
+                            <option value="page">Page Confidence</option>
+                            {CONFIDENCE_FIELDS.map(([key, label]) => (
+                              <option key={key} value={key}>{label}</option>
+                            ))}
+                          </select>
                           <span><i className="key-swatch key-conf-high" /> High</span>
                           <span><i className="key-swatch key-conf-medium" /> Medium</span>
                           <span><i className="key-swatch key-conf-low" /> Low</span>
@@ -1586,7 +1603,9 @@ export default function FolderViewer({
                     onClick={() => goToPage(idx)}
                     aria-label={`Go to ${p.filename}`}
                     aria-selected={idx === pageIndex}
-                    title={colorByConfidence && level ? `${p.filename} · ${levelLabel(level)} confidence` : p.filename}
+                    title={colorByConfidence && level ? `${p.filename} · ${levelLabel(level)} ${
+                      confidenceBasis === "page" ? "" : `${CONFIDENCE_FIELDS.find(([key]) => key === confidenceBasis)?.[1] ?? ""} `
+                    }confidence` : p.filename}
                   >
                     <img
                       src={pageImageUrl(folderId, p.page_number, {
