@@ -26,6 +26,8 @@ class FolderSummary(BaseModel):
     run_id: str | None = None
     batch_id: str | None = None
     ground_truth_available: bool = False
+    # 2026-11-25 (user): any qa_ground_truth row (a QA file loaded in Manual Review).
+    qa_ground_truth_available: bool = False
     # Marked Reviewed in History (chart_review): its ground truth is frozen.
     reviewed: bool = False
     reviewed_by: str | None = None

@@ -77,6 +77,8 @@ def _row(row: dict, fields: list[str]) -> dict[str, Any]:
         "partial": list(row.get("Partial", [])),
         "status": row["Status"],
         "reason": row["Reason"],
+        # The pipeline value's confidence per field, whole percent (2026-11-25); absent: none.
+        **({"confidences": row["Confidences"]} if row.get("Confidences") else {}),
     }
 
 

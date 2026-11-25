@@ -7107,3 +7107,10 @@ input {
   justify-content: flex-end;
   gap: 0.4rem;
 }
+
+/* Manual Review: the pipeline value's confidence in brackets (2026-11-25). */
+.excel-compare-conf {
+  color: var(--muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}

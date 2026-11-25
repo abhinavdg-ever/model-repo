@@ -14,6 +14,9 @@ from app.core.schemas import ImagingDocumentResponse
 from app.services import backend
 from app.services.chart_run_batch import database_url_usable
 from app.services import excel_compare
+from app.services import qa_ground_truth
+from app.services.auth import SignedInUser
+from app.routers.deps import current_user
 from app.services.ground_truth import (
     GroundTruthSource,
     ground_truth_charts,
@@ -52,6 +55,18 @@ class _PipelineCharts:
         self._cosmos = backend.reads_cosmos() if settings is get_settings() else getattr(settings, "db_backend", "postgres") == "cosmos"
         self._docs: dict[str, ImagingDocumentResponse | None] = {}
         self._runs: dict[str, datetime | None] | None = {} if self._use_db else None
+        self._calibration: dict | None = None
+
+    def calibration(self) -> dict:
+        """The Page Type / Codability curves, read once (2026-11-25: Manual Review's confidences)."""
+        if self._calibration is None:
+            from app.services import confidence_calibration
+
+            self._calibration = (
+                confidence_calibration.load(self._settings.database_url, self._settings.db_schema)
+                if self._use_db else {}
+            )
+        return self._calibration
 
     def _fetch_from(self, pdf_id: str) -> None:
         """This chart and the next unfetched ones, one query."""
@@ -70,13 +85,13 @@ class _PipelineCharts:
         """None when there is no output for the chart."""
         if self._cosmos:
             doc = self._cosmos_doc(pdf_id)
-            return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
+            return excel_compare.database_system.system_csv([(pdf_id, doc)], self.calibration()) if doc else None
         if not self._use_db:
             return None  # the database is the only source (2026-11-07)
         if pdf_id not in self._docs:
             self._fetch_from(pdf_id)
         doc = self._docs.get(pdf_id)
-        return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
+        return excel_compare.database_system.system_csv([(pdf_id, doc)], self.calibration()) if doc else None
 
     def last_run(self, pdf_id: str) -> str | None:
         """ISO time of the chart's last pipeline run; None when never run."""
@@ -232,6 +247,17 @@ def _source_label(label: str, upload: UploadFile | None, source: str) -> str:
     return f"{label} (database)"
 
 
+def _store_qa(settings: Settings, qa: tuple[bytes, str], filename: str | None, user: SignedInUser | None) -> None:
+    """2026-11-25 (user): upsert the QA file's rows into qa_ground_truth (Postgres only)."""
+    if backend.reads_cosmos() or not database_url_usable(settings.database_url):
+        return
+    written = qa_ground_truth.store_sheet(
+        settings.database_url, settings.db_schema, *qa, source_file=filename,
+        user_id=user.id if user is not None else None,
+    )
+    logger.info("manual review: %d QA ground truth rows upserted", written)
+
+
 async def _three_way_inputs(
     settings: Settings,
     repo: FolderRepository,
@@ -241,6 +267,7 @@ async def _three_way_inputs(
     ground_truth: GroundTruthSource,
     system_file: UploadFile | None,
     system_source: str,
+    store_qa_for: SignedInUser | None | bool = False,
 ) -> dict:
     """The sources of a Manual Review across QA / Client / Pipeline, as
     excel_compare.three_way.stream takes them. Database Client ground truth
@@ -258,6 +285,12 @@ async def _three_way_inputs(
             detail="Choose at least two sources: QA Ground Truth, Client Ground Truth, Pipeline Output.",
         )
     qa = _as_ground_truth(await _upload_bytes("QA Ground Truth", qa_file)) if has_qa else None
+    if qa is not None and store_qa_for is not False:
+        # A comparison (not a download, which sends the same file again) stores the QA rows.
+        await run_in_threadpool(
+            _store_qa, settings, qa, qa_file.filename if qa_file else None,
+            store_qa_for if isinstance(store_qa_for, SignedInUser) else None,
+        )
     client = (
         _as_ground_truth(await _upload_bytes("Client Ground Truth", ground_file))
         if ground_source == "upload"
@@ -354,6 +387,7 @@ async def post_excel_compare(
     qa_file: UploadFile | None = _QA_FILE,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
 ) -> dict:
     """Manual Review: compare ground truth with the system output. Nothing is stored.
     With a QA file, or a source left out (none): every pair of the sources given,
@@ -361,7 +395,8 @@ async def post_excel_compare(
     client_pipeline / all, each in the two-source shape."""
     if not _classic(qa_file, ground_source, system_source):
         inputs = await _three_way_inputs(
-            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source
+            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source,
+            store_qa_for=user,
         )
         return await run_in_threadpool(_three_way_run, inputs)
     ground, system = await _compare_inputs(
@@ -387,6 +422,7 @@ async def post_excel_compare_stream(
     qa_file: UploadFile | None = _QA_FILE,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
 ) -> StreamingResponse:
     """The comparison as NDJSON, one chart per line, so the screen fills in
     while later charts are still being read. Bad input fails before the
@@ -405,7 +441,8 @@ async def post_excel_compare_stream(
         )
     else:
         inputs = await _three_way_inputs(
-            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source
+            settings, repo, qa_file, ground_file, ground_source, ground_truth, system_file, system_source,
+            store_qa_for=user,
         )
         events = excel_compare.three_way.stream(**inputs)
     try:

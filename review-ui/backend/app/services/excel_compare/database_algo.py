@@ -38,7 +38,8 @@ SELECT c.chart_name,
        to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version',
        to_jsonb(q) ->> 'document_type', q.printed_or_handwritten,
        b.duplicate_of_page_id IS NOT NULL, b.reason,
-       a.extraction_fields -> 'fields' -> 'member_id'
+       a.extraction_fields -> 'fields' -> 'member_id',
+       to_jsonb(f) -> 'confidences', q.quality_detail -> 'confidences'
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -73,6 +74,9 @@ def _page(row: tuple) -> ImagingPageResult:
         names_original, bj_reason, *extra,
     ) = row
     id_rows = extra[0] if extra else None  # additional_page_details member_id rows (2026-11-03)
+    # The Final and stage-1 measured confidences (2026-11-25): Manual Review's brackets.
+    final_conf = extra[1] if len(extra) > 1 and isinstance(extra[1], dict) else None
+    measured_conf = extra[2] if len(extra) > 2 and isinstance(extra[2], dict) else None
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -115,6 +119,8 @@ def _page(row: tuple) -> ImagingPageResult:
         # Visual / Blank), else the older printed_or_handwritten label.
         documentType=page_type_fields(document_type, None, None).get("documentType"),
         handwrittenOrPrinted=_hw_label(printed_or_handwritten),
+        finalConfidences=final_conf,
+        measuredConfidences=measured_conf,
     )
 
 

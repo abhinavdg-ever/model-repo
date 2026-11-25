@@ -375,6 +375,19 @@ function sideValue(row: ManualReviewRow, field: string, side: number, tokens: st
   return sides[side] ?? "";
 }
 
+/** 2026-11-25 (user): the pipeline value's confidence, "(87%)", after the value on the Pipeline
+ * row -- or on a cell every side shares, Pipeline among them. None for Skipped / no value. */
+function pipelineConfidence(row: ManualReviewRow, field: string, shown: string, isPipeline: boolean): ReactNode {
+  const confidence = row.confidences?.[field];
+  if (confidence == null || !isPipeline) return null;
+  if (!shown.trim() || shown.trim().toLowerCase() === "skipped") return null;
+  return (
+    <span className="excel-compare-conf" title="Pipeline confidence">
+      {" "}({confidence}%)
+    </span>
+  );
+}
+
 /** A Correct record whose sides read the same everywhere: one row. Otherwise a row per
  * source, so the algo values show as the chart view shows them (2026-10-29). */
 function oneRow(row: ManualReviewRow, fields: string[], tokens: string[]): boolean {
@@ -548,6 +561,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     bundle && activeKey && activeKey !== "display_all" ? bundle.comparisons[activeKey] ?? null : null;
   const tokens = result?.tokens ?? CLASSIC_META.tokens;
   const shortSides = result?.shortSides ?? CLASSIC_META.shortSides;
+  // The Pipeline Output's side in this comparison (-1: not in it).
+  const pipelineSide = shortSides.indexOf("Pipeline");
 
   // Files uploaded earlier, back from the browser's storage.
   useEffect(() => {
@@ -1433,6 +1448,12 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                               title={partial ? "Partial match: same type, less or other detail (0.5 on the Accuracy View)" : undefined}
                             >
                               {sideValue(row, field, side, tokens) || "—"}
+                              {pipelineConfidence(
+                                row,
+                                field,
+                                sideValue(row, field, side, tokens),
+                                pipelineSide >= 0 && (side === pipelineSide || agreed || !span),
+                              )}
                               {partial && side === 0 ? <span className="excel-compare-partial-mark" aria-label="Partial">!</span> : null}
                             </td>
                           );

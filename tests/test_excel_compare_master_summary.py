@@ -292,23 +292,26 @@ def test_database_algo_row_carries_document_type():
         columns += char == "," and depth == 0
     row = [None] * columns
     row[0], row[1], row[2] = "100", 4, "4.png"
-    row[-5], row[-4] = "visual", "printed"  # the last column is the member_id rows (2026-11-03)
+    row[-7], row[-6] = "visual", "printed"  # then the member_id rows (2026-11-03), the Final and measured confidences (2026-11-25)
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == ("Visual", "Printed")
-    row[-5], row[-4] = None, "handwritten"
+    row[-7], row[-6] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
-    # The third-last column: this Main page names another page. No Partials since 2026-11-11;
+    # The fifth-last column: this Main page names another page. No Partials since 2026-11-11;
     # with the duplicate-content reason it is a "Copy of N".
-    row[8], row[-3] = "not_blank_junk", True
+    row[8], row[-5] = "not_blank_junk", True
     assert database_algo._page(tuple(row)).isPartialDuplicate is False
-    row[-2] = "duplicate_content_of_page_id:3 (...)"
+    row[-4] = "duplicate_content_of_page_id:3 (...)"
     content = database_algo._page(tuple(row))
     assert (content.isPartialDuplicate, content.isDuplicateContent) == (False, True)
-    row[-2] = None
-    row[8], row[-3] = "duplicate", True
+    row[-4] = None
+    row[8], row[-5] = "duplicate", True
     page = database_algo._page(tuple(row))
     assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "No")
+    row[-2], row[-1] = {"page_type": 0.9}, {"orientation": 0.97}
+    page = database_algo._page(tuple(row))
+    assert (page.finalConfidences, page.measuredConfidences) == ({"page_type": 0.9}, {"orientation": 0.97})
 
 
 def test_names_match_in_any_order_and_punctuation():

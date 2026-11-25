@@ -351,3 +351,22 @@ def test_no_database_client_truth_for_the_qa_charts_is_not_an_error(client, monk
     )
     assert res.status_code == 200, res.text
     assert res.json()["order"] == ["qa_pipeline"]
+
+
+def test_a_qa_file_is_stored_on_compare_not_on_download(client, monkeypatch):
+    """2026-11-25 (user): the QA file's rows are upserted into qa_ground_truth by a comparison;
+    a download (which sends the same file again) does not store it twice."""
+    from app.routers import excel_compare as route
+
+    stored = []
+    monkeypatch.setattr(route, "database_url_usable", lambda url: True)
+    monkeypatch.setattr(route.backend, "reads_cosmos", lambda: False)
+    monkeypatch.setattr(
+        route.qa_ground_truth, "store_sheet",
+        lambda url, schema, data, name, source_file, user_id: stored.append((source_file, data)) or 3,
+    )
+    assert client.post("/api/excel-compare", files=_three_files(), data=ALL_UPLOADS).status_code == 200
+    assert [name for name, _ in stored] == ["qa.csv"]
+    assert b"PDF ID" in stored[0][1]
+    client.post("/api/excel-compare/report", files=_three_files(), data=ALL_UPLOADS)
+    assert len(stored) == 1

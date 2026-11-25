@@ -23,7 +23,25 @@ from collections.abc import Iterable
 
 from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
 
-from .field_comparator import ALTERNATE_FIELDS, ALTERNATE_PREFIX
+from .field_comparator import ALTERNATE_FIELDS, ALTERNATE_PREFIX, CONFIDENCE_PREFIX
+
+# Manual Review column -> the Final confidence it shows in brackets (2026-11-25, user). Read as
+# the chart view reads them: Page Type / Codability through the calibration curve, a Discharge
+# Summary's Codability at most 49%, a member field not found 80% on a scored page.
+CONFIDENCE_KEYS = {
+    "Extracted Name": "member_name",
+    "Extracted DOB": "member_dob",
+    "Member ID": "member_id",
+    "DOS From": "dos",
+    "DOS To": "dos",
+    "Is Blank or Junk?": "blank_junk",
+    "Duplicate": "duplicate",
+    "Page Type": "page_type",
+    "Page Subtype": "page_type",
+    "Codable / Non-Codable": "codability",
+    "Provider Credentials": "provider",
+}
+MEMBER_KEYS = {"member_name", "member_dob", "member_id"}
 
 COLUMNS = [
     "PDF ID",
@@ -43,6 +61,7 @@ COLUMNS = [
     "Current Sequence",
     "Actual Sequence",
     *(ALTERNATE_PREFIX + field for field in sorted(ALTERNATE_FIELDS)),
+    *(CONFIDENCE_PREFIX + field for field in CONFIDENCE_KEYS),
 ]
 
 # The continuity stage's Final DOS for a page with no date: no date.
@@ -112,8 +131,35 @@ def _page_type(shown: str | None) -> tuple[str, str]:
     return text, text
 
 
-def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
-    """The pipeline output as the CSV an uploaded Algo Generated file would be."""
+def confidence_columns(page: ImagingPageResult, calibration: dict | None = None) -> dict[str, str]:
+    """``Confidence: <field>`` -> whole percent, for the fields the page has a confidence for."""
+    from app.services.chart_confidence import DISCHARGE_CODABILITY_CAP, MEMBER_NOT_FOUND, _num, is_discharge_summary
+    from app.services.confidence_calibration import apply
+
+    final = page.finalConfidences or {}
+    fallback = {"dos": page.dosConfidence, "page_type": page.pageTypeConfidence, "blank_junk": page.blankJunkConfidence}
+    scored = any(_num(v) is not None for v in final.values())
+    out: dict[str, str] = {}
+    for field, key in CONFIDENCE_KEYS.items():
+        value = _num(final.get(key))
+        if value is None:
+            value = _num(fallback.get(key))
+        if value is None and key in MEMBER_KEYS and scored:
+            value = MEMBER_NOT_FOUND
+        if value is None:
+            continue
+        value = round(value, 4)
+        if key in (calibration or {}):
+            value = apply(calibration[key], value)
+        if key == "codability" and is_discharge_summary(page.finalPageType or page.pageType):
+            value = min(value, DISCHARGE_CODABILITY_CAP)
+        out[CONFIDENCE_PREFIX + field] = str(round(value * 100))
+    return out
+
+
+def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]], calibration: dict | None = None) -> bytes:
+    """The pipeline output as the CSV an uploaded Algo Generated file would be, plus each
+    field's confidence (``Confidence: <field>``, never compared)."""
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=COLUMNS)
     writer.writeheader()
@@ -155,6 +201,7 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     ALTERNATE_PREFIX + "Page Type": own_type,
                     ALTERNATE_PREFIX + "Page Subtype": own_subtype,
                     ALTERNATE_PREFIX + "Codable / Non-Codable": _text(page.isCodeable),
+                    **confidence_columns(page, calibration),
                 }
             )
     return buffer.getvalue().encode("utf-8")

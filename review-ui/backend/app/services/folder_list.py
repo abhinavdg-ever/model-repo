@@ -529,6 +529,9 @@ def build_folder_list(
             disk_rows = list_disk_folder_names_light(data_root)
         merged = merge_db_and_disk(db_rows, disk_rows)
         have = charts_with_ground_truth(database_url, db_schema)
+        from app.services.qa_ground_truth import charts_with_qa
+
+        have_qa = charts_with_qa(database_url, db_schema)
         try:
             reviewed = reviewed_charts(database_url, db_schema)
         except Exception as exc:
@@ -538,6 +541,7 @@ def build_folder_list(
         merged = [
             row.model_copy(update={
                 "ground_truth_available": row.name in have,
+                "qa_ground_truth_available": row.name in have_qa,
                 "on_disk": row.id in on_disk,
                 **_review_fields(reviewed.get(row.name)),
             })

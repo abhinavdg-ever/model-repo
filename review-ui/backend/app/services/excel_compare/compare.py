@@ -6,6 +6,7 @@ from .field_comparator import (
     ALWAYS_EXEMPT_FIELDS,
     ALWAYS_EXEMPT_REASON,
     compare_fields,
+    pipeline_confidences,
     determine_status,
     build_reason,
     mutual_blank_or_junk,
@@ -228,6 +229,8 @@ def compare_frames(ground, system, fields_to_compare, second_is_ground=False):
         row["Partial"] = [
             field_name for field_name, field_result in field_results.items() if field_result.get("partial")
         ]
+        # 2026-11-25 (user): the pipeline side's confidences, shown in brackets (screen only).
+        row["Confidences"] = pipeline_confidences(system_row, fields_to_compare)
         row["Evidence"] = [
             {
                 "field": field_name,
@@ -244,9 +247,9 @@ def compare_frames(ground, system, fields_to_compare, second_is_ground=False):
         )
 
     for system_index in extra_system_indices:
-        result_rows.append(
-            build_extra_result(system.loc[system_index], fields_to_compare)
-        )
+        extra_row = build_extra_result(system.loc[system_index], fields_to_compare)
+        extra_row["Confidences"] = pipeline_confidences(system.loc[system_index], fields_to_compare)
+        result_rows.append(extra_row)
 
     return result_rows, len(missing_gt_indices), len(extra_system_indices)
 

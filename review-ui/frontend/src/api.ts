@@ -22,6 +22,8 @@ export type FolderSummary = {
   run_id?: string | null;
   batch_id?: string | null;
   ground_truth_available?: boolean;
+  /** A QA Ground Truth file loaded in Manual Review covers this chart (qa_ground_truth). */
+  qa_ground_truth_available?: boolean;
   /** Marked Reviewed in History: the chart's ground truth is frozen. */
   reviewed?: boolean;
   reviewed_by?: string | null;
@@ -1009,6 +1011,8 @@ export type ManualReviewRow = {
   partial?: string[];
   status: ManualReviewStatus;
   reason: string;
+  /** The pipeline value's confidence per field, whole percent (2026-11-25); absent: none. */
+  confidences?: Record<string, number>;
 };
 
 export type ManualReviewResult = {

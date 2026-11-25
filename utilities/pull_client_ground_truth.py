@@ -14,17 +14,18 @@ The ground truth is every table review-ui writes, all keyed by chart name:
   chart_ground_truth                                                 member decision
   encounter_review                                                   the reviewer's encounters
   chart_review (+ chart_review_entry, the Review Log)                Reviewed mark
+  qa_ground_truth                                                    QA files loaded in Manual Review
 
 Which charts: every chart the client has any ground truth for (or only those in
 ``--charts-file``: one chart name per line, commas / spaces also separate, ``#`` comments).
-For each, our rows in all six tables are deleted and the client's copied in, so a page the
+For each, our rows in all seven tables are deleted and the client's copied in, so a page the
 client changed, cleared or added comes out as theirs. A chart the client has no ground truth
 for keeps ours untouched.
 
 Backup first, always (``--apply``): a schema ``gt_backup_<YYYYMMDD_HHMMSS>`` in our database
-with a full copy of the six tables (every chart, not only the replaced ones), plus the same
+with a full copy of the seven tables (every chart, not only the replaced ones), plus the same
 tables as CSV files under ``--backup-dir`` (default utilities/output/gt_backup_<stamp>/).
-``--restore <schema>`` puts a backup back: the six tables are emptied and refilled from it.
+``--restore <schema>`` puts a backup back: the seven tables are emptied and refilled from it.
 The copy runs in one transaction: it lands whole or not at all.
 
 Who saved a row (user_id) is matched by username. A client account we do not have is left
@@ -57,9 +58,9 @@ except ImportError:
 
 # Parents before children: inserted in this order, deleted in reverse.
 TABLES = ("page_ground_truth", "page_ground_truth_entry", "chart_ground_truth",
-          "encounter_review", "chart_review", "chart_review_entry")
+          "encounter_review", "chart_review", "chart_review_entry", "qa_ground_truth")
 CHART_TABLES = ("page_ground_truth", "chart_ground_truth", "encounter_review", "chart_review",
-                "chart_review_entry")
+                "chart_review_entry", "qa_ground_truth")
 BACKUP_PREFIX = "gt_backup_"
 USER_FIELDS = ("username", "name", "email", "role", "password_hash")
 
@@ -134,7 +135,7 @@ def summary(client, ours, charts: list[str]) -> list[tuple[str, int, int]]:
 # ---------------------------------------------------------------------------
 
 def backup(ours, stamp: str, out_dir: Path) -> str:
-    """Every row of the six tables into schema gt_backup_<stamp> and CSV files. Returns the schema."""
+    """Every row of the seven tables into schema gt_backup_<stamp> and CSV files. Returns the schema."""
     taken = set(list_backups(ours))
     schema = f"{BACKUP_PREFIX}{stamp}"
     n = 1
@@ -163,14 +164,15 @@ def list_backups(ours) -> list[str]:
 
 
 def restore(ours, schema: str) -> dict[str, int]:
-    """Empty the six tables and refill them from a backup schema (ids kept)."""
+    """Empty the seven tables and refill them from a backup schema (ids kept)."""
     if schema not in list_backups(ours):
         raise SystemExit(f"no backup schema {schema!r} (see --list-backups)")
     counts: dict[str, int] = {}
     with ours.transaction():
         present = _tables(ours)
         for table in reversed(TABLES):
-            if table in present:
+            # A backup taken before a table existed (qa_ground_truth, 2026-11-25) leaves ours be.
+            if table in present and _columns(ours, table, schema):
                 ours.execute(f"DELETE FROM {table}")
         for table in TABLES:
             if table not in present or not _columns(ours, table, schema):
@@ -282,7 +284,7 @@ def main() -> int:
                         help="create the client's accounts we lack, inactive, so their saves keep a name")
     parser.add_argument("--backup-dir", help="where the CSV backup goes (default utilities/output/gt_backup_<stamp>)")
     parser.add_argument("--list-backups", action="store_true", help="the backup schemas in our database")
-    parser.add_argument("--restore", metavar="SCHEMA", help="put a backup back (replaces all six tables)")
+    parser.add_argument("--restore", metavar="SCHEMA", help="put a backup back (replaces all seven tables)")
     args = parser.parse_args()
 
     our_url = os.environ.get("DATABASE_URL", "").strip()

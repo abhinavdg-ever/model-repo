@@ -178,6 +178,12 @@ A source with under 30 labelled pages keeps its raw value. The raw value and sou
 
 ---
 
+**Manual Review** (2026-11-25, user): a database Pipeline Output value shows its confidence in brackets,
+"Progress Note (87%)", read as the chart view reads it (Page Type / Codability calibrated, a Discharge
+Summary's Codability at most 49%, a member field not found 80%). Shown on the screen only, never
+compared; an uploaded pipeline sheet has none. Code: `excel_compare/database_system.py`
+(`Confidence: <field>` columns), `ManualReviewView.tsx`.
+
 ## 6. Confidence Analysis (review-ui, Accuracy)
 
 Over the filtered charts' pages with ground truth, by confidence band (**95-100, 90-95, 85-90,

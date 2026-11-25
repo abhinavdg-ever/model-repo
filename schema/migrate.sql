@@ -47,4 +47,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-11-23.sql
 \echo '2026-11-24  confidence_calibration (Page Type / Codability curves)'
 \ir migrations/2026-11-24.sql
+\echo '2026-11-25  qa_ground_truth (Manual Review QA Ground Truth rows)'
+\ir migrations/2026-11-25.sql
 \echo 'Done: the database matches schema/schema.sql.'

@@ -148,6 +148,24 @@ ALTERNATE_FIELDS = {
     "Codable / Non-Codable",
 }
 
+# The pipeline's confidence in a field, as a whole percent (2026-11-25, user: Manual Review shows
+# it in brackets after the pipeline value). Only the database Algo side has these columns; they
+# are never compared.
+CONFIDENCE_PREFIX = "Confidence: "
+
+
+def pipeline_confidences(row, fields):
+    """{field: whole percent} from a pipeline row's ``Confidence: <field>`` columns."""
+    out = {}
+    for field_name in fields:
+        text = _raw_value(row, CONFIDENCE_PREFIX + field_name)
+        try:
+            out[field_name] = int(round(float(text)))
+        except ValueError:
+            continue
+    return out
+
+
 UNVALIDATED_REASON = (
     "No comparison fields were available for this record. PDF ID + "
     "Page Number were matched, but no field-level validation was "

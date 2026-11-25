@@ -42,6 +42,7 @@
 --   imaging_final                Final values, one row per page
 --   users / user_login           review-ui sign-in
 --   page_ground_truth(_entry)    ground truth and every save
+--   qa_ground_truth              Manual Review QA Ground Truth rows (upserted)
 --   chart_ground_truth           member Accept / Reject per chart
 --   chart_review(_entry)         Reviewed charts and the Review Log
 --   encounter_review             a reviewer's encounters
@@ -1222,6 +1223,41 @@ CREATE TABLE confidence_calibration (
 
 CREATE TRIGGER trg_confidence_calibration_updated_at
     BEFORE UPDATE ON confidence_calibration
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- QA ground truth (2026-11-25, user): every QA Ground Truth file loaded in Manual Review, its
+-- rows upserted by (chart_name, page_number) -- the latest load of a page wins. Columns are the
+-- Manual Review fields as the file gave them (after its headers are read); labels keeps the whole
+-- row as uploaded. Written and read by review-ui only (History shows which charts have QA).
+CREATE TABLE qa_ground_truth (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_name              VARCHAR(150) NOT NULL,
+    page_number             INT NOT NULL,
+    member_name             TEXT,
+    member_dob              TEXT,
+    member_id               TEXT,
+    printed_or_handwritten  TEXT,
+    dos_from                TEXT,
+    dos_to                  TEXT,
+    is_blank_or_junk        TEXT,
+    is_duplicate            TEXT,
+    page_type               TEXT,
+    page_subtype            TEXT,
+    codeable                TEXT,
+    provider_credentials    TEXT,
+    current_sequence        TEXT,
+    actual_sequence         TEXT,
+    labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_file             TEXT,
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_qa_ground_truth_chart_page UNIQUE (chart_name, page_number)
+);
+CREATE INDEX idx_qa_ground_truth_chart_name ON qa_ground_truth(chart_name);
+
+CREATE TRIGGER trg_qa_ground_truth_updated_at
+    BEFORE UPDATE ON qa_ground_truth
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE run_usage (

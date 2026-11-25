@@ -173,6 +173,7 @@ def _all_three(
             row["Reason"] = "All fields match in all three sources."
         row["Mismatched"] = mismatched
         row["Evidence"] = evidence
+        row["Confidences"] = with_pipeline.get("Confidences") or {}
         rows.append(row)
     return rows
 

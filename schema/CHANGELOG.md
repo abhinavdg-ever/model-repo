@@ -4,6 +4,10 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * qa_ground_truth (2026-11-25, migrations/2026-11-25.sql): new Part 1 table, one row per
+   (chart_name, page_number) of the QA Ground Truth files loaded in review-ui's Manual Review
+   (upserted, latest load wins): the Manual Review fields, labels JSONB (the row as uploaded),
+   source_file, user_id. review-ui writes it and reads which charts have it (History).
  * confidence_calibration (2026-11-24, migrations/2026-11-24.sql): new Part 1 table, one row per
    calibrated feature (page_type, codability): knots JSONB, pages, user_id. review-ui writes and reads it.
  * page_continuity_results.decided_by (2026-11-23, migrations/2026-11-23.sql): the CHECK allows
