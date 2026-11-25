@@ -1385,8 +1385,8 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
 }
 
 /** The Overview tables' Band and Charts column widths (2026-11-25, user: aligned across groups). */
-const BAND_COL = "7rem";
-const CHARTS_COL = "4.6rem";
+const BAND_COL = "6rem";
+const CHARTS_COL = "4.2rem";
 
 /** 0/7 .. 7/7: pages by how many of the seven streams match (2026-11-25, user). */
 const STREAM_HEADS = Array.from({ length: OVERALL_STREAMS + 1 }, (_, k) => `${k}/${OVERALL_STREAMS}`);
@@ -1419,10 +1419,10 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
           <colgroup>
             <col style={{ width: charts ? BAND_COL : `calc(${BAND_COL} + ${CHARTS_COL})` }} />
             {charts ? <col style={{ width: CHARTS_COL }} /> : null}
-            <col style={{ width: "5rem" }} />
-            {STREAM_HEADS.map((h) => <col key={h} style={{ width: "3.4rem" }} />)}
+            <col style={{ width: "4.8rem" }} />
+            {STREAM_HEADS.map((h) => <col key={h} style={{ width: "4rem" }} />)}
             <col style={{ width: "4.6rem" }} /><col style={{ width: "5rem" }} />
-            <col style={{ width: "5.2rem" }} /><col style={{ width: "6rem" }} />
+            <col style={{ width: "5rem" }} /><col style={{ width: "5.6rem" }} />
           </colgroup>
           <thead>
             <tr><th>Band</th>{charts ? <th className="num">Charts</th> : null}<th className="num">Pages</th>
