@@ -1005,6 +1005,29 @@ function scorePct(score: LevelScore): string {
  * pages, how confidence is spread (overall and per metric), the cross tab of page confidence
  * against the page's overall match, and each metric's accuracy at each of its confidence levels
  * -- High should be the most accurate. */
+/** The Codability tab's i (2026-11-25, user; was the Agreement tab): Page Type and Codability
+ * accuracy per model / keyword agreement tier. */
+function agreementInfo(agreement: Map<string, { pageType: LevelScore; codable: LevelScore; conf: number; confN: number }>): InfoSection[] {
+  return [{
+    title: "Accuracy by model and keyword agreement",
+    lines: [
+      "A: the model's and the keywords' first choice are both the page type.",
+      "B: model first, keywords 2nd-3rd. C: model first only.",
+      "D: model 2nd-3rd, or same family. E: they disagree on the family.",
+      "Accuracy should fall from A to E.",
+    ],
+    tables: [{
+      caption: "Agreement",
+      head: ["Tier", "Pages", "Page Type Accuracy", "Codability Accuracy", "Avg Page Type Confidence"],
+      rows: AGREEMENT_TIERS.map((t) => {
+        const e = agreement.get(t)!;
+        return [t, e.pageType.pages.toLocaleString(), scorePct(e.pageType), scorePct(e.codable),
+                e.confN ? `${Math.round((100 * e.conf) / e.confN)}%` : "—"];
+      }),
+    }],
+  }];
+}
+
 /** The page classifier's model / keyword agreement tiers, best first (2026-11-24). */
 const AGREEMENT_TIERS = ["A", "B", "C", "D", "E"] as const;
 
@@ -1094,7 +1117,7 @@ export async function runCalibration(clear: boolean): Promise<string | null> {
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   const [open, setOpen] = useState(false);
   // 2026-11-19 (user): Overview, then one tab per metric with its accuracy by confidence decile.
-  const [tab, setTab] = useState<"overview" | "agreement" | MetricId>("overview");
+  const [tab, setTab] = useState<"overview" | MetricId>("overview");
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -1229,51 +1252,26 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                   Average chart confidence · {rows.length.toLocaleString()} charts · {data.total.toLocaleString()} pages
                 </p>
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
-                  {(["overview", "agreement", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | "agreement" | MetricId)[]).map((id) => (
+                  {(["overview", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | MetricId)[]).map((id) => (
                     <button key={id} type="button" role="tab" aria-selected={tab === id}
                             className={tab === id ? "active" : undefined} onClick={() => setTab(id)}>
-                      {id === "overview" ? "Overview" : id === "agreement" ? "Agreement" : (LIVE_METRICS.find((m) => m.id === id)?.tableLabel
+                      {id === "overview" ? "Overview" : (LIVE_METRICS.find((m) => m.id === id)?.tableLabel
                         ?? LIVE_METRICS.find((m) => m.id === id)?.label)}
                     </button>
                   ))}
                 </div>
-                {tab === "agreement" ? (
-                  <section>
-                    <h3>Page Type / Codability: accuracy by model and keyword agreement</h3>
-                    <p className="chart-details-note">
-                      A: the model's and the keywords' first choice are both the page type · B: model first, keywords
-                      2nd-3rd · C: model first only · D: model 2nd-3rd, or same family · E: they disagree on the family.
-                      Accuracy should fall from A to E.
-                    </p>
-                    <table className="chart-details-table">
-                      <thead>
-                        <tr><th>Agreement</th><th className="num">Pages</th><th className="num">Page Type Accuracy</th>
-                          <th className="num">Codability Accuracy</th><th className="num">Avg Page Type Confidence</th></tr>
-                      </thead>
-                      <tbody>
-                        {AGREEMENT_TIERS.map((t) => {
-                          const e = data.agreement.get(t)!;
-                          return (
-                            <tr key={t}>
-                              <td>{t}</td>
-                              <td className="num">{e.pageType.pages.toLocaleString()}</td>
-                              <td className="num">{scorePct(e.pageType)}</td>
-                              <td className="num">{scorePct(e.codable)}</td>
-                              <td className="num">{e.confN ? `${Math.round((100 * e.conf) / e.confN)}%` : "—"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </section>
-                ) : tab !== "overview" ? (() => {
+                {tab !== "overview" ? (() => {
                   const metric = LIVE_METRICS.find((m) => m.id === tab)!;
                   const buckets = data.deciles.get(metric.id)!;
                   const partial = buckets.some((b) => b.maybe > 0);
                   const all = buckets.reduce((t, b) => ({ pages: t.pages + b.pages, yes: t.yes + b.yes, maybe: t.maybe + b.maybe, no: t.no + b.no }), emptyScore());
                   return (
                     <section>
-                      <h3>{metric.label}: accuracy by confidence band</h3>
+                      <h3>
+                        {metric.label}: accuracy by confidence band
+                        {/* 2026-11-25 (user): the model / keyword agreement as an i on Codability. */}
+                        {metric.id === "codeable" ? <InfoTip text={agreementInfo(data.agreement)} /> : null}
+                      </h3>
                       <p className="chart-details-note">
                         Pages with ground truth, grouped by this metric's own confidence. Accuracy should rise with
                         confidence. No confidence is below 20%.
