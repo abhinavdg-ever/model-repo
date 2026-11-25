@@ -285,6 +285,25 @@ review-ui's Playground has the same as **Tag Run** (2026-11-22, admins): tick th
 Skip OCR, Skip completed; the matching charts are listed before the run, at most 10 per run as
 every Playground run.
 
+### Measure RAM per stage: `MEMORY_PROFILE=true` (2026-11-25)
+
+Set `MEMORY_PROFILE=true` in `core-pipeline/.env` (or for one start:
+`MEMORY_PROFILE=true docker compose up -d worker`), then run charts as usual, OCR included.
+Every stage of every chart then records the process RAM before, at its peak and after
+(sampled every `MEMORY_PROFILE_INTERVAL_MS`, default 50), the spike (peak - before), what
+it kept (after - before), child processes, the container's memory and its limit, and seconds.
+`false` (the default) does nothing at all.
+
+- **Logs:** one `memory <stage>: before ... peak ... spike ...` line per stage and one for
+  the whole chart (`memory chart:`), so it shows in `docker compose logs` and on AKS stdout.
+- **Files** (when `LOG_TO_FILE` is on): `logs/memory_stages.<date>.csv`, one row per stage
+  per chart, and `logs/memory_timeline.<date>.csv`, one row per second while a stage runs.
+  Dated, so the log purge removes them.
+- **Clean numbers:** several charts in one process share its RAM, and the `concurrent`
+  column says when that happened. For per-stage numbers, run with `BATCH_WORKERS=1`, or use
+  queue workers, which run one chart each.
+- Code: `core-pipeline/common/memory_profile.py`, called around each stage by `apps/worker/runner.py`.
+
 
 ---
 

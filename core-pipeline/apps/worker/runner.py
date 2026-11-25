@@ -21,6 +21,7 @@ import time
 import traceback
 from typing import Any, Callable, Optional
 
+from common import memory_profile
 from common.db import connect, create_job, get_chart, set_chart_status, update_job
 from common.db.chart_status import refresh_chart_status
 from apps.worker.stages._support import stage_label
@@ -334,6 +335,8 @@ def run_pipeline_for_chart(
                 chart_id, chart["chart_name"], keep_ocr=False
             )
 
+        # MEMORY_PROFILE=true: RAM per stage and for the chart (common/memory_profile.py); off = no-op.
+        chart_memory = memory_profile.begin(chart["chart_name"], "chart", pages=chart.get("page_count"))
         for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"
             # Under skip_ocr, quality always runs even when `only` omits it.
@@ -349,6 +352,7 @@ def run_pipeline_for_chart(
             label = stage_label(name, pass_no)
             stage_token = set_current_stage(label)
             stage_started = time.monotonic()
+            stage_memory = memory_profile.begin(chart["chart_name"], key, pages=chart.get("page_count"))
             try:
                 # Always re-measure quality under skip_ocr; with reuse, gate-delta
                 # reopens only pages whose path changed.
@@ -494,12 +498,14 @@ def run_pipeline_for_chart(
                     progress = refresh_chart_status(conn, chart_id, running=(name, pass_no))
                 results["progress"] = progress
             finally:
+                memory_profile.end(stage_memory, error=(results.get("stage_errors") or {}).get(key, ""))
                 reset_current_stage(stage_token)
                 # Monitoring (run_usage.stage_seconds): every stage that ran, skipped ones excluded.
                 if key not in results["skipped_stages"]:
                     spent = results.setdefault("stage_seconds", {})
                     spent[key] = round(spent.get(key, 0.0) + time.monotonic() - stage_started, 1)
 
+        memory_profile.end(chart_memory, error="; ".join(results.get("stage_errors") or {}))
         with connect() as conn:
             progress = refresh_chart_status(conn, chart_id)
             errors = results.get("stage_errors") or {}

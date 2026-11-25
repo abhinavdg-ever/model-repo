@@ -82,6 +82,9 @@ services:
       LOG_BACKUP_DAYS: ${LOG_BACKUP_DAYS:-30}
       # Colour worker tags in stdout (docker compose logs preserves ANSI).
       LOG_COLOR: ${LOG_COLOR:-true}
+      # RAM per stage per chart, in the logs and logs/memory_stages.<date>.csv (common/memory_profile.py).
+      # From .env, or for one start:  MEMORY_PROFILE=true docker compose up -d worker
+      MEMORY_PROFILE: ${MEMORY_PROFILE:-false}
     volumes: &core-volumes
       # core-pipeline/outputs/ on the host: scratch, not shared with review-ui.
       - ${OUTPUTS_HOST_PATH:-./outputs}:/data/outputs
