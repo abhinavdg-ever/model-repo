@@ -7140,3 +7140,6 @@ input {
   letter-spacing: 0.04em;
   color: var(--neutral-600);
 }
+
+/* Copy a Confidence Analysis table (2026-11-25): the icon after the table's heading. */
+.confidence-copy { display: inline-flex; vertical-align: middle; margin-left: 0.35rem; }

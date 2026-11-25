@@ -191,7 +191,8 @@ Over the filtered charts' pages with ground truth, by confidence band (**95-100,
 and pages. Overview (2026-11-25, user): three groups, set apart, each with two tables: **Chart
 Confidence** (pages under their chart's band), **Page Confidence** (basis level) and **Page Score**
 (basis average). Table 1, the level: per band Charts (chart group only), Pages, pages by streams
-matched 0/7 .. 7/7, Match, No Match, Accuracy, where Match = every metric on the page matches.
+matched 0/7 .. 7/7, Match, No Match, Accuracy, where Match = every metric on the page matches, and
+Accuracy (6/7): pages with at least 6 of the 7 matching. Every table has a copy icon (paste into Excel).
 Table 2, the metrics: per band, each metric's accuracy, one column per metric. Each metric's tab: its
 accuracy by its own confidence; Blank / Junk, Provider Signature and Orientation split 95-100 into
 **99-100, 98-99, 97-98, 96-97, 95-96**. Accuracy should rise with confidence.

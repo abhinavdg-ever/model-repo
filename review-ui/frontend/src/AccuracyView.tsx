@@ -221,6 +221,34 @@ function CopyButton({ label, text }: { label: string; text: () => string }) {
   );
 }
 
+/** A rendered table as tab-separated text for Excel: the heading, then every row's cells. */
+function domTableTsv(table: HTMLTableElement | null | undefined, heading: string): string {
+  if (!table) return "";
+  const cell = (el: Element) => (el as HTMLElement).innerText.replace(/[\t\n\r]+/g, " ").trim();
+  const lines = heading ? [heading] : [];
+  for (const row of Array.from(table.rows)) lines.push(Array.from(row.cells).map(cell).join("\t"));
+  return lines.join("\n");
+}
+
+/** 2026-11-25 (user): copy the table of the section it sits in (Confidence Analysis). */
+function CopySectionTable({ label = "Copy table" }: { label?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  return (
+    <span ref={ref} className="confidence-copy">
+      <CopyButton
+        label={label}
+        text={() => {
+          const section = ref.current?.closest("section");
+          const heading = (section?.querySelector("h3, h4") as HTMLElement | null)?.innerText.trim() ?? "";
+          const group = (section?.closest(".confidence-group")?.querySelector(".confidence-group-title") as HTMLElement | null)
+            ?.innerText.trim();
+          return domTableTsv(section?.querySelector("table"), group ? `${group} · ${heading}` : heading);
+        }}
+      />
+    </span>
+  );
+}
+
 function InfoTip({ text, className }: { text: string | InfoSection[]; className?: string }) {
   const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -1292,6 +1320,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                         {metric.label}: accuracy by confidence band
                         {/* 2026-11-25 (user): the model / keyword agreement as an i on Codability. */}
                         {metric.id === "codeable" ? <InfoTip text={agreementInfo(data.agreement)} /> : null}
+                        <CopySectionTable />
                       </h3>
                       <p className="chart-details-note">
                         Pages with ground truth, grouped by this metric's own confidence. Accuracy should rise with
@@ -1369,6 +1398,9 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
   const streamTotal = streams.reduce((acc, row) => acc.map((n, k) => n + row[k]), new Array<number>(OVERALL_STREAMS + 1).fill(0));
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
   const levelOf = (lo: number) => (lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low");
+  // Accuracy (6/7), 2026-11-25 (user): pages with at least 6 of the 7 streams matching, of the
+  // pages counted by streams.
+  const nearShare = (row: number[]) => share(row[OVERALL_STREAMS - 1] + row[OVERALL_STREAMS], row.reduce((sum, n) => sum + n, 0));
   const t = bands.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { pages: 0, yes: 0 });
   const chartTotal = charts?.reduce((sum, n) => sum + n, 0);
   return (
@@ -1376,12 +1408,15 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
       <h3 className="confidence-group-title">{title}</h3>
       <p className="chart-details-note">{note} Match = every metric on the page matches.</p>
       <section>
-        <h4>{unit} level: accuracy by band</h4>
+        <h4>{unit} level: accuracy by band <CopySectionTable /></h4>
         <table className="chart-details-table">
           <thead>
             <tr><th>Band</th>{charts ? <th className="num">Charts</th> : null}<th className="num">Pages</th>
               {STREAM_HEADS.map((h) => <th key={h} className="num">{h}</th>)}
-              <th className="num">Match</th><th className="num">No Match</th><th className="num">Accuracy</th></tr>
+              <th className="num">Match</th><th className="num">No Match</th><th className="num">Accuracy</th>
+              <th className="num" title={`Pages with at least ${OVERALL_STREAMS - 1} of the ${OVERALL_STREAMS} metrics matching`}>
+                Accuracy ({OVERALL_STREAMS - 1}/{OVERALL_STREAMS})
+              </th></tr>
           </thead>
           <tbody>
             {BANDS.map(([label, lo], i) => {
@@ -1395,6 +1430,7 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
                   <td className="num">{b.yes.toLocaleString()}</td>
                   <td className="num">{(b.no + b.maybe).toLocaleString()}</td>
                   <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
+                  <td className="num">{nearShare(streams[i])}</td>
                 </tr>
               );
             })}
@@ -1405,12 +1441,13 @@ function BandTables({ title, note, unit, bands, charts, metricBands, streams }: 
               {streamTotal.map((n, k) => <td key={k} className="num">{n.toLocaleString()}</td>)}
               <td className="num">{t.yes.toLocaleString()}</td>
               <td className="num">{(t.pages - t.yes).toLocaleString()}</td><td className="num">{share(t.yes, t.pages)}</td>
+              <td className="num">{nearShare(streamTotal)}</td>
             </tr>
           </tbody>
         </table>
       </section>
       <section>
-        <h4>Metric level: each metric's accuracy by band</h4>
+        <h4>Metric level: each metric's accuracy by band <CopySectionTable /></h4>
         <table className="chart-details-table">
           <thead>
             <tr><th>Band</th>
