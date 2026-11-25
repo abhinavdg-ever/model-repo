@@ -1,5 +1,6 @@
 """2026-11-25 (user): Manual Review shows the pipeline value's confidence in brackets, and a
 loaded QA Ground Truth file is kept in qa_ground_truth."""
+import json
 import sys
 from pathlib import Path
 
@@ -107,7 +108,8 @@ def test_chart_pages_shapes_the_rows(monkeypatch):
 
     columns = list(qa_ground_truth.COLUMNS.values())
     values = {c: None for c in columns} | {"page_type": "Progress Note", "codeable": ""}
-    row = (3, *[values[c] for c in columns], "qa.csv", datetime(2026, 11, 25, tzinfo=timezone.utc))
+    row = (3, *[values[c] for c in columns], "qa.csv", datetime(2026, 11, 25, tzinfo=timezone.utc),
+           {"Page Type": "Progress Note", "cv:orientation": "90", "cv:quality": ""})
 
     class Cur:
         def execute(self, sql, params):
@@ -125,7 +127,8 @@ def test_chart_pages_shapes_the_rows(monkeypatch):
 
     monkeypatch.setattr(db, "connection", fake)
     pages = qa_ground_truth.chart_pages("postgresql://x/y", "public", "c1")
-    assert pages == {"3": {"page_type": "Progress Note", "source_file": "qa.csv",
+    # A chart-view field kept in labels comes back by its id; an empty one does not.
+    assert pages == {"3": {"page_type": "Progress Note", "orientation": "90", "source_file": "qa.csv",
                            "updated_at": "2026-11-25T00:00:00+00:00"}}
 
 
@@ -185,14 +188,20 @@ def test_save_page_sets_only_the_given_columns(monkeypatch):
 
     monkeypatch.setattr(db, "connection", fake)
     qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2,
-                              {"page_type": "Lab Report", "dos_from": "", "bogus": "x"}, 7)
+                              {"page_type": "Lab Report", "dos_from": "", "orientation": "90", "Bad Key!": "x"}, 7)
     sql, params = seen[0]
     assert "page_type = EXCLUDED.page_type" in sql and "dos_from = EXCLUDED.dos_from" in sql
-    assert "bogus" not in sql and "codeable" not in sql
+    assert "orientation" not in sql and "codeable" not in sql   # a chart-view field goes to labels
     assert params[:4] == ("c1", 2, "Lab Report", None)   # "" clears
+    labels = json.loads(params[4])
+    assert labels["cv:orientation"] == "90" and "Bad Key!" not in str(labels)
     assert params[-2:] == (qa_ground_truth.CHART_VIEW_SOURCE, 7)
+    # Only chart-view fields: no column in the INSERT, labels only.
+    seen.clear()
+    qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2, {"quality": "Good"}, 7)
+    assert "(chart_name, page_number, labels," in seen[0][0]
     with pytest.raises(ValueError):
-        qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2, {"bogus": "x"}, 7)
+        qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2, {"Bad Key!": "x"}, 7)
 
 
 def test_one_bad_chart_is_skipped_not_the_run():
@@ -268,3 +277,15 @@ def test_a_bad_page_fails_its_chart_only_in_the_batch_read(monkeypatch):
     docs, _ = algo.fetch("postgresql://x/y", "public", ["good", "bad"])
     assert [p.pageNumber for p in docs["good"].pages] == [1, 2]
     assert isinstance(docs["bad"], algo.FailedChart) and docs["bad"].detail == "page 2: member_raw"
+
+
+def test_all_qa_endpoint_is_for_the_testing_user(monkeypatch):
+    from app.services.auth import SignedInUser
+
+    monkeypatch.setattr(qa_ground_truth, "all_pages", lambda url, schema: {"c1": {"1": {"page_type": "Lab Report"}}})
+    reviewer = SignedInUser(id=5, username="someone", name="S", role="reviewer")
+    assert _qa_app(monkeypatch, reviewer).get("/api/qa-ground-truth").status_code == 403
+    tester = SignedInUser(id=7, username="testing-user", name="T", role="reviewer")
+    assert _qa_app(monkeypatch, tester).get("/api/qa-ground-truth").json() == {
+        "charts": {"c1": {"1": {"page_type": "Lab Report"}}}}
+

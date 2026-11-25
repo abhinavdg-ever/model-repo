@@ -18,7 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { CALIBRATED_FEATURES, STRICT_FEATURES, bandFor, chartScore, currentCalibration, fitKnots, levelLabel, type Level } from "./confidenceLevel";
-import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport, saveCalibration } from "./api";
+import { downloadXlsx, formatBatchLabel, formatRunLabel, getAccuracyReport, getAllQaGroundTruth, saveCalibration } from "./api";
+import { accuracyTruth, isQaUser, setAccuracyTruth, type AccuracyTruth } from "./qaColumn";
+import { qaGroundTruth } from "./ImagingPanel";
 import { isScoringAdmin } from "./clientView";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useScrollRestore, useViewState } from "./viewState";
@@ -1863,7 +1865,27 @@ let lastRows: { source: string; rows: ChartAccuracy[] } | null = null;
 
 /** The cache holds rows scored one way: the ground-truth source and Final only or not. */
 function scoringKey(): string {
-  return `${readGroundTruthSource()}|${scoreFinalOnly() ? "final" : "better"}`;
+  return `${readGroundTruthSource()}|${scoreFinalOnly() ? "final" : "better"}|${accuracyTruth()}`;
+}
+
+/** 2026-11-25 (user): the testing user scores on Client or QA ground truth (this browser). */
+function TruthToggle({ value, onChange }: { value: AccuracyTruth; onChange: (next: AccuracyTruth) => void }) {
+  if (!isQaUser()) return null;
+  return (
+    <span className="accuracy-truth-toggle" role="group" aria-label="Ground truth to score against"
+          title="Client: the client's ground truth. QA: the QA ground truth (Manual Review files and the chart view's QA column); charts with no QA are left out.">
+      <span className="accuracy-truth-label">Ground Truth</span>
+      <span className="include-extracted">
+        {(["client", "qa"] as const).map((choice) => (
+          <button key={choice} type="button" aria-pressed={value === choice}
+                  className={`include-extracted-option${value === choice ? " is-active" : ""}`}
+                  onClick={() => { if (value !== choice) onChange(choice); }}>
+            {choice === "qa" ? "QA" : "Client"}
+          </button>
+        ))}
+      </span>
+    </span>
+  );
 }
 
 /** Download Page Level Accuracy (2026-11-16, user): verdicts only (the default), or with the
@@ -1957,6 +1979,12 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const [loading, setLoading] = useState(cached === null);
   const [refreshing, setRefreshing] = useState(false);
   const [reloads, setReloads] = useState(0);
+  // The testing user's Client / QA ground truth (2026-11-25); everyone else: Client.
+  const [truth, setTruth] = useState<AccuracyTruth>(accuracyTruth());
+  const changeTruth = (next: AccuracyTruth) => {
+    setAccuracyTruth(next);
+    setTruth(next);
+  };
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Search, column filters, sort and page survive opening a chart and coming Back.
@@ -2120,11 +2148,26 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
       try {
         // Refresh (reloads > 0) skips the backend's minute-long reuse.
         const report = await getAccuracyReport(reloads > 0);
+        // QA scoring (the testing user): each page's QA entry as its ground truth; a chart
+        // with no QA is left out, a page with none is not scored.
+        const qa = truth === "qa" ? (await getAllQaGroundTruth()).charts ?? {} : null;
         if (cancelled) return;
         const scored: ChartAccuracy[] = [];
         for (const chart of report.charts) {
           if (!chart.document) continue;
-          const row = scoreChart(chart.chartId, chart.chartName, chart.document);
+          let document = chart.document;
+          if (qa) {
+            const pagesQa = qa[chart.chartId] ?? qa[chart.chartName];
+            if (!pagesQa) continue;
+            document = {
+              ...document,
+              pages: document.pages.map((page) => {
+                const entry = pagesQa[String(page.pageNumber)];
+                return { ...page, groundTruth: entry ? qaGroundTruth(page, entry) : null };
+              }),
+            };
+          }
+          const row = scoreChart(chart.chartId, chart.chartName, document);
           row.lastUpdatedAt = chart.lastUpdatedAt ?? null;
           row.lastVerifiedAt = chart.lastVerifiedAt ?? null;
           row.runId = chart.runId ?? null;
@@ -2157,7 +2200,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     return () => {
       cancelled = true;
     };
-  }, [reloads]);
+  }, [reloads, truth]);
 
   // "By chart": search by file / chart name and the column filters, 10 per page. The
   // donuts stay on all files.
@@ -2339,7 +2382,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
         <CalculatingPanel />
       ) : allRows.length === 0 ? (
         <p className="accuracy-status">
-          No pages with ground truth to score from runs on or after {MIN_LAST_RUN_LABEL}.
+          No pages with {truth === "qa" ? "QA " : ""}ground truth to score from runs on or after {MIN_LAST_RUN_LABEL}.{" "}
+          <TruthToggle value={truth} onChange={changeTruth} />
         </p>
       ) : (
         <>
@@ -2347,6 +2391,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             <div className="accuracy-metric-head">
               <h2>By metric</h2>
               <span className="accuracy-extra-links">
+                <TruthToggle value={truth} onChange={changeTruth} />
                 <ConfidenceMetrics rows={filtered} />
                 <AdditionalMetrics extra={extra} />
               </span>

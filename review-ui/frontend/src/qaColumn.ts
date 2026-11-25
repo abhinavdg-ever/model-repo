@@ -13,7 +13,9 @@ export function isQaUser(): boolean {
 export type QaPage = Record<string, string | null | undefined>;
 export const QaTruthContext = createContext<QaPage | null>(null);
 
-/** Page Details row id -> the qa_ground_truth column shown in its QA Ground Truth cell. */
+/** Page Details row id -> its qa_ground_truth column. Every other row (Orientation, Quality,
+ * Encounter Type, Provider Name ...) is kept under its own id (``qaKey``), 2026-11-25 (user:
+ * the QA column has every Ground Truth field). */
 export const QA_FIELD: Record<string, string> = {
   name: "member_name",
   dob: "member_dob",
@@ -28,3 +30,31 @@ export const QA_FIELD: Record<string, string> = {
   codeable: "codeable",
   provider_credentials: "provider_credentials",
 };
+
+/** Where a row's QA value is kept: its qa_ground_truth column, else the row id itself. */
+export function qaKey(rowId: string): string {
+  return QA_FIELD[rowId] ?? rowId;
+}
+
+/** Accuracy scored on QA ground truth (2026-11-25, user): the testing user's choice, this
+ * browser only. */
+const TRUTH_KEY = "advantmed_accuracy_truth";
+export type AccuracyTruth = "client" | "qa";
+
+export function accuracyTruth(): AccuracyTruth {
+  if (!isQaUser()) return "client";
+  try {
+    return localStorage.getItem(TRUTH_KEY) === "qa" ? "qa" : "client";
+  } catch {
+    return "client";
+  }
+}
+
+export function setAccuracyTruth(next: AccuracyTruth): void {
+  try {
+    localStorage.setItem(TRUTH_KEY, next);
+  } catch {
+    // Blocked storage: the choice lasts until the page reloads.
+  }
+}
+

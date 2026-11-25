@@ -7223,3 +7223,7 @@ input {
 }
 .excel-compare-skipped summary { cursor: pointer; font-weight: 600; }
 .excel-compare-skipped ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+
+/* Accuracy: the testing user's Client / QA ground truth switch (2026-11-25). */
+.accuracy-truth-toggle { display: inline-flex; align-items: center; gap: 0.4rem; margin-right: 0.6rem; font-size: 0.78rem; }
+.accuracy-truth-label { color: var(--muted); font-weight: 600; }

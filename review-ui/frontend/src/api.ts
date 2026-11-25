@@ -829,6 +829,11 @@ export type AccuracyChartPayload = {
 };
 
 /** ``fresh`` skips the backend's minute-long reuse of the report (Refresh). */
+/** Every chart's QA ground truth by page (2026-11-25): the testing user's QA accuracy. */
+export function getAllQaGroundTruth(): Promise<{ charts: Record<string, Record<string, Record<string, string | null>>> }> {
+  return api("/api/qa-ground-truth");
+}
+
 export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChartPayload[] }> {
   const query = groundTruthQuery();
   const refresh = fresh ? `${query ? "&" : "?"}refresh=true` : "";

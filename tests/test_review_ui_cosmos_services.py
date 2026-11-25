@@ -871,3 +871,14 @@ def test_qa_docs_are_never_client_ground_truth(cosmos, containers, store):
     assert store.truth_docs("c9") == []
     assert store.ground_truth_charts() == []
 
+
+def test_qa_every_field_on_cosmos(cosmos, containers):
+    """The QA column has every Ground Truth field: one with no QA column is kept by its id."""
+    from app.services import qa_ground_truth as qa
+
+    saved = qa.save_page("", "public", "c2", 4, {"orientation": "90", "page_type": "Lab Report"}, user_id=7)
+    assert saved["orientation"] == "90" and saved["page_type"] == "Lab Report"
+    qa.save_page("", "public", "c2", 4, {"orientation": ""}, user_id=7)
+    assert "orientation" not in qa.chart_pages("", "public", "c2")["4"]
+    assert qa.all_pages("", "public") == {"c2": qa.chart_pages("", "public", "c2")}
+

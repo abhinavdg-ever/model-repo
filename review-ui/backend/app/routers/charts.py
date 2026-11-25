@@ -201,6 +201,24 @@ def folder_qa_ground_truth(folder_id: str, settings: Settings = Depends(get_sett
     return {"pages": qa_ground_truth.chart_pages(settings.database_url, settings.db_schema, folder_id)}
 
 
+@router.get("/qa-ground-truth")
+def all_qa_ground_truth(
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Every chart's QA ground truth by page, for the Accuracy view's QA scoring (2026-11-25,
+    user): {"charts": {chart: {page: {...}}}}. The testing user or an admin only."""
+    from app.services import qa_ground_truth
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to read QA ground truth")
+    if user.username.strip().lower() != qa_ground_truth.QA_USER and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only the testing user reads QA ground truth")
+    if not store_usable(settings, database_url_usable):
+        return {"charts": {}}
+    return {"charts": qa_ground_truth.all_pages(settings.database_url, settings.db_schema)}
+
+
 @router.put("/folders/{folder_id}/qa-ground-truth/{page_number}")
 def save_folder_qa_ground_truth(
     folder_id: str,

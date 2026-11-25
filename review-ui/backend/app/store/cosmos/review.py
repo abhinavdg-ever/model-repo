@@ -639,6 +639,11 @@ class CosmosReviewStore:
         return [d for d in self.query("ground_truth", "SELECT * FROM c WHERE STARTSWITH(c.id, 'qa-')", chart)
                 if d.get("page_number") is not None]
 
+    def all_qa_pages(self) -> list[dict[str, Any]]:
+        """Every chart's QA page docs (one cross-partition query), for the Accuracy view."""
+        return [d for d in self.query_all("ground_truth", "SELECT * FROM c WHERE STARTSWITH(c.id, 'qa-')")
+                if d.get("page_number") is not None]
+
     def charts_with_qa(self) -> set[str]:
         names = self.query_all("ground_truth", "SELECT DISTINCT VALUE c.chart_name FROM c WHERE STARTSWITH(c.id, 'qa-')")
         return {str(n) for n in names if n}

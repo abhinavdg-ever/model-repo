@@ -55,7 +55,7 @@ import {
 } from "./ReviewTables";
 import { memberDisplayName, properName } from "./properName";
 import { ClientViewContext, scoreFinalOnly } from "./clientView";
-import { QA_FIELD, QaTruthContext, isQaUser, type QaPage } from "./qaColumn";
+import { QaTruthContext, isQaUser, qaKey, type QaPage } from "./qaColumn";
 import { dobMatchesManifest, nameMatchesManifest } from "./memberMatch";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -837,6 +837,25 @@ function groundTruthBody(
   };
 }
 
+/** A page's QA values by Page Details row id (every Ground Truth field), from its QA entry. */
+function qaStoredValues(qa: QaPage | null | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.keys(storedGroundTruth(null)).map((id) => [id, String(qa?.[qaKey(id)] ?? "").trim()]),
+  );
+}
+
+/** 2026-11-25 (user): a page's QA entry as its ground truth, for the Accuracy view's QA
+ * scoring -- the same conversion a Ground Truth save makes. A member name / DOB / ID the QA
+ * gave as a value (not Yes / No) means "found on the page": Yes. */
+export function qaGroundTruth(page: ImagingPageResult, qa: QaPage): PageGroundTruth {
+  const values = qaStoredValues(qa);
+  for (const id of ["name", "dob", "member_id"]) {
+    const value = values[id];
+    if (value && !yesNo(value) && !["not found", "skipped"].includes(value.toLowerCase())) values[id] = "Yes";
+  }
+  return groundTruthBody({ ...page, groundTruth: null }, values);
+}
+
 /** Fields the save request actually writes. */
 const PERSISTED_GT = new Set([
   "name",
@@ -1175,7 +1194,7 @@ function CompareSection({
               )}
               {qa ? (
                 <td className="qa-shade">
-                  {qaMode && QA_FIELD[row.id] ? (
+                  {qaMode && !row.noGroundTruth ? (
                     <GroundTruthCell
                       row={{
                         ...row,
@@ -2219,9 +2238,7 @@ function PageDetails({
       ? numbered(signers.map((signer) => text(signer.credentials) || NOT_FOUND))
       : providerCredentials || NOT_FOUND;
   const truthStored = storedGroundTruth(page.groundTruth);
-  const stored: Record<string, string> = qaMode
-    ? Object.fromEntries(Object.entries(QA_FIELD).map(([id, column]) => [id, String(qaPage?.[column] ?? "").trim()]))
-    : truthStored;
+  const stored: Record<string, string> = qaMode ? qaStoredValues(qaPage) : truthStored;
   // Pipeline values the untouched cells offer (filled as the cells render).
   const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
@@ -2331,14 +2348,14 @@ function PageDetails({
     const merged: Record<string, string> = { ...stored, ...edits };
     if (!withTruth) {
       for (const [id, value] of Object.entries(offered.current)) {
-        if (QA_FIELD[id] && edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
+        if (edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
       }
     }
     if (editingId && draft != null) merged[editingId] = normalizeEntry(editingId, draft) ?? draft.trim();
     if (!subtypeFitsType(merged.page_type, merged.page_subtype)) merged.page_subtype = "";
     const changed: Record<string, string> = {};
-    for (const [id, column] of Object.entries(QA_FIELD)) {
-      if ((merged[id] ?? "") !== (stored[id] ?? "")) changed[column] = merged[id] ?? "";
+    for (const id of new Set([...Object.keys(stored), ...Object.keys(merged)])) {
+      if ((merged[id] ?? "") !== (stored[id] ?? "")) changed[qaKey(id)] = merged[id] ?? "";
     }
     if (!Object.keys(changed).length) {
       finishReview();

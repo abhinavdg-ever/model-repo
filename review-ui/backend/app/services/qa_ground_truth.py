@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 logger = logging.getLogger("review_ui.api")
@@ -160,14 +161,15 @@ def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str,
         except Exception as exc:  # noqa: BLE001 - no QA column rather than an error
             logger.info("QA ground truth not read from Cosmos for a chart: %s", exc)
             return {}
-        return {str(doc["page_number"]): _entry(doc.get, doc.get("source_file"), doc.get("updated_at"))
+        return {str(doc["page_number"]): _entry(doc.get, doc.get("source_file"), doc.get("updated_at"),
+                                                doc.get("labels"))
                 for doc in docs}
     from app.services.db import connection
 
     try:
         with connection(database_url, db_schema) as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT page_number, {', '.join(columns)}, source_file, updated_at "
+                f"SELECT page_number, {', '.join(columns)}, source_file, updated_at, labels "
                 "FROM qa_ground_truth WHERE chart_name = %s",
                 (chart_name,),
             )
@@ -176,18 +178,40 @@ def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str,
         logger.info("qa_ground_truth not read for a chart: %s", exc)
         return {}
     out: dict[str, dict[str, Any]] = {}
-    for page_number, *values, source_file, updated_at in rows:
+    for page_number, *values, source_file, updated_at, labels in rows:
         found = dict(zip(columns, values))
-        out[str(page_number)] = _entry(found.get, source_file, updated_at)
+        out[str(page_number)] = _entry(found.get, source_file, updated_at, labels)
     return out
 
 
-def _entry(get: Any, source_file: Any, updated_at: Any) -> dict[str, Any]:
-    """A page's QA values (non-empty only), its source file and when it was last written."""
-    entry = {column: get(column) for column in COLUMNS.values() if get(column) not in (None, "")}
+def _entry(get: Any, source_file: Any, updated_at: Any, labels: Any = None) -> dict[str, Any]:
+    """A page's QA values (non-empty only; the chart-view fields by their id), its source file
+    and when it was last written."""
+    entry = {**_fields(labels),
+             **{column: get(column) for column in COLUMNS.values() if get(column) not in (None, "")}}
     entry["source_file"] = source_file
     entry["updated_at"] = updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at
     return entry
+
+
+# 2026-11-25 (user: the QA column has every Ground Truth field): a chart-view field with no
+# qa_ground_truth column (orientation, quality, encounter, provider_name, ...) is kept in labels
+# under "cv:<field id>" (the chart view's row id); "" clears it.
+FIELD_PREFIX = "cv:"
+_FIELD_ID = re.compile(r"^[a-z][a-z_]{0,39}$")
+
+
+def _fields(labels: Any) -> dict[str, Any]:
+    """The chart-view fields kept in ``labels`` ("cv:<id>"), non-empty only."""
+    if isinstance(labels, str):
+        try:
+            labels = json.loads(labels)
+        except ValueError:
+            return {}
+    if not isinstance(labels, dict):
+        return {}
+    return {k[len(FIELD_PREFIX):]: v for k, v in labels.items()
+            if k.startswith(FIELD_PREFIX) and v not in (None, "")}
 
 
 # The source_file of a page edited in the chart view rather than loaded from a QA file.
@@ -204,9 +228,12 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
     by_column = {column: field for field, column in COLUMNS.items()}
     clean = {column: (_cell(value) if value is not None else None)
              for column, value in values.items() if column in by_column}
-    if not clean:
+    # Every other chart-view field, by its row id, in labels ("" clears it).
+    extra = {FIELD_PREFIX + key: (_cell(value) or "") for key, value in values.items()
+             if key not in by_column and _FIELD_ID.match(str(key))}
+    if not clean and not extra:
         raise ValueError("no QA ground truth field to save")
-    labels = {by_column[column]: value for column, value in clean.items() if value is not None}
+    labels = {**{by_column[column]: value for column, value in clean.items() if value is not None}, **extra}
 
     def to_cosmos(store: Any) -> None:
         store.save_qa_page(chart_name, page_number, clean, labels, CHART_VIEW_SOURCE, user_id, replace=False)
@@ -218,11 +245,11 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
 
     names = list(clean)
     sql = (
-        f"INSERT INTO qa_ground_truth (chart_name, page_number, {', '.join(names)}, labels, source_file, user_id) "
-        f"VALUES (%s, %s, {', '.join(['%s'] * len(names))}, %s::jsonb, %s, %s) "
+        f"INSERT INTO qa_ground_truth (chart_name, page_number, {''.join(n + ', ' for n in names)}labels, source_file, user_id) "
+        f"VALUES (%s, %s, {''.join('%s, ' for _ in names)}%s::jsonb, %s, %s) "
         "ON CONFLICT (chart_name, page_number) DO UPDATE SET "
-        + ", ".join(f"{n} = EXCLUDED.{n}" for n in names)
-        + ", labels = qa_ground_truth.labels || EXCLUDED.labels, source_file = EXCLUDED.source_file, "
+        + "".join(f"{n} = EXCLUDED.{n}, " for n in names)
+        + "labels = qa_ground_truth.labels || EXCLUDED.labels, source_file = EXCLUDED.source_file, "
         "user_id = EXCLUDED.user_id"
     )
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
@@ -230,3 +257,32 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
                           CHART_VIEW_SOURCE, user_id))
     backend.mirror("QA ground truth", to_cosmos)
     return chart_pages(database_url, db_schema, chart_name).get(str(page_number), {})
+
+
+def all_pages(database_url: str, db_schema: str) -> dict[str, dict[str, dict[str, Any]]]:
+    """Every chart's QA ground truth, chart -> page number -> entry (as chart_pages), for the
+    Accuracy view's QA scoring (2026-11-25, user). Empty when there is none or no store."""
+    from app.services import backend
+
+    columns = list(COLUMNS.values())
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    try:
+        if backend.reads_cosmos():
+            for doc in backend.cosmos().all_qa_pages():
+                out.setdefault(str(doc["chart_name"]), {})[str(doc["page_number"])] = _entry(
+                    doc.get, doc.get("source_file"), doc.get("updated_at"), doc.get("labels"))
+            return out
+        from app.services.db import connection
+
+        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT chart_name, page_number, {', '.join(columns)}, source_file, updated_at, labels "
+                        "FROM qa_ground_truth")
+            rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001 - no QA scoring rather than an error
+        logger.info("qa_ground_truth not read: %s", exc)
+        return {}
+    for chart, page_number, *values, source_file, updated_at, labels in rows:
+        found = dict(zip(columns, values))
+        out.setdefault(str(chart), {})[str(page_number)] = _entry(found.get, source_file, updated_at, labels)
+    return out
+
