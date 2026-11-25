@@ -1149,7 +1149,7 @@ export function pageAccuracyTable(charts: ChartAccuracy[], withValues = false): 
   const header = ["Chart Name", "Page Number", "File Name",
     ...live.map((metric) => metric.label), "Overall", "Streams Matched",
     // Confidence (2026-11-19, user): the page's level and %, then each metric's.
-    "Page Confidence", "Page Confidence %",
+    "Page Confidence", "Page Confidence %", "Page Score %",
     ...CONFIDENCE_FIELDS.map(([, label]) => `Conf ${label}`), ...values];
   const rows: (string | number)[][] = [];
   for (const chart of charts) {
@@ -1167,6 +1167,8 @@ export function pageAccuracyTable(charts: ChartAccuracy[], withValues = false): 
         page.matches == null ? "" : `${page.matches} of ${OVERALL_STREAMS}`,
         page.confidence ? levelLabel(page.confidence.level) : "",
         pct1(page.confidence?.value),
+        // 2026-11-25 (user): the average of the page's metric confidences.
+        pct1(page.confidence?.score),
         // 2026-11-23 (user: the download must match the Confidence Analysis): each metric's
         // confidence as the analysis reads it (page.features, on every scored page, Blank / Junk
         // pages included), to one decimal so a page sits in the same band (94.6% is 90-95%).

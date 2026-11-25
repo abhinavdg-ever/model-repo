@@ -1120,6 +1120,10 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     // 2026-11-23 (user): per metric, its accuracy on the pages of each PAGE confidence band.
     const pageMetricBands = new Map<MetricId, LevelScore[]>();
     for (const metric of LIVE_METRICS) pageMetricBands.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
+    // 2026-11-25 (user): the same two tables by Page Score (the average of the page's metrics).
+    const scoreBands: LevelScore[] = Array.from({ length: BANDS.length }, emptyScore);
+    const scoreMetricBands = new Map<MetricId, LevelScore[]>();
+    for (const metric of LIVE_METRICS) scoreMetricBands.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
     const perFeature = new Map<string, Record<Level, number>>();
     const cross: Record<Level, LevelScore> = { high: emptyScore(), medium: emptyScore(), low: emptyScore() };
     const byMetric = new Map<MetricId, Record<Level, LevelScore>>();
@@ -1153,6 +1157,14 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
             if (verdict != null) addVerdict(pageMetricBands.get(metric.id)![bandIndex(pc.value)], verdict);
           }
           addVerdict(cross[pc.level], page.overall);
+        }
+        if (pc?.score != null) {
+          const i = bandIndex(pc.score);
+          if (page.overall) addVerdict(scoreBands[i], page.overall);
+          for (const metric of LIVE_METRICS) {
+            const verdict = page.scores[metric.id];
+            if (verdict != null) addVerdict(scoreMetricBands.get(metric.id)![i], verdict);
+          }
         }
         // Each metric on every page the accuracy scores it (2026-11-19, user): Blank / Junk
         // pages included, with that metric's own confidence.
@@ -1197,7 +1209,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const chartMean = chartValues.length ? Math.round((100 * chartValues.reduce((s, x) => s + x, 0)) / chartValues.length) : null;
-    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, chartBands, chartMean,
+    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, scoreBands, scoreMetricBands, chartBands, chartMean,
              mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles, agreement };
   }, [open, rows]);
 
@@ -1346,71 +1358,12 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                   </table>
                 </section>
 
-                <section>
-                  <h3>Pages: accuracy by page confidence band</h3>
-                  <table className="chart-details-table">
-                    <thead>
-                      <tr><th>Confidence</th><th className="num">Pages</th><th className="num">Match</th>
-                        <th className="num">No Match</th><th className="num">Accuracy</th></tr>
-                    </thead>
-                    <tbody>
-                      {BANDS.map(([label, lo], i) => {
-                        const b = data.pageBands[i];
-                        const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
-                        return (
-                          <tr key={label}>
-                            <td className={`level-text-${level}`}>{label}</td>
-                            <td className="num">{b.pages.toLocaleString()}</td>
-                            <td className="num">{b.yes.toLocaleString()}</td>
-                            <td className="num">{(b.no + b.maybe).toLocaleString()}</td>
-                            <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
-                          </tr>
-                        );
-                      })}
-                      {(() => {
-                        const t = data.pageBands.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { pages: 0, yes: 0 });
-                        return (
-                          <tr className="chart-details-total">
-                            <td>Total</td><td className="num">{t.pages.toLocaleString()}</td><td className="num">{t.yes.toLocaleString()}</td>
-                            <td className="num">{(t.pages - t.yes).toLocaleString()}</td><td className="num">{share(t.yes, t.pages)}</td>
-                          </tr>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </section>
-
-                <section>
-                  <h3>Pages: each metric's accuracy by page confidence band</h3>
-                  <table className="chart-details-table">
-                    <thead>
-                      <tr><th>Confidence</th>
-                        {LIVE_METRICS.map((m) => <th key={m.id} className="num">{m.tableLabel ?? m.label}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {BANDS.map(([label, lo], i) => {
-                        const level = lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low";
-                        return (
-                          <tr key={label}>
-                            <td className={`level-text-${level}`}>{label}</td>
-                            {LIVE_METRICS.map((m) => {
-                              const b = data.pageMetricBands.get(m.id)![i];
-                              return <td key={m.id} className="num">{b.pages ? scorePct(b) : "—"}</td>;
-                            })}
-                          </tr>
-                        );
-                      })}
-                      <tr className="chart-details-total">
-                        <td>Total</td>
-                        {LIVE_METRICS.map((m) => {
-                          const all = data.pageMetricBands.get(m.id)!.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes, maybe: acc.maybe + b.maybe, no: acc.no + b.no }), emptyScore());
-                          return <td key={m.id} className="num">{scorePct(all)}</td>;
-                        })}
-                      </tr>
-                    </tbody>
-                  </table>
-                </section>
+                <PageBandTables title="Page Confidence (basis level)"
+                  note="The page's level from how many of its metrics are High / Medium / Low. Colours everywhere follow this."
+                  bands={data.pageBands} metricBands={data.pageMetricBands} />
+                <PageBandTables title="Page Score (basis average)"
+                  note="The plain average of the page's metric confidences. A number only: no colour or level comes from it."
+                  bands={data.scoreBands} metricBands={data.scoreMetricBands} />
                 </>
                 )}
               </div>
@@ -1418,6 +1371,76 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
             document.body,
           )
         : null}
+    </>
+  );
+}
+
+/** Pages by a page measure's band: Match = every metric matching, then each metric's accuracy
+ * (2026-11-25, user: Page Confidence by level and Page Score by average, side by side). */
+function PageBandTables({ title, note, bands, metricBands }: {
+  title: string; note: string; bands: LevelScore[]; metricBands: Map<MetricId, LevelScore[]>;
+}) {
+  const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
+  const levelOf = (lo: number) => (lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low");
+  const t = bands.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { pages: 0, yes: 0 });
+  return (
+    <>
+      <section>
+        <h3>{title}: accuracy by band</h3>
+        <p className="chart-details-note">{note} Match = every metric on the page matches.</p>
+        <table className="chart-details-table">
+          <thead>
+            <tr><th>Band</th><th className="num">Pages</th><th className="num">Match</th>
+              <th className="num">No Match</th><th className="num">Accuracy</th></tr>
+          </thead>
+          <tbody>
+            {BANDS.map(([label, lo], i) => {
+              const b = bands[i];
+              return (
+                <tr key={label}>
+                  <td className={`level-text-${levelOf(lo)}`}>{label}</td>
+                  <td className="num">{b.pages.toLocaleString()}</td>
+                  <td className="num">{b.yes.toLocaleString()}</td>
+                  <td className="num">{(b.no + b.maybe).toLocaleString()}</td>
+                  <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
+                </tr>
+              );
+            })}
+            <tr className="chart-details-total">
+              <td>Total</td><td className="num">{t.pages.toLocaleString()}</td><td className="num">{t.yes.toLocaleString()}</td>
+              <td className="num">{(t.pages - t.yes).toLocaleString()}</td><td className="num">{share(t.yes, t.pages)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>{title}: each metric's accuracy by band</h3>
+        <table className="chart-details-table">
+          <thead>
+            <tr><th>Band</th>
+              {LIVE_METRICS.map((m) => <th key={m.id} className="num">{m.tableLabel ?? m.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {BANDS.map(([label, lo], i) => (
+              <tr key={label}>
+                <td className={`level-text-${levelOf(lo)}`}>{label}</td>
+                {LIVE_METRICS.map((m) => {
+                  const b = metricBands.get(m.id)![i];
+                  return <td key={m.id} className="num">{b.pages ? scorePct(b) : "—"}</td>;
+                })}
+              </tr>
+            ))}
+            <tr className="chart-details-total">
+              <td>Total</td>
+              {LIVE_METRICS.map((m) => {
+                const all = metricBands.get(m.id)!.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes, maybe: acc.maybe + b.maybe, no: acc.no + b.no }), emptyScore());
+                return <td key={m.id} className="num">{scorePct(all)}</td>;
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </>
   );
 }

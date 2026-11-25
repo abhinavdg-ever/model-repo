@@ -35,3 +35,14 @@ def test_history_twin_applies_the_curve():
     assert page_level(conf, False)[0] == "high"
     calibrated = page_level(conf, False, calibration={"page_type": [[0.5, 0.3], [0.99, 0.6]]})
     assert calibrated[1] < page_level(conf, False)[1]
+
+
+def test_a_discharge_summary_codability_is_low_at_most():
+    """2026-11-25 (user): codability on a Discharge Summary page reads Low, whatever the model."""
+    from app.services import chart_confidence as cc
+
+    conf = {"codability": 0.97, "page_type": 0.97}
+    ds = cc.page_level(conf, False, None, "Discharge Summary (Inpatient)")
+    pn = cc.page_level(conf, False, None, "Progress Note")
+    assert cc.is_discharge_summary("Discharge Summary (Inpatient)")
+    assert ds[1] < pn[1]  # one Low field now: the level score drops

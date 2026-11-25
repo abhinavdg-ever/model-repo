@@ -88,6 +88,9 @@ export type PageConfidence = {
   value: number | null;
   /** (High fields - Low fields) / fields, -1..+1 (2026-11-22). */
   nps?: number | null;
+  /** Page Score (2026-11-25, user): the plain average of the same fields' confidences. A number
+   * beside the level only: colours and levels stay the level's. */
+  score: number | null;
   counts: Record<Level, number>;
   fields: FieldConfidence[];
 };
@@ -160,9 +163,19 @@ export function fitKnots(points: [number, number][], binPages = 25, minPages = 3
   return knots;
 }
 
+/** A Discharge Summary page's Codability is Low at most (2026-11-25, user): it always gets a look. */
+export const DISCHARGE_CODABILITY_CAP = 0.49;
+export function isDischargeSummary(pageType: string | null | undefined): boolean {
+  return (pageType ?? "").split(" (")[0].trim().toLowerCase() === "discharge summary";
+}
+
 function fieldValue(page: ImagingPageResult, key: string): number | null {
-  const value = rawFieldValue(page, key);
-  return value == null || !calibration[key] ? value : applyKnots(calibration[key], value);
+  const raw = rawFieldValue(page, key);
+  const value = raw == null || !calibration[key] ? raw : applyKnots(calibration[key], raw);
+  if (value != null && key === "codability" && isDischargeSummary(page.finalPageType)) {
+    return Math.min(value, DISCHARGE_CODABILITY_CAP);
+  }
+  return value;
 }
 
 /** A feature's confidence as the pipeline stored it (no calibration): what a refit measures. */
@@ -229,10 +242,11 @@ export function pageConfidence(page: ImagingPageResult): PageConfidence {
   }
   const counts: Record<Level, number> = { high: 0, medium: 0, low: 0 };
   for (const f of fields) counts[f.level] += 1;
-  if (!fields.length) return { level: null, value: null, nps: null, counts, fields };
+  if (!fields.length) return { level: null, value: null, nps: null, score: null, counts, fields };
   // 2026-11-22 (user): like an NPS over the page's fields, as the chart over its pages.
-  const score = npsScore(counts)!;
-  return { level: score.level, value: score.value, nps: score.nps, counts, fields };
+  const nps = npsScore(counts)!;
+  const score = round4(fields.reduce((sum, f) => sum + f.value, 0) / fields.length);
+  return { level: nps.level, value: nps.value, nps: nps.nps, score, counts, fields };
 }
 
 /** Final page types (their family) whose Low page makes the whole chart Low and which count twice in

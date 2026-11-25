@@ -74,6 +74,13 @@ def is_critical(page_type: Any) -> bool:
     return family in {t.casefold() for t in CRITICAL_PAGE_TYPES}
 
 
+DISCHARGE_CODABILITY_CAP = 0.49
+
+
+def is_discharge_summary(page_type: Any) -> bool:
+    return str(page_type or "").split(" (")[0].strip().lower() == "discharge summary"
+
+
 def page_level(confidences: Any, blank_junk_or_duplicate: bool,
                measured: Any = None, page_type: Any = None,
                calibration: Optional[dict[str, Any]] = None) -> Optional[tuple[str, float, bool]]:
@@ -105,6 +112,9 @@ def page_level(confidences: Any, blank_junk_or_duplicate: bool,
                 from app.services.confidence_calibration import apply
 
                 values[key] = apply(calibration[key], values[key])
+            if key == "codability" and is_discharge_summary(page_type):
+                # 2026-11-25 (user): a Discharge Summary's Codability is Low at most, as the frontend.
+                values[key] = min(values[key], DISCHARGE_CODABILITY_CAP)
     if not values:
         return None
     counts = {"high": 0, "medium": 0, "low": 0}

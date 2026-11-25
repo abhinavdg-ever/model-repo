@@ -122,6 +122,14 @@ Low as in section 1.
 **Page:** score = (High features - Low features) / features (like an NPS: Medium counts 0); the page's
 % = (1 + score) / 2, at least 20%, and its level is that % banded like any confidence.
 
+**Page Score** (2026-11-25, user): the plain average of the same features' confidences. It is shown
+beside the Page Confidence (Page Details, the page download's "Page Score %", its own tables in the
+Confidence Analysis Overview) and never sets a level or a colour: those stay the Page Confidence's.
+
+**Discharge Summary** (2026-11-25, user): on a page whose Final page type is a Discharge Summary,
+Codability reads at most 49% (Low), after any calibration, so such a page is never High on
+Codability. Applied when read (frontend and the History twin); the stored value is unchanged.
+
 **Chart** (2026-11-23, user):
 
 1. **Score** = the pages' levels averaged with weights **High 1.0, Medium 0.6, Low 0**. A **critical

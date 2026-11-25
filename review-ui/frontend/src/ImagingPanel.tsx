@@ -3373,6 +3373,11 @@ function PageConfidenceStrip({ page }: { page: ImagingPageResult }) {
         <strong>Page Confidence:</strong> {levelLabel(pc.level)}
         {pc.value != null ? ` (${Math.round(pc.value * 100)}%)` : ""}
       </span>
+      {pc.score != null ? (
+        <span>
+          <strong>Page Score:</strong> {Math.round(pc.score * 100)}%
+        </span>
+      ) : null}
       <span>
         <strong>Fields:</strong> High {pc.counts.high} · Medium {pc.counts.medium} · Low {pc.counts.low}
       </span>
