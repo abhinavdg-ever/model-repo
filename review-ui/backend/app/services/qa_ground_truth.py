@@ -4,7 +4,9 @@ winning. History shows which charts have it (to the testing user).
 
 The rows are read with Manual Review's own header rules (a page_ground_truth-format sheet is
 converted first, as the comparison reads it), so the columns hold what the comparison compared.
-``labels`` keeps the whole row as read. Postgres only: on DB_BACKEND=cosmos nothing is stored.
+``labels`` keeps the whole row as read. DB_BACKEND=cosmos (2026-11-25): the same rows as "qa-<n>"
+documents in the ground_truth container (store/cosmos/review.py); under both, Postgres, then a
+copy in Cosmos.
 """
 
 from __future__ import annotations
@@ -90,6 +92,17 @@ def upsert(database_url: str, db_schema: str, rows: list[dict[str, Any]],
     """Upsert ``rows`` (rows_from_sheet); returns how many were written."""
     if not rows:
         return 0
+    from app.services import backend
+
+    def to_cosmos(store: Any) -> None:
+        for row in rows:
+            values = {column: row.get(column) for column in COLUMNS.values()}
+            store.save_qa_page(row["chart_name"], row["page_number"], values, row["labels"],
+                               source_file, user_id, replace=True)
+
+    if backend.reads_cosmos():
+        to_cosmos(backend.cosmos())
+        return len(rows)
     from app.services.db import connection
 
     params = [
@@ -98,6 +111,7 @@ def upsert(database_url: str, db_schema: str, rows: list[dict[str, Any]],
     ]
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.executemany(_UPSERT, params)
+    backend.mirror("QA ground truth", to_cosmos)
     return len(params)
 
 
@@ -114,6 +128,14 @@ def store_sheet(database_url: str, db_schema: str, data: bytes, filename: str,
 
 def charts_with_qa(database_url: str, db_schema: str) -> set[str]:
     """Chart names with any qa_ground_truth row; empty when the table is missing or unreadable."""
+    from app.services import backend
+
+    if backend.reads_cosmos():
+        try:
+            return backend.cosmos().charts_with_qa()
+        except Exception as exc:  # noqa: BLE001 - History shows No rather than failing
+            logger.info("QA ground truth not read from Cosmos: %s", exc)
+            return set()
     from app.services.db import connection
 
     try:
@@ -129,9 +151,19 @@ def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str,
     """One chart's QA ground truth, page number (as text) -> {column: value, source_file,
     updated_at}, for the chart view's QA Ground Truth column (2026-11-25, user). Empty when the
     chart has none or the table is missing."""
-    from app.services.db import connection
+    from app.services import backend
 
     columns = list(COLUMNS.values())
+    if backend.reads_cosmos():
+        try:
+            docs = backend.cosmos().qa_pages(chart_name)
+        except Exception as exc:  # noqa: BLE001 - no QA column rather than an error
+            logger.info("QA ground truth not read from Cosmos for a chart: %s", exc)
+            return {}
+        return {str(doc["page_number"]): _entry(doc.get, doc.get("source_file"), doc.get("updated_at"))
+                for doc in docs}
+    from app.services.db import connection
+
     try:
         with connection(database_url, db_schema) as conn, conn.cursor() as cur:
             cur.execute(
@@ -145,11 +177,17 @@ def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str,
         return {}
     out: dict[str, dict[str, Any]] = {}
     for page_number, *values, source_file, updated_at in rows:
-        entry = {column: value for column, value in zip(columns, values) if value not in (None, "")}
-        entry["source_file"] = source_file
-        entry["updated_at"] = updated_at.isoformat() if updated_at else None
-        out[str(page_number)] = entry
+        found = dict(zip(columns, values))
+        out[str(page_number)] = _entry(found.get, source_file, updated_at)
     return out
+
+
+def _entry(get: Any, source_file: Any, updated_at: Any) -> dict[str, Any]:
+    """A page's QA values (non-empty only), its source file and when it was last written."""
+    entry = {column: get(column) for column in COLUMNS.values() if get(column) not in (None, "")}
+    entry["source_file"] = source_file
+    entry["updated_at"] = updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at
+    return entry
 
 
 # The source_file of a page edited in the chart view rather than loaded from a QA file.
@@ -161,7 +199,7 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
     """The testing user's QA entry for one page (2026-11-25, user): the given qa_ground_truth
     columns set (an empty value clears it), the others kept; labels gain the same values under
     their Manual Review names. Returns the page as chart_pages gives it."""
-    from app.services.db import connection
+    from app.services import backend
 
     by_column = {column: field for field, column in COLUMNS.items()}
     clean = {column: (_cell(value) if value is not None else None)
@@ -169,6 +207,15 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
     if not clean:
         raise ValueError("no QA ground truth field to save")
     labels = {by_column[column]: value for column, value in clean.items() if value is not None}
+
+    def to_cosmos(store: Any) -> None:
+        store.save_qa_page(chart_name, page_number, clean, labels, CHART_VIEW_SOURCE, user_id, replace=False)
+
+    if backend.reads_cosmos():
+        to_cosmos(backend.cosmos())
+        return chart_pages(database_url, db_schema, chart_name).get(str(page_number), {})
+    from app.services.db import connection
+
     names = list(clean)
     sql = (
         f"INSERT INTO qa_ground_truth (chart_name, page_number, {', '.join(names)}, labels, source_file, user_id) "
@@ -181,4 +228,5 @@ def save_page(database_url: str, db_schema: str, chart_name: str, page_number: i
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute(sql, (chart_name, page_number, *[clean[n] for n in names], json.dumps(labels),
                           CHART_VIEW_SOURCE, user_id))
+    backend.mirror("QA ground truth", to_cosmos)
     return chart_pages(database_url, db_schema, chart_name).get(str(page_number), {})

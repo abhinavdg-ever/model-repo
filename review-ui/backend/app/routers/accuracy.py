@@ -41,10 +41,12 @@ def get_accuracy(
 
 
 def _calibration(settings: Settings, fresh: bool = False) -> dict:
-    """The Page Type / Codability confidence curves; {} without Postgres (raw values)."""
+    """The Page Type / Codability confidence curves; {} without a store (raw values). Postgres, or
+    Cosmos on DB_BACKEND=cosmos (2026-11-25)."""
     from app.services import confidence_calibration
+    from app.services.backend import store_usable
 
-    if not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return {}
     return confidence_calibration.load(settings.database_url, settings.db_schema, fresh=fresh)
 
@@ -72,8 +74,6 @@ def put_calibration(body: CalibrationRequest, user=Depends(current_user),
     from app.services.accuracy_cache import clear_report_cache
 
     admin = _admin_with_db(user, settings, "calibrate confidence", "Calibration is kept")
-    if not database_url_usable(settings.database_url):
-        raise HTTPException(status_code=501, detail="Calibration is kept in Postgres")
     try:
         table = confidence_calibration.save(settings.database_url, settings.db_schema,
                                             {k: v.model_dump() for k, v in body.features.items()}, admin.id)

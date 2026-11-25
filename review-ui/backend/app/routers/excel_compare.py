@@ -64,7 +64,7 @@ class _PipelineCharts:
 
             self._calibration = (
                 confidence_calibration.load(self._settings.database_url, self._settings.db_schema)
-                if self._use_db else {}
+                if self._use_db or self._cosmos else {}
             )
         return self._calibration
 
@@ -251,8 +251,8 @@ def _source_label(label: str, upload: UploadFile | None, source: str) -> str:
 
 
 def _store_qa(settings: Settings, qa: tuple[bytes, str], filename: str | None, user: SignedInUser | None) -> None:
-    """2026-11-25 (user): upsert the QA file's rows into qa_ground_truth (Postgres only)."""
-    if backend.reads_cosmos() or not database_url_usable(settings.database_url):
+    """2026-11-25 (user): upsert the QA file's rows into qa_ground_truth (Cosmos on DB_BACKEND=cosmos)."""
+    if not backend.store_usable(settings, database_url_usable):
         return
     written = qa_ground_truth.store_sheet(
         settings.database_url, settings.db_schema, *qa, source_file=filename,

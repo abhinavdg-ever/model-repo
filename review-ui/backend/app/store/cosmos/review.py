@@ -16,6 +16,13 @@ Documents, all in database ``COSMOS_DATABASE``:
                  review_entries: [{action, fields, user_id, created_at}]}
                 The chart-level review tables, keyed by chart name as in Postgres, so they
                 survive a chart delete with the page ground truth.
+                {id: "qa-<n>", chart_name, page_number, <qa_ground_truth columns>, labels,
+                 source_file, user_id, created_at, updated_at}  (2026-11-25: QA ground truth,
+                 the qa_ground_truth table; never a "page-" doc, so client ground truth
+                 queries never read it)
+  metrics       {id: "<feature>", period: "confidence_calibration", feature, knots, pages,
+                 user_id, created_at, updated_at}  (2026-11-25: the confidence_calibration
+                 table; the "summary" partition holds the chart summaries)
   users         {id: "<users.id>", username, name, role, password_hash, is_active,
                  last_login_at, last_login_ip, last_login_user_agent, login_count,
                  created_at, updated_at, logins: [{ip_address, user_agent, created_at}]}
@@ -54,6 +61,8 @@ from app.store.cosmos.repository import CosmosFolderRepository, _TRUTH_COLUMNS, 
 logger = logging.getLogger("review_ui.cosmos.review")
 
 CHART_DOC = "chart"
+# metrics partition of the Page Type / Codability confidence curves (2026-11-25).
+CALIBRATION_PERIOD = "confidence_calibration"
 META = "_meta"
 SERVICE = "_service"
 MAX_LOGINS = 50
@@ -598,6 +607,61 @@ class CosmosReviewStore:
             users.sort(key=lambda u: str(u["name"]))
         items.sort(key=lambda item: item.at, reverse=True)
         return ReviewLogResponse(items=items[offset: offset + limit], total=len(items), users=users)
+
+    # -- confidence calibration (metrics, partition "confidence_calibration") ---
+
+    def calibration_rows(self) -> list[tuple[str, Any]]:
+        """(feature, knots) as SELECT feature, knots FROM confidence_calibration."""
+        docs = self.query("metrics", "SELECT c.feature, c.knots FROM c", CALIBRATION_PERIOD)
+        return [(str(d.get("feature") or ""), d.get("knots")) for d in docs if d.get("feature")]
+
+    def save_calibration(self, feature: str, knots: list | None, pages: int, user_id: int | None) -> None:
+        """One feature's curve; no ``knots`` deletes it (raw values again)."""
+        if not knots:
+            try:
+                self.c("metrics").delete_item(feature, partition_key=CALIBRATION_PERIOD)
+            except Exception as exc:
+                if _status(exc) != 404:
+                    raise
+            return
+
+        def change(doc: dict[str, Any] | None) -> dict[str, Any]:
+            now = _now()
+            doc = doc or {"id": feature, "period": CALIBRATION_PERIOD, "feature": feature, "created_at": now}
+            doc.update({"knots": knots, "pages": int(pages), "user_id": user_id, "updated_at": now})
+            return doc
+
+        self.modify("metrics", feature, CALIBRATION_PERIOD, change)
+
+    # -- QA ground truth (ground_truth, "qa-<n>" docs) -----------------------
+
+    def qa_pages(self, chart: str) -> list[dict[str, Any]]:
+        return [d for d in self.query("ground_truth", "SELECT * FROM c WHERE STARTSWITH(c.id, 'qa-')", chart)
+                if d.get("page_number") is not None]
+
+    def charts_with_qa(self) -> set[str]:
+        names = self.query_all("ground_truth", "SELECT DISTINCT VALUE c.chart_name FROM c WHERE STARTSWITH(c.id, 'qa-')")
+        return {str(n) for n in names if n}
+
+    def save_qa_page(self, chart: str, page_number: int, values: dict[str, Any], labels: dict[str, Any],
+                     source_file: str | None, user_id: int | None, *, replace: bool) -> dict[str, Any] | None:
+        """``replace``: a QA file's row (its columns and labels replace the page's, as the
+        Postgres upsert); else a chart-view edit (only these columns set, labels merged)."""
+        doc_id = f"qa-{int(page_number)}"
+
+        def change(doc: dict[str, Any] | None) -> dict[str, Any]:
+            now = _now()
+            fresh = {"id": doc_id, "chart_name": chart, "page_number": int(page_number), "created_at": now}
+            doc = fresh if doc is None else doc
+            if replace:
+                doc = {**fresh, "created_at": doc.get("created_at", now), **values, "labels": dict(labels)}
+            else:
+                doc.update(values)
+                doc["labels"] = {**(doc.get("labels") or {}), **labels}
+            doc.update({"source_file": source_file, "user_id": user_id, "updated_at": now})
+            return doc
+
+        return self.modify("ground_truth", doc_id, chart, change)
 
     # -- landing list -------------------------------------------------------
 

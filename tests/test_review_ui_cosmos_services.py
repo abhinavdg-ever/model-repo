@@ -113,6 +113,9 @@ class Fake:
             return [d for d in docs if d.get("type") == "job"]
         if "LOWER(c.username) = @u" in q:
             return [d for d in docs if str(d.get("username") or "").lower() == p["@u"]]
+        if "STARTSWITH(c.id, 'qa-')" in q:
+            rows = [d for d in docs if str(d["id"]).startswith("qa-")]
+            return list(dict.fromkeys(d["chart_name"] for d in rows)) if "DISTINCT VALUE" in q else rows
         if "DISTINCT VALUE c.chart_name" in q:
             rows = [d for d in docs if str(d["id"]).startswith("page-")]
             if "@empty" in p:
@@ -798,3 +801,73 @@ def test_several_provider_values_are_a_json_array_on_cosmos():
     doc = to_doc({"provider_credentials": "MD, NP", "rendering_provider": "Dr A, Dr B", "member_name": "Yes"})
     assert doc == {"provider_credentials": ["MD", "NP"], "rendering_provider": ["Dr A", "Dr B"], "member_name": "Yes"}
     assert from_doc(doc)["provider_credentials"] == "MD, NP"
+
+
+# ---------------------------------------------------------------------------
+# 2026-11-25 (user: Cosmos only on AKS): calibration and QA ground truth on Cosmos
+# ---------------------------------------------------------------------------
+
+KNOTS = [[0.2, 0.3], [0.6, 0.55], [0.9, 0.92]]
+
+
+def test_calibration_is_kept_in_cosmos(cosmos, containers):
+    from app.services import confidence_calibration as cal
+
+    cal._cache.clear()
+    table = cal.save("", "public", {"page_type": {"knots": KNOTS, "pages": 120}}, user_id=3)
+    assert table == {"page_type": KNOTS}
+    doc = containers["metrics"].read_item("page_type", partition_key="confidence_calibration")
+    assert (doc["feature"], doc["pages"], doc["user_id"]) == ("page_type", 120, 3)
+    cal._cache.clear()
+    assert cal.load("", "public") == {"page_type": KNOTS}
+    # Empty knots clear the curve (raw confidence again).
+    assert cal.save("", "public", {"page_type": {"knots": [], "pages": 0}}, user_id=3) == {}
+    assert not [k for k in containers["metrics"].items if k[0] == "confidence_calibration"]
+    with pytest.raises(ValueError):
+        cal.save("", "public", {"page_type": {"knots": KNOTS, "pages": 5}}, user_id=3)
+
+
+def test_calibration_route_works_without_postgres(cosmos, monkeypatch):
+    """GET /accuracy/calibration answers from Cosmos: no DATABASE_URL needed."""
+    from app.core.config import get_settings
+    from app.routers import accuracy
+    from app.services import confidence_calibration as cal
+
+    monkeypatch.setattr(backend, "store_usable", lambda settings, check=None: True)
+    cal._cache.clear()
+    cal.save("", "public", {"codability": {"knots": KNOTS, "pages": 40}}, user_id=None)
+    assert accuracy._calibration(get_settings(), fresh=True) == {"codability": KNOTS}
+
+
+def test_qa_ground_truth_is_kept_in_cosmos(cosmos, containers):
+    from app.services import qa_ground_truth as qa
+
+    sheet = (b"PDF ID,Page Number,Page Type,Codable / Non-Codable,DOS From\n"
+             b"c1,1,Progress Note,Codable,03/15/2024\nc1,2,Lab Report,Non-Codable,\n")
+    assert qa.store_sheet("", "public", sheet, "qa.csv", "qa.csv", user_id=7) == 2
+    pages = qa.chart_pages("", "public", "c1")
+    assert pages["1"]["page_type"] == "Progress Note" and pages["1"]["dos_from"] == "03/15/2024"
+    assert pages["1"]["source_file"] == "qa.csv" and "dos_from" not in pages["2"]
+    assert qa.charts_with_qa("", "public") == {"c1"}
+
+    # A chart-view edit sets only its fields and merges the labels.
+    saved = qa.save_page("", "public", "c1", 1, {"page_type": "Lab Report", "dos_from": ""}, user_id=7)
+    assert saved["page_type"] == "Lab Report" and "dos_from" not in saved
+    assert saved["codeable"] == "Codable" and saved["source_file"] == qa.CHART_VIEW_SOURCE
+    doc = containers["ground_truth"].read_item("qa-1", partition_key="c1")
+    assert doc["labels"]["Page Type"] == "Lab Report" and doc["labels"]["Codable / Non-Codable"] == "Codable"
+
+    # A later QA file replaces the page (its row wins), as the Postgres upsert.
+    qa.store_sheet("", "public", b"PDF ID,Page Number,Page Type\nc1,1,Radiology Report\n", "qa2.csv", "qa2.csv", 7)
+    again = qa.chart_pages("", "public", "c1")["1"]
+    assert again["page_type"] == "Radiology Report" and "codeable" not in again
+
+
+def test_qa_docs_are_never_client_ground_truth(cosmos, containers, store):
+    from app.services import qa_ground_truth as qa
+
+    qa.store_sheet("", "public", b"PDF ID,Page Number,Page Type\nc9,1,Progress Note\n", "qa.csv", "qa.csv", 1)
+    assert store.charts_with_ground_truth() == set()
+    assert store.truth_docs("c9") == []
+    assert store.ground_truth_charts() == []
+

@@ -192,12 +192,11 @@ def folders_confidence(
 @router.get("/folders/{folder_id}/qa-ground-truth")
 def folder_qa_ground_truth(folder_id: str, settings: Settings = Depends(get_settings)) -> dict:
     """The chart's QA ground truth by page (qa_ground_truth, loaded through Manual Review), for
-    the chart view's QA Ground Truth column (2026-11-25, user). {"pages": {}} when there is none,
-    on Cosmos, or without a database."""
+    the chart view's QA Ground Truth column (2026-11-25, user). {"pages": {}} when there is none
+    or no store is configured (Postgres, or Cosmos on DB_BACKEND=cosmos)."""
     from app.services import qa_ground_truth
-    from app.services.backend import reads_cosmos
 
-    if reads_cosmos() or not database_url_usable(settings.database_url):
+    if not store_usable(settings, database_url_usable):
         return {"pages": {}}
     return {"pages": qa_ground_truth.chart_pages(settings.database_url, settings.db_schema, folder_id)}
 
@@ -213,14 +212,13 @@ def save_folder_qa_ground_truth(
     """The testing user's QA ground truth for one page, entered in the chart view (2026-11-25,
     user). Body {"values": {qa_ground_truth column: value}}; the testing user or an admin only."""
     from app.services import qa_ground_truth
-    from app.services.backend import reads_cosmos
 
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save QA ground truth")
     if user.username.strip().lower() != qa_ground_truth.QA_USER and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only the testing user can enter QA ground truth")
-    if reads_cosmos() or not database_url_usable(settings.database_url):
-        raise HTTPException(status_code=503, detail="QA ground truth is kept in Postgres, which is not configured")
+    if not store_usable(settings, database_url_usable):
+        raise HTTPException(status_code=503, detail="No database is configured for QA ground truth")
     values = body.get("values") if isinstance(body, dict) else None
     if not isinstance(values, dict):
         raise HTTPException(status_code=400, detail='Body must be {"values": {...}}')

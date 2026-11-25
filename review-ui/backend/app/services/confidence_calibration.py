@@ -7,7 +7,8 @@ them, flat beyond the ends. A page then reads as sure as pages like it were righ
 is never less accurate than a lower one, and High (80%+) is given only where 80%+ were right.
 
 The Confidence Analysis fits the curves (the frontend scores Page Type and Codability; an admin
-saves them) and stores them in ``confidence_calibration``; the frontend (confidenceLevel.ts) and the
+saves them) and stores them in ``confidence_calibration`` (on Cosmos, 2026-11-25: the metrics
+container's "confidence_calibration" partition); the frontend (confidenceLevel.ts) and the
 History twin (chart_confidence.py) apply them on read. The pipeline's stored raw values never
 change, so a refit always measures raw scores.
 """
@@ -73,19 +74,26 @@ def _rows_to_table(rows: list[tuple]) -> dict[str, list[list[float]]]:
 
 
 def load(database_url: str, db_schema: str, fresh: bool = False) -> dict[str, list[list[float]]]:
-    """feature -> knots, reused for a minute. {} when the table is missing or unreadable."""
-    key = (database_url, db_schema)
+    """feature -> knots, reused for a minute. {} when the table is missing or unreadable.
+    DB_BACKEND=cosmos: from Cosmos (database_url is not used)."""
+    from app.services import backend
+
+    on_cosmos = backend.reads_cosmos()
+    key = ("cosmos", "") if on_cosmos else (database_url, db_schema)
     now = time.monotonic()
     with _lock:
         hit = _cache.get(key)
         if hit and not fresh and now - hit[0] < TTL_SEC:
             return hit[1]
     try:
-        from app.services.db import connection
+        if on_cosmos:
+            table = _rows_to_table(backend.cosmos().calibration_rows())
+        else:
+            from app.services.db import connection
 
-        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
-            cur.execute("SELECT feature, knots FROM confidence_calibration")
-            table = _rows_to_table(cur.fetchall())
+            with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+                cur.execute("SELECT feature, knots FROM confidence_calibration")
+                table = _rows_to_table(cur.fetchall())
     except Exception as exc:  # noqa: BLE001 - no calibration is the raw values, never an error
         logger.info("confidence calibration not read: %s", exc)
         table = {}
@@ -96,23 +104,41 @@ def load(database_url: str, db_schema: str, fresh: bool = False) -> dict[str, li
 
 def save(database_url: str, db_schema: str, features: dict[str, Any], user_id: Optional[int]) -> dict[str, Any]:
     """Store each feature's curve ({"knots", "pages"}); an empty ``knots`` removes that feature's
-    curve (raw values again). Returns the table now in force."""
+    curve (raw values again). Returns the table now in force. Cosmos (DB_BACKEND=cosmos) or
+    Postgres, copied to Cosmos under both."""
+    from app.services import backend
+
+    curves: dict[str, tuple[Optional[list[list[float]]], int]] = {}
+    for feature, entry in features.items():
+        if feature not in FEATURES:
+            raise ValueError(f"unknown feature {feature!r}; calibrated: {', '.join(FEATURES)}")
+        knots = (entry or {}).get("knots")
+        if not knots:
+            curves[feature] = (None, 0)
+            continue
+        good = valid_knots(knots)
+        pages = int((entry or {}).get("pages") or 0)
+        if good is None:
+            raise ValueError(f"{feature}: knots must rise, each [raw, accuracy] in 0-1, at least two")
+        if pages < MIN_PAGES:
+            raise ValueError(f"{feature}: fitted on {pages} pages; at least {MIN_PAGES} are needed")
+        curves[feature] = (good, pages)
+
+    def to_cosmos(store: Any) -> None:
+        for feature, (good, pages) in curves.items():
+            store.save_calibration(feature, good, pages, user_id)
+
+    if backend.reads_cosmos():
+        to_cosmos(backend.cosmos())
+        return load(database_url, db_schema, fresh=True)
+
     from app.services.db import connection
 
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
-        for feature, entry in features.items():
-            if feature not in FEATURES:
-                raise ValueError(f"unknown feature {feature!r}; calibrated: {', '.join(FEATURES)}")
-            knots = (entry or {}).get("knots")
-            if not knots:
+        for feature, (good, pages) in curves.items():
+            if good is None:
                 cur.execute("DELETE FROM confidence_calibration WHERE feature = %s", (feature,))
                 continue
-            good = valid_knots(knots)
-            pages = int((entry or {}).get("pages") or 0)
-            if good is None:
-                raise ValueError(f"{feature}: knots must rise, each [raw, accuracy] in 0-1, at least two")
-            if pages < MIN_PAGES:
-                raise ValueError(f"{feature}: fitted on {pages} pages; at least {MIN_PAGES} are needed")
             cur.execute(
                 """INSERT INTO confidence_calibration (feature, knots, pages, user_id)
                    VALUES (%s, %s::jsonb, %s, %s)
@@ -120,4 +146,5 @@ def save(database_url: str, db_schema: str, features: dict[str, Any], user_id: O
                        user_id = EXCLUDED.user_id, updated_at = now()""",
                 (feature, json.dumps(good), pages, user_id),
             )
+    backend.mirror("confidence calibration", to_cosmos)
     return load(database_url, db_schema, fresh=True)

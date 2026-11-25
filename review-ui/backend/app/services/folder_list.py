@@ -576,6 +576,9 @@ def _cosmos_folder_list(params: FolderListParams, metadata_dir: Path | None) -> 
         logger.warning("Cosmos chart list failed: %s", exc)
         rows = []
     have = charts_with_ground_truth(None)
+    from app.services.qa_ground_truth import charts_with_qa
+
+    have_qa = charts_with_qa("", "public")
     try:
         reviewed = reviewed_charts(None)
     except Exception as exc:
@@ -589,6 +592,7 @@ def _cosmos_folder_list(params: FolderListParams, metadata_dir: Path | None) -> 
     rows = [
         row.model_copy(update={
             "ground_truth_available": row.name in have,
+            "qa_ground_truth_available": row.name in have_qa,
             "on_disk": False,
             **_review_fields(reviewed.get(row.name)),
             **({"tags": tags[row.name]} if row.name in tags else {}),

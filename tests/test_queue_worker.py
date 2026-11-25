@@ -616,3 +616,21 @@ def test_a_normal_worker_never_reads_the_large_queue(monkeypatch):
     monkeypatch.setattr(config, "SERVICEBUS_QUEUE", "chart-runs-large")
     monkeypatch.setattr(config, "SERVICEBUS_QUEUE_SPARE", "chart-runs")
     assert queue_worker.queues_to_read() == ["chart-runs-large", "chart-runs"]
+
+
+def test_ready_works_on_cosmos_only(monkeypatch):
+    """2026-11-25 (AKS, Cosmos only): /ready pings Cosmos and lists the stages from the Cosmos
+    store's own seed (no pipeline_stage table, no SQL), so it can be the readiness probe."""
+    import apps.orchestrator_api.main as main
+    from common import config
+    from common.db import cosmos_store
+
+    class Charts:
+        def read(self):
+            return {"id": "charts"}
+
+    store = cosmos_store.CosmosStore({"charts": Charts()})
+    monkeypatch.setattr(main, "DB_BACKEND_ACTIVE", "cosmos")
+    monkeypatch.setattr(config, "DB_BACKEND_ACTIVE", "cosmos")
+    monkeypatch.setattr(cosmos_store, "get_cosmos_store", lambda: store)
+    assert main.ready() == {"status": "ready", "stages": 15}

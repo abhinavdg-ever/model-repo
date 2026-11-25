@@ -23,7 +23,7 @@ can colour the thumbnails by Page Confidence or by any one metric (e.g. Orientat
 (Medium 0.50 to under 0.75, Low under 0.50).
 
 **Calibration** (2026-11-24, user; review-ui): an admin can fit Page Type and Codability to their measured
-accuracy from the profile menu on the Accuracy view ("Calibrate Confidence" Off / On, admins; On fits on the charts listed, Off back to raw; refit: Off, then On); the curves (`confidence_calibration`) are applied
+accuracy from the profile menu on the Accuracy view ("Calibrate Confidence" Off / On, admins; On fits on the charts listed, Off back to raw; refit: Off, then On); the curves (`confidence_calibration`; on Cosmos the `metrics` container, partition `confidence_calibration`) are applied
 on read, so the stored values stay the pipeline's. The Codability tab's **i** (Agreement) shows Page Type / Codability accuracy per
 tier A-E. The Overview's band tables count pages by streams matched (0/7 .. 7/7) before Match / No Match.
 

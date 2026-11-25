@@ -186,8 +186,13 @@ def for_charts_postgres(database_url: str, db_schema: str, names: list[str]) -> 
 
 
 def for_charts_cosmos(names: list[str]) -> dict[str, dict[str, Any]]:
-    from app.services import backend
+    from app.core.config import get_settings
+    from app.services import backend, confidence_calibration
     from app.store.cosmos import summaries
+
+    # The Page Type / Codability curves, as the Postgres twin applies them (2026-11-25).
+    settings = get_settings()
+    calibration = confidence_calibration.load(settings.database_url, settings.db_schema)
 
     found = summaries.current(backend.cosmos(), names)
     out: dict[str, dict[str, Any]] = {}
@@ -200,7 +205,7 @@ def for_charts_cosmos(names: list[str]) -> dict[str, dict[str, Any]]:
         out[name] = chart_level(
             page_level(page.finalConfidences or {},
                        page.isDuplicate is True or str(page.blankOrJunk or "").strip().lower().startswith("yes"),
-                       page.measuredConfidences or {}, page.finalPageType)
+                       page.measuredConfidences or {}, page.finalPageType, calibration)
             for page in document.pages
         )
     return out
