@@ -746,6 +746,19 @@ export function getFolderQaGroundTruth(
   return api(`/api/folders/${encodeURIComponent(folderId)}/qa-ground-truth`);
 }
 
+/** The testing user's QA values for one page, entered in the chart view (2026-11-25): only the
+ * qa_ground_truth columns given are set; "" clears one. Returns the page as saved. */
+export function saveQaGroundTruth(
+  folderId: string,
+  pageNumber: number,
+  values: Record<string, string>,
+): Promise<{ page: Record<string, string | null> }> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/qa-ground-truth/${pageNumber}`, {
+    method: "PUT",
+    body: JSON.stringify({ values }),
+  });
+}
+
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
   return api<ImagingDocumentResponse>(`/api/folders/${encodeURIComponent(folderId)}/imaging${groundTruthQuery()}`)
     .then(withDuplicateValues);

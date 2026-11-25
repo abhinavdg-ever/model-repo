@@ -5,6 +5,7 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Pl
 import {
   getChartGroundTruth,
   getFolderQaGroundTruth,
+  saveQaGroundTruth,
   saveChartGroundTruth,
   savePageGroundTruth,
   type ChartGroundTruth,
@@ -867,7 +868,9 @@ const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet 
 /** The pipeline's value offered as the ground truth on a page nobody has labelled. */
 function confirmedValue(processed: string): string {
   // "Yes (to page 4)" is offered as the ground-truth choice "Yes".
-  const text = processed.trim().replace(/\s*\(to page [^)]*\)$/i, "");
+  // A member value's "(Yes)" / "(No)" (is it the manifest member) is not part of it: the QA
+  // column offers "Brown Scott", not "Brown Scott (Yes)" (2026-11-25).
+  const text = processed.trim().replace(/\s*\(to page [^)]*\)$/i, "").replace(/\s*\((yes|no)\)$/i, "");
   if (!text || text === YET_TO_PROCESS || text === SKIPPED || text === NOT_FOUND) return "";
   return text;
 }
@@ -1022,9 +1025,15 @@ function CompareSection({
   offered,
   problems,
   marksOff = false,
+  qaMode = false,
+  truthValues,
 }: {
   title: string;
   rows: CompareRow[];
+  /** The testing user (2026-11-25): Ground Truth read only (``truthValues``), and the editable
+   * column is QA Ground Truth (``values`` are the page's QA values). */
+  qaMode?: boolean;
+  truthValues?: Record<string, string>;
   /** The page is Blank / Junk on both sides: no marks but on the Blank / Junk row. */
   marksOff?: boolean;
   editingId: string | null;
@@ -1126,6 +1135,20 @@ function CompareSection({
                 className={compact ? (row.gtRowSpan ? "gt-merged" : undefined) : `gt-shade${row.gtRowSpan ? " gt-merged" : ""}`}
                 rowSpan={row.gtRowSpan}
               >
+                {qaMode ? (
+                  <GroundTruthCell
+                    row={row}
+                    readOnly
+                    editing={false}
+                    value={truthValues?.[row.id] ?? ""}
+                    saving={false}
+                    onCommit={() => undefined}
+                    onAccept={() => undefined}
+                    onCancel={() => undefined}
+                    onDraft={() => undefined}
+                    onStartEdit={() => undefined}
+                  />
+                ) : (
                 <GroundTruthCell
                   row={row.l2Of ? { ...row, choices: pageL2Choices(values[row.l2Of]) } : row}
                   readOnly={readOnly}
@@ -1141,7 +1164,8 @@ function CompareSection({
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
                 />
-                {problems?.[row.id] ? (
+                )}
+                {!qaMode && problems?.[row.id] ? (
                   <p className="imaging-gt-problem" role="alert">
                     {problems[row.id]}
                   </p>
@@ -1151,7 +1175,34 @@ function CompareSection({
               )}
               {qa ? (
                 <td className="qa-shade">
-                  {QA_FIELD[row.id] ? <QaCell row={row} value={(qa[QA_FIELD[row.id]] ?? "").trim()} /> : null}
+                  {qaMode && QA_FIELD[row.id] ? (
+                    <GroundTruthCell
+                      row={{
+                        ...row,
+                        // A QA value is the value itself (a name, a date), not Yes / No; one per row.
+                        presence: false,
+                        gtRowSpan: undefined,
+                        gtHidden: undefined,
+                        truthShown: undefined,
+                        fixedText: undefined,
+                        noGroundTruth: false,
+                        compare: (truth: string) => qaMark(row, truth),
+                        ...(row.l2Of ? { choices: pageL2Choices(values[row.l2Of]) } : {}),
+                      }}
+                      readOnly={readOnly}
+                      editing={editingId === row.id}
+                      value={values[row.id] ?? ""}
+                      saving={saving}
+                      verdict={verdicts[row.id]}
+                      suggest={!withTruth}
+                      offered={offered}
+                      onCommit={(next) => onCommit(row.id, next)}
+                      onAccept={(next) => onAccept(row.id, next)}
+                      onCancel={onCancel}
+                      onDraft={onDraft}
+                      onStartEdit={() => onStartEdit(row.id)}
+                    />
+                  ) : null}
                 </td>
               ) : null}
             </tr>
@@ -1159,24 +1210,6 @@ function CompareSection({
         </tbody>
       </table>
     </section>
-  );
-}
-
-/** The QA Ground Truth value and its tick / cross / ! against the pipeline (qaMark). */
-function QaCell({ row, value }: { row: CompareRow; value: string }) {
-  if (!value) return <span className="imaging-gt-copied">—</span>;
-  const mark = qaMark(row, value);
-  return (
-    <span className="imaging-gt-slot">
-      <span className="imaging-gt-text" title={value}>{value}</span>
-      {mark === "match" ? (
-        <span className="imaging-gt-mark" aria-label="Yes">✓</span>
-      ) : mark === "partial" ? (
-        <span className="imaging-gt-mark gt-partial" aria-label="May be">!</span>
-      ) : mark === "mismatch" ? (
-        <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
-      ) : null}
-    </span>
   );
 }
 
@@ -2101,8 +2134,10 @@ function PageDetails({
   const frozen = useChartFrozen();
   // 2026-11-25 (user): the testing user sees the chart's QA ground truth beside Ground Truth
   // (a column only when the chart has any).
-  const qaPages = useQaPages(folderId);
+  const [qaPages, keepQaPage] = useQaPages(folderId);
   const qaPage: QaPage | null = qaPages ? (qaPages[String(page.pageNumber)] ?? {}) : null;
+  // The testing user edits QA ground truth here; Ground Truth is read only for them.
+  const qaMode = qaPage !== null;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2183,13 +2218,16 @@ function PageDetails({
     signers.length > 1
       ? numbered(signers.map((signer) => text(signer.credentials) || NOT_FOUND))
       : providerCredentials || NOT_FOUND;
-  const stored = storedGroundTruth(page.groundTruth);
+  const truthStored = storedGroundTruth(page.groundTruth);
+  const stored: Record<string, string> = qaMode
+    ? Object.fromEntries(Object.entries(QA_FIELD).map(([id, column]) => [id, String(qaPage?.[column] ?? "").trim()]))
+    : truthStored;
   // Pipeline values the untouched cells offer (filled as the cells render).
   const offered = useRef<Record<string, string>>({});
   const values = { ...stored, ...edits };
   // The ground truth's Duplicate as entered (saved or not): Yes shows Page Type / Subtype as
   // Not Found.
-  const gtDup = duplicateSide(values.duplicate ?? page.groundTruth?.isDuplicate) === "yes";
+  const gtDup = duplicateSide((qaMode ? truthStored.duplicate : values.duplicate) ?? page.groundTruth?.isDuplicate) === "yes";
   // 2026-11-06 (user): nothing is checked across fields; Save never waits.
   const problems: Record<string, string> = {};
   const dirty =
@@ -2209,6 +2247,7 @@ function PageDetails({
   }
 
   async function acceptAll(): Promise<boolean> {
+    if (qaMode) return saveQa();
 
     // Every field with no ground truth that the reviewer did not touch takes its Final value
     // (2026-11-04 / 11-05, user), as if each had been accepted.
@@ -2273,7 +2312,7 @@ function PageDetails({
 
   // A page nobody has labelled offers the pipeline's values; read only (a chart marked
   // Reviewed), the compact pane shows Field / Final only.
-  const withTruth = Object.entries(page.groundTruth ?? {}).some(
+  const gtWithTruth = Object.entries(page.groundTruth ?? {}).some(
     ([key, value]) =>
       key !== "pageNumber" &&
       key !== "sourcePageId" &&
@@ -2282,6 +2321,45 @@ function PageDetails({
       value != null &&
       String(value).trim() !== "",
   );
+  // QA mode: "labelled" means the page has any QA value (else the pipeline's values are offered).
+  const withTruth = qaMode ? Object.values(stored).some((value) => value.trim() !== "") : gtWithTruth;
+
+  /** QA mode's Save (2026-11-25, user): the QA fields changed -- and, on a page with no QA yet,
+   * the untouched ones' offered pipeline values, as Ground Truth's first save does -- to
+   * qa_ground_truth. */
+  async function saveQa(): Promise<boolean> {
+    const merged: Record<string, string> = { ...stored, ...edits };
+    if (!withTruth) {
+      for (const [id, value] of Object.entries(offered.current)) {
+        if (QA_FIELD[id] && edits[id] === undefined && !(merged[id] ?? "").trim()) merged[id] = value;
+      }
+    }
+    if (editingId && draft != null) merged[editingId] = normalizeEntry(editingId, draft) ?? draft.trim();
+    if (!subtypeFitsType(merged.page_type, merged.page_subtype)) merged.page_subtype = "";
+    const changed: Record<string, string> = {};
+    for (const [id, column] of Object.entries(QA_FIELD)) {
+      if ((merged[id] ?? "") !== (stored[id] ?? "")) changed[column] = merged[id] ?? "";
+    }
+    if (!Object.keys(changed).length) {
+      finishReview();
+      return true;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await saveQaGroundTruth(folderId, page.pageNumber, changed);
+      keepQaPage(String(page.pageNumber), saved.page ?? {});
+      setEdits({});
+      setVerdicts({});
+      finishReview();
+      return true;
+    } catch (err) {
+      setSaveError(saveErrorMessage(err));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
   /** Set a field. 2026-11-06 (user): a Page Type change clears the Page Subtype, and the
    * reviewer is not asked for one. The cleared subtype is marked entered: an empty cell with no
    * mark would offer the Final subtype again (and take it on Save). */
@@ -2332,7 +2410,10 @@ function PageDetails({
     withTruth,
     offered,
     problems,
-    readOnly: Boolean(frozen),
+    // QA mode: QA stays editable on a Reviewed chart (the freeze is the client's ground truth).
+    readOnly: qaMode ? false : Boolean(frozen),
+    qaMode,
+    truthValues: truthStored,
     values,
     editingId,
     saving,
@@ -4171,11 +4252,11 @@ function ExtractedList({
 
 export type { ImagingTab };
 
-/** The chart's QA ground truth by page number for the testing user, fetched once per chart;
- * null for anyone else, while it loads, or when the chart has none (no QA column). */
+/** The chart's QA ground truth by page number for the testing user, fetched once a minute per
+ * chart, and a setter for one saved page; null for anyone else (no QA column), or while loading. */
 const qaPagesCache = new Map<string, { at: number; request: Promise<Record<string, QaPage>> }>();
 const QA_CACHE_MS = 60_000; // a QA file loaded in Manual Review shows within a minute
-function useQaPages(folderId: string): Record<string, QaPage> | null {
+function useQaPages(folderId: string): [Record<string, QaPage> | null, (pageNumber: string, page: QaPage) => void] {
   const [pages, setPages] = useState<Record<string, QaPage> | null>(null);
   useEffect(() => {
     setPages(null);
@@ -4189,11 +4270,18 @@ function useQaPages(folderId: string): Record<string, QaPage> | null {
       request.catch(() => qaPagesCache.delete(folderId));
     }
     request
-      .then((found) => live && setPages(Object.keys(found).length ? found : null))
-      .catch(() => live && setPages(null));
+      .then((found) => live && setPages(found))
+      .catch(() => live && setPages({}));
     return () => {
       live = false;
     };
   }, [folderId]);
-  return pages;
+  const keep = (pageNumber: string, page: QaPage) => {
+    setPages((current) => {
+      const next = { ...(current ?? {}), [pageNumber]: page };
+      qaPagesCache.set(folderId, { at: Date.now(), request: Promise.resolve(next) });
+      return next;
+    });
+  };
+  return [pages, keep];
 }

@@ -127,3 +127,69 @@ def test_chart_pages_shapes_the_rows(monkeypatch):
     pages = qa_ground_truth.chart_pages("postgresql://x/y", "public", "c1")
     assert pages == {"3": {"page_type": "Progress Note", "source_file": "qa.csv",
                            "updated_at": "2026-11-25T00:00:00+00:00"}}
+
+
+def _qa_app(monkeypatch, user):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.routers import charts, deps, router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    app.dependency_overrides[deps.current_user] = lambda: user
+    monkeypatch.setattr(charts, "database_url_usable", lambda url: True)
+    return TestClient(app)
+
+
+def test_only_the_testing_user_saves_qa_in_the_chart_view(monkeypatch):
+    from app.services.auth import SignedInUser
+
+    saved = []
+    monkeypatch.setattr(qa_ground_truth, "save_page",
+                        lambda url, schema, chart, page, values, user_id: saved.append((chart, page, values, user_id))
+                        or {"page_type": "Lab Report"})
+    body = {"values": {"page_type": "Lab Report"}}
+    assert _qa_app(monkeypatch, None).put("/api/folders/c1/qa-ground-truth/2", json=body).status_code == 401
+    reviewer = SignedInUser(id=5, username="someone", name="S", role="reviewer")
+    assert _qa_app(monkeypatch, reviewer).put("/api/folders/c1/qa-ground-truth/2", json=body).status_code == 403
+    tester = SignedInUser(id=7, username="Testing-User", name="T", role="reviewer")
+    response = _qa_app(monkeypatch, tester).put("/api/folders/c1/qa-ground-truth/2", json=body)
+    assert response.status_code == 200 and response.json() == {"page": {"page_type": "Lab Report"}}
+    assert saved == [("c1", 2, {"page_type": "Lab Report"}, 7)]
+    assert _qa_app(monkeypatch, tester).put("/api/folders/c1/qa-ground-truth/2", json={"x": 1}).status_code == 400
+
+
+def test_save_page_sets_only_the_given_columns(monkeypatch):
+    from contextlib import contextmanager
+
+    import app.services.db as db
+
+    seen = []
+
+    class Cur:
+        def execute(self, sql, params):
+            seen.append((sql, params))
+
+        def fetchall(self):
+            return []
+
+    @contextmanager
+    def fake(url, schema):
+        @contextmanager
+        def cursor():
+            yield Cur()
+        yield type("C", (), {"cursor": staticmethod(cursor)})()
+
+    monkeypatch.setattr(db, "connection", fake)
+    qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2,
+                              {"page_type": "Lab Report", "dos_from": "", "bogus": "x"}, 7)
+    sql, params = seen[0]
+    assert "page_type = EXCLUDED.page_type" in sql and "dos_from = EXCLUDED.dos_from" in sql
+    assert "bogus" not in sql and "codeable" not in sql
+    assert params[:4] == ("c1", 2, "Lab Report", None)   # "" clears
+    assert params[-2:] == (qa_ground_truth.CHART_VIEW_SOURCE, 7)
+    with pytest.raises(ValueError):
+        qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2, {"bogus": "x"}, 7)

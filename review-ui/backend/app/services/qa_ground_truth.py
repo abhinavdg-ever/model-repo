@@ -15,6 +15,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger("review_ui.api")
 
+# The account that sees and edits QA ground truth in review-ui (as the frontend's qaColumn.ts).
+QA_USER = "testing-user"
+
 # Manual Review column -> qa_ground_truth column.
 COLUMNS = {
     "Extracted Name": "member_name",
@@ -147,3 +150,35 @@ def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str,
         entry["updated_at"] = updated_at.isoformat() if updated_at else None
         out[str(page_number)] = entry
     return out
+
+
+# The source_file of a page edited in the chart view rather than loaded from a QA file.
+CHART_VIEW_SOURCE = "review-ui (chart view)"
+
+
+def save_page(database_url: str, db_schema: str, chart_name: str, page_number: int,
+              values: dict[str, Any], user_id: Optional[int]) -> dict[str, Any]:
+    """The testing user's QA entry for one page (2026-11-25, user): the given qa_ground_truth
+    columns set (an empty value clears it), the others kept; labels gain the same values under
+    their Manual Review names. Returns the page as chart_pages gives it."""
+    from app.services.db import connection
+
+    by_column = {column: field for field, column in COLUMNS.items()}
+    clean = {column: (_cell(value) if value is not None else None)
+             for column, value in values.items() if column in by_column}
+    if not clean:
+        raise ValueError("no QA ground truth field to save")
+    labels = {by_column[column]: value for column, value in clean.items() if value is not None}
+    names = list(clean)
+    sql = (
+        f"INSERT INTO qa_ground_truth (chart_name, page_number, {', '.join(names)}, labels, source_file, user_id) "
+        f"VALUES (%s, %s, {', '.join(['%s'] * len(names))}, %s::jsonb, %s, %s) "
+        "ON CONFLICT (chart_name, page_number) DO UPDATE SET "
+        + ", ".join(f"{n} = EXCLUDED.{n}" for n in names)
+        + ", labels = qa_ground_truth.labels || EXCLUDED.labels, source_file = EXCLUDED.source_file, "
+        "user_id = EXCLUDED.user_id"
+    )
+    with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+        cur.execute(sql, (chart_name, page_number, *[clean[n] for n in names], json.dumps(labels),
+                          CHART_VIEW_SOURCE, user_id))
+    return chart_pages(database_url, db_schema, chart_name).get(str(page_number), {})

@@ -202,6 +202,40 @@ def folder_qa_ground_truth(folder_id: str, settings: Settings = Depends(get_sett
     return {"pages": qa_ground_truth.chart_pages(settings.database_url, settings.db_schema, folder_id)}
 
 
+@router.put("/folders/{folder_id}/qa-ground-truth/{page_number}")
+def save_folder_qa_ground_truth(
+    folder_id: str,
+    page_number: int,
+    body: dict,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """The testing user's QA ground truth for one page, entered in the chart view (2026-11-25,
+    user). Body {"values": {qa_ground_truth column: value}}; the testing user or an admin only."""
+    from app.services import qa_ground_truth
+    from app.services.backend import reads_cosmos
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to save QA ground truth")
+    if user.username.strip().lower() != qa_ground_truth.QA_USER and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only the testing user can enter QA ground truth")
+    if reads_cosmos() or not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="QA ground truth is kept in Postgres, which is not configured")
+    values = body.get("values") if isinstance(body, dict) else None
+    if not isinstance(values, dict):
+        raise HTTPException(status_code=400, detail='Body must be {"values": {...}}')
+    try:
+        page = qa_ground_truth.save_page(
+            settings.database_url, settings.db_schema, folder_id, page_number, values, user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("qa ground truth save failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save QA ground truth") from exc
+    return {"page": page}
+
+
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
 def get_folder(
     folder_id: str,

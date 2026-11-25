@@ -7154,21 +7154,21 @@ input {
 
 /* The testing user's QA Ground Truth column (2026-11-25): after Ground Truth, read only; the
    other columns give it room. */
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-field,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(1),
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody th { width: 20%; }
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-extracted,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-processed,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(2),
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(2),
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(3),
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(3) { width: 15%; }
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-confidence,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(4),
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(4) { width: 12%; }
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-gt,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) th.gt-shade,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) td.gt-shade { width: 18.5%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) .col-field,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) tbody th { width: 20%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) .col-extracted,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) .col-processed,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) tbody td:nth-child(2),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) tbody td:nth-child(3) { width: 15%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) .col-confidence,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) thead th:nth-child(4),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) tbody td:nth-child(4) { width: 12%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) .col-gt,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) th.gt-shade,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact):not(.is-final-only) td.gt-shade { width: 18.5%; }
 .imaging-detail-table.imaging-value-table .col-qa,
 .imaging-detail-table.imaging-value-table th.qa-shade,
 .imaging-detail-table.imaging-value-table td.qa-shade {
@@ -7178,3 +7178,35 @@ input {
   overflow-wrap: anywhere;
 }
 
+
+/* The client-style table (Field, Algorithm, Confidence, gap, Ground Truth) with the QA column:
+   its 4th column is the gap, so it gets its own widths (2026-11-25, user: the gap was huge). */
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) {
+  max-width: calc(13.5rem + 2 * 12.5rem + 7.128rem + 0.55rem + 4rem + 13rem);
+}
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) .col-field,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) tbody th { width: 20%; }
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) .col-processed,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) tbody td:nth-child(2) { width: 21%; }
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) .col-confidence,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) tbody td:nth-child(3) { width: 14%; }
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) .col-gt,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) th.gt-shade,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) td.gt-shade,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) .col-qa,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) th.qa-shade,
+.imaging-detail-table.imaging-value-table.is-final-only.has-qa:not(.is-compact) td.qa-shade { width: 22%; }
+/* Its fullscreen pane with QA: Field, Algorithm, Ground Truth, QA Ground Truth. */
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa .col-field,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa tbody th { width: 28%; }
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa .col-processed,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa tbody td:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa .col-gt,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa tbody td:nth-child(3),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa .col-qa { width: 24%; }
