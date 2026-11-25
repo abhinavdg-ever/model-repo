@@ -394,11 +394,19 @@ class TestInlineUnchanged:
 def test_the_worker_idles_in_inline_mode(monkeypatch):
     """2026-11-09: compose starts the worker with the api; with RUN_MODE=inline it never reads
     the queue or loads models, it just waits to be stopped."""
+    import threading
+
     import dotenv
 
     from apps.worker import queue_worker
     from common import config
+    from common import logging_setup
 
+    # main() tags this process's log lines "worker-<host>" and renames the thread; put both back
+    # afterwards, or every later test's log lines say worker-<host> (2026-11-25: the order-
+    # dependent test_log_lines_include_chart_page_and_stage failure).
+    monkeypatch.setattr(logging_setup, "_PROCESS_TAG", logging_setup._PROCESS_TAG)
+    monkeypatch.setattr(threading.current_thread(), "name", threading.current_thread().name)
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setattr(config, "RUN_MODE", "inline")
     monkeypatch.setattr(queue_worker, "run_forever", lambda: (_ for _ in ()).throw(AssertionError("ran")))

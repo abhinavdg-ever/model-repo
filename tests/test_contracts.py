@@ -178,6 +178,14 @@ class TestCombinedOcrFormat:
 
     def test_dos_splitter_reads_the_same_marker(self):
         """The DOS driver splits pages itself; it must agree with the writer."""
+        import sys
+        from pathlib import Path
+
+        # dos_logic is imported as the DOS stage imports it, from its own folder; put it on the
+        # path here rather than rely on another test file having done so (2026-11-25).
+        dos_dir = str(Path(__file__).resolve().parents[1] / "core-pipeline" / "modules" / "dos")
+        if dos_dir not in sys.path:
+            sys.path.insert(0, dos_dir)
         from dos_logic import UI_PAGE_MARKER_RE, split_ocr_into_pages
 
         text = "===== 1.jpg =====\nalpha\n\n===== 2.jpg =====\nbeta\n"
