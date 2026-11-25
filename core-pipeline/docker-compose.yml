@@ -132,6 +132,9 @@ services:
   worker-large:
     profiles: ["large"]
     image: advantmed/core-pipeline:latest
+    # Built by api / worker, never on Docker Hub: without this Compose tries to pull it first
+    # ("pull access denied for advantmed/core-pipeline", harmless but noisy; 2026-11-25).
+    pull_policy: never
     command: ["python", "-m", "apps.worker.queue_worker"]
     env_file:
       - ./.env
