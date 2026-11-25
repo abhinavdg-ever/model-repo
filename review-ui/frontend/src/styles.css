@@ -7168,11 +7168,11 @@ input {
 .imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(4) { width: 12%; }
 .imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-gt,
 .imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) th.gt-shade,
-.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) td.gt-shade { width: 17%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) td.gt-shade { width: 18.5%; }
 .imaging-detail-table.imaging-value-table .col-qa,
 .imaging-detail-table.imaging-value-table th.qa-shade,
 .imaging-detail-table.imaging-value-table td.qa-shade {
-  width: 17%;
+  width: 18.5%;
   background: #f3f7fc;
   white-space: normal;
   overflow-wrap: anywhere;

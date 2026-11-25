@@ -946,6 +946,46 @@ function groundTruthMark(
   return entered === final ? "match" : "mismatch";
 }
 
+/** 2026-11-25 (user): the QA Ground Truth's tick / cross. A QA sheet writes values its own way,
+ * so each side is folded first: a member's "(Yes)" / "(No)" dropped, a date as YYYY-MM-DD
+ * (9/3/1942 = 1942-09-03), a name as its words in any order, an ID by its letters and digits
+ * (35895257 matches "MRN: 35895257"). Final or Extracted matching is a match, as for Ground
+ * Truth; a row with its own scoring (Page Type) uses it. Empty QA: no mark. */
+function qaMark(row: CompareRow, qa: string): "match" | "partial" | "mismatch" | null {
+  const value = qa.trim();
+  if (!value || row.noMark || row.noGroundTruth) return null;
+  if (row.compare) return row.compare(value);
+  if (row.presence && yesNo(value)) return enteredMark(row.extracted, row.processed, value, true);
+  const date = (raw: string): string | null => {
+    const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(raw);
+    if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+    const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw);
+    return us ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}` : null;
+  };
+  const fold = (raw: string): string => {
+    const text = raw.replace(/\s*\((yes|no)\)\s*$/i, "").trim();
+    const asDate = date(text);
+    if (asDate) return asDate;
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").sort().join(" ");
+  };
+  const idCore = (raw: string) => raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const same = (pipeline: string): boolean => {
+    if (!valueFound(pipeline)) return false;
+    if (row.id === "member_id") {
+      const a = idCore(value);
+      return a !== "" && pipeline.split("|").some((part) => {
+        const b = idCore(part.replace(/\s*\((yes|no)\)\s*$/i, ""));
+        return b !== "" && (b === a || b.endsWith(a) || a.endsWith(b));
+      });
+    }
+    return fold(pipeline) === fold(value);
+  };
+  const qaNone = !valueFound(value);
+  if (qaNone) return !valueFound(row.processed) ? "match" : "mismatch";
+  if (same(row.processed) || (!scoreFinalOnly() && same(row.extracted))) return "match";
+  return "mismatch";
+}
+
 function enteredMark(
   extracted: string,
   final: string,
@@ -1111,7 +1151,7 @@ function CompareSection({
               )}
               {qa ? (
                 <td className="qa-shade">
-                  {QA_FIELD[row.id] ? (qa[QA_FIELD[row.id]] ?? "").trim() || "—" : ""}
+                  {QA_FIELD[row.id] ? <QaCell row={row} value={(qa[QA_FIELD[row.id]] ?? "").trim()} /> : null}
                 </td>
               ) : null}
             </tr>
@@ -1119,6 +1159,24 @@ function CompareSection({
         </tbody>
       </table>
     </section>
+  );
+}
+
+/** The QA Ground Truth value and its tick / cross / ! against the pipeline (qaMark). */
+function QaCell({ row, value }: { row: CompareRow; value: string }) {
+  if (!value) return <span className="imaging-gt-copied">—</span>;
+  const mark = qaMark(row, value);
+  return (
+    <span className="imaging-gt-slot">
+      <span className="imaging-gt-text" title={value}>{value}</span>
+      {mark === "match" ? (
+        <span className="imaging-gt-mark" aria-label="Yes">✓</span>
+      ) : mark === "partial" ? (
+        <span className="imaging-gt-mark gt-partial" aria-label="May be">!</span>
+      ) : mark === "mismatch" ? (
+        <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
+      ) : null}
+    </span>
   );
 }
 
