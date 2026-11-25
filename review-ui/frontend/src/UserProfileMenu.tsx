@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Database, FlaskConical, Layers, LogOut, Search, Users } from "lucide-react";
+import { ClipboardList, Database, FlaskConical, Gauge, Layers, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import { type DbStore } from "./dbBackend";
 import { roleLabel } from "./UsersView";
 
@@ -26,6 +26,9 @@ type Props = {
   dbStore?: DbStore;
   dbStores?: DbStore[];
   onChangeDbStore?: (store: DbStore) => void;
+  /** Admins on the Accuracy view (2026-11-25, user): Page Type / Codability calibration on the
+   * pages listed. ``status`` names what is calibrated; each action resolves to an error or null. */
+  calibration?: { status: string; on: boolean; calibrate: () => Promise<string | null>; reset: () => Promise<string | null> };
   onLogout: () => void;
 };
 
@@ -43,9 +46,15 @@ export default function UserProfileMenu({
   dbStore,
   dbStores = [],
   onChangeDbStore,
+  calibration,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [calibrationNote, setCalibrationNote] = useState<string | null>(null);
+  const calibrate = (action: () => Promise<string | null>, busy: string) => {
+    setCalibrationNote(busy);
+    void action().then((error) => setCalibrationNote(error));
+  };
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -144,6 +153,33 @@ export default function UserProfileMenu({
                 ))}
               </span>
             </div>
+          ) : null}
+
+          {calibration ? (
+            <>
+              <button
+                type="button"
+                className="user-menu-item"
+                role="menuitem"
+                title={`Fit Page Type / Codability confidence to its measured accuracy on the pages listed (the current filter). Now: ${calibration.status}`}
+                onClick={() => calibrate(calibration.calibrate, "Calibrating…")}
+              >
+                <Gauge size={14} aria-hidden="true" />
+                Calibrate Confidence
+              </button>
+              {calibration.on ? (
+                <button
+                  type="button"
+                  className="user-menu-item"
+                  role="menuitem"
+                  onClick={() => calibrate(calibration.reset, "Clearing…")}
+                >
+                  <RotateCcw size={14} aria-hidden="true" />
+                  Reset Calibration
+                </button>
+              ) : null}
+              <p className="user-menu-note">Calibration: {calibrationNote ?? calibration.status}</p>
+            </>
           ) : null}
 
           {onOpenReviewLog && currentView !== "review-log" ? (

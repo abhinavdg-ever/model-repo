@@ -22,7 +22,7 @@ under 0.99, Low under 0.75**; the Confidence Analysis shows them in a 99-100% ba
 (Medium 0.50 to under 0.75, Low under 0.50).
 
 **Calibration** (2026-11-24, user; review-ui): an admin can fit Page Type and Codability to their measured
-accuracy in the Confidence Analysis ("Calibrate on these pages"); the curves (`confidence_calibration`) are applied
+accuracy from the profile menu on the Accuracy view ("Calibrate Confidence", admins; the charts listed); the curves (`confidence_calibration`) are applied
 on read, so the stored values stay the pipeline's. The **Agreement** tab shows Page Type / Codability accuracy per
 tier A-E.
 

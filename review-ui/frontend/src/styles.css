@@ -7051,3 +7051,11 @@ input {
 .rerun-field select { margin-left: 0.4rem; }
 .accuracy-col-confidence .chart-glance-pill { font-size: 0.75rem; margin-right: 0.35rem; }
 .accuracy-conf-counts { opacity: 0.8; }
+
+/* 2026-11-25: the profile menu's calibration status line. */
+.user-menu-note {
+  margin: 0;
+  padding: 2px 12px 8px 34px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}

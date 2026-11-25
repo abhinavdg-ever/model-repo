@@ -1061,41 +1061,34 @@ function fitCalibration(rows: ChartAccuracy[]): Record<string, { knots: number[]
   return out;
 }
 
-function CalibrationControls({ rows }: { rows: ChartAccuracy[] }) {
-  const [state, setState] = useState<string | null>(null);
-  if (!isScoringAdmin()) return null;
-  const table = currentCalibration();
-  const on = CALIBRATED_FEATURES.filter((f) => table[f]);
-  const run = (clear: boolean) => {
-    const features = clear
-      ? Object.fromEntries(CALIBRATED_FEATURES.map((f) => [f, { knots: [], pages: 0 }]))
-      : fitCalibration(rows);
-    if (!Object.keys(features).length) {
-      setState("Not enough scored pages (30+ per metric) to calibrate.");
-      return;
-    }
-    setState(clear ? "Clearing…" : "Calibrating…");
-    saveCalibration(features)
-      .then(() => window.location.reload())
-      .catch((err: unknown) => setState(`Could not save: ${err instanceof Error ? err.message : String(err)}`));
-  };
-  return (
-    <p className="chart-details-note">
-      Page Type / Codability calibration: {on.length ? on.map((f) => (f === "page_type" ? "Page Type" : "Codability")).join(", ") : "off (raw confidence)"}
-      {" · "}
-      <button type="button" className="accuracy-extra-link" onClick={() => run(false)}
-              title="Fit each metric's confidence to its measured accuracy on the pages shown (the current filter)">
-        Calibrate on these pages
-      </button>
-      {on.length ? (
-        <>
-          {" · "}
-          <button type="button" className="accuracy-extra-link" onClick={() => run(true)}>Reset</button>
-        </>
-      ) : null}
-      {state ? ` · ${state}` : null}
-    </p>
-  );
+/** The pages the Accuracy view lists now (every filter and the search), for the profile menu's
+ * Calibrate (2026-11-25, user: moved off the Confidence Analysis into the menu). */
+let calibrationRows: ChartAccuracy[] = [];
+
+export function calibrationStatus(): string {
+  const on = CALIBRATED_FEATURES.filter((f) => currentCalibration()[f]);
+  return on.length ? on.map((f) => (f === "page_type" ? "Page Type" : "Codability")).join(", ") : "off (raw confidence)";
+}
+
+export function isCalibrated(): boolean {
+  return CALIBRATED_FEATURES.some((f) => currentCalibration()[f]);
+}
+
+/** Fit (or, ``clear``, remove) the Page Type / Codability curves on the listed pages and save
+ * them; the page reloads on success. Resolves to an error message, or null. */
+export async function runCalibration(clear: boolean): Promise<string | null> {
+  if (!isScoringAdmin()) return "Admins only.";
+  const features = clear
+    ? Object.fromEntries(CALIBRATED_FEATURES.map((f) => [f, { knots: [], pages: 0 }]))
+    : fitCalibration(calibrationRows);
+  if (!Object.keys(features).length) return "Not enough scored pages (30+ per metric) to calibrate.";
+  try {
+    await saveCalibration(features);
+    window.location.reload();
+    return null;
+  } catch (err: unknown) {
+    return `Could not save: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
@@ -1235,7 +1228,6 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                 <p className="chart-details-note">
                   Average chart confidence · {rows.length.toLocaleString()} charts · {data.total.toLocaleString()} pages
                 </p>
-                <CalibrationControls rows={rows} />
                 <div className="output-tabs confidence-tabs" role="tablist" aria-label="Confidence Analysis views">
                   {(["overview", "agreement", ...LIVE_METRICS.map((m) => m.id)] as ("overview" | "agreement" | MetricId)[]).map((id) => (
                     <button key={id} type="button" role="tab" aria-selected={tab === id}
@@ -2107,6 +2099,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     );
     return matched.sort((a, b) => compareRows(a, b, sortKey, sortDir));
   }, [rows, query, filters, sortKey, sortDir]);
+  calibrationRows = filtered;
   // The donuts score the charts the table lists: every filter and the search apply.
   const overallByMetric = useMemo(() => {
     const out = {} as Record<MetricId, Tally>;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import LandingPage, { clearLandingFilters, savedHistoryListParams } from "./LandingPage";
 import { nextChart, type ChartSource } from "./chartSequence";
 import FolderViewer from "./FolderViewer";
-import AccuracyView from "./AccuracyView";
+import AccuracyView, { calibrationStatus, isCalibrated, runCalibration } from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
 import PlaygroundView from "./PlaygroundView";
 import UsersView from "./UsersView";
@@ -233,6 +233,11 @@ export default function App() {
                     setFinalOnlyChoice(!on);
                     setScoring((n) => n + 1);
                   }
+                : undefined
+            }
+            calibration={
+              isAdmin && route.view === "accuracy"
+                ? { status: calibrationStatus(), on: isCalibrated(), calibrate: () => runCalibration(false), reset: () => runCalibration(true) }
                 : undefined
             }
             dbStore={dbStore}
