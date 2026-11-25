@@ -49,3 +49,14 @@ def test_confidence_read_only_when_filtering_and_after_other_filters():
 def test_passes_confidence_missing_chart():
     assert folder_list.passes_confidence(None, FolderListParams(confidence=["(Blank)"]))
     assert not folder_list.passes_confidence(None, FolderListParams(confidence_min=0))
+
+
+def test_qa_ground_truth_filter():
+    """2026-11-25 (user): History's QA Ground Truth column filters Yes / No."""
+    rows = [FolderSummary(id=n, name=n, ocr_status="IMAGING_COMPLETED", qa_ground_truth_available=qa)
+            for n, qa in (("a", True), ("b", False), ("c", True))]
+    names = lambda p: sorted(f.id for f in filter_sort_page(rows, p).items)  # noqa: E731
+    assert names(FolderListParams(qa=["Yes"])) == ["a", "c"]
+    assert names(FolderListParams(qa=["No"])) == ["b"]
+    assert names(FolderListParams(qa=["Yes", "No"])) == ["a", "b", "c"]
+    assert names(FolderListParams()) == ["a", "b", "c"]

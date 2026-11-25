@@ -71,6 +71,8 @@ export type FolderListParams = {
   confidence?: string[];
   confidence_min?: number | null;
   confidence_max?: number | null;
+  /** QA Ground Truth: Yes / No (2026-11-25, the testing user's column). */
+  qa?: string[];
   sort?: "filename" | "pages" | "updated";
   sort_dir?: "asc" | "desc";
 };
@@ -720,6 +722,7 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.confidence ?? []) sp.append("confidence", s);
   if (params?.confidence_min != null) sp.set("confidence_min", String(params.confidence_min));
   if (params?.confidence_max != null) sp.set("confidence_max", String(params.confidence_max));
+  for (const s of params?.qa ?? []) sp.append("qa", s);
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);
   const qs = sp.toString();

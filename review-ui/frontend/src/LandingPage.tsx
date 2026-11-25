@@ -83,14 +83,22 @@ type LandingFilters = {
   /** Pages and Confidence column filters (2026-11-25, user). */
   pagesRange: NumberRange | null;
   confidenceFilter: ConfidenceFilter | null;
+  /** QA Ground Truth Yes / No (2026-11-25, user): the testing user's column only. */
+  qaFilter: string[];
   sortKey: SortKey;
   sortDir: SortDir;
   page: number;
 };
 
 /** The list API's Pages / Confidence parameters from the two column filters. */
-function columnParams(pagesRange: NumberRange | null, confidenceFilter: ConfidenceFilter | null): FolderListParams {
+function columnParams(
+  pagesRange: NumberRange | null,
+  confidenceFilter: ConfidenceFilter | null,
+  qaFilter: string[] = [],
+): FolderListParams {
   return {
+    // Only the testing user sees (and so can set) the QA column's filter.
+    qa: isQaUser() ? qaFilter : [],
     pages_min: pagesRange?.min ?? null,
     pages_max: pagesRange?.max ?? null,
     confidence: confidenceFilter?.levels ?? [],
@@ -154,7 +162,7 @@ export function savedHistoryListParams(): FolderListParams {
     batch: saved.batchFilter,
     ...saved.metaFilter,
     run_after: saved.runAfter,
-    ...columnParams(saved.pagesRange, saved.confidenceFilter),
+    ...columnParams(saved.pagesRange, saved.confidenceFilter, saved.qaFilter),
     sort: saved.sortKey,
     sort_dir: saved.sortDir,
   };
@@ -175,6 +183,7 @@ export function clearLandingFilters(): void {
       runAfter: null,
       pagesRange: null,
       confidenceFilter: null,
+      qaFilter: [],
       page: 1,
     };
     sessionStorage.setItem(LANDING_FILTERS_KEY, JSON.stringify(cleared));
@@ -193,6 +202,7 @@ function readLandingFilters(): LandingFilters {
     runAfter: null,
     pagesRange: null,
     confidenceFilter: null,
+    qaFilter: [],
     // Newest run first.
     sortKey: "updated",
     sortDir: "desc",
@@ -222,6 +232,7 @@ function readLandingFilters(): LandingFilters {
       runAfter: typeof parsed.runAfter === "string" && parsed.runAfter ? parsed.runAfter : null,
       pagesRange: readRange(parsed.pagesRange),
       confidenceFilter: readConfidenceFilter(parsed.confidenceFilter),
+      qaFilter: normalizeIdList(parsed.qaFilter).filter((v) => v === "Yes" || v === "No"),
       sortKey,
       sortDir,
       page,
@@ -402,6 +413,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const [runAfter, setRunAfter] = useState<string | null>(saved.runAfter);
   const [pagesRange, setPagesRange] = useState<NumberRange | null>(saved.pagesRange);
   const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter | null>(saved.confidenceFilter);
+  const [qaFilter, setQaFilter] = useState<string[]>(saved.qaFilter);
   const [metaFilter, setMetaFilter] = useState<MetaFilters>(saved.metaFilter);
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const isAdmin = readSession()?.user.role === "admin";
@@ -472,7 +484,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         batch: batchFilter,
         ...metaFilter,
         run_after: runAfter,
-        ...columnParams(pagesRange, confidenceFilter),
+        ...columnParams(pagesRange, confidenceFilter, qaFilter),
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -517,7 +529,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on list controls
-  }, [page, query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, sortKey, sortDir]);
+  }, [page, query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, qaFilter, sortKey, sortDir]);
 
   useEffect(() => {
     try {
@@ -530,6 +542,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         runAfter,
         pagesRange,
         confidenceFilter,
+        qaFilter,
         sortKey,
         sortDir,
         page,
@@ -538,14 +551,14 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     } catch {
       /* ignore */
     }
-  }, [query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, sortKey, sortDir, page]);
+  }, [query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, qaFilter, sortKey, sortDir, page]);
 
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Back to page 1 when a filter, the search or the sort really changes -- not on the first
   // render (the saved page stands, 2026-11-16, user), and not when React runs effects twice.
-  const filterKey = JSON.stringify([query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter]);
+  const filterKey = JSON.stringify([query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, qaFilter]);
   const lastFilterKey = useRef(filterKey);
   useEffect(() => {
     if (lastFilterKey.current === filterKey) return;
@@ -595,6 +608,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const filterCount =
     (statusFilter.length ? 1 : 0) + (runFilter.length ? 1 : 0) + (batchFilter.length ? 1 : 0) + (runAfter ? 1 : 0) +
     (rangeOn(pagesRange) ? 1 : 0) + (confidenceFilterOn(confidenceFilter) ? 1 : 0) +
+    (showQa && qaFilter.length ? 1 : 0) +
     metaFilterCount(metaFilter);
 
   function clearFilters() {
@@ -605,6 +619,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     setRunAfter(null);
     setPagesRange(null);
     setConfidenceFilter(null);
+    setQaFilter([]);
   }
 
   /** Admin: delete the chart's pipeline results after a confirmation naming it. */
@@ -745,7 +760,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         batch: batchFilter,
         ...metaFilter,
         run_after: runAfter,
-        ...columnParams(pagesRange, confidenceFilter),
+        ...columnParams(pagesRange, confidenceFilter, qaFilter),
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -1011,7 +1026,24 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                     </span>
                   </th>
                   {showQa ? (
-                    <th title="A QA Ground Truth file loaded in Manual Review covers this chart">QA Ground Truth</th>
+                    <th
+                      className={qaFilter.length ? "is-filtered" : undefined}
+                      title="A QA Ground Truth file loaded in Manual Review covers this chart"
+                    >
+                      <span className="column-th">
+                        <span className="column-th-label">QA Ground Truth</span>
+                        <ColumnFilterButton label="QA Ground Truth" active={qaFilter.length > 0} icon={filterIcon}>
+                          {() => (
+                            <CheckListFilter
+                              options={["Yes", "No"]}
+                              selected={qaFilter}
+                              onChange={setQaFilter}
+                              formatOption={(v) => v}
+                            />
+                          )}
+                        </ColumnFilterButton>
+                      </span>
+                    </th>
                   ) : null}
                   <th
                     className={`landing-col-reviewed${metaFilter.reviewed?.length ? " is-filtered" : ""}`}

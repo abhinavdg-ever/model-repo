@@ -117,6 +117,8 @@ class FolderListParams:
     confidence: list[str] = field(default_factory=list)
     confidence_min: Optional[int] = None
     confidence_max: Optional[int] = None
+    # 2026-11-25 (user): the QA Ground Truth column (Yes / No), shown to the testing user.
+    qa: list[str] = field(default_factory=list)
     sort: SortKey = "updated"
     sort_dir: SortDir = "desc"
     limit: Optional[int] = None  # None / <=0 → return all matching
@@ -405,6 +407,7 @@ def filter_sort_page(
     # Reviewed / Ground Truth (2026-11-05, user): two fixed options each.
     reviewed_set = {s for s in params.reviewed if s}
     truth_set = {s for s in params.truth if s}
+    qa_set = {s for s in params.qa if s}
 
     if run_set:
         batch_options = sorted(
@@ -437,6 +440,8 @@ def filter_sort_page(
         if reviewed_set and reviewed_label(f) not in reviewed_set:
             continue
         if truth_set and truth_label(f) not in truth_set:
+            continue
+        if qa_set and (TRUTH_OPTIONS[0] if f.qa_ground_truth_available else TRUTH_OPTIONS[1]) not in qa_set:
             continue
         if params.pages_min is not None and (f.page_count or 0) < params.pages_min:
             continue

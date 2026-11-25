@@ -98,6 +98,7 @@ def list_folders(
     ),
     confidence_min: int | None = Query(None, ge=0, le=100, description="Chart confidence at least this %"),
     confidence_max: int | None = Query(None, ge=0, le=100, description="Chart confidence at most this %"),
+    qa: list[str] | None = Query(None, description="Repeatable QA Ground Truth filter (Yes / No)"),
 ) -> FolderListResponse:
     """Landing list: DB-backed summaries when DATABASE_URL is set; paginated."""
     params = FolderListParams(
@@ -119,6 +120,7 @@ def list_folders(
         confidence=list(confidence or []),
         confidence_min=confidence_min,
         confidence_max=confidence_max,
+        qa=list(qa or []),
         sort=sort,  # type: ignore[arg-type]
         sort_dir=sort_dir,  # type: ignore[arg-type]
         limit=limit,
