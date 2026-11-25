@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Database, FlaskConical, Gauge, Layers, LogOut, RotateCcw, Search, Users } from "lucide-react";
+import { ClipboardList, Database, FlaskConical, Gauge, Layers, LogOut, Search, Users } from "lucide-react";
 import { type DbStore } from "./dbBackend";
 import { roleLabel } from "./UsersView";
 
@@ -157,28 +157,39 @@ export default function UserProfileMenu({
 
           {calibration ? (
             <>
-              <button
-                type="button"
-                className="user-menu-item"
-                role="menuitem"
-                title={`Fit Page Type / Codability confidence to its measured accuracy on the pages listed (the current filter). Now: ${calibration.status}`}
-                onClick={() => calibrate(calibration.calibrate, "Calibrating…")}
+              {/* 2026-11-25 (user): one row, an Off | On switch like the others. On fits Page Type /
+                  Codability to their measured accuracy on the pages listed; Off goes back to the raw
+                  confidence. To refit after changing the filter: Off, then On. */}
+              <div
+                className="user-menu-item include-extracted-row"
+                role="group"
+                aria-label="Calibrate Confidence"
+                title={`On: Page Type / Codability confidence fitted to its measured accuracy on the pages listed (the current filter). Off: the raw confidence. Now: ${calibration.status}. To refit on other pages: Off, then On.`}
               >
                 <Gauge size={14} aria-hidden="true" />
-                Calibrate Confidence
-              </button>
-              {calibration.on ? (
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  role="menuitem"
-                  onClick={() => calibrate(calibration.reset, "Clearing…")}
-                >
-                  <RotateCcw size={14} aria-hidden="true" />
-                  Reset Calibration
-                </button>
-              ) : null}
-              <p className="user-menu-note">Calibration: {calibrationNote ?? calibration.status}</p>
+                <span className="user-menu-switch-label">Calibrate Confidence</span>
+                <span className="include-extracted">
+                  {(["Off", "On"] as const).map((choice) => {
+                    const on = choice === "On";
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        className={`include-extracted-option${calibration.on === on ? " is-active" : ""}`}
+                        aria-pressed={calibration.on === on}
+                        onClick={() => {
+                          if (calibration.on === on) return;
+                          if (on) calibrate(calibration.calibrate, "Calibrating…");
+                          else calibrate(calibration.reset, "Clearing…");
+                        }}
+                      >
+                        {choice}
+                      </button>
+                    );
+                  })}
+                </span>
+              </div>
+              {calibrationNote ? <p className="user-menu-note">{calibrationNote}</p> : null}
             </>
           ) : null}
 
