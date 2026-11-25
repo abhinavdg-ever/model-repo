@@ -735,6 +735,14 @@ export function getFolderOcr(folderId: string, kind: OcrKind): Promise<OcrTextRe
   return api(`/api/folders/${encodeURIComponent(folderId)}/ocr?${params}`);
 }
 
+/** The chart's QA ground truth by page number (qa_ground_truth), for the testing user's QA
+ * Ground Truth column (2026-11-25). */
+export function getFolderQaGroundTruth(
+  folderId: string,
+): Promise<{ pages: Record<string, Record<string, string | null>> }> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/qa-ground-truth`);
+}
+
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
   return api<ImagingDocumentResponse>(`/api/folders/${encodeURIComponent(folderId)}/imaging${groundTruthQuery()}`)
     .then(withDuplicateValues);

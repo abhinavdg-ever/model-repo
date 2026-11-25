@@ -7151,3 +7151,29 @@ input {
 .confidence-band-table td { white-space: nowrap; }
 .confidence-band-table thead th { vertical-align: bottom; }
 .confidence-group section { overflow-x: auto; }
+
+/* The testing user's QA Ground Truth column (2026-11-25): after Ground Truth, read only; the
+   other columns give it room. */
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-field,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody th { width: 20%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-extracted,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-processed,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(2),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(3) { width: 15%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-confidence,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) thead th:nth-child(4),
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) tbody td:nth-child(4) { width: 12%; }
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) .col-gt,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) th.gt-shade,
+.imaging-detail-table.imaging-value-table.has-qa:not(.is-compact) td.gt-shade { width: 17%; }
+.imaging-detail-table.imaging-value-table .col-qa,
+.imaging-detail-table.imaging-value-table th.qa-shade,
+.imaging-detail-table.imaging-value-table td.qa-shade {
+  width: 17%;
+  background: #f3f7fc;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

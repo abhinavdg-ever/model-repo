@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { readSession } from "./session";
 import { levelLabel } from "./confidenceLevel";
+import { isQaUser } from "./qaColumn";
 import {
   deleteFolder,
   errorDetail,
@@ -64,8 +65,6 @@ import {
 import { fillDocDosForDownload } from "./ImagingPanel";
 
 const PAGE_SIZE = 15;
-/** The username that sees History's QA Ground Truth column (2026-11-25, user). */
-const QA_COLUMN_USER = "testing-user";
 const filterIcon = <Filter size={11} aria-hidden="true" />;
 const LANDING_FILTERS_KEY = "advantmed_imaging_landing_filters";
 
@@ -407,7 +406,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const isAdmin = readSession()?.user.role === "admin";
   // 2026-11-25 (user): the testing user also sees which charts have QA ground truth.
-  const showQa = (readSession()?.user.username ?? "").toLowerCase() === QA_COLUMN_USER;
+  const showQa = isQaUser();
   const canMarkReviewed = readSession()?.user.role !== "viewer";
   const myId = readSession()?.user.id ?? null;
   // Admins, or the user who marked it, may clear a chart's Reviewed mark.

@@ -187,6 +187,19 @@ def folders_confidence(
         raise HTTPException(status_code=502, detail="Could not load chart confidence") from exc
 
 
+@router.get("/folders/{folder_id}/qa-ground-truth")
+def folder_qa_ground_truth(folder_id: str, settings: Settings = Depends(get_settings)) -> dict:
+    """The chart's QA ground truth by page (qa_ground_truth, loaded through Manual Review), for
+    the chart view's QA Ground Truth column (2026-11-25, user). {"pages": {}} when there is none,
+    on Cosmos, or without a database."""
+    from app.services import qa_ground_truth
+    from app.services.backend import reads_cosmos
+
+    if reads_cosmos() or not database_url_usable(settings.database_url):
+        return {"pages": {}}
+    return {"pages": qa_ground_truth.chart_pages(settings.database_url, settings.db_schema, folder_id)}
+
+
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
 def get_folder(
     folder_id: str,

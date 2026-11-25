@@ -81,3 +81,49 @@ def test_qa_rows_from_a_sheet():
 
 def test_storing_qa_never_raises():
     assert qa_ground_truth.store_sheet("postgresql://nowhere.invalid/x", "public", b"PDF ID\n", "qa.csv", None, None) == 0
+
+
+def test_chart_qa_endpoint_without_a_database_is_empty(monkeypatch):
+    """2026-11-25 (user): the chart view's QA Ground Truth column reads /qa-ground-truth; with no
+    database (or on Cosmos) it is empty, never an error."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.routers import charts, router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    monkeypatch.setattr(charts, "database_url_usable", lambda url: False)
+    assert TestClient(app).get("/api/folders/c1/qa-ground-truth").json() == {"pages": {}}
+
+
+def test_chart_pages_shapes_the_rows(monkeypatch):
+    from contextlib import contextmanager
+    from datetime import datetime, timezone
+
+    import app.services.db as db
+
+    columns = list(qa_ground_truth.COLUMNS.values())
+    values = {c: None for c in columns} | {"page_type": "Progress Note", "codeable": ""}
+    row = (3, *[values[c] for c in columns], "qa.csv", datetime(2026, 11, 25, tzinfo=timezone.utc))
+
+    class Cur:
+        def execute(self, sql, params):
+            assert params == ("c1",)
+
+        def fetchall(self):
+            return [row]
+
+    @contextmanager
+    def fake(url, schema):
+        @contextmanager
+        def cursor():
+            yield Cur()
+        yield type("C", (), {"cursor": staticmethod(cursor)})()
+
+    monkeypatch.setattr(db, "connection", fake)
+    pages = qa_ground_truth.chart_pages("postgresql://x/y", "public", "c1")
+    assert pages == {"3": {"page_type": "Progress Note", "source_file": "qa.csv",
+                           "updated_at": "2026-11-25T00:00:00+00:00"}}

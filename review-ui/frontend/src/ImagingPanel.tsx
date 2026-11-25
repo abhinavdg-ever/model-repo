@@ -4,6 +4,7 @@ import GroundTruthBanner, { pageUpdate } from "./GroundTruthBanner";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Plus, Save, X } from "lucide-react";
 import {
   getChartGroundTruth,
+  getFolderQaGroundTruth,
   saveChartGroundTruth,
   savePageGroundTruth,
   type ChartGroundTruth,
@@ -53,6 +54,7 @@ import {
 } from "./ReviewTables";
 import { memberDisplayName, properName } from "./properName";
 import { ClientViewContext, scoreFinalOnly } from "./clientView";
+import { QA_FIELD, QaTruthContext, isQaUser, type QaPage } from "./qaColumn";
 import { dobMatchesManifest, nameMatchesManifest } from "./memberMatch";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -1008,6 +1010,8 @@ function CompareSection({
   problems?: Record<string, string>;
 }) {
   const truthColumn = !compact || withTruth || !readOnly;
+  // 2026-11-25 (user): the testing user's QA Ground Truth, read only, after Ground Truth.
+  const qa = useContext(QaTruthContext);
   // The client's copy: no Extracted column, and Final is headed Algorithm.
   const finalOnly = useContext(ClientViewContext);
   const finalHeading = finalOnly ? "Algorithm" : "Final";
@@ -1018,7 +1022,7 @@ function CompareSection({
         {toolbar}
       </div>
       <table
-        className={`imaging-detail-table imaging-value-table${compact ? " is-compact" : ""}${finalOnly ? " is-final-only" : ""}`}
+        className={`imaging-detail-table imaging-value-table${compact ? " is-compact" : ""}${finalOnly ? " is-final-only" : ""}${qa ? " has-qa" : ""}`}
       >
         {compact ? (
           <colgroup>
@@ -1026,6 +1030,7 @@ function CompareSection({
             {finalOnly ? null : <col className="col-extracted" />}
             <col className="col-processed" />
             {truthColumn ? <col className="col-gt" /> : null}
+            {qa ? <col className="col-qa" /> : null}
           </colgroup>
         ) : (
           <colgroup>
@@ -1035,6 +1040,7 @@ function CompareSection({
             <col className="col-confidence" />
             <col className="col-gap" />
             <col className="col-gt" />
+            {qa ? <col className="col-qa" /> : null}
           </colgroup>
         )}
         <thead>
@@ -1044,6 +1050,7 @@ function CompareSection({
               {finalOnly ? null : <th scope="col">Extracted</th>}
               <th scope="col">{finalHeading}</th>
               {truthColumn ? <th scope="col">Ground Truth</th> : null}
+              {qa ? <th scope="col" className="qa-shade">QA Ground Truth</th> : null}
             </tr>
           ) : (
             <tr>
@@ -1055,6 +1062,7 @@ function CompareSection({
               <th scope="col" className="gt-shade">
                 Ground Truth
               </th>
+              {qa ? <th scope="col" className="qa-shade">QA Ground Truth</th> : null}
             </tr>
           )}
         </thead>
@@ -1101,6 +1109,11 @@ function CompareSection({
               </td>
               </>
               )}
+              {qa ? (
+                <td className="qa-shade">
+                  {QA_FIELD[row.id] ? (qa[QA_FIELD[row.id]] ?? "").trim() || "—" : ""}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -2028,6 +2041,10 @@ function PageDetails({
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
 }) {
   const frozen = useChartFrozen();
+  // 2026-11-25 (user): the testing user sees the chart's QA ground truth beside Ground Truth
+  // (a column only when the chart has any).
+  const qaPages = useQaPages(folderId);
+  const qaPage: QaPage | null = qaPages ? (qaPages[String(page.pageNumber)] ?? {}) : null;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2318,6 +2335,7 @@ function PageDetails({
   ) : null;
 
   return (
+    <QaTruthContext.Provider value={qaPage}>
     <div className="imaging-page-details">
       {saveError ? <p className="imaging-gt-error">{saveError}</p> : null}
       <CompareSection
@@ -2542,6 +2560,7 @@ function PageDetails({
         ]}
       />}
     </div>
+    </QaTruthContext.Provider>
   );
 }
 
@@ -4093,3 +4112,30 @@ function ExtractedList({
 }
 
 export type { ImagingTab };
+
+/** The chart's QA ground truth by page number for the testing user, fetched once per chart;
+ * null for anyone else, while it loads, or when the chart has none (no QA column). */
+const qaPagesCache = new Map<string, { at: number; request: Promise<Record<string, QaPage>> }>();
+const QA_CACHE_MS = 60_000; // a QA file loaded in Manual Review shows within a minute
+function useQaPages(folderId: string): Record<string, QaPage> | null {
+  const [pages, setPages] = useState<Record<string, QaPage> | null>(null);
+  useEffect(() => {
+    setPages(null);
+    if (!isQaUser() || !folderId) return undefined;
+    let live = true;
+    const cached = qaPagesCache.get(folderId);
+    let request = cached && Date.now() - cached.at < QA_CACHE_MS ? cached.request : undefined;
+    if (!request) {
+      request = getFolderQaGroundTruth(folderId).then((body) => body.pages ?? {});
+      qaPagesCache.set(folderId, { at: Date.now(), request });
+      request.catch(() => qaPagesCache.delete(folderId));
+    }
+    request
+      .then((found) => live && setPages(Object.keys(found).length ? found : null))
+      .catch(() => live && setPages(null));
+    return () => {
+      live = false;
+    };
+  }, [folderId]);
+  return pages;
+}

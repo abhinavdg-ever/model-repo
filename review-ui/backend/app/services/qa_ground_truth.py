@@ -120,3 +120,30 @@ def charts_with_qa(database_url: str, db_schema: str) -> set[str]:
     except Exception as exc:  # noqa: BLE001 - History shows No rather than failing
         logger.info("qa_ground_truth not read: %s", exc)
         return set()
+
+
+def chart_pages(database_url: str, db_schema: str, chart_name: str) -> dict[str, dict[str, Any]]:
+    """One chart's QA ground truth, page number (as text) -> {column: value, source_file,
+    updated_at}, for the chart view's QA Ground Truth column (2026-11-25, user). Empty when the
+    chart has none or the table is missing."""
+    from app.services.db import connection
+
+    columns = list(COLUMNS.values())
+    try:
+        with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"SELECT page_number, {', '.join(columns)}, source_file, updated_at "
+                "FROM qa_ground_truth WHERE chart_name = %s",
+                (chart_name,),
+            )
+            rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001 - no QA column rather than an error
+        logger.info("qa_ground_truth not read for a chart: %s", exc)
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for page_number, *values, source_file, updated_at in rows:
+        entry = {column: value for column, value in zip(columns, values) if value not in (None, "")}
+        entry["source_file"] = source_file
+        entry["updated_at"] = updated_at.isoformat() if updated_at else None
+        out[str(page_number)] = entry
+    return out
