@@ -108,8 +108,8 @@ class TestDecide:
         kw = leaf_canon.score_leaves(LEAVES, "hpi: cough")
         d = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.7), ("Progress Note > Others", 0.2)), kw, SETTINGS)
         assert (d.path, d.how) == ("Progress Note > CC/HPI", "agree") and d.strength > 0.7
-        # 2026-11-14 (section 12): the stored confidence is the model's own p, no keyword lift.
-        assert d.confidence == 0.7
+        # 2026-11-25: tier A on the family -> the model's probability over Progress Note (0.7 + 0.2).
+        assert d.confidence == 0.9
 
     def test_a_deciding_word_decides_unless_the_model_is_sure_of_another_l1(self, canon):
         canon({"Administrative > Superbill": {"deciding": ["superbill"]}})
@@ -118,9 +118,10 @@ class TestDecide:
         assert (d.path, d.how) == ("Administrative > Superbill", "deciding")
         sure = leaf.decide(LEAVES, _model(("Progress Note > CC/HPI", 0.95)), kw, SETTINGS)
         assert sure.path == "Progress Note > CC/HPI" and sure.deciding_overruled
-        # 2026-11-14 (section 12): a Deciding word against the model's top, or the model
-        # overruling a Deciding word, is flipped (0.30).
-        assert d.confidence == 0.3 and sure.confidence == 0.3
+        # A Deciding word against the model's family is tier E: 0.20 + 0.50 x the model's probability
+        # for that family (none here; 2026-11-25, spread); the model overruling a Deciding word
+        # stays flipped (0.30).
+        assert d.confidence == 0.2 and sure.confidence == 0.3
 
     def test_others_only_when_nothing_else(self, canon):
         canon({"Progress Note > Assessment and Plan": {"good_to_have": ["plan"]}})

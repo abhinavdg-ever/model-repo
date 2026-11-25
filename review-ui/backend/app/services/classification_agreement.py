@@ -1,12 +1,15 @@
-"""The page classifier's model / keyword agreement tier (2026-11-24, user), for the Confidence
-Analysis' Agreement view: the tier the pipeline stored (core-pipeline page_classify/agreement.py),
-else the same rule read from the stored rankings (charts classified before it).
+"""The page classifier's model / keyword agreement tier, for the Confidence Analysis (2026-11-24,
+user), read on the chosen type's FAMILY since 2026-11-25 (core-pipeline page_classify/agreement.py):
+each approach's families ranked by their best path.
 
-  A  the model's #1 and the keywords' #1 are the chosen type
-  B  the model's #1 is it, the keywords rank it 2nd or 3rd
-  C  the model's #1 is it, the keywords rank it lower or not at all
-  D  the model ranks it 2nd or 3rd, or its #1 is in the same L1; no model: the keywords' #1 is it
-  E  the model's #1 is in another L1, or neither ranks it
+  A  the model's #1 family and the keywords' #1 family are the chosen type's
+  B  the model's #1 family is it, the keywords rank it 2nd or 3rd
+  C  the model's #1 family is it, the keywords rank it lower or not at all
+  D  the model ranks it 2nd or 3rd; no model: the keywords' #1 family is it
+  E  the model ranks it lower or not at all, or neither ranks it
+
+Worked out from the stored rankings, so charts classified before 2026-11-25 (leaf tiers stored)
+read the same rule; the stored tier only when the rankings are missing.
 """
 from __future__ import annotations
 
@@ -28,6 +31,15 @@ def _rank(entries: Any, match) -> Optional[int]:
     return min(ranks) if ranks else None
 
 
+def _family_ranks(entries: Any) -> dict[str, int]:
+    rows = sorted((int(e["rank"]), str(e.get("path") or "")) for e in entries or []
+                  if isinstance(e, dict) and e.get("rank") is not None)
+    out: dict[str, int] = {}
+    for _rank, path in rows:
+        out.setdefault(path.split(SEP)[0], len(out) + 1)
+    return out
+
+
 def tier(value: Any) -> Optional[str]:
     """The tier of one page's classification_agreement JSON; None when it has none."""
     if isinstance(value, str):
@@ -37,21 +49,19 @@ def tier(value: Any) -> Optional[str]:
             return None
     if not isinstance(value, dict):
         return None
-    stored = value.get("tier")
-    if stored in TIERS:
-        return stored
     leaf = str(value.get("leaf") or "")
     if not leaf or leaf.split(SEP)[0] in ("Others", "Unknown"):
         return None
     model_top, keyword_top = value.get("model_top") or [], value.get("keyword_top") or []
-    kr = _rank(keyword_top, lambda p: p == leaf)
+    if not model_top and not keyword_top:
+        stored = value.get("tier")
+        return stored if stored in TIERS else None
+    family = leaf.split(SEP)[0]
+    kr = _family_ranks(keyword_top).get(family)
     has_model = (value.get("model_source") or "none") != "none" and bool(model_top)
     if not has_model:
         return "D" if kr == 1 else "E"
-    mr = _rank(model_top, lambda p: _covers(p, leaf))
+    mr = _family_ranks(model_top).get(family)
     if mr == 1:
         return "A" if kr == 1 else "B" if kr in (2, 3) else "C"
-    first = min((e for e in model_top if isinstance(e, dict) and e.get("rank") is not None),
-                key=lambda e: int(e["rank"]), default=None)
-    same_l1 = bool(first) and str(first.get("path") or "").split(SEP)[0] == leaf.split(SEP)[0]
-    return "D" if mr in (2, 3) or same_l1 else "E"
+    return "D" if mr in (2, 3) else "E"

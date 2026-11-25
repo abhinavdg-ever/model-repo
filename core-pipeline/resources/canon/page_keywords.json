@@ -50,9 +50,15 @@
      "b_factor": 0.9,
      "c_factor": 0.75,
      "c_cap": 0.79,
+     "d_base": 0.4,
+     "d_slope": 0.5,
+     "d_cap": 0.69,
+     "e_base": 0.2,
+     "e_slope": 0.5,
+     "e_cap": 0.49,
      "d_value": 0.55,
      "e_value": 0.3,
-     "note": "2026-11-24 (user): page type / codability confidence by how the model and the keywords agree on the chosen type (page_classify/agreement.py): A both #1 -> model p; B model #1, keywords 2-3 -> p x b_factor; C model #1 only -> p x c_factor, at most c_cap; D model 2-3 or same L1 -> d_value; E another L1 -> e_value. Codability: the model p over every type with that codability, x c_factor (cap c_cap) when one first differs, e_value when both do."
+     "note": "2026-11-25 (user): page type / codability confidence by how the model and the keywords agree on the chosen type's FAMILY (page_classify/agreement.py), from the model's probability over that family (mass): A both #1 -> mass; B model #1, keywords 2-3 -> mass x b_factor; C model #1 only -> mass x c_factor, at most c_cap; D model 2-3 -> d_base + d_slope x mass, at most d_cap; E otherwise -> e_base + e_slope x mass, at most e_cap (spread, no pile on one value). No model: D d_value, E e_value. Codability: the model p over every type with that codability, x c_factor (cap c_cap) when one first differs, E's spread when both do."
    }
   },
   "title_zone_lines": 12,

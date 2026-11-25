@@ -380,15 +380,17 @@ def decide(leaves: dict[str, Any], model: ModelSide, kw: leaf_canon.LeafKeywords
     # confidence (agreement.py); a Deciding word the model overruled and an Others leaf keep theirs.
     agree_cfg = agreement.settings(((settings.get("confidence") or {}).get("agreement")))
     has_model = model.source != NO_MODEL and bool(model_first)
-    mr = min((r for path, r in model_rank_raw.items() if stands_for(model, winner, path)), default=None)
-    agreement_tier = agreement.tier(mr, keyword_rank.get(winner),
-                                    bool(model_first) and str(model_first).split(SEP)[0] == winner.split(SEP)[0],
-                                    has_model)
+    # 2026-11-25 (user): read on the family (the level the ground truth grades), not the leaf.
+    family = winner.split(SEP)[0]
+    mr = agreement.family_ranks(model_rank_raw).get(family)
+    kr = agreement.family_ranks(keyword_rank).get(family)
+    agreement_tier = agreement.tier(mr, kr, has_model)
     if agree_cfg["enabled"] and not overruled and not is_others(winner):
-        confidence = agreement.page_type_confidence(agreement_tier, _prob(model, winner), agree_cfg)
-        rule = f"agreement tier {agreement_tier}"
+        confidence = agreement.page_type_confidence(
+            agreement_tier, agreement.family_mass(dict(model.probs), family), agree_cfg, has_model)
+        rule = f"agreement tier {agreement_tier} (family)"
     why = {**why, "strength": strength, "rule_2026_11_14": rule, "agreement_tier": agreement_tier,
-           "model_rank": mr, "keyword_rank": keyword_rank.get(winner)}
+           "agreement_basis": "family", "model_rank": mr, "keyword_rank": kr}
     return Decision(winner, how, confidence, model_rank_raw, keyword_rank,
                     {leaf: t for leaf, t in sorted(scored.items(), key=lambda kv: -kv[1])[: 2 * k]},
                     deciding, overruled, {leaf: why for leaf, why in kw.excluded.items()}, why, strength,

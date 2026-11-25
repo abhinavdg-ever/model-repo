@@ -1138,6 +1138,10 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     for (const metric of LIVE_METRICS) pageMetricBands.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
     // 2026-11-25 (user): the same two tables by Page Score (the average of the page's metrics).
     const scoreBands: LevelScore[] = Array.from({ length: BANDS.length }, emptyScore);
+    // 2026-11-25 (user): per band, pages by how many streams match (0/7 .. 7/7).
+    const streamRow = () => new Array<number>(OVERALL_STREAMS + 1).fill(0);
+    const pageStreams = Array.from({ length: BANDS.length }, streamRow);
+    const scoreStreams = Array.from({ length: BANDS.length }, streamRow);
     const scoreMetricBands = new Map<MetricId, LevelScore[]>();
     for (const metric of LIVE_METRICS) scoreMetricBands.set(metric.id, Array.from({ length: BANDS.length }, emptyScore));
     const perFeature = new Map<string, Record<Level, number>>();
@@ -1148,7 +1152,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
     const deciles = new Map<MetricId, LevelScore[]>();
     for (const metric of LIVE_METRICS) deciles.set(metric.id, Array.from({ length: metricBands(metric.id).length }, emptyScore));
     // 2026-11-23 (user): charts by their own confidence band; Match = a page with every metric matching.
-    const chartBands = Array.from({ length: BANDS.length }, () => ({ charts: 0, pages: 0, yes: 0 }));
+    const chartBands = Array.from({ length: BANDS.length }, () => ({ charts: 0, pages: 0, yes: 0, streams: new Array<number>(OVERALL_STREAMS + 1).fill(0) }));
     const chartValues: number[] = [];
     for (const row of rows) {
       const cv = row.confidence?.value;
@@ -1160,6 +1164,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
           if (!page.overall) continue;
           cb.pages += 1;
           if (page.overall === "yes") cb.yes += 1;
+          if (page.matches != null) cb.streams[page.matches] += 1;
         }
       }
       for (const page of row.pages) {
@@ -1168,6 +1173,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
           pageLevels[pc.level] += 1;
           scored.push({ level: pc.level, critical: Boolean(page.critical) });
           if (page.overall) addVerdict(pageBands[bandIndex(pc.value)], page.overall);
+          if (page.overall && page.matches != null) pageStreams[bandIndex(pc.value)][page.matches] += 1;
           for (const metric of LIVE_METRICS) {
             const verdict = page.scores[metric.id];
             if (verdict != null) addVerdict(pageMetricBands.get(metric.id)![bandIndex(pc.value)], verdict);
@@ -1177,6 +1183,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
         if (pc?.score != null) {
           const i = bandIndex(pc.score);
           if (page.overall) addVerdict(scoreBands[i], page.overall);
+          if (page.overall && page.matches != null) scoreStreams[i][page.matches] += 1;
           for (const metric of LIVE_METRICS) {
             const verdict = page.scores[metric.id];
             if (verdict != null) addVerdict(scoreMetricBands.get(metric.id)![i], verdict);
@@ -1225,7 +1232,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
       }
     }
     const chartMean = chartValues.length ? Math.round((100 * chartValues.reduce((s, x) => s + x, 0)) / chartValues.length) : null;
-    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, scoreBands, scoreMetricBands, chartBands, chartMean,
+    return { pageLevels, total, level: score?.level ?? null, reason: score?.reason ?? null, pageBands, pageMetricBands, scoreBands, scoreMetricBands, pageStreams, scoreStreams, chartBands, chartMean,
              mean: score ? Math.round(100 * score.value) : null, perFeature, cross, byMetric, pooled, deciles, agreement };
   }, [open, rows]);
 
@@ -1316,8 +1323,9 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                   <p className="chart-details-note">Match = every metric on the page matches.</p>
                   <table className="chart-details-table">
                     <thead>
-                      <tr><th>Confidence</th><th className="num">Charts</th><th className="num">Pages</th><th className="num">Match</th>
-                        <th className="num">No Match</th><th className="num">Accuracy</th></tr>
+                      <tr><th>Confidence</th><th className="num">Charts</th><th className="num">Pages</th>
+                        {STREAM_HEADS.map((h) => <th key={h} className="num">{h}</th>)}
+                        <th className="num">Match</th><th className="num">No Match</th><th className="num">Accuracy</th></tr>
                     </thead>
                     <tbody>
                       {BANDS.map(([label, lo], i) => {
@@ -1328,6 +1336,7 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                             <td className={`level-text-${level}`}>{label}</td>
                             <td className="num">{b.charts.toLocaleString()}</td>
                             <td className="num">{b.pages.toLocaleString()}</td>
+                            {b.streams.map((n, k) => <td key={k} className="num">{n.toLocaleString()}</td>)}
                             <td className="num">{b.yes.toLocaleString()}</td>
                             <td className="num">{(b.pages - b.yes).toLocaleString()}</td>
                             <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
@@ -1335,10 +1344,12 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
                         );
                       })}
                       {(() => {
-                        const t = data.chartBands.reduce((acc, b) => ({ charts: acc.charts + b.charts, pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { charts: 0, pages: 0, yes: 0 });
+                        const t = data.chartBands.reduce((acc, b) => ({ charts: acc.charts + b.charts, pages: acc.pages + b.pages, yes: acc.yes + b.yes,
+                          streams: acc.streams.map((n, k) => n + b.streams[k]) }), { charts: 0, pages: 0, yes: 0, streams: new Array<number>(OVERALL_STREAMS + 1).fill(0) });
                         return (
                           <tr className="chart-details-total">
                             <td>Total</td><td className="num">{t.charts.toLocaleString()}</td><td className="num">{t.pages.toLocaleString()}</td>
+                            {t.streams.map((n, k) => <td key={k} className="num">{n.toLocaleString()}</td>)}
                             <td className="num">{t.yes.toLocaleString()}</td><td className="num">{(t.pages - t.yes).toLocaleString()}</td>
                             <td className="num">{share(t.yes, t.pages)}</td>
                           </tr>
@@ -1350,10 +1361,10 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
 
                 <PageBandTables title="Page Confidence (basis level)"
                   note="The page's level from how many of its metrics are High / Medium / Low. Colours everywhere follow this."
-                  bands={data.pageBands} metricBands={data.pageMetricBands} />
+                  bands={data.pageBands} metricBands={data.pageMetricBands} streams={data.pageStreams} />
                 <PageBandTables title="Page Score (basis average)"
                   note="The plain average of the page's metric confidences. A number only: no colour or level comes from it."
-                  bands={data.scoreBands} metricBands={data.scoreMetricBands} />
+                  bands={data.scoreBands} metricBands={data.scoreMetricBands} streams={data.scoreStreams} />
                 </>
                 )}
               </div>
@@ -1365,11 +1376,15 @@ function ConfidenceMetrics({ rows }: { rows: ChartAccuracy[] }) {
   );
 }
 
+/** 0/7 .. 7/7: pages by how many of the seven streams match (2026-11-25, user). */
+const STREAM_HEADS = Array.from({ length: OVERALL_STREAMS + 1 }, (_, k) => `${k}/${OVERALL_STREAMS}`);
+
 /** Pages by a page measure's band: Match = every metric matching, then each metric's accuracy
  * (2026-11-25, user: Page Confidence by level and Page Score by average, side by side). */
-function PageBandTables({ title, note, bands, metricBands }: {
-  title: string; note: string; bands: LevelScore[]; metricBands: Map<MetricId, LevelScore[]>;
+function PageBandTables({ title, note, bands, metricBands, streams }: {
+  title: string; note: string; bands: LevelScore[]; metricBands: Map<MetricId, LevelScore[]>; streams: number[][];
 }) {
+  const streamTotal = streams.reduce((acc, row) => acc.map((n, k) => n + row[k]), new Array<number>(OVERALL_STREAMS + 1).fill(0));
   const share = (n: number, total: number) => (total ? `${Math.round((100 * n) / total)}%` : "—");
   const levelOf = (lo: number) => (lo >= 0.8 ? "high" : lo >= 0.5 ? "medium" : "low");
   const t = bands.reduce((acc, b) => ({ pages: acc.pages + b.pages, yes: acc.yes + b.yes }), { pages: 0, yes: 0 });
@@ -1380,8 +1395,9 @@ function PageBandTables({ title, note, bands, metricBands }: {
         <p className="chart-details-note">{note} Match = every metric on the page matches.</p>
         <table className="chart-details-table">
           <thead>
-            <tr><th>Band</th><th className="num">Pages</th><th className="num">Match</th>
-              <th className="num">No Match</th><th className="num">Accuracy</th></tr>
+            <tr><th>Band</th><th className="num">Pages</th>
+              {STREAM_HEADS.map((h) => <th key={h} className="num">{h}</th>)}
+              <th className="num">Match</th><th className="num">No Match</th><th className="num">Accuracy</th></tr>
           </thead>
           <tbody>
             {BANDS.map(([label, lo], i) => {
@@ -1390,6 +1406,7 @@ function PageBandTables({ title, note, bands, metricBands }: {
                 <tr key={label}>
                   <td className={`level-text-${levelOf(lo)}`}>{label}</td>
                   <td className="num">{b.pages.toLocaleString()}</td>
+                  {streams[i].map((n, k) => <td key={k} className="num">{n.toLocaleString()}</td>)}
                   <td className="num">{b.yes.toLocaleString()}</td>
                   <td className="num">{(b.no + b.maybe).toLocaleString()}</td>
                   <td className="num">{b.pages ? share(b.yes, b.pages) : "—"}</td>
@@ -1397,7 +1414,9 @@ function PageBandTables({ title, note, bands, metricBands }: {
               );
             })}
             <tr className="chart-details-total">
-              <td>Total</td><td className="num">{t.pages.toLocaleString()}</td><td className="num">{t.yes.toLocaleString()}</td>
+              <td>Total</td><td className="num">{t.pages.toLocaleString()}</td>
+              {streamTotal.map((n, k) => <td key={k} className="num">{n.toLocaleString()}</td>)}
+              <td className="num">{t.yes.toLocaleString()}</td>
               <td className="num">{(t.pages - t.yes).toLocaleString()}</td><td className="num">{share(t.yes, t.pages)}</td>
             </tr>
           </tbody>

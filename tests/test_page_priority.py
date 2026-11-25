@@ -97,4 +97,4 @@ def test_a_diagnosis_list_title_is_a_problem_list(monkeypatch):
 def test_a_rule_against_the_model_is_flipped_and_decided_by_rule(monkeypatch):
     text = "Hospital Course:\nstable\nDischarge Diagnosis:\nmade up\n"
     r = classify(monkeypatch, text, ("Progress Note > CC/HPI", 0.40), ("Lab Report > Lab Result", 0.35))
-    assert r.l1 == DS and r.decided_by == "rule" and r.page_type_confidence == pytest.approx(0.3)
+    assert r.l1 == DS and r.decided_by == "rule" and r.page_type_confidence == pytest.approx(0.2)  # tier E, no model mass on DS (2026-11-25 spread)
