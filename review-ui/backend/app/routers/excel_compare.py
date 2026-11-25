@@ -91,6 +91,9 @@ class _PipelineCharts:
         if pdf_id not in self._docs:
             self._fetch_from(pdf_id)
         doc = self._docs.get(pdf_id)
+        if isinstance(doc, excel_compare.database_algo.FailedChart):
+            # This chart is skipped, the comparison goes on (2026-11-25, user).
+            raise ValueError(f"its pipeline output could not be read ({doc.detail})")
         return excel_compare.database_system.system_csv([(pdf_id, doc)], self.calibration()) if doc else None
 
     def last_run(self, pdf_id: str) -> str | None:

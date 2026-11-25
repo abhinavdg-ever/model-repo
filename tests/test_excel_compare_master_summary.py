@@ -312,6 +312,10 @@ def test_database_algo_row_carries_document_type():
     row[-2], row[-1] = {"page_type": 0.9}, {"orientation": 0.97}
     page = database_algo._page(tuple(row))
     assert (page.finalConfidences, page.measuredConfidences) == ({"page_type": 0.9}, {"orientation": 0.97})
+    # imaging_final.confidences also holds nested detail: numbers only (2026-11-25, Manual Review
+    # stopped on "finalConfidences.member_raw Input should be a valid number").
+    row[-2] = {"page_type": 0.9, "member_raw": {"member_dob": {"raw": 0.93, "source": "kv_row"}}, "flag": True}
+    assert database_algo._page(tuple(row)).finalConfidences == {"page_type": 0.9}
 
 
 def test_names_match_in_any_order_and_punctuation():

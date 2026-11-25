@@ -297,8 +297,11 @@ def stream(
         if len(second_part):
             system_charts[key] |= unique_pdf_ids(second_part)
 
+    skipped: list[dict] = []
     for pdf_id in pdf_ids:
         chart_rows: dict[str, list[dict]] = {}
+        # Counted only once the whole chart compared (a failure part-way counts none of it).
+        pending: list[tuple] = []
         try:
             parts = {source: frames[source][chart_of[source] == pdf_id] for source in present}
             if pipeline_db:
@@ -330,16 +333,22 @@ def stream(
                             f"PDF ID {row['PDF ID']}, Page Number {row['Page Number']}."
                         )
                 chart_rows[key] = rows
-                tally(key, first_part, second_part, rows, missing, extra)
+                pending.append((key, first_part, second_part, rows, missing, extra))
             if ALL in keys:
                 rows = _all_three(qa_overlap, fields[ALL], chart_rows, labels)
                 matched = sum(1 for row in rows if row["Status"] != "MISSING")
                 both = qa_overlap.iloc[[i for i, row in enumerate(rows) if row["Status"] != "MISSING"]]
                 chart_rows[ALL] = rows
-                tally(ALL, qa_overlap, both, rows, len(rows) - matched, 0)
+                pending.append((ALL, qa_overlap, both, rows, len(rows) - matched, 0))
         except Exception as exc:  # noqa: BLE001 - reported to the screen, not raised mid-stream
-            yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
-            return
+            # 2026-11-25 (user): one chart's error skips that chart, never the rest.
+            from . import _skip_detail
+
+            skipped.append({"pdfId": pdf_id, "detail": _skip_detail(exc)})
+            yield {"type": "skipped", **skipped[-1]}
+            continue
+        for args in pending:
+            tally(*args)
         try:
             ran = last_run(pdf_id) if last_run else None
         except Exception:  # noqa: BLE001 - a missing timestamp must not stop the comparison
@@ -384,7 +393,7 @@ def stream(
         "titles": {key: comparison_label(key) for key in keys},
         "sources": [source for source in SOURCES if source in present],
     })
-    yield {"type": "done", "comparisons": done, "reportId": report_id}
+    yield {"type": "done", "comparisons": done, "reportId": report_id, "skipped": skipped}
 
 
 def run(
@@ -404,10 +413,13 @@ def run(
         meta["key"]: {**meta, "rows": [], "lastRun": {}} for meta in start["comparisons"]
     }
     report_id = None
+    skipped: list[dict] = []
     for event in events:
         if event["type"] == "error":
             raise ValueError(f"Chart {event['pdfId']}: {event['detail']}")
-        if event["type"] == "chart":
+        if event["type"] == "skipped":
+            skipped.append({"pdfId": event["pdfId"], "detail": event["detail"]})
+        elif event["type"] == "chart":
             for key, part in event["comparisons"].items():
                 target = comparisons[key]
                 target["rows"].extend(part["rows"])
@@ -425,4 +437,5 @@ def run(
         "defaultComparison": order[0],
         "comparisons": comparisons,
         "reportId": report_id,
+        "skipped": skipped,
     }

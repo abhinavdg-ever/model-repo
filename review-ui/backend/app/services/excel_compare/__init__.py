@@ -82,6 +82,15 @@ def _row(row: dict, fields: list[str]) -> dict[str, Any]:
     }
 
 
+def _skip_detail(exc: Exception) -> str:
+    """A skipped chart's reason, one line, for the screen and the log."""
+    import logging
+
+    text = (str(exc) or type(exc).__name__).splitlines()[0][:300]
+    logging.getLogger("review_ui.api").warning("manual review: chart skipped: %s", text)
+    return text
+
+
 def _percentage(value: Any) -> float | None:
     """The summary's "N/A" (nothing compared) and "-" (chart counts) read as None."""
     return float(value) if isinstance(value, (int, float)) else None
@@ -197,6 +206,7 @@ def stream(
     }
 
     all_rows: list[dict] = []
+    skipped: list[dict] = []
     system_charts: set[str] = set()
     counts = {
         "groundCount": 0, "systemCount": 0, "correctCount": 0, "errorCount": 0,
@@ -213,8 +223,10 @@ def stream(
             system_part = restrict_to_ground(ground_part, system_part)
             rows, missing, extra = compare_frames(ground_part, system_part, fields)
         except Exception as exc:  # noqa: BLE001 - reported to the screen, not raised mid-stream
-            yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
-            return
+            # 2026-11-25 (user): one chart's error skips that chart, never the rest.
+            skipped.append({"pdfId": pdf_id, "detail": _skip_detail(exc)})
+            yield {"type": "skipped", **skipped[-1]}
+            continue
         all_rows.extend(rows)
         system_charts |= unique_pdf_ids(system_part)
         counts["groundCount"] += len(ground_part)
@@ -256,6 +268,7 @@ def stream(
         "type": "done", **counts, **_totals(result),
         "summary": _summary(result["summary_df"]),
         "reportId": report_id,
+        "skipped": skipped,
     }
 
 

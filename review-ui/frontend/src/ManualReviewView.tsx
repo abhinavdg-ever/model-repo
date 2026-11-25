@@ -630,6 +630,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   const streamRef = useRef<AbortController | null>(null);
   // Set when Stop ends a comparison early: the charts loaded so far stay on screen.
   const [stopped, setStopped] = useState<{ loaded: number; total: number } | null>(null);
+  // Charts the backend could not compare (2026-11-25, user: one chart's error never stops the rest).
+  const [skipped, setSkipped] = useState<{ pdfId: string; detail: string }[]>([]);
 
   function stopCompare() {
     const controller = streamRef.current;
@@ -700,6 +702,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     setComparing(true);
     setError(null);
     setStopped(null);
+    setSkipped([]);
     setView({ filter: "ALL", page: 1, fieldFilters: {}, valueFilters: {}, valueSides: {}, filterField: "" });
     lastViewKey = null;
     setViewKeyState(null);
@@ -731,6 +734,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
           } else if (event.type === "error") {
             setError(`Stopped at chart ${event.pdfId}: ${event.detail}`);
             return;
+          } else if (event.type === "skipped") {
+            setSkipped((list) => [...list, { pdfId: event.pdfId, detail: event.detail }]);
+            setProgress((p) => (p ? { ...p, loaded: p.loaded + 1 } : p));
           } else if (current && event.type === "chart") {
             const parts = event.comparisons ?? (() => {
               const { type: _type, pdfId: _pdfId, lastRunAt: _lastRunAt, comparisons: _none, ...part } = event;
@@ -1041,6 +1047,19 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
           : ""}
       </p>
       {error ? <div className="error-banner">{error}</div> : null}
+      {skipped.length && bundle ? (
+        <details className="excel-compare-skipped">
+          <summary>
+            {skipped.length} chart{skipped.length === 1 ? "" : "s"} skipped (could not be compared); the
+            rest are compared. Counts and downloads leave {skipped.length === 1 ? "it" : "them"} out.
+          </summary>
+          <ul>
+            {skipped.map((s) => (
+              <li key={s.pdfId}><strong>{s.pdfId}</strong>: {s.detail}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {stopped && bundle ? (
         <p className="accuracy-note excel-compare-stopped">
           Stopped after {stopped.loaded} of {stopped.total} charts. Counts and results cover those charts only;

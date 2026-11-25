@@ -193,3 +193,78 @@ def test_save_page_sets_only_the_given_columns(monkeypatch):
     assert params[-2:] == (qa_ground_truth.CHART_VIEW_SOURCE, 7)
     with pytest.raises(ValueError):
         qa_ground_truth.save_page("postgresql://x/y", "public", "c1", 2, {"bogus": "x"}, 7)
+
+
+def test_one_bad_chart_is_skipped_not_the_run():
+    """2026-11-25 (user): "Stopped at chart ...": one chart's error skips that chart only."""
+    ground = (b"PDF ID,Page Number,Page Type\n"
+              b"c1,1,Progress Note\nbad,1,Lab Report\nc3,1,Lab Report\n")
+
+    def load(pdf_id):
+        if pdf_id == "bad":
+            raise ValueError("finalConfidences.member_raw Input should be a valid number")
+        return f"PDF ID,Page Number,Page Type\n{pdf_id},1,Lab Report\n".encode()
+
+    events = list(excel_compare.stream((ground, "gt.csv"), None, load_system=load))
+    kinds = [e["type"] for e in events]
+    assert kinds == ["start", "chart", "skipped", "chart", "done"]
+    assert events[2]["pdfId"] == "bad" and "member_raw" in events[2]["detail"]
+    done = events[-1]
+    assert done["groundCount"] == 2 and done["correctCount"] == 1 and done["errorCount"] == 1
+    assert done["skipped"] == [{"pdfId": "bad", "detail": events[2]["detail"]}]
+
+
+def test_one_bad_chart_is_skipped_in_the_three_way_review():
+    from app.services.excel_compare import three_way
+
+    qa = b"PDF ID,Page Number,Page Type\nc1,1,Progress Note\nbad,1,Lab Report\n"
+    client = b"PDF ID,Page Number,Page Type\nc1,1,Progress Note\nbad,1,Lab Report\n"
+
+    def load(pdf_id):
+        if pdf_id == "bad":
+            raise ValueError("cannot read")
+        return b"PDF ID,Page Number,Page Type\nc1,1,Progress Note\n"
+
+    events = list(three_way.stream({"qa": (qa, "qa.csv"), "client": (client, "c.csv"), "pipeline": None},
+                                   load_pipeline=load))
+    assert [e["type"] for e in events] == ["start", "chart", "skipped", "done"]
+    done = events[-1]
+    assert done["skipped"] == [{"pdfId": "bad", "detail": "cannot read"}]
+    # The skipped chart counts in no comparison.
+    assert all(c["groundCount"] == 1 for c in done["comparisons"].values())
+
+
+def test_a_bad_page_fails_its_chart_only_in_the_batch_read(monkeypatch):
+    from contextlib import contextmanager
+
+    import app.services.excel_compare.database_algo as algo
+
+    rows = [("good", 1, "g1"), ("bad", 1, "b1"), ("bad", 2, "b2"), ("good", 2, "g2")]
+
+    class Cur:
+        def __init__(self):
+            self.last = None
+
+        def execute(self, sql, params):
+            self.last = sql
+
+        def fetchall(self):
+            return rows if "page_list" in self.last else []
+
+    @contextmanager
+    def fake(url, schema):
+        @contextmanager
+        def cursor():
+            yield Cur()
+        yield type("C", (), {"cursor": staticmethod(cursor)})()
+
+    def page(row):
+        if row[0] == "bad" and row[1] == 2:
+            raise ValueError("member_raw\nInput should be a valid number")
+        return ImagingPageResult(pageNumber=row[1], fileName=f"{row[1]}.jpg")
+
+    monkeypatch.setattr(algo, "connection", fake)
+    monkeypatch.setattr(algo, "_page", page)
+    docs, _ = algo.fetch("postgresql://x/y", "public", ["good", "bad"])
+    assert [p.pageNumber for p in docs["good"].pages] == [1, 2]
+    assert isinstance(docs["bad"], algo.FailedChart) and docs["bad"].detail == "page 2: member_raw"

@@ -1186,7 +1186,9 @@ export type ManualReviewEvent =
       reportId: string;
       comparisons: Partial<Record<ManualReviewComparisonKey, Omit<ManualReviewDone, "reportId">>>;
     }
-  | { type: "error"; pdfId: string; detail: string };
+  | { type: "error"; pdfId: string; detail: string }
+  /** 2026-11-25 (user): a chart that could not be compared; the others go on. */
+  | { type: "skipped"; pdfId: string; detail: string };
 
 /** The comparison one chart at a time (NDJSON), handed to ``onEvent`` as each
  * line arrives. Input errors reject before any event. */

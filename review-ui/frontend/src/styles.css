@@ -7210,3 +7210,16 @@ input {
 .imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa thead th:nth-child(3),
 .imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa tbody td:nth-child(3),
 .imaging-detail-table.imaging-value-table.is-final-only.is-compact.has-qa .col-qa { width: 24%; }
+
+/* Manual Review: charts that could not be compared (2026-11-25): a warning, the run goes on. */
+.excel-compare-skipped {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e8c77a;
+  border-radius: 8px;
+  background: #fff8e6;
+  color: #6b4e00;
+  font-size: 0.82rem;
+}
+.excel-compare-skipped summary { cursor: pointer; font-weight: 600; }
+.excel-compare-skipped ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }

@@ -57,9 +57,18 @@ SELECT c.chart_name,
 _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = ANY(%s)"
 
 
+class FailedChart:
+    """In ``fetch``'s documents: a chart one of whose pages could not be read (2026-11-25, user:
+    one bad chart must not stop a Manual Review). Loading it raises; the other charts of the
+    batch are unaffected."""
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+
+
 def _page(row: tuple) -> ImagingPageResult:
     from app.store.postgres.repository import DUPLICATE_CONTENT_MARK, _blank_junk_ui, _fmt_date
-    from app.services.accuracy_cache import _CODEABLE, _text
+    from app.services.accuracy_cache import _CODEABLE, _confidences, _text
     from app.services.imaging_overlays import compose_page_type, page_type_fields, signer_fields
 
     (
@@ -74,9 +83,11 @@ def _page(row: tuple) -> ImagingPageResult:
         names_original, bj_reason, *extra,
     ) = row
     id_rows = extra[0] if extra else None  # additional_page_details member_id rows (2026-11-03)
-    # The Final and stage-1 measured confidences (2026-11-25): Manual Review's brackets.
-    final_conf = extra[1] if len(extra) > 1 and isinstance(extra[1], dict) else None
-    measured_conf = extra[2] if len(extra) > 2 and isinstance(extra[2], dict) else None
+    # The Final and stage-1 measured confidences (2026-11-25): Manual Review's brackets. Numbers
+    # only, as the Accuracy view reads them: imaging_final.confidences also holds nested detail
+    # (member_raw: {member_dob: {raw, source}}) that ImagingPageResult rejects.
+    final_conf = _confidences(extra[1]) if len(extra) > 1 else None
+    measured_conf = _confidences(extra[2]) if len(extra) > 2 else None
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -192,12 +203,20 @@ def fetch(
     from app.services.imaging_overlays import inherit_duplicate_blank_junk
 
     pages: dict[str, list[ImagingPageResult]] = {}
+    failed: dict[str, str] = {}
     with connection(database_url, db_schema) as conn, conn.cursor() as cur:
         cur.execute(_PAGES, (chart_names,))
         for row in cur.fetchall():
             if row[1] is None:
                 continue  # no page number to match on
-            pages.setdefault(str(row[0]), []).append(_page(row))
+            chart = str(row[0])
+            if chart in failed:
+                continue
+            try:
+                pages.setdefault(chart, []).append(_page(row))
+            except Exception as exc:  # noqa: BLE001 - this chart only, not the batch
+                failed[chart] = f"page {row[1]}: {exc}".splitlines()[0][:300]
+                pages.pop(chart, None)
         cur.execute(_LAST_RUN, (chart_names,))
         last_run = {str(name): updated for name, updated in cur.fetchall()}
     documents = {
@@ -209,4 +228,5 @@ def fetch(
         )
         for chart, chart_pages in pages.items()
     }
+    documents.update({chart: FailedChart(detail) for chart, detail in failed.items()})  # type: ignore[misc]
     return documents, last_run
