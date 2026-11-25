@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatIstPlain } from "./istTime";
 import { createPortal } from "react-dom";
 import {
@@ -30,6 +30,14 @@ import {
   MetaFilterBar,
   TopCheckFilter,
   metaFilterCount,
+  ConfidenceFilterForm,
+  NumberRangeForm,
+  confidenceFilterOn,
+  inNumberRange,
+  passesConfidence,
+  rangeOn,
+  type ConfidenceFilter,
+  type NumberRange,
   type MetaFilterKey,
   type MetaFilters,
 } from "./columnFilter";
@@ -1931,6 +1939,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     meta: MetaFilters;
     runs: string[];
     batches: string[];
+    /** Pages (scored pages) and Confidence column filters (2026-11-25, user). */
+    pagesRange?: NumberRange | null;
+    confidenceFilter?: ConfidenceFilter | null;
   }>("accuracy", {
     query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {}, runAfter: null, meta: {}, runs: [], batches: [],
   });
@@ -1939,6 +1950,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const meta = useMemo(() => view.meta ?? {}, [view.meta]);
   const runs = useMemo(() => view.runs ?? [], [view.runs]);
   const batches = useMemo(() => view.batches ?? [], [view.batches]);
+  const pagesRange = view.pagesRange ?? null;
+  const confidenceFilter = view.confidenceFilter ?? null;
   // The chart-level filters (Run after, Run, Batch, Source, Measure, Retrieval).
   const rows = useMemo(
     () =>
@@ -1947,9 +1960,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           ranAfter(row.lastUpdatedAt, runAfter) &&
           passesMeta(row, meta) &&
           (!runs.length || (row.runId != null && runs.includes(row.runId))) &&
-          (!batches.length || (row.batchId != null && batches.includes(row.batchId))),
+          (!batches.length || (row.batchId != null && batches.includes(row.batchId))) &&
+          inNumberRange(row.overall.scored, pagesRange) &&
+          passesConfidence(row.confidence, confidenceFilter),
       ),
-    [allRows, runAfter, meta, runs, batches],
+    [allRows, runAfter, meta, runs, batches, pagesRange, confidenceFilter],
   );
   const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
   const runOptions = useMemo(
@@ -2014,14 +2029,20 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     label,
     filter,
     runFilter = false,
+    extra,
+    extraActive = false,
   }: {
     sort: SortKey;
     label: string;
     filter?: ScoreColumn;
     runFilter?: boolean;
+    /** Another filter button after the title (Pages, Confidence). */
+    extra?: ReactNode;
+    extraActive?: boolean;
   }) {
     const rates = filter && filter !== "overall" ? ratesFor(filter) : undefined;
-    const filtered = (filter ? isActive(filters[filter]) : false) || (runFilter && Boolean(runAfter));
+    const filtered =
+      (filter ? isActive(filters[filter]) : false) || (runFilter && Boolean(runAfter)) || extraActive;
     return (
       <th
         scope="col"
@@ -2049,6 +2070,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           {runFilter ? (
             <RunAfterColumnFilter value={runAfter} onChange={(next) => setView({ runAfter: next, page: 1 })} />
           ) : null}
+          {extra}
         </span>
       </th>
     );
@@ -2107,8 +2129,12 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   // donuts stay on all files.
   const filterCount = Object.keys(filters).length;
   const allFilterCount =
-    filterCount + (runAfter ? 1 : 0) + metaFilterCount(meta) + (runs.length ? 1 : 0) + (batches.length ? 1 : 0);
-  const clearAll = () => setView({ filters: {}, runAfter: null, meta: {}, runs: [], batches: [], page: 1 });
+    filterCount + (runAfter ? 1 : 0) + metaFilterCount(meta) + (runs.length ? 1 : 0) + (batches.length ? 1 : 0) +
+    (rangeOn(pagesRange) ? 1 : 0) + (confidenceFilterOn(confidenceFilter) ? 1 : 0);
+  const clearAll = () =>
+    setView({
+      filters: {}, runAfter: null, meta: {}, runs: [], batches: [], pagesRange: null, confidenceFilter: null, page: 1,
+    });
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matched = rows.filter(
@@ -2392,8 +2418,47 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                 <tr>
                   {SortHeader({ sort: "name", label: "Chart" })}
                   {SortHeader({ sort: "run", label: "Last Run At", runFilter: true })}
-                  {SortHeader({ sort: "verified", label: "Confidence" })}
-                  {SortHeader({ sort: "pages", label: "Pages" })}
+                  {SortHeader({
+                    sort: "verified",
+                    label: "Confidence",
+                    extraActive: confidenceFilterOn(confidenceFilter),
+                    extra: (
+                      <ColumnFilterButton
+                        label="Confidence"
+                        active={confidenceFilterOn(confidenceFilter)}
+                        icon={<Filter size={11} aria-hidden="true" />}
+                      >
+                        {() => (
+                          <ConfidenceFilterForm
+                            value={confidenceFilter}
+                            onChange={(next) => setView({ confidenceFilter: next, page: 1 })}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    ),
+                  })}
+                  {SortHeader({
+                    sort: "pages",
+                    label: "Pages",
+                    extraActive: rangeOn(pagesRange),
+                    extra: (
+                      <ColumnFilterButton
+                        label="Pages"
+                        active={rangeOn(pagesRange)}
+                        icon={<Filter size={11} aria-hidden="true" />}
+                      >
+                        {(close) => (
+                          <NumberRangeForm
+                            value={pagesRange}
+                            onApply={(next) => {
+                              setView({ pagesRange: next, page: 1 });
+                              close();
+                            }}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    ),
+                  })}
                   {LIVE_METRICS.map((metric) => (
                     <Fragment key={metric.id}>
                       {SortHeader({ sort: metric.id, label: metric.tableLabel ?? metric.label, filter: metric.id })}

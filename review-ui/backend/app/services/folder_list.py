@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Callable, Literal, Optional, Sequence
 
 # Every stage after Final OCR 2 is an imaging stage (the postgres adapter's set).
 from app.store.postgres.repository import IMAGING_STAGES as _IMAGING_STAGES
@@ -110,6 +110,13 @@ class FolderListParams:
     truth: list[str] = field(default_factory=list)
     # Only charts last run at or after this moment (None = any time).
     run_after: Optional[datetime] = None
+    # 2026-11-25 (user): the Pages column (page_count, inclusive) and the Confidence column:
+    # levels (High / Medium / Low, "(Blank)" = not scored) and a % range on the shown value.
+    pages_min: Optional[int] = None
+    pages_max: Optional[int] = None
+    confidence: list[str] = field(default_factory=list)
+    confidence_min: Optional[int] = None
+    confidence_max: Optional[int] = None
     sort: SortKey = "updated"
     sort_dir: SortDir = "desc"
     limit: Optional[int] = None  # None / <=0 → return all matching
@@ -321,9 +328,39 @@ def _aware(ts: datetime) -> datetime:
     return ts if ts.tzinfo is not None else ts.astimezone()
 
 
+ChartConfidenceFn = Callable[[list[str]], dict[str, dict]]
+
+CONFIDENCE_LEVELS = {"high": "High", "medium": "Medium", "low": "Low"}
+_CONFIDENCE_CHUNK = 500
+
+
+def confidence_filter_on(params: FolderListParams) -> bool:
+    return bool([s for s in params.confidence if s]) or params.confidence_min is not None \
+        or params.confidence_max is not None
+
+
+def passes_confidence(conf: Optional[dict], params: FolderListParams) -> bool:
+    """The History Confidence column's filter on one chart's {level, value}: the level among the
+    wanted ones ("(Blank)": no level), and the shown percent (rounded) within the range."""
+    level = CONFIDENCE_LEVELS.get(str((conf or {}).get("level") or "").lower())
+    wanted = {s for s in params.confidence if s}
+    if wanted and (level or BLANK_OPTION) not in wanted:
+        return False
+    if params.confidence_min is None and params.confidence_max is None:
+        return True
+    value = (conf or {}).get("value")
+    if value is None:
+        return False
+    percent = round(float(value) * 100)
+    if params.confidence_min is not None and percent < params.confidence_min:
+        return False
+    return params.confidence_max is None or percent <= params.confidence_max
+
+
 def filter_sort_page(
     rows: Sequence[FolderSummary],
     params: FolderListParams,
+    chart_confidence: Optional[ChartConfidenceFn] = None,
 ) -> FolderListResult:
     """Apply q/status/run/batch/run-after filters, sort, then paginate.
 
@@ -401,7 +438,19 @@ def filter_sort_page(
             continue
         if truth_set and truth_label(f) not in truth_set:
             continue
+        if params.pages_min is not None and (f.page_count or 0) < params.pages_min:
+            continue
+        if params.pages_max is not None and (f.page_count or 0) > params.pages_max:
+            continue
         filtered.append(f)
+
+    # Confidence last: it reads every remaining chart's pages, so only when asked for.
+    if chart_confidence is not None and confidence_filter_on(params) and filtered:
+        names = [f.id for f in filtered]
+        found: dict[str, dict] = {}
+        for start in range(0, len(names), _CONFIDENCE_CHUNK):
+            found.update(chart_confidence(names[start:start + _CONFIDENCE_CHUNK]))
+        filtered = [f for f in filtered if passes_confidence(found.get(f.id), params)]
 
     reverse = params.sort_dir == "desc"
     filtered.sort(
@@ -500,7 +549,7 @@ def build_folder_list(
             logger.warning("chart_tag lookup failed: %s", exc)
             tags = {}
         merged = [row.model_copy(update={"tags": tags[row.name]}) if row.name in tags else row for row in merged]
-        return filter_sort_page(with_metadata(merged), params)
+        return filter_sort_page(with_metadata(merged), params, _chart_confidence(database_url, db_schema))
 
     # No DB — use caller-provided full local scan (existing behaviour).
     rows = list(full_local_rows or [])
@@ -538,7 +587,18 @@ def _cosmos_folder_list(params: FolderListParams, metadata_dir: Path | None) -> 
         })
         for row in rows
     ]
-    return filter_sort_page(rows, params)
+    return filter_sort_page(rows, params, _chart_confidence(None, "public"))
+
+
+def _chart_confidence(database_url: Optional[str], db_schema: str) -> ChartConfidenceFn:
+    """Chart confidence by name for the Confidence filter, as /folders-confidence reads it."""
+    def read(names: list[str]) -> dict[str, dict]:
+        from app.services import chart_confidence
+
+        if backend.reads_cosmos():
+            return chart_confidence.for_charts_cosmos(names)
+        return chart_confidence.for_charts_postgres(database_url, db_schema, names)
+    return read
 
 
 def _review_fields(review) -> dict:

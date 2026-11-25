@@ -7069,3 +7069,41 @@ input {
   font-size: 11px;
   color: var(--muted, #6b7280);
 }
+
+/* Pages / Confidence column filters (2026-11-25): Min / Max boxes. */
+.number-range-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.number-range-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.number-range-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.number-range-row input {
+  width: 100%;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.number-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}

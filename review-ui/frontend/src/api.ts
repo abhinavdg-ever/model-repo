@@ -62,6 +62,13 @@ export type FolderListParams = {
   truth?: string[];
   /** Only charts last run at or after this ISO date-time (with its offset). */
   run_after?: string | null;
+  /** Page count, inclusive (2026-11-25, user). */
+  pages_min?: number | null;
+  pages_max?: number | null;
+  /** Chart confidence levels (High / Medium / Low / "(Blank)") and shown % range. */
+  confidence?: string[];
+  confidence_min?: number | null;
+  confidence_max?: number | null;
   sort?: "filename" | "pages" | "updated";
   sort_dir?: "asc" | "desc";
 };
@@ -706,6 +713,11 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.reviewed ?? []) sp.append("reviewed", s);
   for (const s of params?.truth ?? []) sp.append("truth", s);
   if (params?.run_after) sp.set("run_after", params.run_after);
+  if (params?.pages_min != null) sp.set("pages_min", String(params.pages_min));
+  if (params?.pages_max != null) sp.set("pages_max", String(params.pages_max));
+  for (const s of params?.confidence ?? []) sp.append("confidence", s);
+  if (params?.confidence_min != null) sp.set("confidence_min", String(params.confidence_min));
+  if (params?.confidence_max != null) sp.set("confidence_max", String(params.confidence_max));
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);
   const qs = sp.toString();

@@ -53,7 +53,13 @@ import {
   META_FILTERS,
   MetaFilterBar,
   metaFilterCount,
+  ConfidenceFilterForm,
+  NumberRangeForm,
+  confidenceFilterOn,
+  rangeOn,
+  type ConfidenceFilter,
   type MetaFilters,
+  type NumberRange,
 } from "./columnFilter";
 import { fillDocDosForDownload } from "./ImagingPanel";
 
@@ -73,10 +79,39 @@ type LandingFilters = {
   metaFilter: MetaFilters;
   /** ISO date-time (India time) the chart must have last run at or after; null = any time. */
   runAfter: string | null;
+  /** Pages and Confidence column filters (2026-11-25, user). */
+  pagesRange: NumberRange | null;
+  confidenceFilter: ConfidenceFilter | null;
   sortKey: SortKey;
   sortDir: SortDir;
   page: number;
 };
+
+/** The list API's Pages / Confidence parameters from the two column filters. */
+function columnParams(pagesRange: NumberRange | null, confidenceFilter: ConfidenceFilter | null): FolderListParams {
+  return {
+    pages_min: pagesRange?.min ?? null,
+    pages_max: pagesRange?.max ?? null,
+    confidence: confidenceFilter?.levels ?? [],
+    confidence_min: confidenceFilter?.range?.min ?? null,
+    confidence_max: confidenceFilter?.range?.max ?? null,
+  };
+}
+
+function readRange(raw: unknown): NumberRange | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const range = { min: n(r.min), max: n(r.max) };
+  return rangeOn(range) ? range : null;
+}
+
+function readConfidenceFilter(raw: unknown): ConfidenceFilter | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const filter = { levels: normalizeIdList(r.levels), range: readRange(r.range) };
+  return confidenceFilterOn(filter) ? filter : null;
+}
 
 const STATUS_OPTIONS: OcrRunStatus[] = [
   "IN_PROGRESS",
@@ -118,6 +153,7 @@ export function savedHistoryListParams(): FolderListParams {
     batch: saved.batchFilter,
     ...saved.metaFilter,
     run_after: saved.runAfter,
+    ...columnParams(saved.pagesRange, saved.confidenceFilter),
     sort: saved.sortKey,
     sort_dir: saved.sortDir,
   };
@@ -136,6 +172,8 @@ export function clearLandingFilters(): void {
       batchFilter: [],
       metaFilter: {},
       runAfter: null,
+      pagesRange: null,
+      confidenceFilter: null,
       page: 1,
     };
     sessionStorage.setItem(LANDING_FILTERS_KEY, JSON.stringify(cleared));
@@ -152,6 +190,8 @@ function readLandingFilters(): LandingFilters {
     batchFilter: [],
     metaFilter: {},
     runAfter: null,
+    pagesRange: null,
+    confidenceFilter: null,
     // Newest run first.
     sortKey: "updated",
     sortDir: "desc",
@@ -179,6 +219,8 @@ function readLandingFilters(): LandingFilters {
         META_FILTERS.map(({ key }) => [key, normalizeIdList(parsed.metaFilter?.[key])]),
       ),
       runAfter: typeof parsed.runAfter === "string" && parsed.runAfter ? parsed.runAfter : null,
+      pagesRange: readRange(parsed.pagesRange),
+      confidenceFilter: readConfidenceFilter(parsed.confidenceFilter),
       sortKey,
       sortDir,
       page,
@@ -357,6 +399,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     saved.runFilter.length > 0 ? saved.batchFilter : [],
   );
   const [runAfter, setRunAfter] = useState<string | null>(saved.runAfter);
+  const [pagesRange, setPagesRange] = useState<NumberRange | null>(saved.pagesRange);
+  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter | null>(saved.confidenceFilter);
   const [metaFilter, setMetaFilter] = useState<MetaFilters>(saved.metaFilter);
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const isAdmin = readSession()?.user.role === "admin";
@@ -425,6 +469,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         batch: batchFilter,
         ...metaFilter,
         run_after: runAfter,
+        ...columnParams(pagesRange, confidenceFilter),
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -469,7 +514,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on list controls
-  }, [page, query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, sortKey, sortDir]);
+  }, [page, query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, sortKey, sortDir]);
 
   useEffect(() => {
     try {
@@ -480,6 +525,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         batchFilter,
         metaFilter,
         runAfter,
+        pagesRange,
+        confidenceFilter,
         sortKey,
         sortDir,
         page,
@@ -488,14 +535,14 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     } catch {
       /* ignore */
     }
-  }, [query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, sortKey, sortDir, page]);
+  }, [query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter, sortKey, sortDir, page]);
 
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Back to page 1 when a filter, the search or the sort really changes -- not on the first
   // render (the saved page stands, 2026-11-16, user), and not when React runs effects twice.
-  const filterKey = JSON.stringify([query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter]);
+  const filterKey = JSON.stringify([query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter, pagesRange, confidenceFilter]);
   const lastFilterKey = useRef(filterKey);
   useEffect(() => {
     if (lastFilterKey.current === filterKey) return;
@@ -544,6 +591,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
 
   const filterCount =
     (statusFilter.length ? 1 : 0) + (runFilter.length ? 1 : 0) + (batchFilter.length ? 1 : 0) + (runAfter ? 1 : 0) +
+    (rangeOn(pagesRange) ? 1 : 0) + (confidenceFilterOn(confidenceFilter) ? 1 : 0) +
     metaFilterCount(metaFilter);
 
   function clearFilters() {
@@ -552,6 +600,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     setBatchFilter([]);
     setMetaFilter({});
     setRunAfter(null);
+    setPagesRange(null);
+    setConfidenceFilter(null);
   }
 
   /** Admin: delete the chart's pipeline results after a confirmation naming it. */
@@ -692,6 +742,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         batch: batchFilter,
         ...metaFilter,
         run_after: runAfter,
+        ...columnParams(pagesRange, confidenceFilter),
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -903,14 +954,27 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </ColumnFilterButton>
                     </span>
                   </th>
-                  <th>
-                    <button
-                      type="button"
-                      className={`th-sort${sortKey === "pages" ? " active" : ""}`}
-                      onClick={() => toggleSort("pages")}
-                    >
-                      Pages{sortIndicator("pages")}
-                    </button>
+                  <th className={rangeOn(pagesRange) ? "is-filtered" : undefined}>
+                    <span className="column-th">
+                      <button
+                        type="button"
+                        className={`th-sort${sortKey === "pages" ? " active" : ""}`}
+                        onClick={() => toggleSort("pages")}
+                      >
+                        Pages{sortIndicator("pages")}
+                      </button>
+                      <ColumnFilterButton label="Pages" active={rangeOn(pagesRange)} icon={filterIcon}>
+                        {(close) => (
+                          <NumberRangeForm
+                            value={pagesRange}
+                            onApply={(next) => {
+                              setPagesRange(next);
+                              close();
+                            }}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
                   </th>
                   <th className={statusFilter.length ? "is-filtered" : undefined}>
                     <span className="column-th">
@@ -961,8 +1025,16 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </ColumnFilterButton>
                     </span>
                   </th>
-                  <th title="Chart confidence: High = 80%+ of pages High; Low = 20%+ of pages Low; else Medium">
-                    Confidence
+                  <th
+                    className={confidenceFilterOn(confidenceFilter) ? "is-filtered" : undefined}
+                    title="Chart confidence: High = 80%+ of pages High; Low = 20%+ of pages Low; else Medium"
+                  >
+                    <span className="column-th">
+                      <span className="column-th-label">Confidence</span>
+                      <ColumnFilterButton label="Confidence" active={confidenceFilterOn(confidenceFilter)} icon={filterIcon}>
+                        {() => <ConfidenceFilterForm value={confidenceFilter} onChange={setConfidenceFilter} />}
+                      </ColumnFilterButton>
+                    </span>
                   </th>
                   <th className={runAfter ? "is-filtered" : undefined}>
                     <span className="column-th">
@@ -1019,7 +1091,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           statusFilter.length === 0 &&
                           runFilter.length === 0 &&
                           batchFilter.length === 0 &&
-                          !runAfter
+                          !runAfter &&
+                          filterCount === 0
                             ? "No history found"
                             : "No matching charts"}
                         </h3>
@@ -1028,7 +1101,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           statusFilter.length === 0 &&
                           runFilter.length === 0 &&
                           batchFilter.length === 0 &&
-                          !runAfter
+                          !runAfter &&
+                          filterCount === 0
                             ? "Add charts under DATA_ROOT with pages/ and ocr/ outputs."
                             : "Try a different search, status, run, batch, or run-after filter."}
                         </p>

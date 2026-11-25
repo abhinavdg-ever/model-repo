@@ -147,6 +147,12 @@ Examples (100 pages): 75 High, 25 Medium -> 90%, **High**. 82 High, 12 Medium, 6
 40 High, 15 Medium, 45 Low -> 49%, **Low**.
 Code: `review-ui/frontend/src/confidenceLevel.ts`, twin `review-ui/backend/app/services/chart_confidence.py`.
 
+**Filters** (2026-11-25, user): History and the Accuracy view filter on the **Confidence** column (levels
+High / Medium / Low / (Blank) = not scored, and a Min / Max % on the shown, rounded value) and the **Pages**
+column (Min / Max, inclusive; History: the chart's pages, Accuracy: the scored pages). History filters on
+the server (`folder_list.py`: chart confidence is read only when that filter is on, after the other filters),
+the Accuracy view in the browser.
+
 ---
 
 ## 5a. Member calibration (2026-11-23)

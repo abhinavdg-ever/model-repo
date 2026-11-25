@@ -374,3 +374,143 @@ export function MetaFilterBar({
     </>
   );
 }
+
+/** A min / max range (inclusive); null = open on that side. */
+export type NumberRange = { min: number | null; max: number | null };
+
+export function rangeOn(range: NumberRange | null | undefined): boolean {
+  return Boolean(range) && (range?.min != null || range?.max != null);
+}
+
+/** True when ``value`` is within ``range`` (no range: always; no value: never). */
+export function inNumberRange(value: number | null | undefined, range: NumberRange | null | undefined): boolean {
+  if (!range || !rangeOn(range)) return true;
+  if (value == null || !Number.isFinite(value)) return false;
+  return (range.min == null || value >= range.min) && (range.max == null || value <= range.max);
+}
+
+function parseBound(text: string, limit?: number): number | null {
+  const n = Number(text.trim());
+  if (text.trim() === "" || !Number.isFinite(n)) return null;
+  const whole = Math.max(0, Math.round(n));
+  return limit != null ? Math.min(limit, whole) : whole;
+}
+
+/** Min / Max boxes with Apply and Clear (2026-11-25, user: the Pages and Confidence columns). */
+export function NumberRangeForm({
+  value,
+  unit,
+  limit,
+  onApply,
+}: {
+  value: NumberRange | null | undefined;
+  /** Shown after each box ("%"), if any. */
+  unit?: string;
+  /** The highest value a box takes (100 for a percent). */
+  limit?: number;
+  onApply: (next: NumberRange | null) => void;
+}) {
+  const [min, setMin] = useState(value?.min != null ? String(value.min) : "");
+  const [max, setMax] = useState(value?.max != null ? String(value.max) : "");
+  const lo = parseBound(min, limit);
+  const hi = parseBound(max, limit);
+  const backwards = lo != null && hi != null && lo > hi;
+  const apply = () => onApply(lo == null && hi == null ? null : { min: lo, max: hi });
+  return (
+    <form
+      className="number-range-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!backwards) apply();
+      }}
+    >
+      <div className="number-range-row">
+        <label>
+          <span>Min{unit ? ` (${unit})` : ""}</span>
+          <input type="number" inputMode="numeric" min={0} max={limit} value={min} onChange={(e) => setMin(e.target.value)} />
+        </label>
+        <label>
+          <span>Max{unit ? ` (${unit})` : ""}</span>
+          <input type="number" inputMode="numeric" min={0} max={limit} value={max} onChange={(e) => setMax(e.target.value)} />
+        </label>
+      </div>
+      {backwards ? <p className="column-filter-hint">Min is above Max.</p> : null}
+      <div className="number-range-actions">
+        <button
+          type="button"
+          className="run-after-clear"
+          disabled={!rangeOn(value) && min === "" && max === ""}
+          onClick={() => {
+            setMin("");
+            setMax("");
+            onApply(null);
+          }}
+        >
+          Clear
+        </button>
+        <button type="submit" className="run-after-apply" disabled={backwards}>
+          Apply
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The Confidence column's filter: levels ticked, and the shown percent within a range. */
+export type ConfidenceFilter = { levels: string[]; range: NumberRange | null };
+export const CONFIDENCE_LEVEL_OPTIONS = ["High", "Medium", "Low", BLANK_META];
+
+export function confidenceFilterOn(filter: ConfidenceFilter | null | undefined): boolean {
+  return Boolean(filter) && ((filter?.levels.length ?? 0) > 0 || rangeOn(filter?.range));
+}
+
+/** One chart's confidence ({level, value 0..1}) against the filter; the percent as shown, rounded. */
+export function passesConfidence(
+  confidence: { level?: string | null; value?: number | null } | null | undefined,
+  filter: ConfidenceFilter | null | undefined,
+): boolean {
+  if (!filter || !confidenceFilterOn(filter)) return true;
+  const level = confidence?.level ? confidence.level[0].toUpperCase() + confidence.level.slice(1).toLowerCase() : null;
+  if (filter.levels.length && !filter.levels.includes(level ?? BLANK_META)) return false;
+  if (!rangeOn(filter.range)) return true;
+  const value = confidence?.value;
+  return value != null && inNumberRange(Math.round(value * 100), filter.range);
+}
+
+export function ConfidenceFilterForm({
+  value,
+  onChange,
+}: {
+  value: ConfidenceFilter | null | undefined;
+  onChange: (next: ConfidenceFilter | null) => void;
+}) {
+  const levels = value?.levels ?? [];
+  const range = value?.range ?? null;
+  const set = (next: ConfidenceFilter) => onChange(confidenceFilterOn(next) ? next : null);
+  return (
+    <>
+      <p className="column-filter-hint">Level</p>
+      <div className="column-filter-list" role="listbox" aria-multiselectable="true">
+        {CONFIDENCE_LEVEL_OPTIONS.map((option) => (
+          <label key={option} className="landing-multi-option">
+            <input
+              type="checkbox"
+              checked={levels.includes(option)}
+              onChange={() =>
+                set({
+                  levels: levels.includes(option)
+                    ? levels.filter((l) => l !== option)
+                    : CONFIDENCE_LEVEL_OPTIONS.filter((l) => l === option || levels.includes(l)),
+                  range,
+                })
+              }
+            />
+            <span>{option === BLANK_META ? "(Blank) - not scored" : option}</span>
+          </label>
+        ))}
+      </div>
+      <p className="column-filter-hint">Confidence %</p>
+      <NumberRangeForm value={range} unit="%" limit={100} onApply={(next) => set({ levels, range: next })} />
+    </>
+  );
+}

@@ -91,6 +91,13 @@ def list_folders(
     run_after: datetime | None = Query(
         None, description="Only charts last run at or after this ISO date-time (with offset)"
     ),
+    pages_min: int | None = Query(None, ge=0, description="Only charts with at least this many pages"),
+    pages_max: int | None = Query(None, ge=0, description="Only charts with at most this many pages"),
+    confidence: list[str] | None = Query(
+        None, description="Repeatable chart confidence level (High / Medium / Low / (Blank))"
+    ),
+    confidence_min: int | None = Query(None, ge=0, le=100, description="Chart confidence at least this %"),
+    confidence_max: int | None = Query(None, ge=0, le=100, description="Chart confidence at most this %"),
 ) -> FolderListResponse:
     """Landing list: DB-backed summaries when DATABASE_URL is set; paginated."""
     params = FolderListParams(
@@ -107,6 +114,11 @@ def list_folders(
         reviewed=list(reviewed or []),
         truth=list(truth or []),
         run_after=run_after,
+        pages_min=pages_min,
+        pages_max=pages_max,
+        confidence=list(confidence or []),
+        confidence_min=confidence_min,
+        confidence_max=confidence_max,
         sort=sort,  # type: ignore[arg-type]
         sort_dir=sort_dir,  # type: ignore[arg-type]
         limit=limit,
