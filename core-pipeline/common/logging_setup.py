@@ -227,6 +227,8 @@ def purge_old_logs(days: int | None = None, *, today: date | None = None, force:
     cutoff = today - timedelta(days=max(1, days))
     log_dir = resolve_log_dir()
     removed: list[Path] = []
+    if not _flag("LOCAL_FILES", True):  # nothing written locally, so nothing to purge (no mark)
+        return removed
     with _PURGE_LOCK:
         mark = log_dir / _PURGE_MARK
         try:
@@ -335,7 +337,7 @@ def set_worker_name(label: str) -> str:
 
 def _attach_daily_file_handler(level: int) -> Path | None:
     """Write ``logs/core-pipeline.log``, rotate at midnight to dated backups."""
-    if not _flag("LOG_TO_FILE", True):
+    if not _flag("LOG_TO_FILE", True) or not _flag("LOCAL_FILES", True):
         return None
 
     log_dir = resolve_log_dir()

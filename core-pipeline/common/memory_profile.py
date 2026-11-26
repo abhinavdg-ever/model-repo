@@ -315,6 +315,8 @@ _FILE_LOCK = threading.Lock()
 
 
 def _to_file() -> bool:
+    if (os.environ.get("LOCAL_FILES") or "true").strip().lower() not in _TRUE:
+        return False
     return (os.environ.get("LOG_TO_FILE") or "true").strip().lower() in _TRUE
 
 

@@ -304,6 +304,19 @@ it kept (after - before), child processes, the container's memory and its limit,
   queue workers, which run one chart each.
 - Code: `core-pipeline/common/memory_profile.py`, called around each stage by `apps/worker/runner.py`.
 
+### Keep nothing on local disk: `LOCAL_FILES=false` (AKS, 2026-11-26)
+
+`LOCAL_FILES` defaults to `true`. With `false`, in both `.env` files:
+
+- **core-pipeline** writes no log files, `run_stats` files, memory CSVs or purge marks. Run stats still go to the database (`run_usage`).
+- **The chart's working folder** is deleted as soon as its run ends, even if the run failed (`chart_run.execute_run`, the queue worker's path).
+  - While a chart runs, the folder still holds the page images and the OCR the stages pass along.
+  - The results are in the database, and in Blob when the run had a write path.
+  - A later `skip_ocr` run fetches the OCR back from Blob. An `only` run cannot use an earlier run's files on a later run.
+- **review-ui** keeps no thumbnail disk cache, and the file-based page-annotations route answers 501.
+
+On a database-only setup (`DB_BACKEND=cosmos`), nothing imports `psycopg`, so an image can leave it out. The AKS images do.
+
 
 ---
 

@@ -49,6 +49,10 @@ def load_annotations(path: Path) -> list[dict[str, str]]:
 
 
 def _write(path: Path, rows: list[dict[str, str]]) -> None:
+    if (os.environ.get("LOCAL_FILES") or "").strip().casefold() in {"0", "false", "no", "off"}:
+        # This CSV is the only store for page annotations (no UI screen uses them today).
+        raise HTTPException(status_code=501, detail="Page annotations are kept in a local file, "
+                                                    "which LOCAL_FILES=false turns off")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     with tmp.open("w", newline="", encoding="utf-8") as handle:

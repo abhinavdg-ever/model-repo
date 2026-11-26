@@ -223,13 +223,12 @@ def _startup() -> None:
     # would hold up startup — and block /docs and /health, the two endpoints
     # whose whole job is to work when the database does not.
     try:
-        import psycopg
-
         if DB_BACKEND_ACTIVE == "cosmos":
             from common.db.cosmos_store import get_cosmos_store
 
             logger.info("  cosmos check    : container %s reachable", get_cosmos_store().ping())
             raise _StartupDone
+        import psycopg  # Postgres only: a Cosmos-only image does not install it
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT count(*) FROM pipeline_stage")
@@ -441,8 +440,6 @@ def _require_db() -> None:
     "accepted" and no rows, with nothing connecting the two. A short-timeout
     probe turns that into an immediate 503 naming the real error.
     """
-    import psycopg
-
     from common.config import DATABASE_URL
 
     try:
@@ -451,6 +448,8 @@ def _require_db() -> None:
 
             get_cosmos_store().ping()
             return
+        import psycopg  # Postgres only: a Cosmos-only image does not install it
+
         with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
             conn.execute("SELECT 1")
     except Exception as exc:

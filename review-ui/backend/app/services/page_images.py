@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import os
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -61,6 +62,8 @@ def cached_derived_jpeg(stamp: str, produce: Callable[[], bytes]) -> bytes:
     ``stamp`` must change whenever the source changes — for blobs, include the
     ETag. Saves re-downloading and re-encoding the source on every request.
     """
+    if (os.environ.get("LOCAL_FILES") or "").strip().casefold() in {"0", "false", "no", "off"}:
+        return produce()  # AKS (LOCAL_FILES=false): no disk cache, nothing written locally
     cache = _cache_file(stamp)
     try:
         if cache.is_file() and cache.stat().st_size > 0:

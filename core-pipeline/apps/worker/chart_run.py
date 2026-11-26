@@ -159,13 +159,21 @@ def execute_run(
     ``on_chart(chart_id)`` is called as soon as the chart id is known (local input:
     after the import, before the stages).
     """
-    if payload.is_blob:
-        result = run_blob_chart(payload)
-        chart_id = result.get("chart_id")
-    else:
-        imported = import_local_chart(payload)
-        chart_id = int(imported["chart_id"])
-        if on_chart:
-            on_chart(chart_id)
-        run_imported_chart(chart_id, payload)
-    return {"chart_id": chart_id, "chart_name": payload.chart_name}
+    try:
+        if payload.is_blob:
+            result = run_blob_chart(payload)
+            chart_id = result.get("chart_id")
+        else:
+            imported = import_local_chart(payload)
+            chart_id = int(imported["chart_id"])
+            if on_chart:
+                on_chart(chart_id)
+            run_imported_chart(chart_id, payload)
+        return {"chart_id": chart_id, "chart_name": payload.chart_name}
+    finally:
+        from common.config import local_files
+
+        if not local_files():  # AKS: keep nothing on the pod once the chart is done
+            from apps.worker.jobs.outputs_cleanup import remove_chart_folder
+
+            remove_chart_folder(payload.chart_name)

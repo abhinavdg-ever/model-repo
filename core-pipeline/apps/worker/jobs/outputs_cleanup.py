@@ -72,6 +72,10 @@ def purge_old_charts(days: int | None = None, *, root: Path | None = None,
     today = today or date.today()
     cutoff = today - timedelta(days=max(1, days))
     removed: list[Path] = []
+    from common.config import local_files
+
+    if not local_files():  # LOCAL_FILES=false: each folder goes when its run ends (remove_chart_folder)
+        return removed
     with _LOCK:
         if not root.is_dir():
             return removed
@@ -100,3 +104,23 @@ def purge_old_charts(days: int | None = None, *, root: Path | None = None,
     if removed:
         logger.info("Outputs purge: removed %d chart folder(s) not run for %d days", len(removed), days)
     return removed
+
+
+def remove_chart_folder(chart_name: str, root: Path | None = None) -> bool:
+    """Delete one chart's working folder now (LOCAL_FILES=false, after its run). Never raises.
+
+    Its results are already in the database (and in Blob when the run had a write path); a later
+    skip_ocr run fetches the OCR back from Blob."""
+    name = (chart_name or "").strip()
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        return False
+    folder = (root or DATA_ROOT) / name
+    if not folder.is_dir():
+        return False
+    try:
+        shutil.rmtree(folder)
+        logger.info("chart folder removed (LOCAL_FILES=false): %s", name)
+        return True
+    except OSError as exc:
+        logger.warning("chart folder %s not removed: %s", name, exc)
+        return False

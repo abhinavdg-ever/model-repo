@@ -16,6 +16,15 @@ DATA_ROOT = Path(
     os.environ.get("DATA_ROOT") or (OUTPUTS_ROOT / "charts")
 ).resolve()
 
+
+def local_files() -> bool:
+    """``LOCAL_FILES`` (default true). ``false`` (AKS, 2026-11-26, user: "not write anything to
+    local"): no log files, run-stats files or memory CSVs, no purge marks, and each chart's
+    working folder is deleted as soon as its run ends (chart_run.execute_run). While a chart runs
+    its folder still holds the page images and OCR the stages pass on; models stay under models/."""
+    raw = (os.environ.get("LOCAL_FILES") or "").strip().casefold()
+    return raw not in {"0", "false", "no", "off"}
+
 def _psycopg_url(url: str) -> str:
     """Accept SQLAlchemy-style postgresql+psycopg:// as well as plain postgresql://.
 

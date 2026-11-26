@@ -165,12 +165,15 @@ def record(
             "partial": partial,
             "error": (error or "")[:300],
         }
-        folder = stats_dir()
-        folder.mkdir(parents=True, exist_ok=True)
-        with _LOCK:
-            with open(folder / "run_stats.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(row) + "\n")
-            write_reports(folder)
+        from common.config import local_files
+
+        if local_files():  # LOCAL_FILES=false: the database copy (run_usage) only
+            folder = stats_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            with _LOCK:
+                with open(folder / "run_stats.jsonl", "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row) + "\n")
+                write_reports(folder)
         from apps.worker import usage
 
         usage.write(row, results)  # run_usage: the database copy, with cost (never raises)
