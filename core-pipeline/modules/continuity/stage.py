@@ -279,6 +279,41 @@ def _pairs_view(inputs: list[PageInput], rows: list[dict[str, Any]],
     final decision."""
     out: list[dict[str, Any]] = []
     model_by_first = {a: (b, d) for (a, b), d in (model_pairs or {}).items()}
+    # 2026-11-28 (user): the text continuity (closing paragraph -> opening paragraph) of every
+    # consecutive pair, junked short pages included; and of each junk / blank / duplicate page
+    # against the last content page before it when that is not its neighbour.
+    from modules.continuity.engine import text_continuity
+
+    consecutive = [(i, i + 1) for i in range(len(inputs) - 1)]
+    back: list[tuple[int, int]] = []
+    last_main: Optional[int] = None
+    for i, item in enumerate(inputs):
+        if item.kind != "main" and last_main is not None and last_main != i - 1:
+            back.append((last_main, i))
+        if item.kind == "main":
+            last_main = i
+    try:
+        wording = text_continuity(inputs, consecutive + back)
+    except Exception as exc:  # noqa: BLE001 - a debugging measure must never stop continuity
+        logger.warning("continuity text measure skipped: %s", str(exc)[:200])
+        wording = {}
+    text_probs: dict[tuple[int, int], tuple[float, float]] = {}
+    try:
+        from modules.continuity.ml import text_model
+
+        keys = consecutive + back
+        scored = text_model.score([(inputs[a].text or "", inputs[b].text or "") for a, b in keys]) if keys else None
+        if scored:
+            text_probs = dict(zip(keys, scored))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("continuity text model skipped: %s", exc)
+
+    def text_view(key: tuple[int, int]) -> Optional[dict[str, Any]]:
+        record = dict(wording.get(key) or {})
+        if key in text_probs:
+            record["text_model_p_break"] = round(text_probs[key][0], 4)
+            record["text_model_p_continues"] = round(text_probs[key][1], 4)
+        return record or None
     for (item, row), (nxt, nrow) in zip(zip(inputs, rows), zip(inputs[1:], rows[1:])):
         gap = row["signals"]["after"] or {}
         same = row["document_seq"] is not None and row["document_seq"] == nrow["document_seq"]
@@ -291,6 +326,7 @@ def _pairs_view(inputs: list[PageInput], rows: list[dict[str, Any]],
                       "decision": "Break" if gap.get("decision") == "break" else "Same document" if gap else None,
                       "final_pass": gap.get("final_pass")},
             "model": None,
+            "text_continuity": None,
             "final_decision": "Same document" if same else "Break",
             "decided_by": nrow.get("decided_by"),
         }
@@ -300,7 +336,14 @@ def _pairs_view(inputs: list[PageInput], rows: list[dict[str, Any]],
             entry["model"] = {"compared_with": next((i.page_name for i in inputs if i.page_id == other), None),
                               "p_break": d.get("p_break"), "decision": "Break" if d.get("break") else "Same document",
                               "decided_by": d.get("decided_by"), "clues": d.get("evidence")}
+        index = len(out)
+        entry["text_continuity"] = text_view((index, index + 1))
         out.append(entry)
+    # A junk / blank page against the last content page before it (not its neighbour).
+    for a, b in back:
+        out.append({"p1": inputs[a].page_name, "p2": inputs[b].page_name, "p1_kind": inputs[a].kind,
+                    "p2_kind": inputs[b].kind, "against": "last content page before it",
+                    "text_continuity": text_view((a, b))})
     return out
 
 

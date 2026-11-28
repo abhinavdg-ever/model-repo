@@ -495,6 +495,8 @@ class TestStage:
             (pair,) = staged["pairs"]
             assert (pair["p1"], pair["p2"]) == ("1.jpg", "2.jpg") and pair["final_decision"] == "Same document"
             assert isinstance(pair["features"], dict) and pair["rules"]["decision"] in ("Break", "Same document")
+            tc = pair["text_continuity"]  # closing paragraph -> opening paragraph, every pair
+            assert set(tc) >= {"char_similarity", "word_similarity", "wording_points", "ends_mid_sentence"}
             (only,) = staged["encounters"]
             assert only["pages"] == ["1.jpg", "2.jpg"] and only["document"] == 1
             assert only["page_family"] == "Discharge Summary"

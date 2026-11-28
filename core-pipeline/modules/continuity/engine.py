@@ -856,6 +856,44 @@ def _corpus(pages: Sequence[PageInput], scored: list[int], rules: Rules) -> Corp
     return fit_corpus(blocks, rules.semantic)
 
 
+def text_continuity(pages: Sequence[PageInput], pairs: Sequence[tuple[int, int]],
+                    rules: Optional[Rules] = None) -> dict[tuple[int, int], dict[str, Any]]:
+    """2026-11-28 (user): how the first page's closing paragraph runs into the second page's
+    opening paragraph, for ANY two pages (junked short pages too, which the gaps skip). The same
+    measure as the wording signal, on every line (not the body band -- a short page's text sits in
+    the header / footer bands): lines on both pages (running header / footer) removed, the
+    tail block of A against the head block of B, character 3-5 grams and word 1-2 grams TF-IDF
+    cosine (fitted on these blocks), normalised and clipped to 0..1; the points they would add
+    (negative = runs on); A ends mid-sentence / B starts mid-thought. Index pairs -> record."""
+    rules = rules or load_rules()
+    sem = rules.semantic
+    blocks: dict[tuple[int, int], tuple[str, str, list[str], list[Line]]] = {}
+    for a_index, b_index in pairs:
+        a, b = pages[a_index], pages[b_index]
+        # Every line, not the body band: a short page's text sits in the header / footer bands.
+        a_lines, b_lines = a.lines or text_lines(a.text), b.lines or text_lines(b.text)
+        shared = furniture([l.text for l in a_lines], [l.text for l in b_lines], sem.furniture_min_chars)
+        a_rest = [l.text for l in a_lines if l.text.strip() and normalized_line(l.text) not in shared]
+        b_rest = [l for l in b_lines if l.text.strip() and normalized_line(l.text) not in shared]
+        blocks[(a_index, b_index)] = (tail_block(a_rest, sem.tail_nth_word),
+                                      head_block([l.text for l in b_rest], sem.tail_nth_word), a_rest, b_rest)
+    corpus = fit_corpus([t for v in blocks.values() for t in v[:2]], sem)
+    out: dict[tuple[int, int], dict[str, Any]] = {}
+    for key, (tail, top, a_rest, b_rest) in blocks.items():
+        char = word = None
+        if tail and top:
+            char = round(clip(corpus.char.cosine(tail, top) / sem.char_divisor), 4) if corpus.char else 0.0
+            word = round(clip(corpus.word.cosine(tail, top) / sem.word_divisor), 4) if corpus.word else 0.0
+        points = round(rules.pts("wording_char") * (char or 0.0) + rules.pts("wording_word") * (word or 0.0), 2)
+        out[key] = {
+            "char_similarity": char, "word_similarity": word, "wording_points": points,
+            "ends_mid_sentence": bool(a_rest and cut_mid_sentence(a_rest[-1])),
+            "starts_mid_thought": bool(b_rest and starts_mid_thought(b_rest[0].raw)),
+            "closing_words": len(tail.split()) if tail else 0, "opening_words": len(top.split()) if top else 0,
+        }
+    return out
+
+
 def _doc_dos(pages: Sequence[PageInput], seg: _Segment) -> tuple[tuple[str, str], Optional[int]]:
     for i in seg.pages:
         if pages[i].kind == "main" and pages[i].dos_from:
