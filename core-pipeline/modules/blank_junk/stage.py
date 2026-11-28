@@ -372,11 +372,13 @@ def _classify(
             words_of[page_id] = frozenset(unique_words(texts.get(page_id) or ""))
         return words_of[page_id]
 
-    def _short_verdict(pid: int) -> Optional[dict[str, Any]]:
+    def _short_verdict(pid: int, logic: str = "v1") -> Optional[dict[str, Any]]:
         return short_verdict(pid, texts=texts, inputs=inputs or {}, around=around,
                              headers=headers_by_id or {}, signed=signed,
                              repeated=_repeated_signature(pid) is not None, words=_words,
-                             engine_texts=engine_texts)
+                             engine_texts=engine_texts, logic=logic)
+
+    logic_mode = blank_junk_logic()
 
     from modules.blank_junk import llm_judge
 
@@ -441,7 +443,28 @@ def _classify(
             if (page_inputs.document_type in method.CARD_DOCUMENT_TYPES
                     and len(_words(page_id)) <= CARD_BARCODE_MAX_WORDS and (image_paths or {}).get(page_id)):
                 page_inputs.barcode = read_barcode((image_paths or {})[page_id])
+        # Blank / Junk v2 (2026-11-28, user): BLANK_JUNK_LOGIC v1 (default) | v2 | shadow -- in shadow
+        # v1 decides and v2's verdict is recorded beside it (blank_junk.json "v2"; differences listed).
+        deciding = "v2" if logic_mode == "v2" else "v1"
+        if deciding == "v2" and page_inputs.pass_no == 2 and find_duplicates:
+            page_inputs.short_verdict = _short_verdict(page_id, "v2")
+        page_inputs.logic = deciding
         verdict = method.post_process(method.decide(page_inputs), page_inputs)
+        if logic_mode == "shadow":
+            from dataclasses import replace as _dc_replace
+
+            other = _dc_replace(page_inputs, logic="v2",
+                                short_verdict=_short_verdict(page_id, "v2") if (
+                                    page_inputs.pass_no == 2 and find_duplicates) else page_inputs.short_verdict)
+            try:
+                shadow = method.decide(other)
+                verdict.votes["v2"] = {
+                    "verdict": CLASSIFICATION_LABELS.get(shadow.code, "Main"), "rule": shadow.rule,
+                    "why": shadow.reason, "route": shadow.votes.get("route"), "tier": shadow.votes.get("tier"),
+                    "same": shadow.code == verdict.code,
+                }
+            except Exception as exc:  # noqa: BLE001 - the shadow must never stop the stage
+                verdict.votes["v2"] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
         if page_inputs.pass_no == 2 and page_inputs.short_verdict:
             verdict = _llm_review(page_id, verdict, page_inputs)
         if page_inputs.short_verdict:
@@ -627,6 +650,14 @@ def _in_order_share(mine: list[str], theirs: list[str]) -> float:
         return 0.0
     matcher = SequenceMatcher(None, mine, theirs, autojunk=False)
     return sum(block.size for block in matcher.get_matching_blocks()) / len(mine)
+
+
+def blank_junk_logic() -> str:
+    """BLANK_JUNK_LOGIC (2026-11-28, user): v1 (today, the default) | v2 | shadow (v1 decides, v2 recorded)."""
+    import os
+
+    value = (os.environ.get("BLANK_JUNK_LOGIC") or "v1").strip().lower()
+    return value if value in ("v1", "v2", "shadow") else "v1"
 
 
 # 2026-11-28 (user, Blank / Junk v2): the short checks' order. v1: today's first-fire order. v2
@@ -1933,6 +1964,11 @@ def _pass_entry(row: dict[str, Any], pass_no: int) -> dict[str, Any]:
                                    "checks": _checks_view(votes["short_page_checks"], method.SHORT_CHECKS)}
         else:
             entry["short_page"] = "not a short page (text in the middle of the page, or a visual / handwritten page)"
+    if votes.get("v2"):
+        entry["v2"] = votes["v2"]  # BLANK_JUNK_LOGIC=shadow: v2's verdict beside v1's
+    if votes.get("logic"):
+        entry["logic"] = votes["logic"]
+        entry["tier"] = votes.get("tier")
     extra = {k: votes[k] for k in (
         "card", "card_near_miss", "index_page", "fax_cover", "signature_log", "edge_lines", "keep_veto",
         "flipped_model", "not_blank_provider", "not_blank_date", "stage1_blank_overruled", "llm",
@@ -2008,6 +2044,14 @@ def _write_votes(
         "chart_name": chart_name,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "passes_run": passes_run,
+        # BLANK_JUNK_LOGIC=shadow: every page where v2's verdict differs from v1's, both rules.
+        "v2_differences": [
+            {"page": name, "pass": key, "v1": entry.get("verdict"), "v1_rule": entry.get("rule"),
+             "v2": entry["v2"].get("verdict"), "v2_rule": entry["v2"].get("rule"), "v2_route": entry["v2"].get("route")}
+            for name, page in pages.items() for key in ("pass_1", "pass_2")
+            if isinstance((entry := page.get(key)), dict) and isinstance(entry.get("v2"), dict)
+            and entry["v2"].get("same") is False
+        ],
         "check_order": {
             "pass_1": [method.check_label(c) for c in method.PASS1_CHECKS],
             "pass_2_common": [method.check_label(c) for c in method.PASS2_COMMON],

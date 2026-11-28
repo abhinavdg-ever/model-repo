@@ -492,6 +492,9 @@ class PageInputs:
     document_type: str = ""  # page-tag model: printed / handwritten / form / visual / ...
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
+    # Blank / Junk v2 (2026-11-28, user; docs/specials/BLANK_JUNK_V2_LOGIC.md): "v1" today's chain,
+    # "v2" the route + four-tier ladder. stage.py sets it from BLANK_JUNK_LOGIC (shadow runs both).
+    logic: str = "v1"
     # Pass 1 (2026-11-28, user): the page image measured for EB -- {"top": text lines in the header
     # band, "bottom": in the footer band, "body_ink": ink between them}; None when not measured.
     edge_lines: Optional[dict[str, Any]] = None
@@ -877,6 +880,7 @@ def decide(inputs: PageInputs) -> Verdict:
     p_keep = float(bert["p_keep"]) if bert else None
     p_blank = float(bert.get("p_blank") or 0.0) if bert else None
     service = (bert or {}).get("service")
+    v2 = inputs.logic == "v2"
     votes: dict[str, Any] = {
         "pass": inputs.pass_no,
         "bert": (
@@ -959,6 +963,71 @@ def decide(inputs: PageInputs) -> Verdict:
         value = verdict_confidence(code, p_keep, p_junk, p_blank) if confidence is None else confidence
         return Verdict(code, float(value), rule_id, reason_out, votes, strength=round(float(old), 4))
 
+    def model_verdict(card: Any, v2: bool = False) -> Verdict:
+        """The model's tier (O1): the service's flag, the protocol-keep overrule, the near-miss card,
+        the invoice step. ``v2`` (2026-11-28, Blank / Junk v2): a BLANK top label on a page with
+        text is set aside -- p(keep) against p(junk) decides, with review (Blank comes only from
+        measurement)."""
+        # 8. the classifier (the teammate's service), then the invoice post-processing.
+        step("O1")
+        votes["reached_classifier"] = True
+        votes["route_to_others"] = votes.get("route") or "general"
+        if service is None:
+            votes["review_required"] = True
+            return ruled(CODE_MAIN, "R5", "R5: page classifier unavailable -> Main (review)", conf.score(0.5, "degraded"),
+                         confidence=conf.backup())
+        why = _service_why(service)
+        if service.get("review_required"):
+            votes["review_required"] = True
+        # 2026-11-21 (user): the service's protocol keep ("protocol_retain_*": a signature line, record
+        # type words such as "Radiology reports") forces KEEP whatever the model says. Our own keeps
+        # (signature, lab, medications, clinical content) ran above and passed on this page; with the
+        # raw model at p(junk) >= signature_overruled_above (95%, the bar a signature already yields
+        # to), the protocol keep does not keep it: the model's junk call stands.
+        reason_tag = str(service.get("decision_reason") or "")
+        if (service["flag"] == "KEEP" and reason_tag.startswith("protocol_retain") and p_junk is not None
+                and p_junk >= t["signature_overruled_above"] and not (p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT)):
+            subtype = MODEL_SUBTYPE.get(str((bert or {}).get("top_junk_label") or ""), "Others")
+            votes["protocol_keep_overruled"] = f"{reason_tag}, raw p(junk) {p_junk:.4f} >= {t['signature_overruled_above']}"
+            verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why}, but raw p(junk) {p_junk:.3f} >= "
+                            f"{t['signature_overruled_above']}: the protocol keep is overruled -> Junk / {subtype}",
+                            conf.score(p_junk))
+            return _keep_invoice(verdict, inputs)
+        if service["flag"] == "JUNK":
+            if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
+                return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
+            subtype = _service_subtype(service)
+            # 2026-11-07 (user): a card is Junk / Cards, never Invoice: the card rule's near miss or the
+            # service's insurance-ID tag says card. 2026-11-19 (user): a near miss only when nothing
+            # but the card's own guards stopped it -- never a form, letter or note page (an
+            # anesthesia note read as an invoice became Cards), never over the card length.
+            near_card = (subtype == "Invoice" and card is not None and bool(card.card_type)
+                         and not any(b.startswith(("form:", "letter / statement:", "too long")) for b in card.blocked_by)
+                         and not note_content(inputs))
+            if near_card and FACILITY_WORDS.search(text) and not CARD_WORD.search(text):
+                near_card = False
+                votes["card_not_kept"] = "care provider's page, no 'card' on it"
+            if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
+                subtype = "Cards"
+            verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
+                            conf.score(float(service["confidence"])))
+            return _keep_invoice(verdict, inputs)
+        if service["flag"] == "BLANK" and v2:
+            votes["review_required"] = True
+            votes["model_blank_on_text"] = f"top label BLANK, p(keep) {p_keep} vs p(junk) {p_junk}"
+            if p_keep is not None and p_junk is not None and p_junk > p_keep:
+                subtype = MODEL_SUBTYPE.get(str((bert or {}).get("top_junk_label") or ""), "Others")
+                return ruled(_junk_code(subtype), "R5", f"R5 service {why}: BLANK set aside, p(junk) > p(keep) -> "
+                             f"Junk / {subtype} (review)", conf.score(p_junk))
+            return ruled(CODE_MAIN, "R5", f"R5 service {why}: BLANK set aside, p(keep) >= p(junk) -> Main (review)")
+        if service["flag"] == "BLANK":
+            # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
+            return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
+                         conf.score(float(service["confidence"])),
+                         confidence=verdict_confidence(CODE_OTHERS, p_keep, p_junk, p_blank, model_class="blank"))
+        return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(float(service["confidence"])))
+
+
     # ---- measured blanks: every pass (nothing to read, nothing missed).
     chars = len(re.sub(r"\s", "", text))
     votes["stats"] = page_stats(inputs, text, words, chars, visual)
@@ -1003,7 +1072,11 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
     # pass 2 only on a page pass 1 never judged (handwritten, mixed, form, visual, printed Low).
-    if not pass2 or inputs.pass1_skipped:
+    # v2 guards on the text rules (B3, B5, J1, J2): not visual, handwriting under 5%, no provider,
+    # credential or Electronic Signature.
+    v2_guarded = v2 and (visual or (inputs.hw_area_pct or 0.0) >= V2_TEXT_RULE_MAX_HW or inputs.provider
+                         or inputs.signed or bool(CREDENTIAL.search(text)))
+    if (not pass2 or inputs.pass1_skipped) and not v2_guarded:
         step("R1e")
         if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
             return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters",
@@ -1013,20 +1086,22 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank",
                          confidence=conf.pass1_rule())
         step("R2a")
-        mark = _cover_mark(text)
+        # v2: the cover mark (J2) is pass 1 only.
+        mark = _cover_mark(text) if not (v2 and pass2) else None
         if mark is not None:
             return ruled(_junk_code("Cover Page"), "R1",
                          f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page",
                          confidence=conf.pass1_rule())
         step("R2b")
-        end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
+        end = END_OF_REPORT.search(text) if _word_count(text) < (V2_END_OF_REPORT_MAX_WORDS if v2 else COVER_MAX_WORDS) else None
         if end is not None:
             return ruled(_junk_code("Cover Page"), "R1E",
                          f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
                          confidence=conf.pass1_rule())
         # 2026-11-20 (user): not a page with a date or a provider on it -- pass 2 judges it.
         step("R2c")
-        if not visual and chars < MIN_TEXT_CHARS and not provider:
+        # v2: the tiny page moves to pass 2's Short route (S16).
+        if not v2 and not visual and chars < MIN_TEXT_CHARS and not provider:
             return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
                          confidence=conf.pass1_rule())
     step("R0")
@@ -1034,6 +1109,150 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
+
+    # ---- Blank / Junk v2, pass 2 (2026-11-28, user; docs/specials/BLANK_JUNK_V2_LOGIC.md): the route
+    # from the layout (Visual, Short, General), then one ladder -- tier 1 strong junk, tier 2 keeps,
+    # tier 3 weak junk, tier 4 the model -- with one veto (p(keep) >= 0.99 turns a tier 1 / 3 junk
+    # Main, review; not on short pages, not R4c), then the invoice evidence step.
+    if pass2 and v2:
+        votes["logic"] = "v2"
+
+        def veto(verdict: Verdict, tier: int) -> Verdict:
+            if verdict.rule == KEEP99_ID:  # ruled() already vetoed it (Letter/Fax, Cover Page)
+                votes["vetoed_by_model"] = votes.get("keep_veto")
+                votes["review_required"] = True
+                return verdict
+            if verdict.code in (CODE_MAIN, CODE_BLANK):
+                return verdict
+            if p_keep is not None and p_keep >= keep_veto_at():
+                votes["vetoed_by_model"] = verdict.rule
+                votes["review_required"] = True
+                votes["rule"] = KEEP99_ID
+                value = verdict_confidence(CODE_MAIN, p_keep, p_junk, p_blank)
+                return Verdict(CODE_MAIN, float(value), KEEP99_ID,
+                               f"{KEEP99_ID}: {verdict.rule} (tier {tier}) would junk it, but p(keep) {p_keep:.1%} >= "
+                               f"{keep_veto_at():.0%} -> Main (review)", votes, strength=round(float(value), 4))
+            return verdict
+
+        def tier4(card_found: Any) -> Verdict:
+            votes["tier"] = 4
+            return invoice_evidence(model_verdict(card_found, v2=True), inputs)
+
+        card = (detect_card(text, headings=tuple(inputs.header_canon or inputs.headings or ()), text_area=inputs.text_area,
+                            visual=inputs.document_type == "visual", name_found=inputs.member_name_found,
+                            barcode=inputs.barcode)
+                if inputs.document_type in CARD_DOCUMENT_TYPES and not inputs.short_verdict else None)
+        found = card if card is not None and card.is_card else None
+
+        def card_junk(kind: str) -> Verdict:
+            from modules.blank_junk import evidence
+
+            return ruled(CODE_CARDS, "R3", f"R3 card: {found.card_type} ({'; '.join(found.matched)}) -> Junk / Cards",
+                         0.95, margin=evidence.past_cut(len(found.matched), 1, 4))
+
+        # Visual route: a card, else a picture page (Main); the model is not asked.
+        if visual:
+            votes["route"] = "visual"
+            step("V1")
+            if found is not None:
+                votes["tier"] = 1
+                return veto(card_junk("visual"), 1)
+            step("V2")
+            votes["tier"] = 2
+            return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
+
+        # Short route: the short checks ran in v2's tiers (stage.short_verdict, logic v2); no veto.
+        short = inputs.short_verdict
+        if short:
+            votes["route"] = "short"
+            step("R4a")
+            heading = financial_heading(text, inputs.headings)
+            if heading:
+                votes["tier"] = 1
+                return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
+            step("S")
+            votes["short_page"] = short["why"]
+            votes["short_page_checks"] = short.get("checks") or []
+            if short["code"] is not None:
+                ev = short.get("evidence") or {}
+                votes["tier"] = V2_SHORT_TIER.get(short["rule"], 3)
+                return ruled(short["code"], short["rule"], f"{SHORT_RULE}{short['rule']}: {short['why']}",
+                             margin=ev.get("margin"), support=ev.get("support") or {"short_rule": 1.0})
+            return tier4(None)
+
+        # General route.
+        votes["route"] = "general"
+        votes["tier"] = 1
+        step("R4a")
+        heading = financial_heading(text, inputs.headings)
+        if heading:
+            return veto(ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0), 1)
+        step("R4b")
+        cover = retrieval_cover(text)
+        if cover:
+            return veto(ruled(_junk_code("Cover Page"), "RC", f"RC retrieval cover sheet ({cover}) -> Junk / Cover Page",
+                              1.0, confidence=conf.pass1_rule()), 1)
+        step("R4c")
+        blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.98))
+        if p_blank is not None and p_blank > blank_at:
+            # Kept (2026-11-28, user: never undone), no veto.
+            return ruled(_junk_code("Others"), "RB", f"RB model p(blank) {p_blank:.1%} > {blank_at:.0%} -> Junk / Others",
+                         confidence=round(p_blank, 4))
+        step("R4d")
+        index = index_page(text, inputs.headings, inputs.lines)
+        if index is not None:
+            votes["index_page"] = index
+            measure = index_measure(text, inputs.headings, inputs.lines) or {}
+            return veto(ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others",
+                              margin=measure.get("margin")), 1)
+        step("R4e")
+        fax = fax_cover_sheet(text)
+        if fax is not None:
+            votes["fax_cover"] = fax
+            return veto(ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({fax}) -> Junk / Letter/Fax"), 1)
+        step("G1")
+        if found is not None and (inputs.document_type == "visual" or getattr(found, "strong", False)):
+            return veto(card_junk("strong"), 1)
+        # Tier 2: keeps.
+        votes["tier"] = 2
+        step("R3")
+        log = signature_log_kept(inputs)
+        if log:
+            votes["signature_log"] = log
+            return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
+                         f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
+        step("G2")
+        hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
+        if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit and inputs.document_type != "visual":
+            return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
+        step("G3")
+        if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
+            return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby) -> Main")
+        step("G4")
+        lab = lab_result_words(inputs)
+        if lab:
+            return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
+        step("G5")
+        meds = medication_doses(text)
+        if meds:
+            return ruled(CODE_MAIN, MEDS_RULE, f"{MEDS_RULE}: medication list ({meds}) -> Main")
+        step("G6")
+        clinical = clinical_content_signs(inputs)
+        if clinical:
+            return ruled(CODE_MAIN, CLINICAL_CONTENT_RULE, f"{CLINICAL_CONTENT_RULE}: {clinical} -> Main")
+        # Tier 3: weak junk.
+        votes["tier"] = 3
+        step("G7")
+        if found is not None:
+            return veto(card_junk("printed"), 3)
+        step("G8")
+        word = fax_unsigned(inputs)
+        if word is not None and not inputs.flanked_by_notes:
+            votes["fax_unsigned"] = word
+            return veto(ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> "
+                              "Junk / Letter/Fax"), 3)
+        step("O1")
+        return tier4(card)
 
     # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
     # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
@@ -1185,56 +1404,44 @@ def decide(inputs: PageInputs) -> Verdict:
                 votes["fax_unsigned"] = word
                 return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
 
-    # 8. the classifier (the teammate's service), then the invoice post-processing.
-    step("O1")
-    votes["reached_classifier"] = True
-    votes["route_to_others"] = votes.get("route") or "general"
-    if service is None:
-        votes["review_required"] = True
-        return ruled(CODE_MAIN, "R5", "R5: page classifier unavailable -> Main (review)", conf.score(0.5, "degraded"),
-                     confidence=conf.backup())
-    why = _service_why(service)
-    if service.get("review_required"):
-        votes["review_required"] = True
-    # 2026-11-21 (user): the service's protocol keep ("protocol_retain_*": a signature line, record
-    # type words such as "Radiology reports") forces KEEP whatever the model says. Our own keeps
-    # (signature, lab, medications, clinical content) ran above and passed on this page; with the
-    # raw model at p(junk) >= signature_overruled_above (95%, the bar a signature already yields
-    # to), the protocol keep does not keep it: the model's junk call stands.
-    reason_tag = str(service.get("decision_reason") or "")
-    if (service["flag"] == "KEEP" and reason_tag.startswith("protocol_retain") and p_junk is not None
-            and p_junk >= t["signature_overruled_above"] and not (p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT)):
-        subtype = MODEL_SUBTYPE.get(str((bert or {}).get("top_junk_label") or ""), "Others")
-        votes["protocol_keep_overruled"] = f"{reason_tag}, raw p(junk) {p_junk:.4f} >= {t['signature_overruled_above']}"
-        verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why}, but raw p(junk) {p_junk:.3f} >= "
-                        f"{t['signature_overruled_above']}: the protocol keep is overruled -> Junk / {subtype}",
-                        conf.score(p_junk))
-        return _keep_invoice(verdict, inputs)
-    if service["flag"] == "JUNK":
-        if p_keep is not None and p_keep >= JUNK_UNLESS_KEEP_AT:
-            return ruled(CODE_MAIN, "R5", f"R5 service {why}, but raw p(keep) {p_keep:.3f} >= {JUNK_UNLESS_KEEP_AT} -> Main")
-        subtype = _service_subtype(service)
-        # 2026-11-07 (user): a card is Junk / Cards, never Invoice: the card rule's near miss or the
-        # service's insurance-ID tag says card. 2026-11-19 (user): a near miss only when nothing
-        # but the card's own guards stopped it -- never a form, letter or note page (an
-        # anesthesia note read as an invoice became Cards), never over the card length.
-        near_card = (subtype == "Invoice" and card is not None and bool(card.card_type)
-                     and not any(b.startswith(("form:", "letter / statement:", "too long")) for b in card.blocked_by)
-                     and not note_content(inputs))
-        if near_card and FACILITY_WORDS.search(text) and not CARD_WORD.search(text):
-            near_card = False
-            votes["card_not_kept"] = "care provider's page, no 'card' on it"
-        if near_card or "INSURANCE_ID" in str(service.get("audit_tag") or ""):
-            subtype = "Cards"
-        verdict = ruled(_junk_code(subtype), "R5", f"R5 service {why} -> Junk / {subtype}",
-                        conf.score(float(service["confidence"])))
-        return _keep_invoice(verdict, inputs)
-    if service["flag"] == "BLANK":
-        # 2026-11-05 (user): the classifier's Blank is Junk / Others (Blank comes from R1 / R2).
-        return ruled(_junk_code("Others"), "R5", f"R5 service {why} -> Junk / Others",
-                     conf.score(float(service["confidence"])),
-                     confidence=verdict_confidence(CODE_OTHERS, p_keep, p_junk, p_blank, model_class="blank"))
-    return ruled(CODE_MAIN, "R5", f"R5 service {why} -> Main", conf.score(float(service["confidence"])))
+    return model_verdict(card)
+
+# Blank / Junk v2 settings (2026-11-28, user; docs/specials/BLANK_JUNK_V2_LOGIC.md).
+V2_TEXT_RULE_MAX_HW = 5.0  # B3 / B5 / J1 / J2 guard: handwriting at or over this % skips them
+V2_END_OF_REPORT_MAX_WORDS = 25  # J1: "End of Report" alone on a page under this many words
+V2_SHORT_TIER = {"S4": 1, "S5": 1, "S6": 1, "S1": 1, "S2": 1, "S3": 1, "S11": 2, "S12": 2, "S7": 2, "S8": 2,
+                 "S9": 2, "S10": 3, "S13": 3, "S16": 3, "S14": 3}
+INVOICE_TITLE = re.compile(r"(?im)^\W*(?:invoice|itemi[sz]ed\s+statement|statement(?:\s+of\s+account)?|bill)\b")
+INVOICE_LINE = re.compile(
+    r"(?i)(?<![A-Za-z])(?:bill\s+to|remit\s+to|invoice\s+(?:number|no\.?|#|date)|due\s+date|amount\s+due|"
+    r"balance\s+due|sub\s*-?\s*total|total|tax\s+id|copy\s+fee|per\s+page|records?\s+fee)(?![A-Za-z])")
+
+
+def invoice_evidence(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """v2 P1 Invoicing on a tier-4 (model) verdict (2026-11-28, user): invoice pages found by
+    evidence, not only when the model says invoice. I1: a dollar table and an invoice title or
+    wording line; I3: a title and 2+ wording lines carrying dollar amounts -> Main, Page Type
+    Invoice / Invoice Page. A verdict the invoice step already made (O2) is left alone."""
+    if verdict.rule == INVOICE_ID or INVOICE_MARK in (verdict.reason or ""):
+        return verdict
+    text = inputs.text or ""
+    title = INVOICE_TITLE.search(text)
+    lines = [line for line in text.splitlines() if INVOICE_LINE.search(line)]
+    table = invoice_table(inputs)
+    priced = [line for line in lines if re.search(_DOLLAR, line)]
+    rule = ("I1" if table and (title or lines) else "I3" if title and len(priced) >= 2 else None)
+    if rule is None:
+        return verdict
+    if terms_page(inputs) and not table:
+        return verdict
+    verdict.votes["invoice_evidence"] = {"rule": rule, "table": table, "title": title.group(0).strip() if title else None,
+                                         "lines": len(lines)}
+    verdict.votes["rule"] = INVOICE_ID
+    p_keep, p_junk, p_blank = _model_probs(inputs)
+    return Verdict(CODE_MAIN, rule_confidence(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk, p_blank), INVOICE_ID,
+                   f"{verdict.reason}; {INVOICE_ID} {rule}: invoice evidence; {INVOICE_MARK} -> Main (Page Type "
+                   f"{INVOICE_PAGE_TYPE} / {INVOICE_PAGE_SUBTYPE})", verdict.votes,
+                   strength=rule_strength(CODE_INVOICE, INVOICE_RULE, p_keep, p_junk))
 
 
 def _service_subtype(service: dict[str, Any]) -> str:
