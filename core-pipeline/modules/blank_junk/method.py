@@ -854,6 +854,15 @@ def decide(inputs: PageInputs) -> Verdict:
     if not visual and chars == 0 and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
 
+    # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
+    # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
+    # and the model. In pass 1 too, so pass 1 never settles it as junk (pass 2 judges it again).
+    log = signature_log_kept(inputs)
+    if log:
+        votes["signature_log"] = log
+        return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
+                     f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
+
     # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
     # pass 2 only on a page pass 1 never judged (handwritten, mixed, form, visual, printed Low).
     if not pass2 or inputs.pass1_skipped:
@@ -881,15 +890,6 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
-
-    # ---- pass 2, first (2026-11-28, user): a filled Signature Log (its header, Medium / High
-    # handwriting) is Main, Page Type Signature Page / Signature Log, before any junk rule or the model.
-    if pass2:
-        log = signature_log_kept(inputs)
-        if log:
-            votes["signature_log"] = log
-            return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
-                         f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
 
     # ---- pass 2 (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
     # Junk / Others, whatever else is on it.

@@ -26,8 +26,9 @@ def bert_junk() -> dict:
                         "p_keep": 0.01, "p_blank": 0.0, "p_junk": 0.99}}
 
 
-def run(hw: float | None, text: str = LOG_TEXT, pass_no: int = 2, **kw) -> method.Verdict:
-    return decide(PageInputs(text=text, pass_no=pass_no, document_type="visual", hw_area_pct=hw,
+def run(hw: float | None, text: str = LOG_TEXT, pass_no: int = 2, document_type: str = "visual",
+        **kw) -> method.Verdict:
+    return decide(PageInputs(text=text, pass_no=pass_no, document_type=document_type, hw_area_pct=hw,
                              bert=bert_junk() if pass_no == 2 else None, **kw))
 
 
@@ -55,8 +56,21 @@ def test_only_signature_log_header_counts():
     assert v.rule == "SIGLOG"
 
 
-def test_pass_1_does_not_decide_it():
-    assert run(40.0, pass_no=1).rule != "SIGLOG"
+def test_visual_and_non_visual_alike():
+    for kind in ("visual", "printed", "handwritten", "mixed", "form", "uncertain"):
+        v = run(40.0, document_type=kind)
+        assert v.code == method.CODE_MAIN and v.rule == "SIGLOG", (kind, v.rule)
+
+
+def test_pass_1_keeps_it_for_pass_2():
+    """Pass 1 never settles a filled log as junk: Main (SIGLOG), not a final keep, so pass 2 judges
+    it again."""
+    for kind in ("printed", "visual"):
+        v = run(40.0, pass_no=1, document_type=kind)
+        assert v.code == method.CODE_MAIN and v.rule == "SIGLOG" and not method.is_final_keep(v.reason)
+    # A tiny printed page would be junked by pass 1's R1; the log header keeps it.
+    v = run(40.0, text="SIGNATURE LOG\nNPI", pass_no=1, document_type="printed")
+    assert v.rule == "SIGLOG"
 
 
 def test_page_classification_row_matches_the_ground_truth_signature_page():
