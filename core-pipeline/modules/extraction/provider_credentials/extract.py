@@ -1,7 +1,10 @@
 """Provider credentials (MD, DO, PA-C, …) from the page text, with the provider they follow.
 
-The list is ``resources/canon/provider_credentials_canon.json``. A token counts
-when it matches that list and sits after a name on the same line. A two-letter
+The list is ``resources/canon/provider_credentials_reference.json`` (2026-11-28, user: the one
+credential canon): every single-token code of its codable, non_codable and extraction_also
+lists. A token counts when it matches that list and sits after a name on the same line; a
+code in its ``needs_comma`` list (ST, ET, MS, PC ... also ordinary words) only right after a
+comma ("Jane Roe, ST"). A two-letter
 form that is also a state (MD, PA) is kept only when it is not followed by a
 ZIP code. OD beside OS / OU is eye notation, not a credential (2026-11-20).
 
@@ -33,21 +36,39 @@ def _norm(text: str) -> str:
     return re.sub(r"[\s.]+", "", text or "").casefold()
 
 
+def _codes(data: dict) -> list[str]:
+    """Every single-token code: codable, non_codable, extraction_also ("OTA/COTA" -> OTA, COTA)."""
+    out: list[str] = []
+    for group in ("codable", "non_codable", "extraction_also"):
+        for item in data.get(group) or []:
+            text = str(item.get("credential") if isinstance(item, dict) else item).strip()
+            for part in ([text] if "/" not in text else text.split("/")):
+                part = part.strip()
+                if part and " " not in part:
+                    out.append(part)
+    return out
+
+
 def _build(data: dict) -> dict[str, str]:
     """Normalized form -> display form. The first spelling in the file wins."""
     mapping: dict[str, str] = {}
-    for item in data.get("credentials") or []:
-        text = str(item).strip()
-        if text:
-            mapping.setdefault(_norm(text), text)
+    for text in _codes(data):
+        mapping.setdefault(_norm(text), text)
     return mapping
 
 
-_CANON = CanonFile(CANON_DIR / "provider_credentials_canon.json", _build)
+CANON_FILE = CANON_DIR / "provider_credentials_reference.json"
+_CANON = CanonFile(CANON_FILE, _build)
+_NEEDS_COMMA = CanonFile(CANON_FILE, lambda data: frozenset(_norm(str(c)) for c in data.get("needs_comma") or []))
 
 
 def load_credentials() -> dict[str, str]:
     return _CANON.get()
+
+
+def needs_comma() -> frozenset[str]:
+    """Codes that are also ordinary words (ST, ET, MS ...): a credential only right after a comma."""
+    return _NEEDS_COMMA.get()
 
 
 def _credential_text(token: str) -> bool:
@@ -99,6 +120,7 @@ def extract_page(words: list[Word]) -> list[CredentialHit]:
     catalog = load_credentials()
     if not catalog:
         return []
+    comma_only = needs_comma()
     found: list[CredentialHit] = []
     seen: set[str] = set()
     for line in group_lines(words):
@@ -111,6 +133,8 @@ def extract_page(words: list[Word]) -> list[CredentialHit]:
             previous = line[index - 1].content if index else ""
             nxt = line[index + 1].content if index + 1 < len(line) else ""
             if not _name_before(previous):
+                continue
+            if key in comma_only and not previous.rstrip().endswith(","):
                 continue
             if key in _STATE_LIKE and _ZIP.match(nxt.strip(" ,")):
                 continue

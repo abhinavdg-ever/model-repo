@@ -12,7 +12,7 @@ page processed — no pipeline restart, no re-OCR:
     page_arbitration.json        page axes gates and rules + Final (per document) rules
     continuity_canon.json        document continuity signals
     encounter_canon.json         encounter-type keywords
-    provider_credentials_canon.json  provider credential tokens (MD, DO, PA-C, …)
+    provider_credentials_reference.json  provider credentials: codable / non_codable (MD, RN, PA-C, …)
 
 A ``CanonFile`` pairs a path with a ``build`` function that turns the parsed
 JSON into whatever the caller needs (compiled regexes, frozensets, …). The

@@ -69,7 +69,7 @@ def test_every_config_lives_in_the_canon_folder():
         "section_header_canon.json",
         "continuity_canon.json",
         "encounter_canon.json",
-        "provider_credentials_canon.json",
     }
+    assert (CANON_DIR / "provider_credentials_reference.json").is_file()  # the one credential canon (2026-11-28)
     assert expected <= {p.name for p in CANON_DIR.glob("*_canon.json")}
     assert (CANON_DIR / "page_keywords.json").is_file()  # the page keyword canon (2026-11-22)

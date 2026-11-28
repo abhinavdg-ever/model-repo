@@ -1,4 +1,5 @@
-"""Credentials that cannot make a page codable (``resources/canon/non_codable_credentials.json``).
+"""Credentials that cannot make a page codable (``resources/canon/provider_credentials_reference.json``,
+its ``non_codable`` list -- the one credential canon since 2026-11-28, user).
 
 2026-11-01 (user): a page Final calls Codable whose every provider credential is on the
 list (RN, LPN, MA, PharmD, LCSW-type counsellors ...) is Non-Codable. ``only_non_codable``
@@ -19,15 +20,15 @@ def _key(text: str) -> str:
 
 def _build(data: dict[str, Any]) -> frozenset[str]:
     out = set()
-    for item in data.get("credentials") or []:
-        code = str(item.get("code") if isinstance(item, dict) else item)
+    for item in data.get("non_codable") or []:
+        code = str(item.get("credential") if isinstance(item, dict) else item)
         out.add(_key(code))
         out.update(_key(part) for part in re.split(r"[/]", code) if _key(part))
     out.discard("")
     return frozenset(out)
 
 
-_CANON: CanonFile[frozenset[str]] = CanonFile(CANON_DIR / "non_codable_credentials.json", _build)
+_CANON: CanonFile[frozenset[str]] = CanonFile(CANON_DIR / "provider_credentials_reference.json", _build)
 
 
 def codes() -> frozenset[str]:

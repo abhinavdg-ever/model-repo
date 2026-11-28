@@ -148,7 +148,7 @@ def caps_credentials_only(name: Optional[str]) -> Optional[str]:
 
 
 def _credential_catalog() -> set[str]:
-    """Normalized credentials: provider_name/suffixes.txt and provider_credentials_canon.json."""
+    """Normalized credentials: provider_name/suffixes.txt and provider_credentials_reference.json."""
     from .provider_credentials.extract import load_credentials
     from .provider_name.extract import load_suffixes
 
@@ -225,13 +225,19 @@ def _counts(row: dict[str, Any]) -> bool:
 
 
 def credentials_in_sentence(sentence: Optional[str]) -> Optional[str]:
-    """Every credential of provider_credentials_canon.json in the sentence, in order
-    ('… WILLIAM J WALL III, MD on …' -> 'MD'), joined with ', '."""
-    from .provider_credentials.extract import load_credentials
+    """Every credential of provider_credentials_reference.json in the sentence, in order
+    ('… WILLIAM J WALL III, MD on …' -> 'MD'), joined with ', '. A needs_comma code (ST, ET ...)
+    only right after a comma."""
+    from .provider_credentials.extract import _norm, load_credentials, needs_comma
 
     catalog = set(load_credentials())
+    comma_only = needs_comma()
     found: list[str] = []
+    previous = ""
     for token in (sentence or "").split():
+        before, previous = previous, token
+        if _norm(token.strip(",;:()[]").rstrip(".")) in comma_only and not before.endswith(","):
+            continue
         if _is_credential(token, catalog):
             bare = token.strip(",;:()[]")
             if "." not in bare.rstrip("."):
