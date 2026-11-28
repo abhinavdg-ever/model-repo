@@ -257,10 +257,13 @@ function algoInvoice(page: ImagingPageResult): boolean {
 function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
   const truth = yesNo(page.groundTruth?.isVisible);
   if (truth) {
-    if (page.isVisible == null) extra.visibility.na += 1;
+    // Readability (2026-11-28, user): the pipeline's High / Low, else the page-tag model's
+    // visibility (visible = High); the ground truth's Yes = High.
+    const high = page.readability === "High" ? true : page.readability === "Low" ? false : page.isVisible;
+    if (high == null) extra.visibility.na += 1;
     else {
       extra.visibility.scored += 1;
-      if (page.isVisible === (truth === "yes")) extra.visibility.match += 1;
+      if (high === (truth === "yes")) extra.visibility.match += 1;
     }
   }
   const gt = gtInvoice(page);

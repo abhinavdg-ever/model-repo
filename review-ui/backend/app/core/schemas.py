@@ -333,6 +333,10 @@ class ImagingPageResult(BaseModel):
     pageQualityTag: str | None = None
     # The OCR match rate the routing ended on, 0-1 (2026-11-19, user): Rejection Rules.
     ocrMatchRate: float | None = None
+    # Readability (2026-11-28, user; was Visibility): High / Low from the routing (core-pipeline
+    # modules/ocr/readability.py), and why it is Low. None on pages routed before it existed.
+    readability: str | None = None
+    readabilityWhy: str | None = None
     pageQualityConfidence: float | None = None
     dosFrom: str | None = None
     dosTo: str | None = None

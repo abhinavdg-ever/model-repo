@@ -426,6 +426,10 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                     rate = routing.get("overlap_3") if routing.get("overlap_3") is not None else routing.get("overlap")
                     if isinstance(rate, (int, float)):
                         fields["ocrMatchRate"] = float(rate)
+                    # 2026-11-28 (user): Readability (was Visibility), High / Low, and why.
+                    if routing.get("readability") in ("High", "Low"):
+                        fields["readability"] = routing["readability"]
+                        fields["readabilityWhy"] = routing.get("readability_why") or ""
                 if isinstance(measured, dict) and measured:
                     fields["measuredConfidences"] = {
                         k: float(v) for k, v in measured.items() if isinstance(v, (int, float))

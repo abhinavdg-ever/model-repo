@@ -382,10 +382,14 @@ function fmtHandwriting(
 // two-class model the page was classified but these were never measured.
 const NOT_MEASURED = "Not Available";
 
-function fmtVisibility(value: boolean | null | undefined, processed = true): string {
+/** Readability (2026-11-28, user; was Visibility): High / Low from the routing
+ * (core-pipeline modules/ocr/readability.py); a page routed before it existed: the page-tag
+ * model's visibility (visible = High). */
+function fmtReadability(page: Pick<ImagingPageResult, "readability" | "isVisible">, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
-  if (value === null || value === undefined) return NOT_MEASURED;
-  return value ? "Visible" : "Not visible";
+  if (page.readability === "High" || page.readability === "Low") return page.readability;
+  if (page.isVisible === null || page.isVisible === undefined) return NOT_MEASURED;
+  return page.isVisible ? "High" : "Low";
 }
 
 /** Handwritten share of the page as a band; the model's exact figure is
@@ -557,7 +561,7 @@ function pageTypeOf(page: ImagingPageResult): string | null {
   return type;
 }
 const YES_NO_CHOICES = ["Yes", "No"] as const;
-const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
+const VISIBILITY_CHOICES = ["High", "Low"] as const;
 // An empty ground-truth cell reads "Not Found"; typing it (or NA) clears the cell.
 const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found", "not available"]);
 const PLACEHOLDER_ENTRY = new Set(["yet to process"]);
@@ -720,11 +724,12 @@ function yesNo(value: string | null | undefined): "yes" | "no" | null {
   return null;
 }
 
-/** page_ground_truth.is_visible holds Yes / No; the cell offers Visible / Not visible. */
+/** page_ground_truth.is_visible holds Yes / No; the cell offers Readability High / Low
+ * (2026-11-28, user: was Visible / Not visible; Yes = High, No = Low). */
 function visibilityLabel(value: string | null | undefined): string {
   const side = yesNo(value);
-  if (side === "yes") return "Visible";
-  if (side === "no") return "Not visible";
+  if (side === "yes") return "High";
+  if (side === "no") return "Low";
   return (value ?? "").trim();
 }
 
@@ -732,8 +737,8 @@ function visibilityStored(shown: string): string | null {
   const text = cleanGt(shown);
   if (!text) return null;
   const folded = text.toLowerCase();
-  if (folded === "visible" || folded === "good visibility") return "Yes";
-  if (folded === "not visible" || folded === "bad visibility") return "No";
+  if (folded === "high" || folded === "visible" || folded === "good visibility") return "Yes";
+  if (folded === "low" || folded === "not visible" || folded === "bad visibility") return "No";
   return text;
 }
 
@@ -2538,14 +2543,14 @@ function PageDetails({
             label: "Handwritten %",
             choices: HW_AREA_CHOICES,
           }),
-          sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(page.measuredConfidences?.visibility, sections.hw), {
+          sameValue(fmtReadability(page, sections.hw), fmtConfidence(page.measuredConfidences?.visibility, sections.hw), {
             id: "visibility",
-            label: "Visibility",
+            label: "Readability",
             choices: VISIBILITY_CHOICES,
           }),
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtMeasurement(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
-            label: "Quality",
+            label: "Page Quality",
             choices: QUALITY_CHOICES,
             // A placeholder grade today (CLAUDE.md section 3): labelled, not scored.
             noMark: true,
@@ -2924,7 +2929,10 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
   for (const page of pages) {
     const quality = algorithmQuality(page.pageQualityConfidence);
     const reasons: string[] = [];
-    if (page.isVisible === false) reasons.push("Not visible");
+    // 2026-11-28 (user): Readability Low (not visible, or Low quality + match < 50% + Tesseract
+    // gibberish) is listed too.
+    if (page.readability === "Low") reasons.push(`Readability Low${page.readabilityWhy ? ` (${page.readabilityWhy})` : ""}`);
+    else if (page.isVisible === false) reasons.push("Not visible");
     const rate = page.ocrMatchRate;
     const finalLow = (page.pageQualityTag ?? "").trim().toLowerCase() === "low";
     if (rate != null) {
@@ -2938,13 +2946,14 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
 function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed: boolean }) {
   if (!processed) return <div className="ocr-empty">{YET_TO_PROCESS}</div>;
   if (rows.length === 0) {
-    return <div className="ocr-empty">No page is not visible or low quality.</div>;
+    return <div className="ocr-empty">No page has Readability Low or low quality.</div>;
   }
   return (
     <div className="member-rejection">
       <p className="rejection-note">
-        Pages the page-tag model calls not visible, or Low quality with an OCR match rate under 50% (three
-        engines when Doc Intel read the page, else Docling vs Tesseract):{" "}
+        Pages with Readability Low (not visible, or Page Quality Low with an OCR match rate under 50% and
+        Tesseract gibberish), or Low quality with an OCR match rate under 50% (three engines when Doc Intel
+        read the page, else Docling vs Tesseract):{" "}
         <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
       </p>
       <table className="imaging-summary-table imaging-rejection-table">
@@ -2952,8 +2961,8 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
           <tr>
             <th scope="col">Page</th>
             <th scope="col">Printed / HW</th>
-            <th scope="col">Quality</th>
-            <th scope="col">Visible</th>
+            <th scope="col">Page Quality</th>
+            <th scope="col">Readability</th>
             <th scope="col">Match rate</th>
             <th scope="col">Why</th>
           </tr>
@@ -2969,7 +2978,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
                 const shown = tag ? tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase() : quality;
                 return shown ? `${shown} (${fmtMeasurement(page.pageQualityConfidence)})` : NOT_FOUND;
               })()}</td>
-              <td>{page.isVisible == null ? NOT_FOUND : page.isVisible ? "Yes" : "No"}</td>
+              <td>{fmtReadability(page)}</td>
               <td>{page.ocrMatchRate == null ? NOT_FOUND : `${Math.round(page.ocrMatchRate * 100)}%`}</td>
               <td>{reasons.join(", ")}</td>
             </tr>
@@ -3414,8 +3423,8 @@ function DocSummary({
             <th scope="col">Member ID</th>
             <th scope="col">Type (Printed/HW)</th>
             <th scope="col">Handwritten %</th>
-            <th scope="col">Visibility</th>
-            <th scope="col">Quality</th>
+            <th scope="col">Readability</th>
+            <th scope="col">Page Quality</th>
             <th scope="col" title="How far the text sits rotated counter-clockwise from upright, as scanned">Orient.</th>
             <th scope="col">Tilt</th>
             <th scope="col">Mirrored</th>
@@ -3453,7 +3462,7 @@ function DocSummary({
               <td>{fmt(p.memberId, sections.member, mskip)}</td>
               <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
               <td>{fmtHandwrittenArea(p.handwrittenAreaPct, sections.hw)}</td>
-              <td>{fmtVisibility(p.isVisible, sections.hw)}</td>
+              <td>{fmtReadability(p, sections.hw)}</td>
               <td>
                 {fmtQualityTag(
                   p.pageQualityTag,

@@ -197,6 +197,9 @@ export type ImagingPageResult = {
   pageQualityTag?: string | null;
   /** The OCR match rate the routing ended on, 0-1 (2026-11-19, user). */
   ocrMatchRate?: number | null;
+  /** Readability (2026-11-28, user; was Visibility): High / Low, and why it is Low. */
+  readability?: string | null;
+  readabilityWhy?: string | null;
   pageQualityConfidence: number | null;
   /** Encounter classification — logic TBD; UI shows Yet to Process when absent. */
   encounterType?: string | null;

@@ -154,6 +154,10 @@ def route(
     def done(row_no: int, final: Optional[str], docintel: bool) -> dict[str, Any]:
         return {**out, "row": row_no, "final_quality": final, "docintel": docintel}
 
+    # 2026-11-28 (user): Tesseract's gibberish measure, for Readability (modules/ocr/readability.py).
+    from modules.ocr.readability import gibberish
+
+    out["tesseract_gibberish"] = gibberish(tesseract)
     if settled:
         return done(12, grade or "low", False)
     has_docling, has_tess = bool((docling or "").strip()), bool((tesseract or "").strip())
