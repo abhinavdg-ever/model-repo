@@ -62,15 +62,11 @@ def test_visual_and_non_visual_alike():
         assert v.code == method.CODE_MAIN and v.rule == "SIGLOG", (kind, v.rule)
 
 
-def test_pass_1_keeps_it_for_pass_2():
-    """Pass 1 never settles a filled log as junk: Main (SIGLOG), not a final keep, so pass 2 judges
-    it again."""
+def test_pass_1_does_not_check_it():
+    """2026-11-28 (user): pass 1 never checks for a Signature Log; pass 2 does."""
     for kind in ("printed", "visual"):
         v = run(40.0, pass_no=1, document_type=kind)
-        assert v.code == method.CODE_MAIN and v.rule == "SIGLOG" and not method.is_final_keep(v.reason)
-    # A tiny printed page would be junked by pass 1's R1; the log header keeps it.
-    v = run(40.0, text="SIGNATURE LOG\nNPI", pass_no=1, document_type="printed")
-    assert v.rule == "SIGLOG"
+        assert v.rule != "SIGLOG" and "SIGLOG" not in str(v.votes.get("checks"))
 
 
 def test_page_classification_row_matches_the_ground_truth_signature_page():

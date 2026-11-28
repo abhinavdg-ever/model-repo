@@ -799,7 +799,7 @@ def page_stats(inputs: PageInputs, text: str, words: int, chars: int, visual: bo
 
 # 2026-11-28 (user): the checks of each pass in order (decide()'s steps), for blank_junk.json.
 PASS1_CHECKS = (
-    "R1 no ink", "R1 stage-1 blank", "R1 no text", "SIGLOG signature log", "EB one line top / bottom",
+    "R1 no ink", "R1 stage-1 blank", "R1 no text", "EB one line top / bottom",
     "R1 the word 'blank'", "R2 placeholder", "R1 cover mark", "R1E end of report", "R1 tiny page",
     "P1 no pass-1 rule",
 )
@@ -951,9 +951,11 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
     # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
-    # and the model. In pass 1 too, so pass 1 never settles it as junk (pass 2 judges it again).
-    step("SIGLOG signature log")
-    log = signature_log_kept(inputs)
+    # and the model. Pass 2 only (2026-11-28, user: not checked in pass 1).
+    log = None
+    if pass2:
+        step("SIGLOG signature log")
+        log = signature_log_kept(inputs)
     if log:
         votes["signature_log"] = log
         return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
