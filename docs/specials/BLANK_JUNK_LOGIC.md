@@ -32,13 +32,15 @@ appointment · Disposition · Patient instructions and education · Medical deci
 
 ---
 
-## Pass 1: on the Tesseract text, rules only (unchanged)
+## Pass 1: on the Tesseract text, rules only
 
 The first rule that matches decides.
 
 | # | Check | Verdict | Confidence |
 |---|---|---|---|
 | 1 | No ink (stage 1); stage 1 says blank and the OCR has < 15 characters; no text | Blank | 100% |
+| 1a | **Signature Log** (2026-11-28, user): "Signature Log" header and Medium / High handwriting (SIGLOG; see pass 2) | Main for now; pass 2 decides | — |
+| 1b | **EB, one line at the top and / or one at the bottom** (2026-11-28, user): the page image has at most 1 text line in the header band (top 15%) and at most 1 in the footer band (bottom 8%), at least one in all, no ink between them (< 0.5%); the Tesseract text is ≤ 4 lines with no credential. A date or name in the header does not keep it. Settled in pass 1: pass 2 does not judge it again. Two lines at an edge ("DME Orders / None recorded.") is not EB | Blank | 100% |
 | 2 | The word "blank" in < 30 characters; "Intentionally left blank" on a page of ≤ 25 words | Blank | 95% |
 | 3 | A cover mark (Accept, Unaccept, Cover) or "End of Report" on a page of < 10 words | Junk / Cover Page | 95% |
 | 4 | < 15 characters | Junk / Others | 95% |

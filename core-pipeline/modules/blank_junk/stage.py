@@ -1383,6 +1383,43 @@ def _page_lines(
             method.text_area(found["words"], found.get("width"), found.get("height")))
 
 
+def edge_text_lines(chart_name: str, page_name: str) -> Optional[dict[str, Any]]:
+    """EB (pass 1, 2026-11-28, user): the text lines in the header band and the footer band of the
+    page image (rows of dark ink, runs of rows split by a blank gap), and whether there is ink
+    between the bands (_body_ink). None when the image cannot be read."""
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        zones = method.canon().raw["zones"]
+        header, footer = float(zones["header_band"]), float(zones["footer_band"])
+        with Image.open(page_image_path(chart_name, page_name)) as image:
+            gray = np.asarray(ImageOps.autocontrast(image.convert("L")))
+        height, width = gray.shape
+        rows = (gray < 128).sum(axis=1) > max(2, int(width * 0.002))
+
+        def count(start: int, end: int) -> int:
+            gap, min_gap, min_height = 0, max(2, int(height * 0.004)), max(2, int(height * 0.002))
+            runs, run = 0, 0
+            for flag in rows[start:end]:
+                if flag:
+                    run, gap = run + 1, 0
+                    continue
+                gap += 1
+                if run and gap >= min_gap:
+                    runs += int(run >= min_height)
+                    run = 0
+            return runs + int(run >= min_height)
+
+        top = count(0, int(header * height))
+        bottom = count(int((1.0 - footer) * height), height)
+    except Exception as exc:  # noqa: BLE001 - an unreadable image only switches the rule off
+        logger.warning("edge line check failed for %s/%s: %s", chart_name, page_name, exc)
+        return None
+    body_ink, fraction = _body_ink(chart_name, page_name)
+    return {"top": top, "bottom": bottom, "body_ink": body_ink, "body_ink_fraction": fraction}
+
+
 def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) -> tuple[Optional[bool], Optional[float]]:
     """(ink below the short-page band, the share of that band that is ink): a picture,
     handwriting or stamp OCR did not read. ``start``: where the band begins (the content's
@@ -1552,6 +1589,11 @@ def _page_inputs(
             pass1_skipped=pass_no == 2 and judged_in_pass2(q) and (
                 page_kind(q) in {"handwritten", "mixed"} or str(q.get("quality_tag") or "").strip().lower() == "low"),
         )
+        if pass_no == 1 and prelim is not None:
+            # EB (2026-11-28, user): only a page of a few Tesseract lines is measured.
+            lines = [line for line in unwrap_ocr_content(prelim.get(pid)).splitlines() if line.strip()]
+            if len(lines) <= method.EDGE_BLANK_MAX_TEXT_LINES:
+                inputs.edge_lines = edge_text_lines(ctx.chart_name, page["page_name"])
         if pass_no == 2:
             inputs.provider_spot = spots.get(page["page_name"])
             inputs.headings = headings.get(page["page_name"], ())
@@ -1968,7 +2010,7 @@ def _run_pass(
                 prelim=prelim_texts,
             )
         else:
-            inputs = _page_inputs(ctx, pass_no, quality)
+            inputs = _page_inputs(ctx, pass_no, quality, prelim=texts)
         best_matches: dict[str, dict[str, Any]] = {}
         signed_ids: set[int] = set()
         signatures: dict[int, dict[str, str]] = {}

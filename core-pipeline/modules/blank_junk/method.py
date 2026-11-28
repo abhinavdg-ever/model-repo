@@ -485,6 +485,9 @@ class PageInputs:
     document_type: str = ""  # page-tag model: printed / handwritten / form / visual / ...
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
+    # Pass 1 (2026-11-28, user): the page image measured for EB -- {"top": text lines in the header
+    # band, "bottom": in the footer band, "body_ink": ink between them}; None when not measured.
+    edge_lines: Optional[dict[str, Any]] = None
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
     # kv_extract found the member's name on the page (extraction.json "name"): the card rule's name.
     member_name_found: bool = False
@@ -713,6 +716,25 @@ def header_only(inputs: PageInputs) -> bool:
     return inputs.content_bottom <= float(canon().raw["zones"]["header_band"])
 
 
+EDGE_BLANK_MAX_TEXT_LINES = 4  # EB: Tesseract lines (a header may break in two); the image decides
+
+
+def edge_line_blank(inputs: "PageInputs", text: str) -> Optional[str]:
+    """EB (2026-11-28, user): the page image has at most one text line in the header band and at
+    most one in the footer band, at least one in all, no ink between them, the Tesseract text is a
+    few lines at most and names no credential. Returns a short description, else None."""
+    edge = inputs.edge_lines or {}
+    if not edge or edge.get("body_ink") is not False:
+        return None
+    top, bottom = int(edge.get("top") or 0), int(edge.get("bottom") or 0)
+    if top > 1 or bottom > 1 or top + bottom == 0:
+        return None
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    if len(lines) > EDGE_BLANK_MAX_TEXT_LINES or CREDENTIAL.search(text or ""):
+        return None
+    return f"{top} line at the top, {bottom} at the bottom, nothing between"
+
+
 SIGNATURE_LOG = re.compile(r"(?<![A-Za-z])signature\s*logs?(?![A-Za-z])", re.IGNORECASE)
 SIGNATURE_LOG_TOP_LINES = 8  # the header: the page's first non-empty lines
 
@@ -862,6 +884,15 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["signature_log"] = log
         return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
                      f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
+
+    # ---- EB (2026-11-28, user): pass 1, a page with only one line at the top and / or one at the
+    # bottom (a running header, a page number) and nothing between -> Blank, final (pass 2 does not
+    # judge a page pass 1 settled). Two lines at an edge ("DME Orders / None recorded.") is not.
+    if not pass2:
+        edge = edge_line_blank(inputs, text)
+        if edge:
+            votes["edge_lines"] = inputs.edge_lines
+            return ruled(CODE_BLANK, "EB", f"EB blank: {edge} -> Blank", confidence=conf.measured())
 
     # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
     # pass 2 only on a page pass 1 never judged (handwritten, mixed, form, visual, printed Low).
