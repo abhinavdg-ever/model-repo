@@ -62,3 +62,23 @@ def test_edge_text_lines_counts_lines_per_band(monkeypatch, tmp_path):
         got = stage.edge_text_lines("c", "13.png")
         assert (got["top"], got["bottom"]) == expected, (tops, got)
         assert got["body_ink"] is (0.5 in tops), (tops, got)
+
+
+def test_a_drawing_between_header_and_footer_is_ink_in_the_middle(monkeypatch, tmp_path):
+    """2026-11-28 (user): a body map / hand diagram with a header and a footer is not short."""
+    from PIL import Image, ImageDraw
+
+    image = Image.new("L", (850, 1100), 255)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((60, 20, 790, 28), fill=0)       # header line
+    draw.rectangle((60, 1060, 790, 1068), fill=0)   # footer line
+    draw.ellipse((200, 350, 650, 750), outline=0, width=6)  # the drawing
+    path = tmp_path / "17.png"
+    image.save(path)
+    monkeypatch.setattr(stage, "page_image_path", lambda chart, page: path)
+    ink, fraction = stage._body_ink("c", "17.png", start=0.25, end=0.75)
+    assert ink is True and fraction > 0
+    blank = tmp_path / "18.png"
+    Image.new("L", (850, 1100), 255).save(blank)
+    monkeypatch.setattr(stage, "page_image_path", lambda chart, page: blank)
+    assert stage._body_ink("c", "18.png", start=0.25, end=0.75)[0] is False

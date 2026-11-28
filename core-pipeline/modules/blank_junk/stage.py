@@ -1469,7 +1469,8 @@ def edge_text_lines(chart_name: str, page_name: str) -> Optional[dict[str, Any]]
     return {"top": top, "bottom": bottom, "body_ink": body_ink, "body_ink_fraction": fraction}
 
 
-def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) -> tuple[Optional[bool], Optional[float]]:
+def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None,
+              end: Optional[float] = None) -> tuple[Optional[bool], Optional[float]]:
     """(ink below the short-page band, the share of that band that is ink): a picture,
     handwriting or stamp OCR did not read. ``start``: where the band begins (the content's
     bottom, at least the header band). (None, None) when the image cannot be read."""
@@ -1481,6 +1482,8 @@ def _body_ink(chart_name: str, page_name: str, start: Optional[float] = None) ->
         short = method.canon().raw["short_page"]
         zones = method.canon().raw["zones"]
         top, bottom = max(float(zones["header_band"]), float(start or 0.0)), 1.0 - float(zones["footer_band"])
+        if end is not None:
+            bottom = min(bottom, float(end))
         with Image.open(page_image_path(chart_name, page_name)) as image:
             width, height = image.size
             band = image.convert("RGB").crop((0, int(top * height), width, int(bottom * height)))
@@ -1613,6 +1616,7 @@ def _page_inputs(
     top = float(method.canon().raw["zones"]["header_band"])
     # 2026-11-19 (user): the short page reaches 25% of the page (canon contained_page.top_fraction).
     short_top = float((method.canon().raw.get("contained_page") or {}).get("top_fraction", 0.25))
+    short_end = float((method.canon().raw.get("contained_page") or {}).get("bottom_fraction", 0.75))
     from modules.ocr.routing import judged_in_pass2, page_kind
 
     out: dict[int, method.PageInputs] = {}
@@ -1658,6 +1662,12 @@ def _page_inputs(
             inputs.content_bottom = bottom
             if bottom is not None and bottom <= max(top, short_top):
                 inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"], start=bottom)
+            elif inputs.lines and not any(line.bottom > short_top and line.top < short_end for line in inputs.lines):
+                # 2026-11-28 (user): text only at the top and bottom (a header AND a footer): the
+                # middle band (short_top..short_end) is measured too, so a page of drawings / a
+                # body map / a photo between them is not short (it was junked as header-only).
+                inputs.body_ink, inputs.body_ink_fraction = _body_ink(
+                    ctx.chart_name, page["page_name"], start=short_top, end=short_end)
             inputs.ocr_match_rate = _match_rate(q)
             # Docling markdown, for the invoice rule's dollar table (2026-11-14, user).
             inputs.final1_text = unwrap_ocr_content((final1 or {}).get(pid))
