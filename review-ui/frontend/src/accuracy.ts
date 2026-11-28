@@ -70,7 +70,7 @@ export const METRICS: {
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
     binary: true,
-    rule: "Codable / Non-Codable equals the Final or Extracted value. A Blank / Junk page is Non-Codable on either side, so a page both call Blank / Junk is a Match. Discharge (either side) is not scored.",
+    rule: "Codable / Non-Codable equals the Final or Extracted value. A Blank / Junk page is Non-Codable on either side, so a page both call Blank / Junk is a Match. The pipeline's Discharge against a ground-truth Codable is a Match; any other Discharge (either side) is not scored.",
   },
   {
     id: "signature",
@@ -852,8 +852,16 @@ function pageScores(
   const gtDischarge = /^discharge$/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
   // 2026-11-14 (user): Discharge is not scored (either side); a page both call Blank / Junk matches.
   const pipelineDischarge = !pipelineBlankJunk && /discharge/i.test(text(page.finalCodeable) || text(page.isCodeable));
-  const codeable = gtDischarge || pipelineDischarge
+  // 2026-11-28 (user): the pipeline's Discharge against a ground-truth Codable is a Match; against
+  // anything else it is still not scored.
+  const gtSaysCodable = (() => {
+    const t = text(gtForCodable?.codeable).toLowerCase();
+    return /cod/.test(t) && !/non|not/.test(t) && !/discharge/.test(t);
+  })();
+  const codeable = gtDischarge
     ? null
+    : pipelineDischarge
+    ? (gtSaysCodable ? "yes" : null)
     : blankOrJunk && pipelineBlankJunk
     ? "yes"
     : finalOrExtractedMatch(

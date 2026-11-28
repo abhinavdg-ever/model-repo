@@ -201,6 +201,9 @@ _CODABLE_ALIASES = {
     "noncodeable": "non codable",
     "not codable": "non codable",
     "not codeable": "non codable",
+    # 2026-11-28 (user): Discharge is Codable -- the pipeline's Discharge against a Codable ground
+    # truth is a match (as the Accuracy view).
+    "discharge": "codable",
 }
 
 
