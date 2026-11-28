@@ -35,38 +35,38 @@ def run(hw: float | None, text: str = LOG_TEXT, pass_no: int = 2, document_type:
 def test_filled_log_medium_or_high_is_main():
     for hw in (20.0, 31.0, 75.0):
         v = run(hw)
-        assert v.code == method.CODE_MAIN and v.rule == "SIGLOG", (hw, v.rule, v.reason)
+        assert v.code == method.CODE_MAIN and v.rule == "R3", (hw, v.rule, v.reason)
         assert is_signature_log_page(v.reason) and not is_invoice_page(v.reason)
 
 
 def test_empty_log_low_handwriting_left_to_the_other_rules():
     for hw in (None, 3.0, 19.9):
         v = run(hw)
-        assert v.rule != "SIGLOG" and not is_signature_log_page(v.reason), (hw, v.rule)
+        assert v.rule != "R3" and not is_signature_log_page(v.reason), (hw, v.rule)
 
 
 def test_only_signature_log_header_counts():
     v = run(40.0, text=LOG_TEXT.replace("SIGNATURE LOG", "RELEASE FORM"))
-    assert v.rule != "SIGLOG"
+    assert v.rule != "R3"
     # A "signature log" mention far down the page is not the header.
     body = "\n".join(f"line {i} of the record request letter" for i in range(12)) + "\nsee the signature log"
-    assert run(40.0, text=body).rule != "SIGLOG"
+    assert run(40.0, text=body).rule != "R3"
     # A stage-6 section header says it too.
     v = run(40.0, text="Datavant\nrecords request", headings=("Signature Log",))
-    assert v.rule == "SIGLOG"
+    assert v.rule == "R3"
 
 
 def test_visual_and_non_visual_alike():
     for kind in ("visual", "printed", "handwritten", "mixed", "form", "uncertain"):
         v = run(40.0, document_type=kind)
-        assert v.code == method.CODE_MAIN and v.rule == "SIGLOG", (kind, v.rule)
+        assert v.code == method.CODE_MAIN and v.rule == "R3", (kind, v.rule)
 
 
 def test_pass_1_does_not_check_it():
     """2026-11-28 (user): pass 1 never checks for a Signature Log; pass 2 does."""
     for kind in ("printed", "visual"):
         v = run(40.0, pass_no=1, document_type=kind)
-        assert v.rule != "SIGLOG" and "SIGLOG" not in str(v.votes.get("checks"))
+        assert v.rule != "R3" and "R3" not in str(v.votes.get("checks"))
 
 
 def test_page_classification_row_matches_the_ground_truth_signature_page():

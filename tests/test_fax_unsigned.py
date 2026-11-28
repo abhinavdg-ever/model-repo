@@ -19,7 +19,7 @@ def _verdict(text, **kw):
 
 def test_an_unsigned_page_with_fax_in_a_section_header_is_junk():
     v = _verdict(TEXT)
-    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX")
+    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "G8")
 
 
 def test_only_an_electronic_signature_keeps_a_fax_page():
@@ -43,7 +43,7 @@ def test_the_fax_letter_closing_rule_is_gone():
     """2026-11-20 (user): Fax + a letter's closing no longer junks a page: the model decides."""
     assert _verdict(LETTER, headings=()).code == m.CODE_MAIN
     v = _verdict(LETTER, headings=("Fax",))  # a Fax header and no signature: Junk / Letter/Fax
-    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX")
+    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "G8")
     assert _verdict(LETTER, headings=("Fax",), signed=True).code == m.CODE_MAIN
 
 
@@ -63,7 +63,7 @@ def test_no_rule_junks_a_long_page_the_model_keeps_at_99():
     inputs = m.PageInputs(text=LETTER, pass_no=2, headings=("Fax",),
                           bert={"p_keep": 0.995, "p_junk": 0.005, "p_blank": 0.0, "service": sure})
     v = m.decide(inputs)
-    assert v.code == m.CODE_MAIN and v.rule == "KEEP99" and v.confidence == 0.995
+    assert v.code == m.CODE_MAIN and v.rule == "O3" and v.confidence == 0.995
     assert _verdict(LETTER, headings=("Fax",)).code == m.CODE_LETTER_FAX  # p(keep) 0.9: the rule stands
 
 
@@ -75,6 +75,6 @@ def test_a_fax_title_with_from_and_to_lines_is_a_cover_sheet():
             "health information that is being sent for the sole use of the intended recipient.")
     assert m.fax_cover_sheet(page)
     v = _verdict(page, headings=())
-    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "FAX") and v.votes.get("fax_cover")
+    assert (v.code, v.rule) == (m.CODE_LETTER_FAX, "R4e") and v.votes.get("fax_cover")
     # A letter that only mentions a fax number is not one.
     assert m.fax_cover_sheet("Dear Dr Roe,\nPlease fax 330-555-0142 the records.\nSincerely") is None

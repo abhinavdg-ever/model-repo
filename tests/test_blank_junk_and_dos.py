@@ -694,7 +694,7 @@ class TestCardRule:
     def test_a_card_on_a_printed_or_visual_page_is_junk_cards(self):
         for kind in ("printed", "visual", "uncertain"):  # uncertain since 2026-11-15 (user)
             verdict = self._decide(self.CARD, kind)
-            assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "R3")
+            assert (verdict.code, verdict.rule) == (classify.CODE_CARDS, "G1")
             assert classify.CLASSIFICATION_LABELS[verdict.code] == "Cards"
 
     def test_other_page_tags_and_forms_are_not_cards(self):

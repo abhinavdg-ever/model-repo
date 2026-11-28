@@ -407,9 +407,9 @@ def _classify(
             return verdict
         code = CODE_MAIN if answer["verdict"] == "main" else method._junk_code("Others")
         votes = {**verdict.votes, "llm": {**answer, "rules_rule": verdict.rule, "rules_reason": verdict.reason}}
-        votes["rule"] = "LLM"
-        return method.Verdict(code, float(answer["confidence"]), "LLM",
-                              f"LLM {answer['verdict']}: {answer['reason']} (rules: {verdict.rule})",
+        votes["rule"] = method.LLM_ID
+        return method.Verdict(code, float(answer["confidence"]), method.LLM_ID,
+                              f"{method.LLM_ID}: LLM {answer['verdict']}: {answer['reason']} (rules: {verdict.rule})",
                               votes, strength=float(answer["confidence"]))
 
     by_id: dict[int, dict[str, Any]] = {}
@@ -540,11 +540,12 @@ def _classify(
                 continue
             prev_id = around.get(pid, (None, None))[0]
             prev_row = by_id.get(prev_id) if prev_id is not None else None
-            if not prev_row or not str(prev_row.get("reason") or "").startswith("INDEX"):
+            # R4d contents page (2026-11-28 ID; "INDEX" on rows written before).
+            if not prev_row or not str(prev_row.get("reason") or "").startswith(("R4d", "INDEX")):
                 continue
             body = texts.get(pid) or ""
             if method.index_entries(body) >= 2 and len(_words(pid)) <= 120:
-                note = (f"INDEX continued: page {page_by_id[prev_id].get('page_number')} is a contents page and "
+                note = (f"R4d contents page continued: page {page_by_id[prev_id].get('page_number')} is a contents page and "
                         f"this page carries its list on ({method.index_entries(body)} entry lines) -> Junk / Others")
                 earlier = own.get("votes")
                 p_keep, p_junk, p_blank = method._model_probs((inputs or {}).get(pid) or method.PageInputs(text=""))
@@ -716,8 +717,11 @@ def short_verdict(
             theirs_share = sum(theirs_flags) / len(page_lines)
             support["lines_theirs" if code != CODE_MAIN else "lines_own"] = (
                 theirs_share if code != CODE_MAIN else 1.0 - theirs_share)
+        rule = method.SHORT_IDS.get(rule, rule)  # 2026-11-28 (user): S1 ... S15
+        if code is None:
+            step("S15")
         if checks and checks[-1]["result"] == "checking":
-            checks[-1]["result"] = f"fired: {why}" if code is not None else f"to the classifier: {why}"
+            checks[-1]["result"] = f"fired: {why}" if code is not None else f"to the model: {why}"
         return {"code": code, "rule": rule, "why": why, "checks": checks,
                 "evidence": {"margin": None if margin is None else round(float(margin), 4), "support": support}}
     # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
@@ -757,7 +761,7 @@ def short_verdict(
 
     # SC (2026-11-21, user): a document cover sheet -- "Document Details / Date: / Type: EKG /
     # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
-    step("SC cover sheet")
+    step("S1")
     fields = cover_sheet_fields(own_lines)
     if fields:
         field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
@@ -765,7 +769,7 @@ def short_verdict(
         return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
     # SE (2026-11-21, user): "End of Report" is all the page has of its own (the running header and
     # footer aside) -> Junk / Cover Page, as pass 1's R1E on a page of few words.
-    step("SE end of report")
+    step("S2")
     report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
     if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
         return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
@@ -787,7 +791,7 @@ def short_verdict(
 
     # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
     # next page", "Continued on the following page", "See next page") -> Junk / Others.
-    step("SN next-page pointer")
+    step("S3")
     pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
     if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_marker_line(line) for line in own_lines):
         return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
@@ -799,11 +803,11 @@ def short_verdict(
     # SB (2026-11-28, user): a blank page with only its header / footer -- every OCR line in the
     # header or footer band, at most EDGE_BLANK_MAX_LINES at the top and at the bottom, each a
     # running line or repeated on the previous / next page -- is Blank, not Junk.
-    step("SB header / footer only (Blank)")
+    step("S4")
     blank_edge = edge_blank(own, page_lines, theirs_flags)
     if blank_edge and unsigned:
         return out(CODE_BLANK, "SB", f"only a header / footer ({blank_edge}) -> Blank", 1.0)
-    step("SH running header / footer only")
+    step("S5")
     edge = edge_only(own, text)
     if edge and unsigned:
         return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
@@ -811,14 +815,14 @@ def short_verdict(
     # with content of its own (2026-11-21, user: a page with only the running header and the
     # page number carries nothing on).
     # 2026-11-23 (user): carrying a section on needs 2+ words the previous page does not have.
-    step("SR every line on a neighbour")
+    step("S6")
     # SR (2026-11-28, user): every line of the page is the previous / next page's (its running
     # header and footer, however many lines) -- nothing of its own -> Junk / Others. A provider or
     # date in that header / footer does not keep it; its own Electronic Signature does.
     if page_lines and all(theirs_flags) and (pid not in signed or repeated):
         return out(CODE_OTHERS, "SR", f"all {len(page_lines)} lines are on the previous / next page "
                                       "(running header / footer only) -> Junk / Others", 1.0)
-    step("S1 carries the previous section")
+    step("S7")
     if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY:
         prev_text = texts.get(prev_id) or ""
         prev_lines = [line for line in prev_text.splitlines() if line.strip()]
@@ -838,7 +842,7 @@ def short_verdict(
     # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
     # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
     # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
-    step("S1S carries a signature")
+    step("S8")
     if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
             method.ANY_DATE.search(line) and not running_marker_line(line) for line in own_lines):
         prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
@@ -849,7 +853,7 @@ def short_verdict(
                                          "date on -> Main", evidence.past_cut(at, 0, len(prev_tail) - 1))
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
-    step("S2 note header + words")
+    step("S9")
     own_text = "\n".join(own_lines)
     repeated_joined = _joined(repeated_keys)
     own_headings = tuple(h for h in own.headings or ()
@@ -863,14 +867,14 @@ def short_verdict(
                        evidence.past_cut(len(other), NOTE_HEADER_EXTRA_WORDS - 1, 12))
     # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
     # with the provider it names; a page with note content (header, ICD codes, doses) is not.
-    step("SF fax routing")
+    step("S10")
     routing = method.fax_routing(text)
     if routing and not method.note_content(own):
         labels = len(method.FAX_ROUTING.findall(text)) + len(method.FAX_NUMBER.findall(text))
         return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax",
                    evidence.past_cut(labels, 1, 4))
     # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
-    step("S3 signature / provider")
+    step("S11")
     if pid in signed and not repeated:
         # The signature was compared on both neighbours or one.
         return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main",
@@ -889,7 +893,7 @@ def short_verdict(
             return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
                                         "next page -> Main", 1.0 if own.provider_spot is not None else 0.5)
     # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
-    step("S4 measurements / doses")
+    step("S12")
     from dataclasses import replace as _replace
 
     found = (method.medication_doses(own_text)
@@ -901,7 +905,7 @@ def short_verdict(
                 + len(re.findall(r"\d\s*(?:mg|mcg|ml|units?)\b", own_text, re.IGNORECASE)))
         return out(CODE_MAIN, "S4", f"its content is {found} -> Main", evidence.past_cut(hits, 1, 6))
 
-    step("S5 same words as a neighbour")
+    step("S13")
     # S5: the same words in the same order on a neighbour.
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
@@ -914,7 +918,7 @@ def short_verdict(
     # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
     # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
     # words of the lines left are counted.
-    step("S6 words of its own")
+    step("S14")
     left: Optional[set[str]] = None
     titles_only: list[bool] = []
     removed_headings = False
@@ -1827,8 +1831,8 @@ def _checks_view(trace: list[dict[str, Any]], order: tuple[str, ...]) -> list[di
         elif fired_at is not None and i > fired_at:
             result = "not reached"
         else:
-            result = "not run (not for this page / pass)"
-        out.append({"check": name, "result": result})
+            result = "not run (not for this page / pass / route)"
+        out.append({"check": method.check_label(name), "result": result})
     return out
 
 
@@ -1844,6 +1848,11 @@ def _pass_entry(row: dict[str, Any], pass_no: int) -> dict[str, Any]:
         "checks": _checks_view(votes.get("checks") or [], method.PASS1_CHECKS if pass_no == 1 else method.PASS2_CHECKS),
     }
     if pass_no == 2:
+        # 2026-11-28 (user): the route the page took after the common checks (short / visual / general),
+        # and "others" when it went on to the model.
+        entry["route"] = votes.get("route") or ("common" if not votes.get("reached_classifier") else "general")
+        if votes.get("reached_classifier"):
+            entry["route"] = f"{entry['route']} -> others"
         entry["model"] = votes.get("bert")
         service = votes.get("service")
         if isinstance(service, dict):
@@ -1929,8 +1938,14 @@ def _write_votes(
         "chart_name": chart_name,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "passes_run": passes_run,
-        "check_order": {"pass_1": list(method.PASS1_CHECKS), "pass_2": list(method.PASS2_CHECKS),
-                        "short_page": list(method.SHORT_CHECKS)},
+        "check_order": {
+            "pass_1": [method.check_label(c) for c in method.PASS1_CHECKS],
+            "pass_2_common": [method.check_label(c) for c in method.PASS2_COMMON],
+            "pass_2_short": [method.check_label(c) for c in method.SHORT_CHECKS],
+            "pass_2_visual": [method.check_label(c) for c in method.PASS2_ROUTES["visual"]],
+            "pass_2_general": [method.check_label(c) for c in method.PASS2_ROUTES["general"]],
+            "pass_2_others": [method.check_label(c) for c in ("O1", "O2", "O3", "O4")],
+        },
         "pages": pages,
     }
     try:

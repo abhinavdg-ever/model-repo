@@ -33,17 +33,18 @@ def test_one_file_with_checks_stats_skips_and_final(monkeypatch, tmp_path):
     assert list(pages) == ["1.png", "2.png", "3.png"]
 
     one = pages["1.png"]
-    assert one["final"]["decision"] == "Blank" and one["final"]["rule"] == "EB" and one["final"]["pass"] == 1
+    assert one["final"]["decision"] == "Blank" and one["final"]["rule"] == "R1d" and one["final"]["pass"] == 1
     assert one["pass_2"] == "skipped: settled in pass 1"
     checks = {c["check"]: c["result"] for c in one["pass_1"]["checks"]}
-    assert checks["R1 no ink"] == "no" and checks["EB one line top / bottom"].startswith("fired")
-    assert checks["R1 tiny page"] == "not reached"
+    assert checks["R1a no ink"] == "no" and checks["R1d one line at the top / bottom"].startswith("fired")
+    assert checks["R2c tiny page"] == "not reached"
     assert one["stats"]["text"]["first_line"] == "Patient: X" and one["stats"]["text"]["last_line"] == "3"
 
     two = pages["2.png"]
-    assert two["final"]["pass"] == 2 and two["pass_1"]["rule"] == "P1"
+    assert two["final"]["pass"] == 2 and two["pass_1"]["rule"] == "R0"
     names = [c["check"] for c in two["pass_2"]["checks"]]
-    assert names == list(method.PASS2_CHECKS)
+    assert names == [method.check_label(c) for c in method.PASS2_CHECKS]
     assert "model" in two["pass_2"] and "short_page" in two["pass_2"]
     assert pages["3.png"]["pass_1"].startswith("skipped: handwritten")
-    assert body["check_order"]["short_page"] == list(method.SHORT_CHECKS)
+    assert body["check_order"]["pass_2_short"] == [method.check_label(c) for c in method.SHORT_CHECKS]
+    assert two["pass_2"]["route"] == "general -> others"

@@ -19,19 +19,19 @@ def run(edge, text=HEADER + "\n3", pass_no=1, **kw):
 
 def test_one_line_top_and_bottom_is_blank_in_pass_1():
     v = run({"top": 1, "bottom": 1, "body_ink": False})
-    assert v.code == method.CODE_BLANK and v.rule == "EB", v.reason
-    assert run({"top": 1, "bottom": 0, "body_ink": False}, text=HEADER).rule == "EB"
-    assert run({"top": 0, "bottom": 1, "body_ink": False}, text="Page 3 of 9").rule == "EB"
+    assert v.code == method.CODE_BLANK and v.rule == "R1d", v.reason
+    assert run({"top": 1, "bottom": 0, "body_ink": False}, text=HEADER).rule == "R1d"
+    assert run({"top": 0, "bottom": 1, "body_ink": False}, text="Page 3 of 9").rule == "R1d"
 
 
 def test_not_blank_when():
-    assert run({"top": 2, "bottom": 0, "body_ink": False}, text="DME Orders\nNone recorded.").rule != "EB"
-    assert run({"top": 1, "bottom": 2, "body_ink": False}).rule != "EB"
-    assert run({"top": 1, "bottom": 1, "body_ink": True}).rule != "EB"      # ink between
-    assert run({"top": 1, "bottom": 1, "body_ink": None}).rule != "EB"      # not measured
-    assert run(None).rule != "EB"
-    assert run({"top": 1, "bottom": 1, "body_ink": False}, text=HEADER + "\nJane Roe MD").rule != "EB"
-    assert run({"top": 1, "bottom": 1, "body_ink": False}, pass_no=2).rule != "EB"  # pass 1 only
+    assert run({"top": 2, "bottom": 0, "body_ink": False}, text="DME Orders\nNone recorded.").rule != "R1d"
+    assert run({"top": 1, "bottom": 2, "body_ink": False}).rule != "R1d"
+    assert run({"top": 1, "bottom": 1, "body_ink": True}).rule != "R1d"      # ink between
+    assert run({"top": 1, "bottom": 1, "body_ink": None}).rule != "R1d"      # not measured
+    assert run(None).rule != "R1d"
+    assert run({"top": 1, "bottom": 1, "body_ink": False}, text=HEADER + "\nJane Roe MD").rule != "R1d"
+    assert run({"top": 1, "bottom": 1, "body_ink": False}, pass_no=2).rule != "R1d"  # pass 1 only
 
 
 def test_settled_in_pass_1():

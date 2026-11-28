@@ -47,7 +47,7 @@ def test_a_contents_page_is_junk_others():
     text = "TABLE OF CONTENTS\nProgress Note ........ 3\nLab Results ......... 12\nDischarge Summary 20\n"
     inputs = method.PageInputs(text=text, pass_no=2, bert={"p_keep": 0.9, "p_junk": 0.1})
     verdict = method.decide(inputs)
-    assert verdict.rule == "INDEX" and verdict.code == stage.CODE_OTHERS
+    assert verdict.rule == "R4d" and verdict.code == stage.CODE_OTHERS
     assert method.index_page("Body Mass Index 23\nweight 80\nheight 170\npulse 70") is None
     # 2026-11-20 (user): the title in the top third, followed by 3+ page-number entries.
     assert method.index_page("Index\nPages 1-4 History\nPages 5-9 Labs") is None   # 2 entries only
@@ -77,7 +77,7 @@ def test_a_page_an_earlier_rule_settled_is_not_a_candidate(monkeypatch):
     inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
     inputs[2].hw_area_pct = 45
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("HW")
+    assert rows[2]["flag"] == "not_blank_junk" and rows[2]["reason"].startswith("G2")
 
 
 def _short(texts, headers):
@@ -104,8 +104,8 @@ def test_a_contents_pages_next_page_carrying_its_list_is_junk(monkeypatch):
     for i in texts:
         inputs[i].content_bottom = 0.9
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert rows[1]["reason"].startswith("INDEX") and rows[1]["flag"] == "junk"
-    assert rows[2]["flag"] == "junk" and "INDEX continued" in rows[2]["reason"]
+    assert rows[1]["reason"].startswith("R4d") and rows[1]["flag"] == "junk"
+    assert rows[2]["flag"] == "junk" and "R4d contents page continued" in rows[2]["reason"]
     assert rows[3]["flag"] == "not_blank_junk"
 
 
@@ -134,7 +134,7 @@ def test_s5_a_short_page_repeating_a_neighbour_in_order_is_junk(monkeypatch):
     """2026-11-19 (user): 98% of its words in order on the previous / next page -> Junk / Others."""
     _keep(monkeypatch)
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})
-    assert rows[2]["flag"] == "junk" and rows[2]["reason"].startswith(stage.SHORT_MARK + "S5")
+    assert rows[2]["flag"] == "junk" and rows[2]["reason"].startswith(stage.SHORT_MARK + "S13")
     assert rows[1]["flag"] == "not_blank_junk"
 
 
@@ -149,7 +149,7 @@ def test_s6_few_new_words_headers_junk_else_main(monkeypatch):
     rows = _run({1: page1, 2: HEADER + "\naddendum 12 01/02/2026\n" + FOOTER})
     assert rows[2]["flag"] == "junk" and "of its own" in rows[2]["reason"]
     rows = _run({1: page1, 2: HEADER + "\naddendum newword\n" + FOOTER})
-    assert rows[2]["flag"] == "not_blank_junk" and "S6" in rows[2]["reason"]
+    assert rows[2]["flag"] == "not_blank_junk" and "S14" in rows[2]["reason"]
 
 
 def test_s6_dates_and_numbers_are_not_words_of_its_own(monkeypatch):
@@ -176,12 +176,12 @@ def test_s1_the_previous_page_ending_in_a_note_header_keeps_the_short_page(monke
     _keep(monkeypatch)
     before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Plan", FOOTER])
     rows = _run({1: before, 2: FOOTER + " " + HEADER + "\ncontinue current medications, follow up"})
-    assert rows[2]["flag"] == "not_blank_junk" and "S1" in rows[2]["reason"]
+    assert rows[2]["flag"] == "not_blank_junk" and "S7" in rows[2]["reason"]
     # 2026-11-23 (user): a page with under 2 words on lines of its own (numbers and dates aside)
     # carries nothing on.
-    assert "S1" not in (_run({1: before, 2: HEADER + "\n12/01/2025 4\n" + FOOTER})[2]["reason"] or "")
+    assert "S7" not in (_run({1: before, 2: HEADER + "\n12/01/2025 4\n" + FOOTER})[2]["reason"] or "")
     early = "\n".join([HEADER, "## Plan"] + [f"line {i} {BODY[:40]}" for i in range(20)] + [FOOTER])
-    assert "S1" not in _run({1: early, 2: FOOTER + " " + HEADER})[2]["reason"]
+    assert "S7" not in _run({1: early, 2: FOOTER + " " + HEADER})[2]["reason"]
 
 
 def test_s2_s3_s4_keep_a_short_page(monkeypatch):
@@ -189,14 +189,14 @@ def test_s2_s3_s4_keep_a_short_page(monkeypatch):
     measurements / doses / ICD codes -> Main."""
     _keep(monkeypatch)
     base = {1: HEADER + BODY + FOOTER}
-    assert "S2" in _run({**base, 2: "## Orders\nCBC lipid panel chest xray"})[2]["reason"]
+    assert "S9" in _run({**base, 2: "## Orders\nCBC lipid panel chest xray"})[2]["reason"]
     stamp = {"region": "footer", "sentence": "Electronically signed by Nathan A Monaco MD", "provider_name": "Nathan A Monaco"}
     rows = _run({**base, 2: HEADER + FOOTER}, signed={2}, signatures={2: stamp})
-    assert rows[2]["flag"] == "not_blank_junk" and "S3" in rows[2]["reason"]
+    assert rows[2]["flag"] == "not_blank_junk" and "S11" in rows[2]["reason"]
     # the same signature in the same spot on the neighbour: no keep, judged on its words.
     rows = _run({**base, 2: HEADER + FOOTER}, signed={1, 2}, signatures={1: stamp, 2: stamp})
     assert rows[2]["flag"] == "junk"
-    assert "S4" in _run({**base, 2: "Glucose 112 mg/dL fasting, Vitamin D 31 ng/mL"})[2]["reason"]
+    assert "S12" in _run({**base, 2: "Glucose 112 mg/dL fasting, Vitamin D 31 ng/mL"})[2]["reason"]
 
 
 def test_a_page_not_short_is_not_judged_by_the_short_rules(monkeypatch):
@@ -217,7 +217,7 @@ def test_a_short_page_no_rule_decides_goes_to_the_classifier(monkeypatch):
         "p_keep": 0.1, "p_junk": 0.9, "service": {"flag": "JUNK", "subclass": "JUNK_INSTRUCTIONS",
                                                   "confidence": 0.9, "decision_reason": "argmax"}}})
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + " alpha beta gamma delta epsilon zeta eta"})
-    assert rows[2]["reason"].startswith("R5") and rows[2]["flag"] == "junk"
+    assert rows[2]["reason"].startswith("O1") and rows[2]["flag"] == "junk"
 
 
 def test_s3_a_provider_in_the_same_spot_on_a_neighbour_does_not_keep(monkeypatch):
@@ -236,9 +236,9 @@ def test_s3_a_provider_in_the_same_spot_on_a_neighbour_does_not_keep(monkeypatch
 
     name = frozenset({"jane", "roe"})
     assert run(("footer", name), ("footer", name))[2]["flag"] == "junk"           # running provider line
-    assert "S3" in run(("header", name), ("footer", name))[2]["reason"]            # another spot
-    assert "S3" in run(("footer", frozenset({"amit", "patel"})), ("footer", name))[2]["reason"]  # another name
-    assert "S3" in run(None, ("footer", name))[2]["reason"]                        # none nearby
+    assert "S11" in run(("header", name), ("footer", name))[2]["reason"]            # another spot
+    assert "S11" in run(("footer", frozenset({"amit", "patel"})), ("footer", name))[2]["reason"]  # another name
+    assert "S11" in run(None, ("footer", name))[2]["reason"]                        # none nearby
 
 
 def test_s3_compares_the_provider_boxes_when_kv_extract_gives_them():
@@ -280,7 +280,7 @@ def test_sf_a_short_fax_routing_page_is_junk_even_with_a_provider(monkeypatch):
     inputs[1].content_bottom, inputs[2].content_bottom = 0.9, 0.12
     inputs[2].provider, inputs[2].provider_spot = True, ("header", frozenset({"jane", "roe"}))
     rows = {r["page_id"]: r for r in stage._classify(pages, texts, set(texts), inputs=inputs, find_duplicates=True)}
-    assert rows[2]["flag"] == "junk" and "SF" in rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S10" in rows[2]["reason"]
     assert method.fax_routing("Fax: 330-555-0142") is None                      # no To / From line
     assert method.fax_routing("To: Dr Roe\nFax # 330.555.0142") is not None
 
@@ -294,7 +294,7 @@ def test_a_short_page_rules_verdict_reads_its_evidence(monkeypatch):
                                                               "decision_reason": "argmax"}}}
     monkeypatch.setattr(stage, "model_scores", lambda text, docling=None: junk)
     agree = _run({1: HEADER + BODY + FOOTER, 2: HEADER + FOOTER})[2]
-    assert "S5" in disagree["reason"] and "S5" in agree["reason"]
+    assert "S13" in disagree["reason"] and "S13" in agree["reason"]
     assert 0.2 <= disagree["confidence"] < 0.6 < agree["confidence"] <= 1.0
 
 
@@ -350,7 +350,7 @@ def test_a_lab_table_carried_onto_a_short_page_is_main(monkeypatch):
     rows = "\n".join("Sodium Lvl 139 mmol/L 136-145mmol/L 2026-01-26" for _ in range(30))
     rows = _run({1: "Lab\n" + rows + "\n" + footer.format(3),
                  2: "WBC 6.2 x10(3)/mcL 4.5-11.0x10(3)/mcL 2026-01-26\nRed Cells Complete\n" + footer.format(4)})
-    assert rows[2]["flag"] == "not_blank_junk" and "S4" in rows[2]["reason"]
+    assert rows[2]["flag"] == "not_blank_junk" and "S12" in rows[2]["reason"]
 
 
 def test_a_short_page_whose_only_own_line_is_a_stage_6_header_is_junk(monkeypatch):
@@ -442,7 +442,7 @@ def test_a_running_header_page_after_a_note_header_is_blank(monkeypatch):
     p2 = [GONZALEZ, "3"]
     tops = {1: {**_spread(p1, 0.02, 0.97)}, 2: {GONZALEZ: 0.02, "3": 0.97}}
     rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
-    assert rows[2]["flag"] == "blank" and "SB" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "blank" and "S4" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_a_none_recorded_section_page_is_junk(monkeypatch):
@@ -494,7 +494,7 @@ def test_a_document_details_cover_sheet_is_junk(monkeypatch):
         footer.replace("30/43", "29/43")]
     tops = {1: _spread(before, 0.02, 0.97), 2: {**_spread(sheet[:-1], 0.03, 0.2), footer: 0.97}}
     rows = _placed({1: "\n".join(before), 2: "\n".join(sheet)}, tops)
-    assert rows[2]["flag"] == "junk" and "SC" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S1" in rows[2]["reason"], rows[2]["reason"]
     # a short clinical page of fields is not a cover sheet.
     assert stage.cover_sheet_fields(["Date: 2/24/2026", "Provider: Jane Roe MD", "Diagnosis: hypertension"]) is None
 
@@ -526,7 +526,7 @@ def test_a_signature_carried_onto_the_next_page_keeps_it(monkeypatch):
     p55 = ["Rajinder Grover on 7/30/2025 at 1:12 PM", foot, "Page 4 of 4"]
     tops = {1: _spread(p54, 0.02, 0.97), 2: {p55[0]: 0.02, foot: 0.95, "Page 4 of 4": 0.97}}
     rows = _placed({1: "\n".join(p54), 2: "\n".join(p55)}, tops)
-    assert rows[2]["flag"] == "not_blank_junk" and "S1S" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "not_blank_junk" and "S8" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_end_of_report_alone_is_a_cover_page(monkeypatch):
@@ -539,7 +539,7 @@ def test_end_of_report_alone_is_a_cover_page(monkeypatch):
     p34 = head + ["End Of Report", "Printed on 4/6/26 10:09 AM Page 27"]
     tops = {1: _spread(p33, 0.02, 0.97), 2: {head[0]: 0.02, head[1]: 0.06, "End Of Report": 0.08, p34[-1]: 0.97}}
     rows = _placed({1: "\n".join(p33), 2: "\n".join(p34)}, tops)
-    assert rows[2]["flag"] == "junk" and "SE" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S2" in rows[2]["reason"], rows[2]["reason"]
     assert rows[2]["subtype"] == "Cover Page" if "subtype" in rows[2] else True
 
 
@@ -570,7 +570,7 @@ def test_sb_a_page_of_only_a_fax_header_and_a_patient_footer_is_blank(monkeypatc
     lines = {1: [("x", 0.01, 0.02), ("y", 0.3, 0.5), ("z", 0.95, 0.96)],
              2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
     rows = _run_lines(texts, lines)
-    assert rows[2]["flag"] == "blank" and "SB" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "blank" and "S4" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_sh_more_than_two_lines_at_an_edge_stays_junk(monkeypatch):
@@ -583,7 +583,7 @@ def test_sh_more_than_two_lines_at_an_edge_stays_junk(monkeypatch):
              2: [(FAX_HEAD, 0.01, 0.02), (extra, 0.03, 0.04), ("Fax 18885550100 6/1/2026", 0.05, 0.06),
                  (PT_FOOT, 0.94, 0.95)]}
     rows = _run_lines(texts, lines)
-    assert rows[2]["flag"] == "junk" and "SH" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S5" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_sb_needs_edge_lines_that_are_running_or_repeated():
@@ -619,7 +619,7 @@ def test_sh_a_signed_edge_page_is_not_junked_by_it(monkeypatch):
     texts = {1: "Progress note\n" + BODY, 2: FAX_HEAD + "\n" + PT_FOOT}
     lines = {1: [("x", 0.3, 0.5)], 2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
     rows = _run_lines(texts, lines, signed={2})
-    assert "SH" not in (rows[2]["reason"] or "") and "SB" not in (rows[2]["reason"] or "")
+    assert "S5" not in (rows[2]["reason"] or "") and "S4" not in (rows[2]["reason"] or "")
 
 
 def test_s1s_ignores_a_date_in_a_running_footer(monkeypatch):
@@ -628,10 +628,10 @@ def test_s1s_ignores_a_date_in_a_running_footer(monkeypatch):
     _keep(monkeypatch)
     rows = _run({1: "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025\nPatient: Madeup, Eli Page: 2",
                  2: PT_FOOT})
-    assert "S1S" not in (rows[2]["reason"] or "")
+    assert "S8" not in (rows[2]["reason"] or "")
     rows = _run({1: "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025",
                  2: "Made Up Signer MD on 7/30/2025 at 1:12 PM"})
-    assert "S1S" in rows[2]["reason"]
+    assert "S8" in rows[2]["reason"]
 
 
 def test_rf_a_financial_summary_page_is_junk(monkeypatch):
@@ -642,8 +642,8 @@ def test_rf_a_financial_summary_page_is_junk(monkeypatch):
     assert method.financial_heading("Discussed financial summary with patient") is None
     rows = _run({1: HEADER + BODY + FOOTER, 2: HEADER + "\n**Financials**\nGuarantor Balance 120.00\n" + BODY + FOOTER,
                  3: "Financial Summary\nCharges"})
-    assert rows[2]["flag"] == "junk" and "RF" in rows[2]["reason"]
-    assert rows[3]["flag"] == "junk" and "RF" in rows[3]["reason"]
+    assert rows[2]["flag"] == "junk" and "R4a" in rows[2]["reason"]
+    assert rows[3]["flag"] == "junk" and "R4a" in rows[3]["reason"]
 
 
 RESULT_BLOCK = ("Result type: Orthopedic Progress Note\nResult date: January 30, 2024 9:17 EST\nResult status: Auth (Verified)\n"
@@ -677,9 +677,9 @@ def test_rb_the_model_sure_of_blank_is_junk_others():
     page = method.PageInputs(text="Signed by Made Up MD 1/2/2025\nPatient Madeup DOB 1/1/1950", pass_no=2,
                              document_type="printed", bert=bert, signed=True)
     verdict = method.decide(page)
-    assert verdict.rule == "RB" and verdict.code != method.CODE_MAIN
+    assert verdict.rule == "R4c" and verdict.code != method.CODE_MAIN
     page.bert = {**bert, "p_blank": 0.97, "p_keep": 0.03}
-    assert method.decide(page).rule != "RB"
+    assert method.decide(page).rule != "R4c"
 
 
 def test_sn_a_short_page_of_only_continued_on_next_page_is_junk(monkeypatch):
@@ -691,7 +691,7 @@ def test_sn_a_short_page_of_only_continued_on_next_page_is_junk(monkeypatch):
     assert not stage.NEXT_PAGE_NOTE.search("Patient will continue on the next dose of metformin")
     full = HEADER + "\n" + BODY + "\n" + FOOTER
     rows = _run({1: full, 2: HEADER + "\nContent on Next Page\n" + FOOTER, 3: full})
-    assert rows[2]["flag"] == "junk" and "SN" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S3" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_s1_needs_two_words_of_its_own_and_a_short_page_caps_at_90(monkeypatch):
@@ -701,9 +701,9 @@ def test_s1_needs_two_words_of_its_own_and_a_short_page_caps_at_90(monkeypatch):
     _keep(monkeypatch)
     before = "\n".join([HEADER] + [f"line {i} {BODY[:40]}" for i in range(20)] + ["## Visit Diagnosis", FOOTER])
     rows = _run({1: before, 2: HEADER + "\n2. knee effusion\n" + FOOTER})
-    assert "S1" in rows[2]["reason"] and rows[2]["confidence"] <= 0.9
+    assert "S7" in rows[2]["reason"] and rows[2]["confidence"] <= 0.9
     rows = _run({1: before, 2: HEADER + "\n3.\nPatient: Madeup DOB: 01/02/1950 Page: 2\n" + FOOTER})
-    assert "S1" not in (rows[2]["reason"] or "")
+    assert "S7" not in (rows[2]["reason"] or "")
     assert not stage.running_marker_line("Hypertension") and not stage.running_marker_line("Dr Grover 7/30/2025")
     assert stage.running_marker_line(PT_FOOT)
 
@@ -725,7 +725,7 @@ def test_rc_a_retrieval_cover_sheet_is_junk_cover_page():
             "Measure/Dates of service:\nProvider: MADEUP, PERSON")
     verdict = method.decide(method.PageInputs(text=text, pass_no=2, document_type="printed", provider=True))
     # Junk / Cover Page; over 20 words the cover-to-Others step files it Junk / Others.
-    assert verdict.rule == "RC" and verdict.code in (method._junk_code("Cover Page"), method._junk_code("Others"))
+    assert verdict.rule == "R4b" and verdict.code in (method._junk_code("Cover Page"), method._junk_code("Others"))
     assert verdict.confidence >= 0.9
     # A note that names its provider and DOB but was not retrieved-by is not touched.
     note = "Patient name: Madeup, Person\nDate of birth: 01/02/1950\nProvider: Made Up MD\nAssessment\nStable"
@@ -752,5 +752,5 @@ def test_sr_a_page_of_only_the_repeated_header_and_footer_is_junk(monkeypatch):
         3: _spread(p4, 0.02, 0.97),
     }
     rows = _placed({1: "\n".join(p2), 2: "\n".join(p3), 3: "\n".join(p4)}, tops)
-    assert rows[2]["flag"] == "junk" and "SR" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "junk" and "S6" in rows[2]["reason"], rows[2]["reason"]
     assert rows[1]["flag"] != "junk" and rows[3]["flag"] != "junk"

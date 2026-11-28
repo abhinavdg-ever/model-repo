@@ -45,7 +45,7 @@ def test_the_judge_decides_a_short_page_after_a_full_note(monkeypatch):
                        {"verdict": "junk", "confidence": 0.97, "reason": "only a repeated footer"})
     assert len(calls) == 1 and calls[0][0] == 7
     assert "CURRENT PAGE" in calls[0][1][1]["content"] and "PREVIOUS PAGE" in calls[0][1][1]["content"]
-    assert rows[2]["flag"] == "junk" and rows[2]["reason"].startswith("LLM junk")
+    assert rows[2]["flag"] == "junk" and rows[2]["reason"].startswith("O4: LLM junk")
     assert rows[2]["confidence"] <= 0.9  # the short page cap
 
 

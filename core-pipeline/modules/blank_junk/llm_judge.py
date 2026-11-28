@@ -28,7 +28,8 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 # Short-page verdicts the judge may overrule (the classifier's R5 included).
-REVIEWABLE = ("S1", "S1S", "S2", "S3", "S4", "S5", "S6", "S7", "R5")
+# 2026-11-28 (user): the short route's soft checks S7-S15 (were S1, S1S, S2-S7) and the model (O1, was R5).
+REVIEWABLE = ("S7", "S8", "S9", "S11", "S12", "S13", "S14", "S15", "O1")
 PREVIOUS_CHARS = 4000
 PAGE_CHARS = 2500
 TIMEOUT_SECONDS = 60

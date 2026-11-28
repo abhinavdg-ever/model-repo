@@ -373,7 +373,10 @@ UNJUNK_IN_NOTES = False
 # (junk_subtype Cards).
 _KEEP_JUNK = ("R1", "R2", "short_page:", "short_page_contained_in_page_id:", "INDEX",
               # 2026-11-23 (user): Financials heading, model p(blank) over the cut; 2026-11-24: retrieval cover (RC) -- never undone.
-              "RF", "RB", "RC")
+              "RF", "RB", "RC",
+              # 2026-11-28 (user): the same checks by their new IDs (R1a-f / R2a-c start with R1 / R2):
+              # R4a Financials, R4b retrieval cover, R4c model p(blank), R4d contents page.
+              "R4a", "R4b", "R4c", "R4d")
 
 
 def _unjunked(final: Optional[dict[str, Any]]) -> Optional[str]:

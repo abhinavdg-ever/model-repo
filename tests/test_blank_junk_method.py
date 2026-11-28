@@ -71,7 +71,7 @@ class TestRules:
 
     def test_r1_no_ink_is_blank(self):
         verdict = run(CLINICAL_TEXT, no_ink=True)
-        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1a")
 
     def test_r1_does_not_blank_a_visual_page_with_no_text(self):
         assert run("", document_type="visual").code == classify.CODE_MAIN
@@ -80,14 +80,14 @@ class TestRules:
         # 2026-11-19 (user): pass 2 does not redo pass 1's text rules, except on a page pass 1
         # never judged (pass1_skipped).
         verdict = run("Intentionally left blank", pass_no=1)
-        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1e")
         verdict = run("Intentionally left blank", pass1_skipped=True)
-        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1e")
 
     def test_r1_under_15_characters_is_junk_others(self):
         assert run("Page 3 of 7").rule != "R1"  # pass 2: pass 1 already judged it
         verdict = run("Page 3 of 7", pass1_skipped=True)
-        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R1")
+        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R2c")
 
 
 
@@ -101,7 +101,7 @@ class TestRules:
         assert run("header more text here", lines=lines, body_ink=False).rule != "R6"
 
     def test_r4_signature_beats_r5(self):
-        assert run(FILLER, signed=True, signature_known=True, bert=bert(0.9)).rule == "R4"
+        assert run(FILLER, signed=True, signature_known=True, bert=bert(0.9)).rule == "G3"
 
 
 
@@ -130,7 +130,7 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
         store.upsert_quality(chart_id=7, page_id=page_id, printed_or_handwritten=kind, hw_method=hw)
     assert store.non_printed_page_ids(7) == {3}
     verdict = run("", pass_no=1, no_ink=True)
-    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1a")
 
 
 def test_a_page_typed_blank_is_judged_in_pass_1_and_is_blank_without_text():
@@ -143,7 +143,7 @@ def test_a_page_typed_blank_is_judged_in_pass_1_and_is_blank_without_text():
                          hw_method="convnext_page_tags")
     assert store.non_printed_page_ids(8) == set()
     verdict = run("", pass_no=1)
-    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1c")
 
 
 CARD_TEXT = (
@@ -188,7 +188,7 @@ class TestDistilBertLadder:
 
     def test_r2_placeholder_is_blank_not_junk(self):
         verdict = run("This page intentionally left blank", bert=bert(0.99), pass1_skipped=True)
-        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R2")
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1f")
 
 
 
@@ -196,7 +196,7 @@ class TestDistilBertLadder:
 
     def test_pass_2_junk_cut_offs(self):
         sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
-        assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "R5") and "review" not in sure.reason
+        assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "O1") and "review" not in sure.reason
         # 2026-11-03 (user): p(junk) >= 0.70 is junk, below is Main; no review band.
         at = run(FILLER, bert=bert(0.70))
         # the model's Invoice is Main / Invoice page (2026-11-14: no amount / date check).
@@ -209,13 +209,13 @@ class TestDistilBertLadder:
         assert run(FILLER, bert=bert(0.95, "JUNK_LETTER_FAX")).code != classify.CODE_MAIN
         # 2026-11-19 (user): 2+ Progress Note sections keep the page, whatever the model says.
         note = run(CLINICAL_TEXT, bert=bert(0.95, "JUNK_LETTER_FAX"))
-        assert (note.code, note.rule) == (classify.CODE_MAIN, "CLINICAL_CONTENT")
+        assert (note.code, note.rule) == (classify.CODE_MAIN, "G6")
 
     def test_a_signature_keeps_the_page_unless_distilbert_is_over_95(self):
         held = run(FILLER, signed=True, bert=bert(0.94))
-        assert (held.code, held.rule) == (classify.CODE_MAIN, "R4")
+        assert (held.code, held.rule) == (classify.CODE_MAIN, "G3")
         over = run(FILLER, signed=True, bert=bert(0.97, "JUNK_LETTER_FAX"))
-        assert over.rule == "R5" and over.code != classify.CODE_MAIN and "r4_overruled" in over.votes
+        assert over.rule == "O1" and over.code != classify.CODE_MAIN and "r4_overruled" in over.votes
 
 
     def test_no_model_keeps_the_page_for_review(self):
@@ -257,7 +257,7 @@ class TestBlankFromStage1AndLabKeep:
     def test_a_page_stage_1_calls_blank_is_blank_not_junk(self):
         for pass_no in (1, 2):
             v = run("x .", pass_no=pass_no, document_type="blank", bert=bert(0.99))
-            assert (v.code, v.rule) == (method.CODE_BLANK, "R1")
+            assert (v.code, v.rule) == (method.CODE_BLANK, "R1b")
 
     def test_stage_1_blank_with_text_on_the_page_is_not_blank(self):
         """2026-11-15 (user): a page typed blank with lines of text on it is not Blank."""
@@ -360,33 +360,33 @@ class TestSimplifiedLadder:
         assert run("UNACCEPT  COVER", pass_no=1).code == classify.CODE_COVER_PAGE
         assert run("x.7 :", pass_no=1).code == classify.CODE_OTHERS  # under 15 characters
         v = run(JUNK_TEXT, pass_no=1, bert=bert(0.99))  # the model is not read in pass 1
-        assert (v.code, v.rule) == (method.CODE_MAIN, "P1")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "R0")
         # 2026-11-08: a cover mark (or End of Report) with fewer than 10 words on the page; 10 or
         # more is not (was 5).
         assert run("Accept this invoice please", pass_no=1).code == classify.CODE_COVER_PAGE
         assert run("Fax cover 2 pages", pass_no=1).code == classify.CODE_COVER_PAGE
         assert run("Accept this invoice please today, thank you very much", pass_no=1).code == classify.CODE_COVER_PAGE
-        assert run("Accept this invoice please today, thank you very much indeed", pass_no=1).rule == "P1"
+        assert run("Accept this invoice please today, thank you very much indeed", pass_no=1).rule == "R0"
         v = run("*** End of Report *** printed 01/02/2024 by lab", pass_no=1)
-        assert (v.code, v.rule) == (classify.CODE_COVER_PAGE, "R1E")
-        assert run("End of Report for the patient seen in clinic today with notes", pass_no=1).rule == "P1"
+        assert (v.code, v.rule) == (classify.CODE_COVER_PAGE, "R2b")
+        assert run("End of Report for the patient seen in clinic today with notes", pass_no=1).rule == "R0"
 
     def test_a_card_comes_before_the_visual_keep(self):
         v = run(CARD_TEXT, document_type="visual", bert=bert(0.5))
         assert v.code == classify.CODE_CARDS
-        assert run(" ".join(["word"] * 19), document_type="visual", bert=bert(0.99)).rule == "R3V"
+        assert run(" ".join(["word"] * 19), document_type="visual", bert=bert(0.99)).rule == "V2"
 
     def test_handwritten_over_30_percent_is_main(self):
         v = run(JUNK_TEXT, bert=bert(0.99), hw_area_pct=45.0)
-        assert (v.code, v.rule) == (method.CODE_MAIN, "HW")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "G2")
 
     def test_signed_keeps_unless_raw_p_junk_over_95(self):
         """2026-11-07 (user): only kv_extract's Electronic Signature keeps a page; signature
         words in the text do not."""
-        assert run(FILLER, bert=bert(0.80), signed=True).rule == "R4"
+        assert run(FILLER, bert=bert(0.80), signed=True).rule == "G3"
         assert run(FILLER, bert=bert(0.99, "JUNK_LETTER_FAX"), signed=True).code != method.CODE_MAIN
-        assert run("Electronically signed by Dr X. " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "R5"
-        assert run("Signature: ____ " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "R5"
+        assert run("Electronically signed by Dr X. " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "O1"
+        assert run("Signature: ____ " + FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).rule == "O1"
 
     def test_the_service_decides_junk_unless_raw_p_keep_is_99(self):
         assert run(FILLER, bert=bert(0.80, "JUNK_LETTER_FAX")).code == classify.CODE_LETTER_FAX
@@ -412,7 +412,7 @@ class TestSimplifiedLadder:
         lab = ("Quest Lab report. Test Value Reference Range Units. Glucose 98 70-99 mg/dL. "
                "Invoice number 4411 amount due now. " + FILLER)
         v = method.post_process(run(lab, bert=bert(0.99)), PageInputs(text=lab, pass_no=2))
-        assert (v.code, v.rule) == (method.CODE_MAIN, "LAB")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "G4")
 
 
 class TestInvoiceKept:
@@ -424,7 +424,7 @@ class TestInvoiceKept:
         for text in (INVOICE_TEXT, INVOICE_TEXT + " Statement date 03/10/2026, total $120.00"):
             inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
             v = method.post_process(decide(inputs), inputs)
-            assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+            assert (v.code, v.rule) == (method.CODE_MAIN, "O2")
             assert method.is_invoice_page(v.reason) and v.confidence >= 0.9
 
     def test_a_terms_page_is_junk_others(self):
@@ -450,7 +450,7 @@ class TestInvoiceKept:
                 "Terms &amp; Conditions on next page.")
         inputs = PageInputs(text=text, pass_no=2, bert=bert(0.99))
         v = method.post_process(decide(inputs), inputs)
-        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "O2")
 
     def test_a_dollar_table_is_an_invoice_whatever_the_terms(self):
         """2026-11-14 (user): a table with a dollar amount in Final OCR 1 (Docling) is an invoice;
@@ -459,7 +459,7 @@ class TestInvoiceKept:
         text = "Payment Instructions: Terms and Conditions apply. " + FILLER
         inputs = PageInputs(text=text, final1_text=table, pass_no=2, bert=bert(0.99))
         v = method.post_process(decide(inputs), inputs)
-        assert (v.code, v.rule) == (method.CODE_MAIN, "INVOICE") and v.votes.get("invoice_table") == "$25.00"
+        assert (v.code, v.rule) == (method.CODE_MAIN, "O2") and v.votes.get("invoice_table") == "$25.00"
         # An HTML table cell (Doc Intel) counts too; a dollar amount outside a table does not.
         assert method.invoice_table(PageInputs(text="<table><tr><td>$1,200.50</td></tr></table>", pass_no=2))
         assert method.invoice_table(PageInputs(text="copay $25 today", pass_no=2)) is None
@@ -510,15 +510,15 @@ class TestCardKeeps:
     (user) only a card on weak evidence; a strong card is decided before the keeps."""
 
     def test_handwritten_signed_or_sure_keep_is_main(self):
-        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), hw_area_pct=45.0).rule == "HW"
-        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), signed=True).rule == "R4"
+        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), hw_area_pct=45.0).rule == "G2"
+        assert run(WEAK_CARD, document_type="printed", bert=bert(0.5), signed=True).rule == "G3"
         assert run(CARD_TEXT, document_type="printed", bert=bert(0.5), signed=True).code == classify.CODE_CARDS
         v = run(CARD_TEXT, document_type="printed", bert=bert(0.005))
-        assert (v.code, v.rule) == (method.CODE_MAIN, "R3")
+        assert (v.code, v.rule) == (method.CODE_MAIN, "G1")
 
     def test_otherwise_a_card_is_junk_cards(self):
         v = run(CARD_TEXT, document_type="printed", bert=bert(0.5))
-        assert (v.code, v.rule) == (classify.CODE_CARDS, "R3")
+        assert (v.code, v.rule) == (classify.CODE_CARDS, "G1")
         assert run(CARD_TEXT, document_type="printed", bert=None).code == classify.CODE_CARDS
 
 
@@ -532,14 +532,14 @@ class TestClinicalContentKeep:
 
     def test_icd_codes_keep_a_junk_page(self):
         v = self._keep(JUNK_TEXT + "\nI11.0 : Hypertensive heart disease\nE11.9 : Type 2 diabetes mellitus\n")
-        assert (v.code, v.rule) == (method.CODE_MAIN, "CLINICAL_CONTENT") and "2 ICD-10 codes" in v.reason
+        assert (v.code, v.rule) == (method.CODE_MAIN, "G6") and "2 ICD-10 codes" in v.reason
 
     def test_one_code_is_not_enough(self):
         assert self._keep(JUNK_TEXT + "\nI11.0 : Hypertensive heart disease\n").code != method.CODE_MAIN
 
     def test_social_history_header_keeps_a_junk_page(self):
-        assert self._keep(JUNK_TEXT, headings=("Social History",)).rule == "CLINICAL_CONTENT"
-        assert self._keep(JUNK_TEXT + "\nSocial History\nTobacco Smoking Status Never Smoker\n").rule == "CLINICAL_CONTENT"
+        assert self._keep(JUNK_TEXT, headings=("Social History",)).rule == "G6"
+        assert self._keep(JUNK_TEXT + "\nSocial History\nTobacco Smoking Status Never Smoker\n").rule == "G6"
 
     def test_blank_stays_blank(self):
         inputs = PageInputs(text="", pass_no=2, headings=("Social History",))
@@ -585,11 +585,11 @@ class TestVerdictConfidence2026_11_14:
         tiny = run("abc 12", pass_no=1)
         assert (tiny.code, tiny.confidence, tiny.strength) == (classify.CODE_OTHERS, 0.95, 1.0)
         deferred = run(FILLER, pass_no=1)
-        assert (deferred.code, deferred.rule, deferred.confidence) == (method.CODE_MAIN, "P1", 0.4)
+        assert (deferred.code, deferred.rule, deferred.confidence) == (method.CODE_MAIN, "R0", 0.4)
 
     def test_the_service_verdict_is_the_models_own_probability(self):
         keep = run(FILLER, bert=bert(0.2))
-        assert (keep.code, keep.rule, keep.confidence) == (method.CODE_MAIN, "R5", 0.8)
+        assert (keep.code, keep.rule, keep.confidence) == (method.CODE_MAIN, "O1", 0.8)
         junk = run(FAX_TEXT, bert=bert(0.9, "JUNK_LETTER_FAX"))
         assert junk.code == classify.CODE_LETTER_FAX and junk.confidence == 0.9
 
@@ -602,7 +602,7 @@ class TestVerdictConfidence2026_11_14:
         # Signed (R4) while p(junk) is the top class: a rule flipping the model -- since 2026-11-21
         # (user) no flat 0.40: the evidence against the model's p, lower the surer the model.
         signed = run(FILLER, bert=bert(0.8), signed=True, signature_known=True)
-        assert signed.rule == "R4" and signed.votes.get("flipped_model") and signed.votes.get("confidence_parts")
+        assert signed.rule == "G3" and signed.votes.get("flipped_model") and signed.votes.get("confidence_parts")
         surer = run(FILLER, bert=bert(0.94), signed=True, signature_known=True)
         assert 0.2 <= surer.confidence < signed.confidence < 0.8
         assert signed.strength is not None and signed.strength != signed.confidence
@@ -614,7 +614,7 @@ class TestVerdictConfidence2026_11_14:
     def test_an_invoice_kept_main_is_the_models_junk_call(self):
         inputs = PageInputs(text=INVOICE_TEXT, pass_no=2, bert=bert(0.97))
         v = method.post_process(decide(inputs), inputs)
-        assert (v.code, v.rule, v.confidence) == (method.CODE_MAIN, "INVOICE", 0.97)
+        assert (v.code, v.rule, v.confidence) == (method.CODE_MAIN, "O2", 0.97)
         terms = "Terms and Conditions apply. " + INVOICE_TEXT
         inputs = PageInputs(text=terms, pass_no=2, bert=bert(0.97))
         moved = method.post_process(decide(inputs), inputs)
@@ -661,7 +661,7 @@ def test_a_medication_list_with_doses_is_main():
     meds = ("Medications Reviewed Medications ezetimibe 10 mg tablet TAKE ONE TABLET BY MOUTH ONCE A DAY "
             "indapamide 1.25 mg tablet valsartan 80 mg tablet " + FILLER)
     v = run(meds, bert=bert(0.99, "JUNK_OTHERS"))
-    assert (v.code, v.rule) == (method.CODE_MAIN, "MEDS")
+    assert (v.code, v.rule) == (method.CODE_MAIN, "G5")
     assert method.medication_doses("Rx: Prolia 60 mg/ml, Vitamin D 1.25 mg") is not None   # word + 2
     assert method.medication_doses("Tot Copay 18.98 Page 2 of 5") is None
 
@@ -723,7 +723,7 @@ def test_a_visual_card_is_decided_before_the_keeps():
     """2026-11-21 (user): on a visual page the card comes first, then the under-20-words keep --
     a licence photo with a signature on it (handwriting) is still a card."""
     v = run(CARD_TEXT, document_type="visual", bert=bert(0.5), hw_area_pct=45.0)
-    assert v.code == classify.CODE_CARDS and v.rule == "R3"
+    assert v.code == classify.CODE_CARDS and v.rule == "G1"
 
 
 def test_a_fax_cover_with_to_and_from_on_one_line():
@@ -748,7 +748,7 @@ def test_visual_pages_skip_the_handwriting_keep_and_the_card_text_area_guard():
     assert card_rules.detect(WEAK_CARD, text_area=0.89).blocked_by
     assert card_rules.detect(WEAK_CARD, text_area=0.89, visual=True).is_card
     v = run(" ".join(["word"] * 25), document_type="visual", bert=bert(0.2), hw_area_pct=45.0)
-    assert v.rule != "HW"
+    assert v.rule != "G2"
 
 
 def test_a_page_of_several_cards_gets_the_word_limit_per_card():
