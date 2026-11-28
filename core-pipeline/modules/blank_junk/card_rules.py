@@ -41,6 +41,8 @@ MAX_TEXT_AREA = 0.75
 # lines, or a Medicare / SSN / passport / green card / military ID found by its own lines.
 STRONG_GROUPS = 3
 STRONG_BACK_LINES = 3
+# Form phrases that block strong card evidence (2026-11-28, user): one is enough.
+STRONG_FORM_HITS = 1
 def _rx(*patterns: str) -> list[re.Pattern]:
     return [re.compile(p, re.I) for p in patterns]
 
@@ -329,7 +331,19 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
     if stamp:
         matched = matched + [f"stamp: {stamp.group(0)}"]
 
-    blocked = [f"{name}: {', '.join(h)}" for name, pats in BLOCKERS.items() if (h := _hits(pats, text))]
+    # Strong evidence (2026-11-10 / 11-19, user) needs neither a name nor the word "card": three
+    # insurance groups ("UCard", RxBIN / RxPCN, Member ID, Group, Payer ID), three back-of-card
+    # lines, a Medicare / other ID card, a licence (it prints neither), or a barcode with card words.
+    strong = (n_ins >= STRONG_GROUPS or back_lines >= STRONG_BACK_LINES
+              or kind == "medicare" or kind in OTHER_ID or kind in LICENSE_KINDS or bool(barcode))
+    hits = {name: h for name, pats in BLOCKERS.items() if (h := _hits(pats, text))}
+    if strong:
+        # 2026-11-28 (user: strengthen the card logic): a card's back prints claims addresses,
+        # "Prior Authorization ... requested", "Referral ... Required" -- letter / statement words
+        # do not block strong card evidence. Form words (Emergency Contact, Relationship to
+        # Insured, Please complete ...) still do.
+        hits = {name: h for name, h in hits.items() if name == "form" and len(h) >= STRONG_FORM_HITS}
+    blocked = [f"{name}: {', '.join(h)}" for name, h in hits.items()]
     if visual and kind in LICENSE_KINDS:
         return CardResult(not blocked, kind, matched, blocked, words, strong=True)
     # 2026-11-21 (user): a page of several cards (two licences and an insurance card's front and
@@ -337,11 +351,6 @@ def detect(text: str, *, max_words: int = MAX_WORDS, headings: tuple[str, ...] =
     cards = cards_on_page(text, kind, n_ins, back_lines)
     if words > max_words * cards:
         blocked.append(f"too long: {words} words" + (f" for {cards} cards" if cards > 1 else ""))
-    # Strong evidence (2026-11-10 / 11-19, user) needs neither a name nor the word "card": three
-    # insurance groups ("UCard", RxBIN / RxPCN, Member ID, Group, Payer ID), three back-of-card
-    # lines, a Medicare / other ID card, a licence (it prints neither), or a barcode with card words.
-    strong = (n_ins >= STRONG_GROUPS or back_lines >= STRONG_BACK_LINES
-              or kind == "medicare" or kind in OTHER_ID or kind in LICENSE_KINDS or bool(barcode))
     if not strong and not CARD_WORD.search(text):
         blocked.append("no word 'card'")
     # A name must be on it (2026-11-05, user): a name label, or the member name kv_extract found

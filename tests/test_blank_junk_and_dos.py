@@ -757,19 +757,6 @@ class TestCardRule:
         assert verdict.code == classify.CODE_CARDS
 
 
-def test_section_header_classes_cover_the_canon():
-    """2026-11-05 (user): every canon header is clinical or non-clinical; cards read the split."""
-    import json
-    from pathlib import Path
-
-    import card_rules
-
-    folder = Path(__file__).resolve().parents[1] / "core-pipeline" / "resources" / "canon"
-    canon = json.loads((folder / "section_header_canon.json").read_text(encoding="utf-8"))
-    classes = json.loads((folder / "section_header_classes.json").read_text(encoding="utf-8"))
-    assert sorted(classes["clinical"] + classes["non_clinical"]) == sorted(canon)
-
-
 LICENCE_TEXT = """Patient: Doe, Jane DOB: 01/01/1950
 ARIZONA The Grand Canyon State DRIVER LICENSE 4d DLN B12345678 4b EXP 07/05/2029
 3 DOB 07/10/1954 4a ISS 07/05/2024 1 SAMPLE 2 JANE 8 1 MAIN ST MESA AZ 85204

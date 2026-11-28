@@ -1697,28 +1697,6 @@ def _match_rate(quality_row: dict[str, Any]) -> Optional[float]:
         return None
 
 
-_HEADER_CLASSES = None
-
-
-def _run_on_headers(cfg: dict[str, Any]) -> list[str]:
-    """The previous page's last section headers that keep a short page (2026-11-15, user: Visit
-    Diagnosis, Encounter, Summary or any standard Progress Note header): canon
-    contained_page.continue_after_headers, plus every clinical header of
-    section_header_classes.json when use_clinical_headers is on. Lower case."""
-    global _HEADER_CLASSES
-    names = [str(h) for h in cfg.get("continue_after_headers") or []]
-    if cfg.get("use_clinical_headers", True):
-        from modules.canon_store import CANON_DIR, CanonFile
-
-        if _HEADER_CLASSES is None:
-            _HEADER_CLASSES = CanonFile(CANON_DIR / "section_header_classes.json")
-        try:
-            names += [str(h) for h in (_HEADER_CLASSES.get() or {}).get("clinical") or []]
-        except Exception:  # noqa: BLE001 - the canon list alone still works
-            logger.warning("section_header_classes.json unreadable: short page uses the canon list only")
-    return list(dict.fromkeys(h.strip().lower() for h in names if h.strip()))
-
-
 def _headers_by_id(ctx: Any) -> dict[int, tuple[str, ...]]:
     """Each page's section header texts by page id, in page order, for the short page
     (2026-11-15). The last one also carries stage 6's canon name ("Dx: / Visit Diagnosis"), so
