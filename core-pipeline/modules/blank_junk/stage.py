@@ -629,6 +629,15 @@ def _in_order_share(mine: list[str], theirs: list[str]) -> float:
     return sum(block.size for block in matcher.get_matching_blocks()) / len(mine)
 
 
+# 2026-11-28 (user, Blank / Junk v2): the short checks' order. v1: today's first-fire order. v2
+# (docs/specials/BLANK_JUNK_V2_LOGIC.md): tier 1 strong junk (S-A1 S4, S-A2 S5, S-A3 S6, S-A4 S1,
+# S-A5 S2, S-A6 S3), tier 2 keeps (S-K1 S11, S-K2 S12, S-K3 S7, S-K4 S8, S-K5 S9), tier 3 weak junk
+# (S-W1 S10, S-W2 S13, S-W3 S16 tiny page, S-W4 S14), then the model.
+SHORT_V1_ORDER = ("S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14")
+SHORT_V2_ORDER = ("S4", "S5", "S6", "S1", "S2", "S3", "S11", "S12", "S7", "S8", "S9", "S10", "S13", "S16", "S14")
+SHORT_V2_TIER = {"S4": 1, "S5": 1, "S6": 1, "S1": 1, "S2": 1, "S3": 1, "S11": 2, "S12": 2, "S7": 2, "S8": 2,
+                 "S9": 2, "S10": 3, "S13": 3, "S16": 3, "S14": 3}
+
 # 2026-11-28 (user): a page is compared with its neighbour on one OCR engine, in this order.
 SAME_ENGINE_ORDER = ("docling", "azuredocintel", "tesseract")
 
@@ -644,6 +653,7 @@ def short_verdict(
     repeated: bool,
     words: Any,
     engine_texts: Optional[dict[int, dict[str, str]]] = None,
+    logic: str = "v1",
 ) -> Optional[dict[str, Any]]:
     """The short page's outcome (2026-11-19, user), or None when the page is not short:
     {"code": a CODE_* (or None: on to the classifier), "rule": "S1".., "why": "..."}.
@@ -774,20 +784,6 @@ def short_verdict(
     repeated_keys = [_line_key(line) for line, theirs in zip(page_lines, theirs_flags) if theirs]
     own_words = set().union(*(_plain_words(line) for line in own_lines if not a_heading(line))) if own_lines else set()
 
-    # SC (2026-11-21, user): a document cover sheet -- "Document Details / Date: / Type: EKG /
-    # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
-    step("S1")
-    fields = cover_sheet_fields(own_lines)
-    if fields:
-        field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
-        margin = evidence.past_cut(len(fields), META_MIN_FIELDS - 1, META_MIN_FIELDS + 3) * field_lines / max(1, len(own_lines))
-        return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
-    # SE (2026-11-21, user): "End of Report" is all the page has of its own (the running header and
-    # footer aside) -> Junk / Cover Page, as pass 1's R1E on a page of few words.
-    step("S2")
-    report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
-    if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
-        return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
     def added_over_previous() -> set[str]:
         """2026-11-23 (user): the words this page adds of its own -- its lines that are not the
         previous page's (repeated_lines, Docling vs Docling by ``pair``), not its section headings and
@@ -803,177 +799,244 @@ def short_verdict(
         return set().union(*(_plain_words(line) for line in kept)) if kept else set()
 
     added = added_over_previous()
-
-    # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
-    # next page", "Continued on the following page", "See next page") -> Junk / Others.
-    step("S3")
-    pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
-    if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_marker_line(line) for line in own_lines):
-        return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
-    # SH (2026-11-23, user): nothing but a running header and footer -- every text line at the
-    # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
-    # DOB: / Visit:" labels, a date / time, a number) -- and no signature, provider or credentials:
-    # Junk / Others, before the keeps that a date on it would otherwise trigger (S1S, S6).
     unsigned = pid not in signed and not own.provider and not method.CREDENTIAL.search(text)
-    # SB (2026-11-28, user): a blank page with only its header / footer -- every OCR line in the
-    # header or footer band, at most EDGE_BLANK_MAX_LINES at the top and at the bottom, each a
-    # running line or repeated on the previous / next page -- is Blank, not Junk.
-    step("S4")
-    blank_edge = edge_blank(own, page_lines, theirs_flags)
-    if blank_edge and unsigned:
-        return out(CODE_BLANK, "SB", f"only a header / footer ({blank_edge}) -> Blank", 1.0)
-    step("S5")
-    edge = edge_only(own, text)
-    if edge and unsigned:
-        return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
-    # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
-    # with content of its own (2026-11-21, user: a page with only the running header and the
-    # page number carries nothing on).
-    # 2026-11-23 (user): carrying a section on needs 2+ words the previous page does not have.
-    step("S6")
-    # SR (2026-11-28, user): every line of the page is the previous / next page's (its running
-    # header and footer, however many lines) -- nothing of its own -> Junk / Others. A provider or
-    # date in that header / footer does not keep it; its own Electronic Signature does.
-    if page_lines and all(theirs_flags) and (pid not in signed or repeated):
-        return out(CODE_OTHERS, "SR", f"all {len(page_lines)} lines are on the previous / next page "
-                                      "(running header / footer only) -> Junk / Others", 1.0)
-    step("S7")
-    if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY:
-        prev_text = texts.get(prev_id) or ""
-        prev_lines = [line for line in prev_text.splitlines() if line.strip()]
-        found = pn_headers.header_lines(prev_text, headers.get(prev_id) or ())
-        positioned = [(i, line, section) for i, line, section in found if i >= 0][-3:]
-        prev_inputs = inputs.get(prev_id)
-        for i, line, section in positioned:
-            low = _line_position(prev_inputs, line)
-            if low is None and prev_lines:
-                low = (i + 1) / max(1, len((prev_text or "").splitlines()))
-            if low is not None and low >= 2 / 3:
-                margin = (evidence.past_cut(low, 2 / 3, 1.0) + evidence.past_cut(len(own_words), 1, 10)) / 2
-                return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
-                                            f"({low:.0%} down the page): this page carries it on -> Main", margin)
-    # S1S (2026-11-21, user): the previous page ends in a signature ("Signed By ...", "Signed",
-    # "Electronically signed") and this page's own text is its signer and date ("Rajinder Grover
-    # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
-    # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
-    # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
-    step("S8")
-    if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
-            method.ANY_DATE.search(line) and not running_marker_line(line) for line in own_lines):
-        prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
-        signing = next((line for line in prev_tail if SIGNATURE_LINE.search(line)), None)
-        if signing is not None:
-            at = prev_tail.index(signing)
-            return out(CODE_MAIN, "S1S", "the previous page ends in a signature and this page carries its signer / "
-                                         "date on -> Main", evidence.past_cut(at, 0, len(prev_tail) - 1))
-    # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
-    # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
-    step("S9")
     own_text = "\n".join(own_lines)
     repeated_joined = _joined(repeated_keys)
     own_headings = tuple(h for h in own.headings or ()
                          if not _line_on(_line_key(str(h)), set(repeated_keys), repeated_joined))
-    sections = pn_headers.sections_on(own_text, own_headings)
-    if sections:
-        other = [w for w in re.findall(r"[a-z]+", own_text.lower())
-                 if len(w) > 1 and w not in pn_headers.header_words(own_text, own_headings)]
-        if len(other) >= NOTE_HEADER_EXTRA_WORDS:
-            return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main",
-                       evidence.past_cut(len(other), NOTE_HEADER_EXTRA_WORDS - 1, 12))
-    # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
-    # with the provider it names; a page with note content (header, ICD codes, doses) is not.
-    step("S10")
-    routing = method.fax_routing(text)
-    if routing and not method.note_content(own):
-        labels = len(method.FAX_ROUTING.findall(text)) + len(method.FAX_NUMBER.findall(text))
-        return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax",
-                   evidence.past_cut(labels, 1, 4))
-    # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
-    step("S11")
-    if pid in signed and not repeated:
-        # The signature was compared on both neighbours or one.
-        return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main",
-                   len(neighbours) / 2 if neighbours else None)
-    # The provider: 2026-11-19 (user), like the signature -- a provider printed in the same spot
-    # (region and name) on the previous / next page is a running line, not this page's own.
-    # Without a provider position, a provider the neighbours do not have at all.
-    neighbour_inputs = [inputs.get(n) for n in (prev_id, next_id) if n is not None]
-    if own.provider:
-        if own.provider_spot is not None:
-            repeated_provider = any(same_spot(own.provider_spot, getattr(n, "provider_spot", None)) for n in neighbour_inputs)
-        else:
-            repeated_provider = any(getattr(n, "provider", False) for n in neighbour_inputs)
-        if not repeated_provider:
-            # Compared by position (the box) or by name only.
-            return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
-                                        "next page -> Main", 1.0 if own.provider_spot is not None else 0.5)
-    # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
-    step("S12")
-    from dataclasses import replace as _replace
 
-    found = (method.medication_doses(own_text)
-             or (" / ".join(method.lab_result_words(_replace(own, text=own_text)) or []) or None)
-             or ("ICD-10 codes" if method.ICD10_CODE.search(own_text) else None)
-             or ("measurements" if len(MEASUREMENT.findall(own_text)) >= 2 else None))
-    if found:
-        hits = (len(MEASUREMENT.findall(own_text)) + len(method.ICD10_CODE.findall(own_text))
-                + len(re.findall(r"\d\s*(?:mg|mcg|ml|units?)\b", own_text, re.IGNORECASE)))
-        return out(CODE_MAIN, "S4", f"its content is {found} -> Main", evidence.past_cut(hits, 1, 6))
+    # 2026-11-28 (user, Blank / Junk v2): each check is its own function; v1 runs them in today's
+    # order (first that fires decides), v2 in tiers -- strong junk, keeps, weak junk, then the model.
+    def check_S1() -> Optional[dict[str, Any]]:
+        # SC (2026-11-21, user): a document cover sheet -- "Document Details / Date: / Type: EKG /
+        # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
+        fields = cover_sheet_fields(own_lines)
+        if fields:
+            field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
+            margin = evidence.past_cut(len(fields), META_MIN_FIELDS - 1, META_MIN_FIELDS + 3) * field_lines / max(1, len(own_lines))
+            return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
+        # SE (2026-11-21, user): "End of Report" is all the page has of its own (the running header and
+        # footer aside) -> Junk / Cover Page, as pass 1's R1E on a page of few words.
+        return None
 
-    step("S13")
-    # S5: the same words in the same order on a neighbour.
-    for other_id in neighbours:
-        mine_text, other_text = pair(other_id)
-        share = _in_order_share(re.findall(r"[a-z0-9]+", mine_text.lower()),
-                                re.findall(r"[a-z0-9]+", other_text.lower()))
-        if share >= SAME_ORDER_SHARE:
-            return out(CODE_OTHERS, "S5", f"{share:.0%} of its words, in order, are on the page "
-                                          f"{'before' if other_id == prev_id else 'after'} -> Junk / Others",
-                       evidence.past_cut(share, SAME_ORDER_SHARE, 1.0))
-    # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
-    # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
-    # words of the lines left are counted.
-    step("S14")
-    left: Optional[set[str]] = None
-    titles_only: list[bool] = []
-    removed_headings = False
-    for other_id in neighbours:
-        mine_text, other_text = pair(other_id)
-        mine_lines = [line for line in mine_text.splitlines() if _line_key(line)]
-        flags = repeated_lines(mine_text, other_text, own, inputs.get(other_id))
-        kept = [line for line, theirs in zip(mine_lines, flags)
-                if not theirs and not EMPTY_VALUE_LINE.match(line.strip())]
-        if any(a_heading(line) for line in kept):
-            removed_headings = True
-            kept = [line for line in kept if not a_heading(line)]
-        found = set().union(*(_plain_words(line) for line in kept)) if kept else set()
-        left = found if left is None else left & found
-        titles_only.append(bool(kept) and all(_title_like(line) for line in kept))
-    if left is None:
-        lines = [line for line in text.splitlines() if _line_key(line)]
-        left = set().union(*(_plain_words(line) for line in lines)) if lines else set()
-    if len(left) >= FEW_NEW_WORDS:
-        return out(None, "S7", f"{len(left)} words on lines of its own, no short-page rule: the classifier decides")
-    header_vocab = pn_headers.header_words(text, own.headings) | set(
-        w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
-    # 2026-11-21 (user): dates and numbers are left out of the words counted (above); more than
-    # one unique word of its own keeps the page, one or none is junk.
-    # The margin: how far the word count is from the cut between 1 (Junk) and 2 (Main); a Junk by
-    # header / title words, how far from the classifier's 5.
-    junk_margin = evidence.past_cut(len(left), 1.5, 0)
-    if not left and removed_headings:
-        return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others", junk_margin)
-    if len(left) <= 1:
-        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) of its own (dates and numbers left out) -> Junk / Others",
-                   junk_margin)
-    if left <= header_vocab:
-        return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others",
-                   evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
-    if titles_only and all(titles_only):
-        return out(CODE_OTHERS, "S6", f"only a title of its own ({', '.join(sorted(left)[:5])}) -> Junk / Others",
-                   evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
-    return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main",
-               evidence.past_cut(len(left), 1.5, FEW_NEW_WORDS))
+    def check_S2() -> Optional[dict[str, Any]]:
+        report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
+        if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
+            return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
+
+        # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
+        # next page", "Continued on the following page", "See next page") -> Junk / Others.
+        return None
+
+    def check_S3() -> Optional[dict[str, Any]]:
+        pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
+        if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_marker_line(line) for line in own_lines):
+            return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
+        # SH (2026-11-23, user): nothing but a running header and footer -- every text line at the
+        # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
+        # DOB: / Visit:" labels, a date / time, a number) -- and no signature, provider or credentials:
+        # Junk / Others, before the keeps that a date on it would otherwise trigger (S1S, S6).
+        # SB (2026-11-28, user): a blank page with only its header / footer -- every OCR line in the
+        # header or footer band, at most EDGE_BLANK_MAX_LINES at the top and at the bottom, each a
+        # running line or repeated on the previous / next page -- is Blank, not Junk.
+        return None
+
+    def check_S4() -> Optional[dict[str, Any]]:
+        blank_edge = edge_blank(own, page_lines, theirs_flags)
+        if blank_edge and unsigned:
+            return out(CODE_BLANK, "SB", f"only a header / footer ({blank_edge}) -> Blank", 1.0)
+        return None
+
+    def check_S5() -> Optional[dict[str, Any]]:
+        edge = edge_only(own, text)
+        if edge and unsigned:
+            return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
+        # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
+        # with content of its own (2026-11-21, user: a page with only the running header and the
+        # page number carries nothing on).
+        # 2026-11-23 (user): carrying a section on needs 2+ words the previous page does not have.
+        return None
+
+    def check_S6() -> Optional[dict[str, Any]]:
+        # SR (2026-11-28, user): every line of the page is the previous / next page's (its running
+        # header and footer, however many lines) -- nothing of its own -> Junk / Others. A provider or
+        # date in that header / footer does not keep it; its own Electronic Signature does.
+        if page_lines and all(theirs_flags) and (pid not in signed or repeated):
+            return out(CODE_OTHERS, "SR", f"all {len(page_lines)} lines are on the previous / next page "
+                                          "(running header / footer only) -> Junk / Others", 1.0)
+        return None
+
+    def check_S7() -> Optional[dict[str, Any]]:
+        if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY:
+            prev_text = texts.get(prev_id) or ""
+            prev_lines = [line for line in prev_text.splitlines() if line.strip()]
+            found = pn_headers.header_lines(prev_text, headers.get(prev_id) or ())
+            positioned = [(i, line, section) for i, line, section in found if i >= 0][-3:]
+            prev_inputs = inputs.get(prev_id)
+            for i, line, section in positioned:
+                low = _line_position(prev_inputs, line)
+                if low is None and prev_lines:
+                    low = (i + 1) / max(1, len((prev_text or "").splitlines()))
+                if low is not None and low >= 2 / 3:
+                    margin = (evidence.past_cut(low, 2 / 3, 1.0) + evidence.past_cut(len(own_words), 1, 10)) / 2
+                    return out(CODE_MAIN, "S1", f"the previous page ends in its '{section}' section "
+                                                f"({low:.0%} down the page): this page carries it on -> Main", margin)
+        # S1S (2026-11-21, user): the previous page ends in a signature ("Signed By ...", "Signed",
+        # "Electronically signed") and this page's own text is its signer and date ("Rajinder Grover
+        # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
+        # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
+        # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
+        return None
+
+    def check_S8() -> Optional[dict[str, Any]]:
+        if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
+                method.ANY_DATE.search(line) and not running_marker_line(line) for line in own_lines):
+            prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
+            signing = next((line for line in prev_tail if SIGNATURE_LINE.search(line)), None)
+            if signing is not None:
+                at = prev_tail.index(signing)
+                return out(CODE_MAIN, "S1S", "the previous page ends in a signature and this page carries its signer / "
+                                             "date on -> Main", evidence.past_cut(at, 0, len(prev_tail) - 1))
+        # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
+        # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
+        return None
+
+    def check_S9() -> Optional[dict[str, Any]]:
+        sections = pn_headers.sections_on(own_text, own_headings)
+        if sections:
+            other = [w for w in re.findall(r"[a-z]+", own_text.lower())
+                     if len(w) > 1 and w not in pn_headers.header_words(own_text, own_headings)]
+            if len(other) >= NOTE_HEADER_EXTRA_WORDS:
+                return out(CODE_MAIN, "S2", f"'{sections[0]}' header and {len(other)} other words -> Main",
+                           evidence.past_cut(len(other), NOTE_HEADER_EXTRA_WORDS - 1, 12))
+        # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
+        # with the provider it names; a page with note content (header, ICD codes, doses) is not.
+        return None
+
+    def check_S10() -> Optional[dict[str, Any]]:
+        routing = method.fax_routing(text)
+        if routing and not method.note_content(own):
+            labels = len(method.FAX_ROUTING.findall(text)) + len(method.FAX_NUMBER.findall(text))
+            return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax",
+                       evidence.past_cut(labels, 1, 4))
+        # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
+        return None
+
+    def check_S11() -> Optional[dict[str, Any]]:
+        if pid in signed and not repeated:
+            # The signature was compared on both neighbours or one.
+            return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main",
+                       len(neighbours) / 2 if neighbours else None)
+        # The provider: 2026-11-19 (user), like the signature -- a provider printed in the same spot
+        # (region and name) on the previous / next page is a running line, not this page's own.
+        # Without a provider position, a provider the neighbours do not have at all.
+        neighbour_inputs = [inputs.get(n) for n in (prev_id, next_id) if n is not None]
+        if own.provider:
+            if own.provider_spot is not None:
+                repeated_provider = any(same_spot(own.provider_spot, getattr(n, "provider_spot", None)) for n in neighbour_inputs)
+            else:
+                repeated_provider = any(getattr(n, "provider", False) for n in neighbour_inputs)
+            if not repeated_provider:
+                # Compared by position (the box) or by name only.
+                return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
+                                            "next page -> Main", 1.0 if own.provider_spot is not None else 0.5)
+        # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
+        return None
+
+    def check_S12() -> Optional[dict[str, Any]]:
+        from dataclasses import replace as _replace
+
+        found = (method.medication_doses(own_text)
+                 or (" / ".join(method.lab_result_words(_replace(own, text=own_text)) or []) or None)
+                 or ("ICD-10 codes" if method.ICD10_CODE.search(own_text) else None)
+                 or ("measurements" if len(MEASUREMENT.findall(own_text)) >= 2 else None))
+        if found:
+            hits = (len(MEASUREMENT.findall(own_text)) + len(method.ICD10_CODE.findall(own_text))
+                    + len(re.findall(r"\d\s*(?:mg|mcg|ml|units?)\b", own_text, re.IGNORECASE)))
+            return out(CODE_MAIN, "S4", f"its content is {found} -> Main", evidence.past_cut(hits, 1, 6))
+        return None
+
+    def check_S13() -> Optional[dict[str, Any]]:
+        # S5: the same words in the same order on a neighbour.
+        for other_id in neighbours:
+            mine_text, other_text = pair(other_id)
+            share = _in_order_share(re.findall(r"[a-z0-9]+", mine_text.lower()),
+                                    re.findall(r"[a-z0-9]+", other_text.lower()))
+            if share >= SAME_ORDER_SHARE:
+                return out(CODE_OTHERS, "S5", f"{share:.0%} of its words, in order, are on the page "
+                                              f"{'before' if other_id == prev_id else 'after'} -> Junk / Others",
+                           evidence.past_cut(share, SAME_ORDER_SHARE, 1.0))
+        # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
+        # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
+        # words of the lines left are counted.
+        return None
+
+    def check_S14() -> Optional[dict[str, Any]]:
+        left: Optional[set[str]] = None
+        titles_only: list[bool] = []
+        removed_headings = False
+        for other_id in neighbours:
+            mine_text, other_text = pair(other_id)
+            mine_lines = [line for line in mine_text.splitlines() if _line_key(line)]
+            flags = repeated_lines(mine_text, other_text, own, inputs.get(other_id))
+            kept = [line for line, theirs in zip(mine_lines, flags)
+                    if not theirs and not EMPTY_VALUE_LINE.match(line.strip())]
+            if any(a_heading(line) for line in kept):
+                removed_headings = True
+                kept = [line for line in kept if not a_heading(line)]
+            found = set().union(*(_plain_words(line) for line in kept)) if kept else set()
+            left = found if left is None else left & found
+            titles_only.append(bool(kept) and all(_title_like(line) for line in kept))
+        if left is None:
+            lines = [line for line in text.splitlines() if _line_key(line)]
+            left = set().union(*(_plain_words(line) for line in lines)) if lines else set()
+        if len(left) >= FEW_NEW_WORDS:
+            return out(None, "S7", f"{len(left)} words on lines of its own, no short-page rule: the classifier decides")
+        header_vocab = pn_headers.header_words(text, own.headings) | set(
+            w for h in headers.get(pid) or () for w in re.findall(r"[a-z0-9]+", str(h).lower()))
+        # 2026-11-21 (user): dates and numbers are left out of the words counted (above); more than
+        # one unique word of its own keeps the page, one or none is junk.
+        # The margin: how far the word count is from the cut between 1 (Junk) and 2 (Main); a Junk by
+        # header / title words, how far from the classifier's 5.
+        junk_margin = evidence.past_cut(len(left), 1.5, 0)
+        if not left and removed_headings:
+            return out(CODE_OTHERS, "S6", "only section header(s) of its own -> Junk / Others", junk_margin)
+        if len(left) <= 1:
+            return out(CODE_OTHERS, "S6", f"{len(left)} word(s) of its own (dates and numbers left out) -> Junk / Others",
+                       junk_margin)
+        if left <= header_vocab:
+            return out(CODE_OTHERS, "S6", f"{len(left)} word(s) on lines of its own, all header words -> Junk / Others",
+                       evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
+        if titles_only and all(titles_only):
+            return out(CODE_OTHERS, "S6", f"only a title of its own ({', '.join(sorted(left)[:5])}) -> Junk / Others",
+                       evidence.past_cut(len(left), FEW_NEW_WORDS, 0))
+        if logic == "v2":
+            # v2 S-M1: 2-4 words of its own no longer default to Main -- the model decides.
+            return out(None, "S7", f"{len(left)} word(s) on lines of its own: the model decides")
+        return out(CODE_MAIN, "S6", f"{len(left)} word(s) on lines of its own ({', '.join(sorted(left)[:8])}) -> Main",
+                   evidence.past_cut(len(left), 1.5, FEW_NEW_WORDS))
+        return None
+
+    def check_S16() -> Optional[dict[str, Any]]:
+        # v2 S-W3 (was pass 1's R2c): a tiny page -- under MIN_TEXT_CHARS characters of text, no
+        # provider and no date -> Junk / Others.
+        chars = len(re.sub(r"\s", "", text))
+        if chars < method.MIN_TEXT_CHARS and not own.provider and not method.ANY_DATE.search(text):
+            return out(CODE_OTHERS, "S16", f"tiny page: {chars} characters (< {method.MIN_TEXT_CHARS}) -> Junk / Others",
+                       evidence.past_cut(chars, method.MIN_TEXT_CHARS, 0))
+        return None
+
+    if logic == "v2":
+        sequence = SHORT_V2_ORDER
+    else:
+        sequence = SHORT_V1_ORDER
+    table = {name: fn for name, fn in locals().items() if name.startswith("check_S")}
+    for name in sequence:
+        step(name)
+        result = table[f"check_{name}"]()
+        if result is not None:
+            return result
+    return out(None, "S15", "no short-page rule fired: the model decides")
 
 
 # A page number in a line ("Page 13", "Page 2 of 4", "pg. 3", "13 of 20"): it changes on every
