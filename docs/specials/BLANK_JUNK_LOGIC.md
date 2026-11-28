@@ -1,36 +1,191 @@
 # Blank / Junk Logic
 
-As built on 2026-11-19. Code: `core-pipeline/modules/blank_junk/` (`method.py` the ladder,
-`stage.py` the short page and duplicates, `card_rules.py` cards, `pn_headers.py` Progress Note
-headers). Numbers: `resources/canon/blank_junk_context_canon.json`; the Progress Note header list:
-`resources/canon/progress_note_headers.json` (both editable, reload on change).
+As built on 2026-11-28. Code: `core-pipeline/modules/blank_junk/` (`method.py` the checks, `stage.py` the Short route, duplicates and the JSON file, `card_rules.py` cards). Thresholds: `resources/canon/blank_junk_context_canon.json`.
 
-Each page gets one verdict: **Main**, **Blank**, or **Junk / subtype** (Cover Page, Cards,
-Letter/Fax, Record Request, Instructions, Others). An invoice is a Main page (page type Invoice).
+## 1. Overview
 
-Terms:
+One verdict per page: **Main**, **Blank**, or **Junk / subtype** (Cover Page, Cards, Letter/Fax, Record Request, Instructions, Others). After the verdict, Main pages are checked for **duplicates**.
 
-- **Electronic Signature** = kv_extract found a provider signature on the page
-  (`provider_signature_results`, `signature_present = y`). Words such as "signed" alone never count.
-- **Previous / next page** = the nearest page before / after that is not blank.
-- **Progress Note header** = a **real header** (2026-11-20, user): one of the OCR layout's section
-  headers (stage 6) or a markdown heading ("## Assessment"), of at most 6 words, holding one of
-  the 36 sections' words, matched loosely: "Orders", "Orders Placed", "Plan of Care", "Treatment
-  Plan", "Diagnosis" / "Diagnoses", "Assessment & Plan", "HPI", "ROS", "Vitals" …. A section word
-  that only appears in the text never counts, and neither does one in a **bulleted list, a table
-  cell, or a run of 3+ bare section names** (a records-request letter listing "Progress notes,
-  History and physical, Problem list").
+Every check has an ID. Checks run in the order listed, and **the first one that fires decides**.
 
-The 36 sections (`progress_note_headers.json`): Visit details · Chief complaint · History of present
-illness · Review of systems · Past medical history · Problem list · Past surgical history · Family
-history · Social history · Social needs (SDOH) · OB/GYN history · Medications · Allergies ·
-Immunizations · Preventive care · Screening tools · Vitals · Physical exam · Mental status exam · Lab
-results · Imaging and diagnostics · Pathology · Assessment / impression · Visit diagnoses ·
-Assessment and plan (combined) · Plan · Orders · Prescriptions and refills · Medication changes ·
-Referrals · Procedures done in the visit · Medications given in the visit · Follow-up and next
-appointment · Disposition · Patient instructions and education · Medical decision making and time.
+```
+PASS 1 (printed pages, Tesseract text)
+  R1 Blank  ->  R2 Junk  ->  R0 (nothing fired: pass 2 decides)
+
+PASS 2 (final OCR text + the model)
+  Common:  R1a-c blanks -> R3 Signature Log -> R1e-f / R2 again (handwritten / Low only) -> R4 hard junk
+     then ONE route:
+       Short   (text only at the top / bottom)   S1 ... S15
+       Visual  (visual page, under 20 words)     V1, V2
+       General (everything else)                 G1 ... G8
+     where the route did not decide:
+       Others   O1 model classifier, O2 invoice, O3 keep-99% veto, O4 LLM judge (off)
+```
+
+## 2. Which pages each pass judges
+
+| Page | Pass 1 | Pass 2 |
+|---|---|---|
+| Printed, quality not Low | Judged | Judged again only if pass 1 said Main (R0). A pass-1 **Blank or Junk is final** |
+| Printed Low quality, handwritten, mixed, form, visual | Skipped | Judged. Handwritten / mixed / Low pages also get R1e-f / R2 once, on the final OCR |
+| No final OCR text | — | Skipped until it has text |
+
+## 3. Pass 1
+
+**R1 Blank**
+
+| ID | Check | Verdict |
+|---|---|---|
+| R1a | No ink (stage 1), and no provider or date on the page | Blank |
+| R1b | Stage 1 says Blank and under 15 characters of text | Blank |
+| R1c | No text at all (not a visual page) | Blank |
+| R1d | Page image: **at most 1 text line in the top band (15%) and at most 1 in the bottom band (8%)**, at least one, **no ink between**; Tesseract text ≤ 4 lines, no credential. A date / name in the header does not stop it. Two lines at one edge ("DME Orders / None recorded.") is not R1d | **Blank (final)** |
+| R1e | The word "blank" in under 30 characters | Blank |
+| R1f | "Intentionally left blank" on a page of ≤ 25 words | Blank |
+
+**R2 Junk**
+
+| ID | Check | Verdict |
+|---|---|---|
+| R2a | Cover mark (Accept / Unaccept / Cover) on a page under 10 words | Junk / Cover Page |
+| R2b | "End of Report" on a page under 10 words | Junk / Cover Page |
+| R2c | Under 15 characters (no date / provider) | Junk / Others |
+
+**R0**: nothing fired. Main for now; pass 2 decides.
+
+## 4. Pass 2 — Common (every page, in order)
+
+| ID | Check | Verdict |
+|---|---|---|
+| R1a / R1b / R1c | Measured blanks, as pass 1 | Blank |
+| **R3** | **Signature Log**: "Signature Log" in the header (first 8 lines or a section heading) **and** handwritten area ≥ 20% (Medium / High). Any page type. Pass 2 only | Main → Page Type **Signature Page / Signature Log**, Non-Codable |
+| R1e / R1f / R2a-c | Again, only on handwritten / mixed / Low pages pass 1 never judged | as pass 1 |
+| R4a | A "Financials" / "Financial Summary" heading | Junk / Others |
+| R4b | Retrieval cover sheet ("Retrieved by" / "Measure / Dates of service" + 2 label lines, ≤ 60 words) | Junk / Cover Page |
+| R4c | Model p(blank) over 98% | Junk / Others |
+| R4d | Contents page: "Index / Contents / Documents" heading in the top third, then 3+ entries with page numbers or dates (≥ 40% of the lines after it). The next page carrying the list on is junk too | Junk / Others |
+| R4e | Fax cover sheet: "Fax" + 2 routing boxes (Urgent, For Review, Please Reply …), or a Fax title with From and To | Junk / Letter/Fax |
+
+Then the page takes **one route**.
+
+## 5. Pass 2 — Short route
+
+**Short** means no text line in the middle of the page (25%–75% of the height) and no ink there: the text sits only at the top, the bottom, or both. A page over 30% handwritten, or a visual page, takes the Visual / General route instead.
+
+**The page's own lines.** These are lines not on the previous / next page. A line is the neighbour's when it is part of a run of 2+ lines in the same order there, or part of the running header / footer matched from the page edge. Placeholders ("None recorded.", "N/A") are not content. Matching ignores case, spacing, page numbers and one differing number.
+
+| ID | Check | Verdict |
+|---|---|---|
+| S1 | Document cover sheet: own lines are only label / value fields (Date, Type, Subject, Approved By …), 3+, one naming the document | Junk / Cover Page |
+| S2 | "End of Report" is all it has of its own | Junk / Cover Page |
+| S3 | Its only own content points to another page ("Continued on next page", "See next page") | Junk / Others |
+| **S4** | **Header / footer only, 1–2 lines**: every line in the top 15% / bottom 8%, at most 2 at the top and 2 at the bottom, each a page number / running label (Patient, DOB, Page, Printed, Fax) or repeated on a neighbour; no signature, provider or credentials | **Blank** |
+| S5 | Running header / footer only (more lines): every line at the edges, each a running line, at least one page number / label; no signature / provider / credentials | Junk / Others |
+| **S6** | **Every line is on a neighbour** (the running header and footer, however many lines). A provider or date in it does not keep it; its own signature does | **Junk / Others** |
+| S7 | The previous page ends in a Progress Note header (in its bottom third) and this page has 2+ words of its own | Main |
+| S8 | The previous page ends in a signature and this page's own lines carry a date (signer / date carried over), 2+ own words | Main |
+| S9 | A Progress Note header on its own lines + 3 other words | Main |
+| S10 | Fax routing block (fax number + To / Attn / From), no note content | Junk / Letter/Fax |
+| S11 | Electronic Signature, or a provider, **not** in the same spot on the previous / next page | Main |
+| S12 | Its own lines hold measurements, doses or ICD-10 codes | Main |
+| S13 | 98%+ of its words, in the same order, are on a neighbour (same OCR engine) | Junk / Others |
+| S14 | Unique words on its own lines (dates, numbers, headers out): 0–1 → Junk / Others; only header / title words → Junk / Others; 2–4 → Main | Main / Junk |
+| S15 | 5+ own words, nothing above fired | → Others (O1 model) |
+
+Any verdict on a short page reads **at most 90%** confidence.
+
+## 6. Pass 2 — Visual route (visual page, under 20 words)
+
+| ID | Check | Verdict |
+|---|---|---|
+| V1 | A card (ID, licence, insurance) | Junk / Cards (Main if model p(keep) ≥ 99%) |
+| V2 | Not a card | Main |
+
+## 7. Pass 2 — General route (every other page)
+
+| ID | Check | Verdict |
+|---|---|---|
+| G1 | Card on a visual-typed page (20+ words) or strong card evidence (licence, 3+ insurance groups, card back, barcode) | Junk / Cards (Main if p(keep) ≥ 99%) |
+| G2 | Handwritten area over 30% | Main |
+| G3 | Electronic Signature, not repeated in the same spot on the previous / next page, model p(junk) < 95% | Main |
+| G4 | Lab result (Lab + Reference Range + a value) | Main |
+| G5 | Medication list (3+ doses, or a medication word + 2) | Main |
+| G6 | Clinical content: 2+ ICD-10 codes, a Social History header, or 2+ Progress Note sections | Main |
+| G7 | Card on a printed / uncertain page | Junk / Cards (Main if p(keep) ≥ 99%) |
+| G8 | "Fax" in a section header and no signature (not when a Progress Note page is on each side) | Junk / Letter/Fax |
+
+## 8. Pass 2 — Others (where the route did not decide)
+
+| ID | Check | Verdict |
+|---|---|---|
+| O1 | The model (DistilBERT service): JUNK with p(keep) < 99% → Junk / its subtype; BLANK → Junk / Others; else Main. A model "Invoice" on a terms page → Junk / Others; with no invoice wording but a care provider's name → Main | its verdict |
+| O2 | Invoice kept: a dollar table or invoice wording | Main, Page Type **Invoice** |
+| O3 | **Keep-99% veto**: on a page that is not short, a rule filing Junk / Letter/Fax or Junk / Cover Page (R4b, R4e, G8) stands only while the model's p(keep) is under 99%; otherwise Main | Main |
+| O4 | LLM judge (off: `BLANK_JUNK_LLM=false`); would re-judge S7–S15 and O1 verdicts on a short page after a full note | its verdict |
+
+A page over 20 words filed Junk / Cover Page becomes Junk / Others.
+
+## 9. Duplicates (after the verdict, Main pages only)
+
+1. **Compared on body text**: header / footer lines (print stamps, "Page x of y", lines repeated on 3+ pages) are left out.
+2. **Candidates**: each page against its 3 most similar earlier pages. The earlier one is the original.
+3. **Hard blocks — never a duplicate when:**
+   - the documents' DOS differ (Progress Notes);
+   - the lengths differ by > 10% or > 20 words;
+   - a differing word is a date, time or number;
+   - the signature blocks differ;
+   - a signed page has under 25 words;
+   - a page under 25 words, a form or a handwritten page doesn't match the other page's image.
+4. **Exact** at any distance; within 3 pages only exact counts. Runs further apart: **Rule A** (≥ 98% next to a duplicate), **Rule B** (3 in a row, average ≥ 95%, none < 90%).
+5. **Conflicts**: two partial matches to one original → neither is a duplicate (Review: Conflict).
+6. **Labels**: **Yes (to page N)** = duplicate (Blank/Junk "No", values copied from the original). **Partial (to page N)** = a 100% match that a block stopped (stays Main). Only Yes counts in accuracy.
+
+## 10. After blank / junk
+
+- A Blank / Junk / duplicate page is not classified; it is Non-Codable in Final.
+- **R3 Signature Log** pages: Page Type **Signature Page**, Subtype **Signature Log**, Non-Codable, no specialty. Accuracy scores it as Progress Note > Signature, a full match for ground truth "Signature page".
+- **O2 Invoice** pages: Page Type Invoice / Invoice Page.
+
+## 11. The debugging file: `staging/blank_junk.json`
+
+One file per chart. Per page, in page order:
+
+- **stats**:
+  - page type, visual, handwritten %;
+  - ink: no ink, ink in the body and its share, pass 1's top / bottom line counts;
+  - text: characters, words, lines, text area %, where the text ends, first and last line, headings;
+  - signed, provider, member name, OCR match rate.
+- **pass_1 / pass_2**:
+  - every check as `<ID> <name>`: `no`, `fired: <why>`, `not reached` (after the one that fired) or `not run` (other route / pass);
+  - pass 2 adds **route** (short / visual / general, "-> others" when it went on to the model), the model's p(keep) / p(junk) / p(blank) and label, and **short_page** with S1–S15;
+  - a pass not run reads `skipped: <why>`.
+- **duplicate**: label, copy of, rule, score, blocked by, review, the closest page and its similarity.
+- **final**: decision, rule (its ID), why, pass, confidence.
+
+## 12. Old names → IDs
+
+| Old | ID | Old | ID | Old | ID |
+|---|---|---|---|---|---|
+| R1 (no ink / stage-1 / no text) | R1a / R1b / R1c | SC | S1 | R3 card (visual) | V1 / G1 |
+| EB | R1d | SE | S2 | R3V | V2 |
+| R1 word "blank" | R1e | SN | S3 | HW | G2 |
+| R2 placeholder | R1f | SB | S4 | R4 signature | G3 |
+| R1 cover mark | R2a | SH | S5 | LAB | G4 |
+| R1E | R2b | SR | S6 | MEDS | G5 |
+| R1 tiny page | R2c | S1 | S7 | CLINICAL_CONTENT | G6 |
+| P1 | R0 | S1S | S8 | R3 card | G7 |
+| SIGLOG | R3 | S2 | S9 | FAX header | G8 |
+| RF | R4a | SF | S10 | R5 | O1 |
+| RC | R4b | S3 | S11 | INVOICE | O2 |
+| RB | R4c | S4 | S12 | KEEP99 | O3 |
+| INDEX | R4d | S5 | S13 | LLM | O4 |
+| FAX cover sheet | R4e | S6 / S7 | S14 / S15 | | |
+
 
 ---
+
+# Detail (rule history; the old names are mapped to IDs in section 12)
+
 
 ## Pass 1: on the Tesseract text, rules only
 
