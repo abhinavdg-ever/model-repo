@@ -3,7 +3,7 @@ different rules, different confidence -- not one size for every rule).
 
 For every page with a Blank / Junk ground truth (``page_ground_truth.blank_page`` /
 ``junk_page``) and a final pass-2 verdict, the rule that decided it (the chart's
-``staging/blank_junk_detail.json``, else the rule name the ``reason`` starts with) and whether
+``staging/blank_junk.json``, else the rule name the ``reason`` starts with) and whether
 the class filed (Main / Blank / Junk) matches the ground truth. Prints pages and accuracy per rule;
 ``--write`` stores them in ``confidence_canon.json`` -> ``modules.blank_junk.evidence.rule_reliability``,
 where ``evidence.combine`` turns a rule's accuracy into its ceiling (rules under
@@ -40,16 +40,19 @@ def filed_class(flag: Any) -> Optional[str]:
 
 
 def staged_rules(chart_name: str) -> dict[str, str]:
-    """page name -> the pass-2 rule in the chart's blank_junk_detail.json ({} when it is gone)."""
-    from modules.blank_junk.stage import DETAIL_FILE, votes_path
+    """page name -> the pass-2 rule in the chart's blank_junk.json ({} when it is gone)."""
+    from modules.blank_junk.stage import votes_path
 
     try:
-        path = votes_path(chart_name).with_name(DETAIL_FILE)
-        pages = json.loads(path.read_text(encoding="utf-8")).get("pages") or {}
+        pages = json.loads(votes_path(chart_name).read_text(encoding="utf-8")).get("pages") or {}
     except (OSError, ValueError):
         return {}
-    return {name: str((entry.get("pass_2") or {}).get("rule") or "") for name, entry in pages.items()
-            if (entry.get("pass_2") or {}).get("rule")}
+    out = {}
+    for name, entry in pages.items():
+        judged = entry.get("pass_2") if isinstance(entry.get("pass_2"), dict) else {}
+        if judged.get("rule"):
+            out[name] = str(judged["rule"])
+    return out
 
 
 def measure(rows: list[tuple]) -> dict[str, dict[str, Any]]:

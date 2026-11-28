@@ -99,6 +99,7 @@ The first that matches decides:
 | SE | (2026-11-21, user) **"End of Report"** is all the page has of its own | Junk / Cover Page |
 | SB | (2026-11-28, user) **Only a header / footer, 1–2 lines**: every OCR line in the header band (top 15%) or footer band (bottom 8%), at most 2 lines at the top and 2 at the bottom, each a running line with a page number or running label (Patient / DOB / Page / Printed / Fax ...) or a line the previous / next page repeats; no signature, provider or credentials. Before SH | Blank |
 | SH | (2026-11-23, user) **Only a running header / footer**: every OCR line in the header band (top 15%) or footer band (bottom 8%), each a running line (page number, fax / print stamp, Patient / DOB / MRN / Visit labels, dates, times, numbers; at most 2 other words, a stamp 6), at least one page number or label, and no signature, provider or credentials. Decided before S1–S6, so the dates in the stamp and footer no longer keep it (S1S / S6) | Junk / Others |
+| SR | (2026-11-28, user) **Every line on a neighbour**: every text line of the page is a line of the previous or next page (repeated_lines: its running header and footer, however many lines). A provider or a date in that header / footer does not keep it; its own (not repeated) Electronic Signature does. After SB / SH, before S1 | Junk / Others |
 | SN | (2026-11-23, user) Its only content of its own is a **pointer to another page**: "Content on Next Page", "Continued on the following page", "See next page", "(Continued)", "Please turn over" (the running header / footer and headings aside) | Junk / Others |
 | S1 | The **previous page ends in a Progress Note header**: one of its last 3 headers sits in its bottom third. This page carries that section on, **if it has 2+ words on lines of its own** (lines not the previous page's, Docling vs Docling; dates, numbers, headings and running header / footer lines -- a page number or a Patient / DOB / Visit / Printed label -- left out; 2026-11-23, user) | Main |
 | S1S | (2026-11-21, user) The **previous page ends in a signature** ("Signed By …", "Signed", "Electronically signed" in its last 4 lines) and this page's own text has a date (its signer and date carried over: "Rajinder Grover on 7/30/2025 at 1:12 PM"); since 2026-11-23 the page must have 2+ words of its own (as S1) and the date must be on a line of content, not a running header / footer line ("Patient: … DOB: … Visit: … Page: 3") | Main |
@@ -230,3 +231,20 @@ The page classifier service forces KEEP on a page its protocol patterns call cli
 4) and the raw model's p(junk) is **95% or more** (`signature_overruled_above`, the bar a
 signature already yields to), the protocol keep does not keep it: Junk / the model's subtype.
 Below 95% (an Atlas transmittal letter at 72%) the keep stands: such pages are for model training.
+
+
+## `staging/blank_junk.json` (2026-11-28, user: one debugging file)
+
+`blank_junk_detail.json` is gone (removed on the next run). Per page, in page order:
+
+- `stats` -- page type, visual, handwritten %, ink (no ink, ink in the body and its share, pass 1's
+  edge lines: text lines in the top / bottom bands), text (characters, words, lines, text area %,
+  where the text ends %, first and last line, headings), signed, provider, member name found, OCR match rate.
+- `pass_1` / `pass_2` -- every check of the pass in order (`check_order` at the top): `no`,
+  `fired: <why>`, `not reached` (after the one that fired) or `not run` (not for this page / pass);
+  pass 2 also the model (`p_keep` / `p_junk` / `p_blank`, top junk label, the service's flag) and
+  `short_page` with its own checks (SC ... S6). A pass not run on the page reads `skipped: <why>`
+  (handwritten / low quality -> pass 2; settled in pass 1; final keep; no final OCR text).
+  `notes`: card, index, fax, keep veto, flipped model, LLM and other side findings.
+- `duplicate` -- label, copy_of, rule, score, blocked_by, review, the closest page, similarity / overlap.
+- `final` -- decision, rule, why, pass, confidence, decision_confidence (continuity's weight).

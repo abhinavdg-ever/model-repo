@@ -62,7 +62,7 @@ from apps.worker.stages._support import (
     best_page_text,
     mark_completed,
     mark_failed,
-    mark_skipped,
+    mark_skipped as _mark_skipped,
     pass1_ruled_out,
     stage_run,
     unwrap_ocr_content,
@@ -694,6 +694,14 @@ def short_verdict(
         return any((mine_by.get(e) or "").strip() and (theirs_by.get(e) or "").strip()
                    for e in ("azuredocintel", "docling"))
 
+    checks: list[dict[str, Any]] = []
+
+    def step(name: str) -> None:
+        """2026-11-28 (user): each short-page check in order, for blank_junk.json."""
+        if checks and checks[-1]["result"] == "checking":
+            checks[-1]["result"] = "no"
+        checks.append({"check": name, "result": "checking"})
+
     def out(code: Optional[int], rule: str, why: str, margin: Optional[float] = None) -> dict[str, Any]:
         """The outcome, with its evidence (2026-11-21, user): ``margin`` how far past the rule's cut
         (evidence.py), and the support -- both neighbours compared or one, the same OCR engine
@@ -708,7 +716,9 @@ def short_verdict(
             theirs_share = sum(theirs_flags) / len(page_lines)
             support["lines_theirs" if code != CODE_MAIN else "lines_own"] = (
                 theirs_share if code != CODE_MAIN else 1.0 - theirs_share)
-        return {"code": code, "rule": rule, "why": why,
+        if checks and checks[-1]["result"] == "checking":
+            checks[-1]["result"] = f"fired: {why}" if code is not None else f"to the classifier: {why}"
+        return {"code": code, "rule": rule, "why": why, "checks": checks,
                 "evidence": {"margin": None if margin is None else round(float(margin), 4), "support": support}}
     # 2026-11-20 (user): the page's own stage 6 section headers ("EKG/Stress Test") are not
     # content: a line that is one of them (or only its words) is removed too.
@@ -747,6 +757,7 @@ def short_verdict(
 
     # SC (2026-11-21, user): a document cover sheet -- "Document Details / Date: / Type: EKG /
     # Subject: EKG / Approved By: / Comments: No", nothing else of its own -> Junk / Cover Page.
+    step("SC cover sheet")
     fields = cover_sheet_fields(own_lines)
     if fields:
         field_lines = sum(1 for line in own_lines if META_FIELD.match(line.strip().strip("#*|").strip()))
@@ -754,6 +765,7 @@ def short_verdict(
         return out(method.CODE_COVER_PAGE, "SC", f"document cover sheet ({', '.join(fields)}) -> Junk / Cover Page", margin)
     # SE (2026-11-21, user): "End of Report" is all the page has of its own (the running header and
     # footer aside) -> Junk / Cover Page, as pass 1's R1E on a page of few words.
+    step("SE end of report")
     report_end = [line for line in own_lines if method.END_OF_REPORT.search(line)]
     if report_end and all(method.END_OF_REPORT.search(line) or a_heading(line) for line in own_lines):
         return out(method.CODE_COVER_PAGE, "SE", f"'{report_end[0].strip()}' is all of its own -> Junk / Cover Page", 1.0)
@@ -775,6 +787,7 @@ def short_verdict(
 
     # SN (2026-11-23, user): its only content of its own is a pointer to another page ("Content on
     # next page", "Continued on the following page", "See next page") -> Junk / Others.
+    step("SN next-page pointer")
     pointers = [line for line in own_lines if NEXT_PAGE_NOTE.search(line)]
     if pointers and all(NEXT_PAGE_NOTE.search(line) or a_heading(line) or running_marker_line(line) for line in own_lines):
         return out(CODE_OTHERS, "SN", f"'{pointers[0].strip()[:60]}' is all of its own -> Junk / Others", 1.0)
@@ -786,9 +799,11 @@ def short_verdict(
     # SB (2026-11-28, user): a blank page with only its header / footer -- every OCR line in the
     # header or footer band, at most EDGE_BLANK_MAX_LINES at the top and at the bottom, each a
     # running line or repeated on the previous / next page -- is Blank, not Junk.
+    step("SB header / footer only (Blank)")
     blank_edge = edge_blank(own, page_lines, theirs_flags)
     if blank_edge and unsigned:
         return out(CODE_BLANK, "SB", f"only a header / footer ({blank_edge}) -> Blank", 1.0)
+    step("SH running header / footer only")
     edge = edge_only(own, text)
     if edge and unsigned:
         return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
@@ -796,6 +811,14 @@ def short_verdict(
     # with content of its own (2026-11-21, user: a page with only the running header and the
     # page number carries nothing on).
     # 2026-11-23 (user): carrying a section on needs 2+ words the previous page does not have.
+    step("SR every line on a neighbour")
+    # SR (2026-11-28, user): every line of the page is the previous / next page's (its running
+    # header and footer, however many lines) -- nothing of its own -> Junk / Others. A provider or
+    # date in that header / footer does not keep it; its own Electronic Signature does.
+    if page_lines and all(theirs_flags) and (pid not in signed or repeated):
+        return out(CODE_OTHERS, "SR", f"all {len(page_lines)} lines are on the previous / next page "
+                                      "(running header / footer only) -> Junk / Others", 1.0)
+    step("S1 carries the previous section")
     if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY:
         prev_text = texts.get(prev_id) or ""
         prev_lines = [line for line in prev_text.splitlines() if line.strip()]
@@ -815,6 +838,7 @@ def short_verdict(
     # on 7/30/2025 at 1:12 PM"): the signature carries on -> Main.
     # 2026-11-23 (user): the date must be on a line of its own content, not in a running header /
     # footer ("Patient: ... DOB: ... Visit: 06/02/2025 Page: 3" is no signer carried over).
+    step("S1S carries a signature")
     if prev_id is not None and len(added) >= ADDED_WORDS_TO_CARRY and any(
             method.ANY_DATE.search(line) and not running_marker_line(line) for line in own_lines):
         prev_tail = [line for line in (texts.get(prev_id) or "").splitlines() if line.strip()][-SIGNATURE_TAIL_LINES:]
@@ -825,6 +849,7 @@ def short_verdict(
                                          "date on -> Main", evidence.past_cut(at, 0, len(prev_tail) - 1))
     # S2: its own Progress Note header and 3+ other words -- on its own lines only (2026-11-20,
     # user: a running "Labs (continued)" header repeated from the previous page is not the page's).
+    step("S2 note header + words")
     own_text = "\n".join(own_lines)
     repeated_joined = _joined(repeated_keys)
     own_headings = tuple(h for h in own.headings or ()
@@ -838,12 +863,14 @@ def short_verdict(
                        evidence.past_cut(len(other), NOTE_HEADER_EXTRA_WORDS - 1, 12))
     # SF (2026-11-19, user): "To: Dr ... Fax: (555) ..." on a short page is fax routing, Junk even
     # with the provider it names; a page with note content (header, ICD codes, doses) is not.
+    step("SF fax routing")
     routing = method.fax_routing(text)
     if routing and not method.note_content(own):
         labels = len(method.FAX_ROUTING.findall(text)) + len(method.FAX_NUMBER.findall(text))
         return out(method.CODE_LETTER_FAX, "SF", f"fax routing ({routing}) -> Junk / Letter/Fax",
                    evidence.past_cut(labels, 1, 4))
     # S3: an Electronic Signature (not in the same spot nearby) or a provider not on the neighbours.
+    step("S3 signature / provider")
     if pid in signed and not repeated:
         # The signature was compared on both neighbours or one.
         return out(CODE_MAIN, "S3", "Electronic Signature, not repeated on the previous / next page -> Main",
@@ -862,6 +889,7 @@ def short_verdict(
             return out(CODE_MAIN, "S3", "provider name / credentials, not in the same spot on the previous / "
                                         "next page -> Main", 1.0 if own.provider_spot is not None else 0.5)
     # S4: measurements, doses or ICD codes -- on its own lines (2026-11-20, user).
+    step("S4 measurements / doses")
     from dataclasses import replace as _replace
 
     found = (method.medication_doses(own_text)
@@ -873,6 +901,7 @@ def short_verdict(
                 + len(re.findall(r"\d\s*(?:mg|mcg|ml|units?)\b", own_text, re.IGNORECASE)))
         return out(CODE_MAIN, "S4", f"its content is {found} -> Main", evidence.past_cut(hits, 1, 6))
 
+    step("S5 same words as a neighbour")
     # S5: the same words in the same order on a neighbour.
     for other_id in neighbours:
         mine_text, other_text = pair(other_id)
@@ -885,6 +914,7 @@ def short_verdict(
     # S6 (2026-11-20, user): what it adds. Each line of the page is removed only when the whole
     # line matches a line of the previous or next page exactly (each pair on one OCR engine); the
     # words of the lines left are counted.
+    step("S6 words of its own")
     left: Optional[set[str]] = None
     titles_only: list[bool] = []
     removed_headings = False
@@ -1745,21 +1775,29 @@ def _write_similarity_matrix(chart_name: str, pass_no: int, pages: list[dict[str
 
 
 VOTES_FILE = "blank_junk.json"
-VOTES_VERSION = 1
+VOTES_VERSION = 3
 
 
 def votes_path(chart_name: str) -> Path:
     return staging_dir(chart_name) / VOTES_FILE
 
 
-# Every pass's full ballots (DistilBERT, rules, the best duplicate match), for debugging.
+# The old second file (every ballot); since 2026-11-28 everything is in blank_junk.json.
 DETAIL_FILE = "blank_junk_detail.json"
 
+SKIP_REASONS = {
+    "handwritten": "skipped: handwritten / mixed / form / visual page -- judged in pass 2 on the final OCR",
+    "low_quality": "skipped: low-quality page -- judged in pass 2 on the final OCR",
+    "blank_junk_pass1": "skipped: settled in pass 1",
+    "final_keep_pass1": "skipped: a final keep in pass 1",
+    "no_final_ocr_text": "skipped: no final OCR text yet",
+}
 
-def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
+
+def _duplicate_view(row: dict[str, Any]) -> dict[str, Any]:
     """The page's duplicate record (Duplicate_Logic.md section 8) and its closest page."""
-    match = entry.get("best_match") or {}
-    record = entry.get("duplicate_check") or match.get("record") or {}
+    match = row.get("best_match") or {}
+    record = (row.get("votes") or {}).get("duplicate_check") or match.get("record") or {}
     out: dict[str, Any] = {
         "label": record.get("label") or "",
         "duplicate": bool(record.get("duplicate")),
@@ -1769,59 +1807,61 @@ def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
         "blocked_by": record.get("blocked_by") or "",
         "review": record.get("review") or "",
     }
-    if match.get("similarity") is not None:
+    if match:
         out["closest_page"] = match.get("page_name")
-        out["similarity"] = match.get("similarity")
+        for key in ("similarity", "overlap", "contained_share", "contained"):
+            if match.get(key) is not None:
+                out[key] = match.get(key)
     return out
 
 
-def _pass_view(entry: dict[str, Any]) -> dict[str, Any]:
-    """One pass of one page, in the fields a reviewer reads (2026-10-23, user)."""
-    if "verdict" not in entry:
-        # Only compared against this pass's pages (judged in an earlier pass).
-        return {"judged": False, "duplicate": _duplicate_view(entry)}
-    bert = entry.get("bert") or {}
-    short = entry.get("short_page")
-    return {
-        "p_junk": bert.get("p_junk"),
-        "p_keep": bert.get("p_keep"),
-        "empty": entry.get("empty"),
-        "text_ends_at": short.get("content_bottom") if isinstance(short, dict) else None,
-        "card_keywords": entry.get("card_keywords") or [],
-        "result": entry.get("verdict"),
-        "rule": entry.get("rule"),
-        "why": entry.get("reason"),
-        "duplicate": _duplicate_view(entry),
+def _checks_view(trace: list[dict[str, Any]], order: tuple[str, ...]) -> list[dict[str, str]]:
+    """Every check of the pass in order: its result where it ran, "not reached" after the one that
+    fired, "not run" for one its branch skipped (2026-11-28, user)."""
+    ran = {c["check"]: c["result"] for c in trace or ()}
+    fired_at = next((i for i, name in enumerate(order) if str(ran.get(name, "")).startswith(("fired", "to the"))), None)
+    out = []
+    for i, name in enumerate(order):
+        if name in ran:
+            result = "no" if ran[name] == "checking" else ran[name]
+        elif fired_at is not None and i > fired_at:
+            result = "not reached"
+        else:
+            result = "not run (not for this page / pass)"
+        out.append({"check": name, "result": result})
+    return out
+
+
+def _pass_entry(row: dict[str, Any], pass_no: int) -> dict[str, Any]:
+    """One judged pass of one page: its checks, the short page's checks, the model, the verdict."""
+    votes = row.get("votes") or {}
+    entry: dict[str, Any] = {
+        "verdict": row["label"],
+        "rule": votes.get("rule") or ("duplicate" if row["flag"] == "duplicate" else None),
+        "why": row["reason"],
+        "confidence": round(float(row["confidence"]), 4),
+        "decision_confidence": round(float(row.get("strength", row["confidence"])), 4),
+        "checks": _checks_view(votes.get("checks") or [], method.PASS1_CHECKS if pass_no == 1 else method.PASS2_CHECKS),
     }
-
-
-def _simple(detail_pages: dict[str, Any], passes_run: list[int]) -> dict[str, Any]:
-    """blank_junk.json's pages from the detail: pass_1, pass_2 and the final decision."""
-    out: dict[str, Any] = {}
-    for page_name, passes in detail_pages.items():
-        page: dict[str, Any] = {}
-        for pass_no in (1, 2):
-            entry = passes.get(f"pass_{pass_no}")
-            if entry is not None:
-                page[f"pass_{pass_no}"] = _pass_view(entry)
-            elif pass_no == 2 and 2 in passes_run and "pass_1" in passes:
-                page["pass_2"] = "not judged: settled in pass 1"
-        judged = [
-            (pass_no, passes[f"pass_{pass_no}"]) for pass_no in (2, 1)
-            if "verdict" in (passes.get(f"pass_{pass_no}") or {})
-        ]
-        if judged:
-            pass_no, entry = judged[0]
-            page["final"] = {
-                "decision": entry.get("verdict"),
-                "rule": entry.get("rule"),
-                "why": entry.get("reason"),
-                "pass": pass_no,
-                # The weight continuity gives a junk run (the pre-2026-11-14 confidence).
-                "decision_confidence": entry.get("decision_confidence"),
-            }
-        out[page_name] = page
-    return out
+    if pass_no == 2:
+        entry["model"] = votes.get("bert")
+        service = votes.get("service")
+        if isinstance(service, dict):
+            entry["model_service"] = {k: service.get(k) for k in (
+                "flag", "subclass", "confidence", "decision_reason", "review_required")}
+        if votes.get("short_page_checks"):
+            entry["short_page"] = {"result": votes.get("short_page"),
+                                   "checks": _checks_view(votes["short_page_checks"], method.SHORT_CHECKS)}
+        else:
+            entry["short_page"] = "not a short page (text in the middle of the page, or a visual / handwritten page)"
+    extra = {k: votes[k] for k in (
+        "card", "card_near_miss", "index_page", "fax_cover", "signature_log", "edge_lines", "keep_veto",
+        "flipped_model", "not_blank_provider", "not_blank_date", "stage1_blank_overruled", "llm",
+        "r4_not_alone", "r4_overruled", "protocol_keep_overruled", "fax_unsigned", "invoice_kept",
+        "invoice_not_kept", "signature_repeated", "short_page_confidence_cap") if votes.get(k)}
+    if extra:
+        entry["notes"] = extra
+    return entry
 
 
 def _write_votes(
@@ -1829,28 +1869,26 @@ def _write_votes(
     pass_no: int,
     rows: list[dict[str, Any]],
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
+    skipped: Optional[dict[str, str]] = None,
 ) -> Optional[Path]:
-    """Stage this pass beside the chart, in two files.
+    """``staging/blank_junk.json`` (2026-11-28, user: one file for debugging). Per page:
 
-    ``blank_junk.json`` (2026-10-23, user: simple): per page, ``pass_1`` / ``pass_2`` --
-    p_junk, p_keep, empty, text_ends_at (where the text stops, pass 2), card_keywords,
-    result, rule, why, and duplicate (label, duplicate, copy_of, rule, score, blocked_by, review; the closest page and its
-    similarity when at least 70% alike) -- and ``final`` (decision, rule, why, pass). A
-    page pass 1 settled reads "not judged: settled in pass 1" for pass 2.
+    * ``stats`` -- ink (no ink, ink in the body, pass 1's edge lines), text (characters, words,
+      lines, text area %, where the text ends, first and last line, headings), handwritten %,
+      page type, visual, signed, provider;
+    * ``pass_1`` / ``pass_2`` -- every check in order (no / fired / not reached / not run), the
+      short page's checks, the model's probabilities, the verdict, rule, why and confidence;
+      or "skipped: <why>";
+    * ``duplicate`` -- the duplicate record and the closest page (similarity, overlap);
+    * ``final`` -- decision, rule, why, pass, decision_confidence.
 
-    ``blank_junk_detail.json``: every ballot of every pass as decided, with each page's
-    ``best_match`` (the neighbor, similarity, overlap, contained_share, contained and the
-    word counts). A page only compared against this pass gets ``best_match`` alone.
-
-    This pass's entries are replaced and the other pass's kept, so after a full run both
-    files hold both passes.
+    This pass's entries are replaced and the other pass's kept; blank_junk_detail.json is removed.
     """
     from datetime import datetime, timezone
 
     path = votes_path(chart_name)
-    detail_path = path.with_name(DETAIL_FILE)
     try:
-        existing = json.loads(detail_path.read_text(encoding="utf-8")) if detail_path.is_file() else {}
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except (OSError, ValueError):
         existing = {}
     if existing.get("version") != VOTES_VERSION:
@@ -1861,37 +1899,46 @@ def _write_votes(
     for page in pages.values():
         page.pop(key, None)
     for row in rows:
-        pages.setdefault(row["page_name"], {})[key] = {
-            **(row.get("votes") or {}),
-            "rule": (row.get("votes") or {}).get("rule") or ("duplicate" if row["flag"] == "duplicate" else None),
-            "verdict": row["label"],
-            "confidence": round(float(row["confidence"]), 4),
-            "decision_confidence": round(float(row.get("strength", row["confidence"])), 4),
-            "reason": row["reason"],
-            "best_match": row.get("best_match"),
-        }
+        page = pages.setdefault(row["page_name"], {})
+        page["page_number"] = row.get("page_number")
+        page[key] = _pass_entry(row, pass_no)
+        stats = (row.get("votes") or {}).get("stats")
+        if stats and (pass_no == 2 or "stats" not in page):
+            page["stats"] = stats
+        if row.get("best_match") or (row.get("votes") or {}).get("duplicate_check"):
+            page["duplicate"] = _duplicate_view(row)
     for page_name, match in (best_matches or {}).items():
-        pages.setdefault(page_name, {}).setdefault(key, {})["best_match"] = match
-    updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    detail = {
+        page = pages.setdefault(page_name, {})
+        if "duplicate" not in page or pass_no == 2:
+            page["duplicate"] = _duplicate_view({"best_match": match})
+    for page_name, why in (skipped or {}).items():
+        pages.setdefault(page_name, {})[key] = SKIP_REASONS.get(why, f"skipped: {why}")
+    for page in pages.values():
+        judged = [(n, page[f"pass_{n}"]) for n in (2, 1) if isinstance(page.get(f"pass_{n}"), dict)]
+        if judged:
+            n, entry = judged[0]
+            page["final"] = {"decision": entry["verdict"], "rule": entry["rule"], "why": entry["why"], "pass": n,
+                             "confidence": entry["confidence"],
+                             # The weight continuity gives a junk run (the pre-2026-11-14 confidence).
+                             "decision_confidence": entry["decision_confidence"]}
+    order = ("page_number", "stats", "pass_1", "pass_2", "duplicate", "final")
+    pages = {name: {k: page[k] for k in order if k in page} for name, page in sorted(
+        pages.items(), key=lambda item: (item[1].get("page_number") is None, item[1].get("page_number") or 0, item[0]))}
+    body = {
         "version": VOTES_VERSION,
         "chart_name": chart_name,
-        "updated_at": updated_at,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "passes_run": passes_run,
+        "check_order": {"pass_1": list(method.PASS1_CHECKS), "pass_2": list(method.PASS2_CHECKS),
+                        "short_page": list(method.SHORT_CHECKS)},
         "pages": pages,
-    }
-    simple = {
-        "version": 2,
-        "chart_name": chart_name,
-        "updated_at": updated_at,
-        "pages": _simple(pages, passes_run),
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        for target, body in ((detail_path, detail), (path, simple)):
-            tmp = target.with_suffix(".tmp")
-            tmp.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
-            tmp.replace(target)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
+        tmp.replace(path)
+        path.with_name(DETAIL_FILE).unlink(missing_ok=True)
     except OSError as exc:
         logger.warning("could not write %s: %s", path, exc)
         return None
@@ -1905,6 +1952,15 @@ def _run_pass(
     force: bool = False,
 ) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, pass_no=pass_no, force=force) as ctx:
+        skipped_why: dict[str, str] = {}
+        names_by_id = {page["id"]: page["page_name"] for page in ctx.pages}
+
+        def mark_skipped(conn: Any, ctx: Any, page_ids: Any, reason: str) -> None:
+            """_support.mark_skipped, remembering why for blank_junk.json (2026-11-28, user)."""
+            for pid in page_ids:
+                skipped_why[names_by_id.get(pid, str(pid))] = reason
+            _mark_skipped(conn, ctx, page_ids, reason)
+
         with connect() as conn:
             todo_before = set(ctx.todo)
             non_printed = non_printed_page_ids(conn, chart_id)
@@ -2065,7 +2121,7 @@ def _run_pass(
                     mark_completed(conn, ctx, row["page_id"])
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
-        votes_file = _write_votes(ctx.chart_name, pass_no, classified, best_matches)
+        votes_file = _write_votes(ctx.chart_name, pass_no, classified, best_matches, skipped_why)
         try:
             _write_similarity_matrix(ctx.chart_name, pass_no, ctx.pages, texts)
         except Exception as exc:  # noqa: BLE001 - a debugging file must not fail the stage

@@ -760,6 +760,63 @@ def signature_log_kept(inputs: "PageInputs") -> Optional[str]:
     return f"'{header[:60]}' header, {inputs.hw_area_pct:g}% handwritten >= {SIGNATURE_LOG_MIN_HW_PCT:g}%"
 
 
+def _line_snip(line: str, size: int = 80) -> str:
+    line = " ".join((line or "").split())
+    return line if len(line) <= size else line[: size - 1] + "…"
+
+
+def page_stats(inputs: PageInputs, text: str, words: int, chars: int, visual: bool) -> dict[str, Any]:
+    """The page's numbers for blank_junk.json (2026-11-28, user): ink, text, its first and last
+    lines, handwriting, page type, signature / provider."""
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    return {
+        "document_type": inputs.document_type or None,
+        "visual": visual,
+        "handwritten_area_pct": inputs.hw_area_pct,
+        "ink": {
+            "no_ink": inputs.no_ink,
+            "body_ink": inputs.body_ink,
+            "body_ink_fraction": inputs.body_ink_fraction,
+            "edge_lines": inputs.edge_lines,
+        },
+        "text": {
+            "characters": chars,
+            "words": words,
+            "lines": len(lines),
+            "text_area_pct": None if inputs.text_area is None else round(100 * float(inputs.text_area), 1),
+            "content_ends_at_pct": None if inputs.content_bottom is None else round(100 * float(inputs.content_bottom), 1),
+            "first_line": _line_snip(lines[0]) if lines else "",
+            "last_line": _line_snip(lines[-1]) if lines else "",
+            "headings": list(inputs.headings or ())[:10],
+        },
+        "signed": inputs.signed,
+        "neighbour_signed": inputs.neighbour_signed,
+        "provider": inputs.provider,
+        "member_name_found": inputs.member_name_found,
+        "ocr_match_rate": inputs.ocr_match_rate,
+    }
+
+
+# 2026-11-28 (user): the checks of each pass in order (decide()'s steps), for blank_junk.json.
+PASS1_CHECKS = (
+    "R1 no ink", "R1 stage-1 blank", "R1 no text", "SIGLOG signature log", "EB one line top / bottom",
+    "R1 the word 'blank'", "R2 placeholder", "R1 cover mark", "R1E end of report", "R1 tiny page",
+    "P1 no pass-1 rule",
+)
+PASS2_CHECKS = (
+    "R1 no ink", "R1 stage-1 blank", "R1 no text", "SIGLOG signature log",
+    "R1 the word 'blank'", "R2 placeholder", "R1 cover mark", "R1E end of report", "R1 tiny page",
+    "RF financials heading", "RC retrieval cover", "RB model p(blank)", "INDEX contents page", "FAX cover sheet",
+    "SHORT short page", "R3 card (visual / strong)", "R3V visual", "HW handwriting", "R4 signature",
+    "LAB lab result", "MEDS medication list", "CLINICAL clinical content", "R3 card", "FAX header, unsigned",
+    "R5 classifier",
+)
+SHORT_CHECKS = ("SC cover sheet", "SE end of report", "SN next-page pointer", "SB header / footer only (Blank)",
+                "SH running header / footer only", "SR every line on a neighbour", "S1 carries the previous section", "S1S carries a signature",
+                "S2 note header + words", "SF fax routing", "S3 signature / provider", "S4 measurements / doses",
+                "S5 same words as a neighbour", "S6 words of its own")
+
+
 def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict (2026-11-04, user: the simplified ladder; first rule that fires wins).
 
@@ -802,6 +859,16 @@ def decide(inputs: PageInputs) -> Verdict:
     }
     if inputs.document_type == "visual" and not visual:
         votes["visual"] = f"document_type visual, but {words} words >= {visual_max_words()}: not Visual"
+    # 2026-11-28 (user): every check in order -- "no", "fired: ..." -- and the page's numbers, for
+    # blank_junk.json (stage._write_votes); a check after the one that fired is not reached.
+    checks: list[dict[str, Any]] = []
+    votes["checks"] = checks
+
+    def step(name: str) -> None:
+        if checks and checks[-1]["result"] == "checking":
+            checks[-1]["result"] = "no"
+        checks.append({"check": name, "result": "checking"})
+
 
     def ruled(code: int, rule: str, reason: str, strength: Optional[float] = None,
               confidence: Optional[float] = None, margin: Optional[float] = None,
@@ -814,6 +881,8 @@ def decide(inputs: PageInputs) -> Verdict:
         # Junk / Cover Page only while DistilBERT's p(keep) is under KEEP_VETO_AT (99%): a page
         # the model is that sure of stays Main. Other junk rules, the no-text rules (R1, R2), the
         # short page's own rules and the classifier (R5) are not overruled.
+        if checks and checks[-1]["result"] == "checking":
+            checks[-1]["result"] = f"fired: {reason}"
         if (code in KEEP_VETO_CODES and rule not in NO_TEXT_RULES + ("R5",) and not inputs.short_verdict
                 and p_keep is not None and p_keep >= keep_veto_at()):
             votes["keep_veto"] = f"{rule} -> {code}: p(keep) {p_keep:.2%} >= {keep_veto_at():.0%}"
@@ -850,6 +919,7 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # ---- measured blanks: every pass (nothing to read, nothing missed).
     chars = len(re.sub(r"\s", "", text))
+    votes["stats"] = page_stats(inputs, text, words, chars, visual)
     votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
     votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
     # 2026-11-20 (user): a page with a provider -- kv_extract accepted a provider name or
@@ -864,21 +934,25 @@ def decide(inputs: PageInputs) -> Verdict:
     if dated and not provider:
         provider = f"date '{dated.group(0)}'"
         votes["not_blank_date"] = dated.group(0)
+    step("R1 no ink")
     if inputs.no_ink and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink", confidence=conf.measured())
     # Stage 1's Blank only when the OCR agrees: a page with text on it is not blank (2026-11-15).
+    step("R1 stage-1 blank")
     if inputs.document_type == "blank" and chars < MIN_TEXT_CHARS and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: stage 1 page type blank", confidence=conf.measured())
     # 2026-11-20 (user): stage 1's Blank never blanks a page with text on it (the "header-only"
     # Blank of 2026-11-17 and the stage-1-Blank fallback are gone): the rules below decide.
     if inputs.document_type == "blank":
         votes["stage1_blank_overruled"] = f"{chars} characters of text"
+    step("R1 no text")
     if not visual and chars == 0 and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
 
     # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
     # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
     # and the model. In pass 1 too, so pass 1 never settles it as junk (pass 2 judges it again).
+    step("SIGLOG signature log")
     log = signature_log_kept(inputs)
     if log:
         votes["signature_log"] = log
@@ -889,6 +963,7 @@ def decide(inputs: PageInputs) -> Verdict:
     # bottom (a running header, a page number) and nothing between -> Blank, final (pass 2 does not
     # judge a page pass 1 settled). Two lines at an edge ("DME Orders / None recorded.") is not.
     if not pass2:
+        step("EB one line top / bottom")
         edge = edge_line_blank(inputs, text)
         if edge:
             votes["edge_lines"] = inputs.edge_lines
@@ -897,26 +972,32 @@ def decide(inputs: PageInputs) -> Verdict:
     # ---- pass 1's text rules (2026-11-19, user: pass 2 does not redo pass 1): in pass 1, and in
     # pass 2 only on a page pass 1 never judged (handwritten, mixed, form, visual, printed Low).
     if not pass2 or inputs.pass1_skipped:
+        step("R1 the word 'blank'")
         if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
             return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters",
                          confidence=conf.pass1_rule())
+        step("R2 placeholder")
         if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
             return ruled(CODE_BLANK, "R2", "R2 placeholder ('intentionally left blank') -> Blank",
                          confidence=conf.pass1_rule())
+        step("R1 cover mark")
         mark = _cover_mark(text)
         if mark is not None:
             return ruled(_junk_code("Cover Page"), "R1",
                          f"R1 cover mark '{mark}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page",
                          confidence=conf.pass1_rule())
+        step("R1E end of report")
         end = END_OF_REPORT.search(text) if _word_count(text) < COVER_MAX_WORDS else None
         if end is not None:
             return ruled(_junk_code("Cover Page"), "R1E",
                          f"R1E '{end.group(0)}' on a page of < {COVER_MAX_WORDS} words -> Junk / Cover Page", 1.0,
                          confidence=conf.pass1_rule())
         # 2026-11-20 (user): not a page with a date or a provider on it -- pass 2 judges it.
+        step("R1 tiny page")
         if not visual and chars < MIN_TEXT_CHARS and not provider:
             return ruled(_junk_code("Others"), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / Others",
                          confidence=conf.pass1_rule())
+    step("P1 no pass-1 rule")
     if not pass2:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
@@ -925,17 +1006,20 @@ def decide(inputs: PageInputs) -> Verdict:
     # ---- pass 2 (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
     # Junk / Others, whatever else is on it.
     if pass2:
+        step("RF financials heading")
         heading = financial_heading(text, inputs.headings)
         if heading:
             return ruled(_junk_code("Others"), "RF", f"RF '{heading}' heading -> Junk / Others", 1.0)
         # RC (2026-11-24, user): a chart-retrieval cover sheet ("Retrieved by <vendor>", Patient name,
         # Date of birth, Measure / Dates of service, Provider) is Junk / Cover Page.
+        step("RC retrieval cover")
         cover = retrieval_cover(text)
         if cover:
             return ruled(_junk_code("Cover Page"), "RC", f"RC retrieval cover sheet ({cover}) -> Junk / Cover Page", 1.0,
                          confidence=conf.pass1_rule())
         # RB (2026-11-23, user; 98% since 2026-11-24): the model over 98% sure the page is blank -- Junk / Others, never
         # overturned by a keep or a short-page rule.
+        step("RB model p(blank)")
         blank_at = float((canon().raw.get("low_content") or {}).get("model_blank_above", 0.98))
         if p_blank is not None and p_blank > blank_at:
             return ruled(_junk_code("Others"), "RB", f"RB model p(blank) {p_blank:.1%} > {blank_at:.0%} -> Junk / Others",
@@ -944,6 +1028,7 @@ def decide(inputs: PageInputs) -> Verdict:
     # ---- pass 2 (2026-11-19, user): contents and fax cover sheets, then the short page, then
     # the other pages: keeps, card, fax letter, stage 1's Blank, the classifier.
     # 1. a contents / index page (before the keeps: its entries read like a medication list).
+    step("INDEX contents page")
     index = index_page(text, inputs.headings, inputs.lines)
     if index is not None:
         votes["index_page"] = index
@@ -951,15 +1036,18 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(_junk_code("Others"), "INDEX", f"INDEX: contents page ({index}) -> Junk / Others",
                      margin=measure.get("margin"))
     # 2. a fax cover sheet (2026-11-15): Fax + 2 routing boxes, even when signed.
+    step("FAX cover sheet")
     cover = fax_cover_sheet(text)
     if cover is not None:
         votes["fax_cover"] = cover
         return ruled(CODE_LETTER_FAX, "FAX", f"FAX: cover sheet ({cover}) -> Junk / Letter/Fax")
 
     # 3. the short page (stage._classify measured it against the previous / next page).
+    step("SHORT short page")
     short = inputs.short_verdict
     if short:
         votes["short_page"] = short["why"]
+        votes["short_page_checks"] = short.get("checks") or []
         if short["code"] is not None:
             # 2026-11-21 (user): a short page the short rules decided: its evidence (the rule's
             # margin, the page's uniqueness against its neighbours), the OCR match rate and the
@@ -996,18 +1084,22 @@ def decide(inputs: PageInputs) -> Verdict:
         # 4. a visual page (2026-11-21, user): the card first (whatever its word count), then the
         # under-20-words keep -- a licence or insurance card photo is decided as a card before any
         # keep (its signature, its words) reads it.
+        step("R3 card (visual / strong)")
         if found_card is not None and (inputs.document_type == "visual" or getattr(found_card, "strong", False)):
             # 2026-11-21 (user): strong card evidence (a licence, 3+ insurance groups, a card back, a
             # barcode) is decided before the keeps on any page -- a card scanned into an EHR print
             # with an "Electronically Signed and Reviewed by" margin stamp is still a card.
             return card_verdict()
+        step("R3V visual")
         if visual:
             return ruled(CODE_MAIN, "R3V", f"R3V visual: under {visual_max_words()} words, not a card -> Main", 0.90)
         # keeps: handwriting, a signature, a lab result, medications, clinical content.
+        step("HW handwriting")
         hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
         # 2026-11-21 (user): not on a visual page -- a card's photo and signature read as handwriting.
         if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit and inputs.document_type != "visual":
             return ruled(CODE_MAIN, "HW", f"HW: {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main", 0.90)
+        step("R4 signature")
         if signature_keeps(inputs.signed, p_junk, inputs.neighbour_signed):
             return ruled(CODE_MAIN, "R4", "R4 signed (Electronic Signature, not repeated nearby, raw p(junk) "
                                           f"{'n/a' if p_junk is None else f'{p_junk:.3f}'}) -> Main")
@@ -1015,17 +1107,21 @@ def decide(inputs: PageInputs) -> Verdict:
             votes["r4_not_alone"] = "Electronic Signature, but the previous or next page has the same signature in the same spot"
         elif inputs.signed:
             votes["r4_overruled"] = f"Electronic Signature, but raw p(junk) {p_junk:.3f} >= {t['signature_overruled_above']}"
+        step("LAB lab result")
         lab = lab_result_words(inputs)
         if lab:
             return ruled(CODE_MAIN, "LAB", f"LAB: lab result ({' / '.join(lab)}) -> Main")
+        step("MEDS medication list")
         meds = medication_doses(text)
         if meds:
             return ruled(CODE_MAIN, MEDS_RULE, f"{MEDS_RULE}: medication list ({meds}) -> Main")
+        step("CLINICAL clinical content")
         clinical = clinical_content_signs(inputs)
         if clinical:
             return ruled(CODE_MAIN, CLINICAL_CONTENT_RULE, f"{CLINICAL_CONTENT_RULE}: {clinical} -> Main")
 
         # 5. card (printed / visual / uncertain): an ID, licence or insurance card.
+        step("R3 card")
         if found_card is not None:
             return card_verdict()
 
@@ -1033,6 +1129,7 @@ def decide(inputs: PageInputs) -> Verdict:
         # Junk / Letter/Fax. A page that is not short with a Progress Note page on each side
         # ("To: ... Fax" inside a note) is left to the model. (The fax letter rule -- Fax, a
         # letter's closing, no signature -- was removed the same day.)
+        step("FAX header, unsigned")
         word = fax_unsigned(inputs)
         if word is not None:
             if not inputs.short_verdict and inputs.flanked_by_notes:
@@ -1042,6 +1139,7 @@ def decide(inputs: PageInputs) -> Verdict:
                 return ruled(CODE_LETTER_FAX, "FAX", f"FAX: '{word}' in the section headers and no signature -> Junk / Letter/Fax")
 
     # 8. the classifier (the teammate's service), then the invoice post-processing.
+    step("R5 classifier")
     votes["reached_classifier"] = True
     if service is None:
         votes["review_required"] = True

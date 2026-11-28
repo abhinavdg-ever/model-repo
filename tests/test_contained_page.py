@@ -731,3 +731,26 @@ def test_rc_a_retrieval_cover_sheet_is_junk_cover_page():
     note = "Patient name: Madeup, Person\nDate of birth: 01/02/1950\nProvider: Made Up MD\nAssessment\nStable"
     assert method.retrieval_cover(note) is None
     assert method.retrieval_cover(text + "\n" + " word" * 80) is None
+
+
+def test_sr_a_page_of_only_the_repeated_header_and_footer_is_junk(monkeypatch):
+    """2026-11-28 (user): p3 is the 5-line running header and the 4-line footer of p2 / p4 (a
+    provider named in it): every line on a neighbour -> Junk / Others (SR), not kept by S3."""
+    _keep(monkeypatch)
+    head = ["CARLA J. BAUMAN, M.D.", "Visit Note - October 23, 2025", "Madeup, Eli",
+            "PMS ID Sex DOB Phone MRN", "5343M158357 Female 03/25/1968 (425) 555-0100 5343M158357"]
+    foot = ["Made Up MD (Primary Provider) (Bill Under)", "(425) 555-0101 Work", "Made Up MD 626 120th Ave NE",
+            "Bellevue, WA 98005"]
+    body = [f"Plan line {k} counseling ketoconazole cream follow up in one month" for k in range(15)]
+    p2 = head + body + foot + ["Page 2"]
+    p3 = head + foot + ["Page 3"]
+    p4 = head + body + foot + ["Page 4"]
+    tops = {
+        1: _spread(p2, 0.02, 0.97),
+        2: {**{h: 0.02 + 0.02 * i for i, h in enumerate(head)}, **{f: 0.92 + 0.012 * i for i, f in enumerate(foot)},
+            "Page 3": 0.97},
+        3: _spread(p4, 0.02, 0.97),
+    }
+    rows = _placed({1: "\n".join(p2), 2: "\n".join(p3), 3: "\n".join(p4)}, tops)
+    assert rows[2]["flag"] == "junk" and "SR" in rows[2]["reason"], rows[2]["reason"]
+    assert rows[1]["flag"] != "junk" and rows[3]["flag"] != "junk"
