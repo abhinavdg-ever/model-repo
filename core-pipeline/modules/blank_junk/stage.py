@@ -473,9 +473,16 @@ def _classify(
     page_by_id = {p["id"]: p for p in pages}
     if find_duplicates or exact_near:
         cfg = dup_rules.settings(method.canon().raw.get("duplicate_logic"))
+
+        def dup_text(page_id: int) -> str:
+            """2026-11-28 (user): every page on one OCR engine -- Docling (it reads every page) in
+            pass 2, else the page's text (pass 1: Tesseract for all)."""
+            by = (engine_texts or {}).get(page_id) or {}
+            return by.get("docling") or texts.get(page_id) or ""
+
         candidates = [
             dup_rules.Page(
-                page_id=page["id"], position=i, text=texts.get(page["id"]) or "",
+                page_id=page["id"], position=i, text=dup_text(page["id"]),
                 signed=page["id"] in signed,
                 signature=_signature_key((signatures or {}).get(page["id"])),
                 needs_image=page["id"] in (needs_image or set()),
@@ -485,7 +492,7 @@ def _classify(
             if _main(page["id"]) and not _blank(page["id"])
         ]
         outcomes = dup_rules.find(
-            candidates, all_texts=[texts.get(page["id"]) or "" for page in pages], cfg=cfg,
+            candidates, all_texts=[dup_text(page["id"]) for page in pages], cfg=cfg,
             near_only=exact_near,
         )
         for page_id, out in outcomes.items():
@@ -622,6 +629,10 @@ def _in_order_share(mine: list[str], theirs: list[str]) -> float:
     return sum(block.size for block in matcher.get_matching_blocks()) / len(mine)
 
 
+# 2026-11-28 (user): a page is compared with its neighbour on one OCR engine, in this order.
+SAME_ENGINE_ORDER = ("docling", "azuredocintel", "tesseract")
+
+
 def short_verdict(
     pid: int,
     *,
@@ -685,7 +696,7 @@ def short_verdict(
         """This page's and the neighbour's text from the same OCR engine: Docling vs Docling
         (2026-11-23, user: Docling first), else Doc Intel vs Doc Intel, else the best text of each."""
         mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
-        for engine in ("docling", "azuredocintel"):
+        for engine in SAME_ENGINE_ORDER:
             if (mine_by.get(engine) or "").strip() and (theirs_by.get(engine) or "").strip():
                 return mine_by[engine], theirs_by[engine]
         return text, texts.get(other_id) or ""
@@ -693,7 +704,7 @@ def short_verdict(
     def same_engine(other_id: int) -> bool:
         mine_by, theirs_by = (engine_texts or {}).get(pid) or {}, (engine_texts or {}).get(other_id) or {}
         return any((mine_by.get(e) or "").strip() and (theirs_by.get(e) or "").strip()
-                   for e in ("azuredocintel", "docling"))
+                   for e in SAME_ENGINE_ORDER)
 
     checks: list[dict[str, Any]] = []
 
@@ -741,7 +752,11 @@ def short_verdict(
     # neighbour's Docling text, else Doc Intel against Doc Intel (``pair``); only when the two have
     # no engine in common, the page's best text against every text of the neighbour.
     mine_by = (engine_texts or {}).get(pid) or {}
-    base_engine = next((e for e in ("docling", "azuredocintel") if (mine_by.get(e) or "").strip()), None)
+    # 2026-11-28 (user): one engine for the page and both neighbours -- the first in
+    # SAME_ENGINE_ORDER they all have (Tesseract always), else the page's first.
+    have = [e for e in SAME_ENGINE_ORDER if (mine_by.get(e) or "").strip()]
+    shared = [e for e in have if all(((engine_texts or {}).get(n) or {}).get(e, "").strip() for n in neighbours)]
+    base_engine = (shared or have or [None])[0]
     base_text = mine_by[base_engine] if base_engine else text
     page_lines = [line for line in base_text.splitlines() if _line_key(line)]
     theirs_flags = [False] * len(page_lines)
@@ -2028,6 +2043,9 @@ def _run_pass(
                         engine: text for engine, text in (
                             ("azuredocintel", unwrap_ocr_content(final2.get(pid))),
                             ("docling", unwrap_ocr_content(final1.get(pid))),
+                            # 2026-11-28 (user): every page has Tesseract -- the same-engine
+                            # fallback when two pages share no final OCR engine.
+                            ("tesseract", unwrap_ocr_content(prelim_texts.get(pid))),
                         ) if text.strip()
                     }
                     if unwrap_ocr_content(final2.get(pid)).strip():
