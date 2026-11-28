@@ -432,16 +432,17 @@ def _spread(lines, start, end):
     return {line: start + (end - start) * k / max(1, len(lines) - 1) for k, line in enumerate(lines)}
 
 
-def test_a_running_header_page_after_a_note_header_is_junk(monkeypatch):
+def test_a_running_header_page_after_a_note_header_is_blank(monkeypatch):
     """Gonzalez p12 / p13: the previous page ends in "Physical Exam" (bottom third), p13 is only
-    the running header and the page number -> nothing of its own: S1 does not keep it -> Junk."""
+    the running header and the page number -> nothing of its own: S1 does not keep it.
+    2026-11-28 (user): a header and a page number only -> Blank (SB), was Junk."""
     _keep(monkeypatch)
     body = [f"Constitutional line {k} general appearance obese no acute distress" for k in range(12)]
     p1 = [GONZALEZ] + body + ["Physical Exam", "Eyes: PERRLA, extraocular movements intact", "2"]
     p2 = [GONZALEZ, "3"]
     tops = {1: {**_spread(p1, 0.02, 0.97)}, 2: {GONZALEZ: 0.02, "3": 0.97}}
     rows = _placed({1: "\n".join(p1), 2: "\n".join(p2)}, tops)
-    assert rows[2]["flag"] == "junk" and "S1" not in rows[2]["reason"], rows[2]["reason"]
+    assert rows[2]["flag"] == "blank" and "SB" in rows[2]["reason"], rows[2]["reason"]
 
 
 def test_a_none_recorded_section_page_is_junk(monkeypatch):
@@ -558,9 +559,9 @@ FAX_HEAD = "From: Made Up Clinic 18885550100 6/1/2026 10:26:57 PDT Page 17 of 17
 PT_FOOT = "Patient: Madeup, Eli DOB: 09/07/1992 Visit: 06/02/2025 Page: 3"
 
 
-def test_sh_a_page_of_only_a_fax_header_and_a_patient_footer_is_junk(monkeypatch):
+def test_sb_a_page_of_only_a_fax_header_and_a_patient_footer_is_blank(monkeypatch):
     """2026-11-23 (user): the fax header and the patient footer carry dates, which kept the page
-    (S1S / S6): every line at the page edges, each a running line -> Junk / Others."""
+    (S1S / S6). 2026-11-28 (user): one line at the top, one at the bottom -> Blank (SB)."""
     _keep(monkeypatch)
     note = "Progress note\n" + BODY + "\nElectronically signed by Made Up MD 6/2/2025"
     texts = {1: "From: Made Up Clinic 18885550100 6/1/2026 10:26:50 PDT Page 16 of 17\n" + note
@@ -569,7 +570,35 @@ def test_sh_a_page_of_only_a_fax_header_and_a_patient_footer_is_junk(monkeypatch
     lines = {1: [("x", 0.01, 0.02), ("y", 0.3, 0.5), ("z", 0.95, 0.96)],
              2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
     rows = _run_lines(texts, lines)
-    assert rows[2]["flag"] == "junk" and "SH" in rows[2]["reason"]
+    assert rows[2]["flag"] == "blank" and "SB" in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_sh_more_than_two_lines_at_an_edge_stays_junk(monkeypatch):
+    """SB takes at most 2 lines at the top and 2 at the bottom; a third running line -> SH, Junk."""
+    _keep(monkeypatch)
+    note = "Progress note\n" + BODY
+    extra = "Printed 6/1/2026 10:27 PDT Page 17"
+    texts = {1: note, 2: FAX_HEAD + "\n" + extra + "\n" + "Fax 18885550100 6/1/2026" + "\n" + PT_FOOT}
+    lines = {1: [("y", 0.3, 0.5)],
+             2: [(FAX_HEAD, 0.01, 0.02), (extra, 0.03, 0.04), ("Fax 18885550100 6/1/2026", 0.05, 0.06),
+                 (PT_FOOT, 0.94, 0.95)]}
+    rows = _run_lines(texts, lines)
+    assert rows[2]["flag"] == "junk" and "SH" in rows[2]["reason"], rows[2]["reason"]
+
+
+def test_sb_needs_edge_lines_that_are_running_or_repeated():
+    page = method.PageInputs(text="", pass_no=2)
+    page.lines = [method.Line(FAX_HEAD, 0.01, 0.02), method.Line(PT_FOOT, 0.94, 0.95)]
+    assert stage.edge_blank(page, [FAX_HEAD, PT_FOOT], [False, False])
+    # Content of its own at the top (not running, not on a neighbour): not blank.
+    own = "Patient called back, pain improved after the new dose"
+    page.lines = [method.Line(own, 0.01, 0.02)]
+    assert stage.edge_blank(page, [own], [False]) is None
+    # The same line repeated on the next page (a running header): blank.
+    assert stage.edge_blank(page, [own], [True])
+    # A line in the middle of the page: not blank.
+    page.lines = [method.Line(FAX_HEAD, 0.01, 0.02), method.Line("Addendum", 0.5, 0.52)]
+    assert stage.edge_blank(page, [FAX_HEAD, "Addendum"], [False, False]) is None
 
 
 def test_sh_needs_every_line_at_an_edge_and_running(monkeypatch):
@@ -590,7 +619,7 @@ def test_sh_a_signed_edge_page_is_not_junked_by_it(monkeypatch):
     texts = {1: "Progress note\n" + BODY, 2: FAX_HEAD + "\n" + PT_FOOT}
     lines = {1: [("x", 0.3, 0.5)], 2: [(FAX_HEAD, 0.01, 0.02), (PT_FOOT, 0.94, 0.95)]}
     rows = _run_lines(texts, lines, signed={2})
-    assert "SH" not in (rows[2]["reason"] or "")
+    assert "SH" not in (rows[2]["reason"] or "") and "SB" not in (rows[2]["reason"] or "")
 
 
 def test_s1s_ignores_a_date_in_a_running_footer(monkeypatch):

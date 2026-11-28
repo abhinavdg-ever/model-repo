@@ -53,7 +53,8 @@ from common.db import (
 )
 from common.db.paths import imaging_csv, write_csv
 from apps.worker.stages._support import (
-    INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, blank_junk_weights, mark_completed, stage_run,
+    INVOICE_DECIDED_BY, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, SIGNATURE_LOG_DECIDED_BY, SIGNATURE_LOG_PAGE_SUBTYPE,
+    SIGNATURE_LOG_PAGE_TYPE, blank_junk_weights, mark_completed, stage_run,
 )
 from modules import confidence as conf
 from modules.continuity.engine import document_finals
@@ -478,12 +479,19 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 verdict = replace(verdict, page_type=INVOICE_PAGE_TYPE, page_subtype=INVOICE_PAGE_SUBTYPE,
                                   codability="Non-Codable", source="page", continuation_rule="invoice_page",
                                   needs_review=False)
+            signature_log = kind.get("decided_by") == SIGNATURE_LOG_DECIDED_BY
+            if signature_log:
+                # 2026-11-28 (user): a filled Signature Log stays Progress Note / Signature in any
+                # document, Non-Codable, with no specialty.
+                verdict = replace(verdict, page_type=SIGNATURE_LOG_PAGE_TYPE, page_subtype=SIGNATURE_LOG_PAGE_SUBTYPE,
+                                  codability="Non-Codable", source="page", continuation_rule="signature_log",
+                                  needs_review=False)
             # DOS and encounter type: the document's (first dated page / first page) when
             # the page belongs to one, else its own.
             document = carried.get(page_id)
             dates = document or own[page_id]
             dos_origin = "document" if document else "page"
-            with_specialty = has_specialty(verdict.page_type, verdict.page_subtype)
+            with_specialty = has_specialty(verdict.page_type, verdict.page_subtype) and not signature_log
             # 2026-11-01 (user): a Codable page is Non-Codable when every provider credential
             # in its *document* is a non-codable one (RN, LPN, MA, PharmD ...): one nurse's
             # line on a page of a physician's note does not change that page.

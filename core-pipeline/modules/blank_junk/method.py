@@ -79,6 +79,9 @@ from classify import (
     CODE_RECORD_REQUEST,
 )
 from apps.worker.stages._support import FINAL_JUNK, INVOICE_MARK, INVOICE_PAGE_SUBTYPE, INVOICE_PAGE_TYPE, is_invoice_page  # noqa: F401
+from apps.worker.stages._support import (  # noqa: F401
+    SIGNATURE_LOG_MARK, SIGNATURE_LOG_MIN_HW_PCT, SIGNATURE_LOG_PAGE_SUBTYPE, SIGNATURE_LOG_PAGE_TYPE,
+)
 from modules import confidence as conf
 from modules.canon_store import CANON_DIR, CanonFile
 
@@ -710,6 +713,31 @@ def header_only(inputs: PageInputs) -> bool:
     return inputs.content_bottom <= float(canon().raw["zones"]["header_band"])
 
 
+SIGNATURE_LOG = re.compile(r"(?<![A-Za-z])signature\s*logs?(?![A-Za-z])", re.IGNORECASE)
+SIGNATURE_LOG_TOP_LINES = 8  # the header: the page's first non-empty lines
+
+
+def signature_log_header(text: str, headings: Any = ()) -> Optional[str]:
+    """The "Signature Log" header (a section header, or one of the page's first lines), else None."""
+    for heading in headings or ():
+        if SIGNATURE_LOG.search(str(heading or "")):
+            return str(heading).strip()
+    top = [line.strip() for line in (text or "").splitlines() if line.strip()][:SIGNATURE_LOG_TOP_LINES]
+    return next((line for line in top if SIGNATURE_LOG.search(line)), None)
+
+
+def signature_log_kept(inputs: "PageInputs") -> Optional[str]:
+    """2026-11-28 (user): why the page is a filled Signature Log -- its header says Signature Log
+    and its handwriting is Medium or High (>= SIGNATURE_LOG_MIN_HW_PCT) -- else None. An empty
+    log (Low / Negligible handwriting) is left to the other rules."""
+    if inputs.hw_area_pct is None or inputs.hw_area_pct < SIGNATURE_LOG_MIN_HW_PCT:
+        return None
+    header = signature_log_header(inputs.text, inputs.headings)
+    if header is None:
+        return None
+    return f"'{header[:60]}' header, {inputs.hw_area_pct:g}% handwritten >= {SIGNATURE_LOG_MIN_HW_PCT:g}%"
+
+
 def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict (2026-11-04, user: the simplified ladder; first rule that fires wins).
 
@@ -854,7 +882,16 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
 
-    # ---- pass 2, first (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
+    # ---- pass 2, first (2026-11-28, user): a filled Signature Log (its header, Medium / High
+    # handwriting) is Main, Page Type Progress Note / Signature, before any junk rule or the model.
+    if pass2:
+        log = signature_log_kept(inputs)
+        if log:
+            votes["signature_log"] = log
+            return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
+                         f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
+
+    # ---- pass 2 (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
     # Junk / Others, whatever else is on it.
     if pass2:
         heading = financial_heading(text, inputs.headings)

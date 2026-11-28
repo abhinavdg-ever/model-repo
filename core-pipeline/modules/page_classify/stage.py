@@ -47,10 +47,14 @@ from common.db.paths import imaging_csv, write_csv
 from apps.worker.stages._support import (
     BJ_EXCLUDE,
     INVOICE_DECIDED_BY,
+    SIGNATURE_LOG_DECIDED_BY,
+    SIGNATURE_LOG_PAGE_SUBTYPE,
+    SIGNATURE_LOG_PAGE_TYPE,
     INVOICE_PAGE_SUBTYPE,
     INVOICE_PAGE_TYPE,
     best_page_text,
     is_invoice_page,
+    is_signature_log_page,
     mark_completed,
     stage_run,
 )
@@ -262,6 +266,21 @@ def _invoice_row(confidence: Any) -> dict[str, Any]:
     }
 
 
+def _signature_log_row(confidence: Any) -> dict[str, Any]:
+    """A filled Signature Log blank / junk kept (SIGLOG, 2026-11-28, user): Progress Note /
+    Signature, non_codeable."""
+    return {
+        "page_type": SIGNATURE_LOG_PAGE_TYPE,
+        "page_subtype": SIGNATURE_LOG_PAGE_SUBTYPE,
+        "model_type": f"{SIGNATURE_LOG_PAGE_TYPE} > {SIGNATURE_LOG_PAGE_SUBTYPE}",
+        "classification_category": "non_codeable",
+        "confidence": float(confidence) if confidence is not None else None,
+        "duplicate_flag": False,
+        "decided_by": SIGNATURE_LOG_DECIDED_BY,
+        "needs_review": False,
+    }
+
+
 def _page_row(page_axes: Optional[page_result.PageResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
     """The page's row: names, category and decided_by from its axes. The confidence
     (2026-11-14, user; CONFIDENCE_LOGIC.md section 12) is the page type's own (the leaf
@@ -300,7 +319,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
 
-        counts = {"main": 0, "blank_junk": 0, "invoice": 0, "review": 0, "model": 0, "canon": 0, "others": 0, "specialty": 0}
+        counts = {"main": 0, "blank_junk": 0, "invoice": 0, "signature_log": 0, "review": 0, "model": 0, "canon": 0, "others": 0, "specialty": 0}
         # Every page's row first: a duplicate takes its original's page type, and the
         # original can come later in the chart.
         built: dict[int, tuple[dict[str, Any], Any, str]] = {}
@@ -319,6 +338,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # Invoice Page, not classified again.
                 row = _invoice_row(bj.get("confidence"))
                 counts["invoice"] += 1
+                source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
+            elif is_signature_log_page(bj.get("reason")):
+                row = _signature_log_row(bj.get("confidence"))
+                counts["signature_log"] += 1
                 source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             else:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))

@@ -782,8 +782,15 @@ def short_verdict(
     # page's top or bottom edge, each a running line (a page number, a fax header, "Patient: /
     # DOB: / Visit:" labels, a date / time, a number) -- and no signature, provider or credentials:
     # Junk / Others, before the keeps that a date on it would otherwise trigger (S1S, S6).
+    unsigned = pid not in signed and not own.provider and not method.CREDENTIAL.search(text)
+    # SB (2026-11-28, user): a blank page with only its header / footer -- every OCR line in the
+    # header or footer band, at most EDGE_BLANK_MAX_LINES at the top and at the bottom, each a
+    # running line or repeated on the previous / next page -- is Blank, not Junk.
+    blank_edge = edge_blank(own, page_lines, theirs_flags)
+    if blank_edge and unsigned:
+        return out(CODE_BLANK, "SB", f"only a header / footer ({blank_edge}) -> Blank", 1.0)
     edge = edge_only(own, text)
-    if edge and pid not in signed and not own.provider and not method.CREDENTIAL.search(text):
+    if edge and unsigned:
         return out(CODE_OTHERS, "SH", f"only a running header / footer at the page edges ({edge}) -> Junk / Others", 1.0)
     # S1: the previous page's last headers, one of its last 3 in its bottom third -- for a page
     # with content of its own (2026-11-21, user: a page with only the running header and the
@@ -965,6 +972,32 @@ def running_marker_line(line: str) -> bool:
     carries a page number or a running label (Patient / DOB / Visit / Printed / Fax ...). A short
     content line ("Hypertension", "Dr Grover 7/30/2025") is not one."""
     return running_line(line) and bool(PAGE_NUMBER_IN_LINE.search(line or "") or RUNNING_LABEL.search(line or ""))
+
+
+EDGE_BLANK_MAX_LINES = 2  # SB: lines at the top, and at the bottom, of a header / footer-only blank page
+
+
+def edge_blank(page: Optional["method.PageInputs"], lines: list[str], theirs: list[bool]) -> Optional[str]:
+    """SB (2026-11-28, user): every OCR line of the page sits in its header band (top) or footer
+    band (bottom), at most EDGE_BLANK_MAX_LINES in each, and every text line is a running line with
+    a page number or running label (running_marker_line) or one the previous / next page repeats
+    (``theirs``). The measured line positions decide;
+    without them, no verdict. Returns a short description."""
+    if page is None or not page.lines or not lines:
+        return None
+    zones = method.canon().raw["zones"]
+    header, footer = float(zones["header_band"]), float(zones["footer_band"])
+    if not all(line.top < header or line.bottom > 1.0 - footer for line in page.lines):
+        return None
+    top = sum(1 for line in page.lines if line.top < header)
+    bottom = len(page.lines) - top
+    if top > EDGE_BLANK_MAX_LINES or bottom > EDGE_BLANK_MAX_LINES:
+        return None
+    # A running line needs its page number or running label (Patient / DOB / Page / Printed / Fax):
+    # "DME Orders / None recorded." is a section with nothing in it, not a header.
+    if not all(flag or running_marker_line(line) for line, flag in zip(lines, theirs)):
+        return None
+    return f"{top} line(s) at the top, {bottom} at the bottom"
 
 
 def edge_only(page: Optional["method.PageInputs"], text: str) -> Optional[str]:

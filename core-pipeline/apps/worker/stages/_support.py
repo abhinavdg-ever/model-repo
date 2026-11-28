@@ -39,6 +39,15 @@ INVOICE_MARK = "invoice_page_kept"
 INVOICE_PAGE_TYPE = "Invoice"
 INVOICE_PAGE_SUBTYPE = "Invoice Page"
 INVOICE_DECIDED_BY = "invoice_page"
+# 2026-11-28 (user): a page headed "Signature Log" with Medium or High handwriting (>= 20%,
+# the review UI's Medium band) is not junk: Main, Page Type Progress Note / Signature
+# (the ground truth's "Signature page"), Non-Codable. Blank / junk writes SIGNATURE_LOG_MARK in
+# its reason; page_classify and imaging_final read it.
+SIGNATURE_LOG_MARK = "signature_log_kept"
+SIGNATURE_LOG_PAGE_TYPE = "Progress Note"
+SIGNATURE_LOG_PAGE_SUBTYPE = "Signature"
+SIGNATURE_LOG_DECIDED_BY = "signature_log"
+SIGNATURE_LOG_MIN_HW_PCT = 20.0
 
 
 def blank_junk_weights(chart_name: str) -> dict[str, float]:
@@ -66,6 +75,11 @@ def blank_junk_weights(chart_name: str) -> dict[str, float]:
 def is_invoice_page(reason: Optional[str]) -> bool:
     """True when the blank / junk reason says the INVOICE rule kept the page."""
     return INVOICE_MARK in (reason or "")
+
+
+def is_signature_log_page(reason: Optional[str]) -> bool:
+    """True when the blank / junk reason says the SIGLOG rule kept the page."""
+    return SIGNATURE_LOG_MARK in (reason or "")
 # A signature on the page, as Final OCR 1 reads it (pass1_ruled_out).
 SIGNATURE_WORD = re.compile(r"(?<![A-Za-z])(?:signed|signature|e-?signed|co-?signed|attested)(?![A-Za-z])", re.IGNORECASE)
 
