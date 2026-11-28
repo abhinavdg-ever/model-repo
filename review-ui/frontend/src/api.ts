@@ -199,6 +199,11 @@ export type ImagingPageResult = {
   ocrMatchRate?: number | null;
   /** Readability (2026-11-28, user; was Visibility): is_readable, and why not. */
   isReadable?: boolean | null;
+  /** Readability v2 (2026-11-28): the rule (R0 = blank page, Not Applicable), score, confidence, review. */
+  readabilityRule?: string | null;
+  readabilityScore?: number | null;
+  readabilityConfidence?: number | null;
+  readabilityReview?: boolean | null;
   readabilityWhy?: string | null;
   pageQualityConfidence: number | null;
   /** Encounter classification — logic TBD; UI shows Yet to Process when absent. */

@@ -758,6 +758,7 @@ class MemoryStore(StoreBackend):
         quality_detail: dict[str, Any],
         review_required: Optional[bool],
         is_readable: Optional[bool] = None,
+        readability: Optional[dict[str, Any]] = None,
     ) -> None:
         with self._lock:
             row = self.quality.get(page_id)
@@ -771,6 +772,7 @@ class MemoryStore(StoreBackend):
             )
             if is_readable is not None:
                 row["is_readable"] = is_readable
+            row.update({k: v for k, v in (readability or {}).items()})
 
     def handwritten_page_ids(self, chart_id: int) -> set[int]:
         from common.db import page_type

@@ -385,9 +385,15 @@ const NOT_MEASURED = "Not Available";
 /** Is Readable (2026-11-28, user; was Visibility): Yes / No from the is_readable column
  * (core-pipeline modules/ocr/readability.py). A page of an older run has none: its page-tag
  * visibility is shown as it was, Visible / Not visible (2026-11-28, user). */
-function fmtReadability(page: Pick<ImagingPageResult, "isReadable" | "isVisible">, processed = true): string {
+function fmtReadability(
+  page: Pick<ImagingPageResult, "isReadable" | "isVisible" | "readabilityRule" | "readabilityReview">,
+  processed = true,
+): string {
   if (!processed) return YET_TO_PROCESS;
-  if (page.isReadable === true || page.isReadable === false) return page.isReadable ? "Yes" : "No";
+  // Readability v2 (2026-11-28): R0 = a blank page, Not Applicable; the review band is marked.
+  if (page.readabilityRule === "R0") return "Not Applicable (blank page)";
+  const review = page.readabilityReview ? " · Review" : "";
+  if (page.isReadable === true || page.isReadable === false) return (page.isReadable ? "Yes" : "No") + review;
   if (page.isVisible === null || page.isVisible === undefined) return NOT_MEASURED;
   return page.isVisible ? "Visible" : "Not visible";
 }
@@ -2543,7 +2549,9 @@ function PageDetails({
             label: "Handwritten %",
             choices: HW_AREA_CHOICES,
           }),
-          sameValue(fmtReadability(page, sections.hw), fmtConfidence(page.measuredConfidences?.visibility, sections.hw), {
+          // The confidence beside Is Readable is the readability confidence (v2), else the visibility model's.
+          sameValue(fmtReadability(page, sections.hw), fmtConfidence(
+            page.readabilityConfidence ?? page.measuredConfidences?.visibility, sections.hw), {
             id: "visibility",
             label: "Is Readable",
             choices: VISIBILITY_CHOICES,
@@ -2931,8 +2939,11 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
     const reasons: string[] = [];
     // 2026-11-28 (user): Is Readable No (not visible, or Low quality + match < 50% + Tesseract
     // gibberish) is listed too.
+    // Readability v2 (2026-11-28): three reasons kept apart -- Not readable, Readability: review,
+    // and Low quality with a match rate under 50% (below).
     if (page.isReadable === false) reasons.push(`Not readable${page.readabilityWhy ? ` (${page.readabilityWhy})` : ""}`);
-    else if (page.isVisible === false) reasons.push("Not visible");
+    else if (page.isReadable == null && page.isVisible === false) reasons.push("Not visible");
+    else if (page.readabilityReview) reasons.push(`Readability: review${page.readabilityWhy ? ` (${page.readabilityWhy})` : ""}`);
     const rate = page.ocrMatchRate;
     const finalLow = (page.pageQualityTag ?? "").trim().toLowerCase() === "low";
     if (rate != null) {

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "note": "2026-11-28 (user): Readability v2 (docs/specials/READABILITY_V2_LOGIC.md). Every threshold of modules/ocr/readability.py; reloads on change. Rules, first that fires: R0 blank page -> Not Applicable; R1 min_tokens+ tokens and text_score >= good_text_score -> Yes; R2 visibility model not visible at p >= not_visible_at and (under min_tokens tokens or text_score < not_visible_text_score) -> No; R3 text_score < poor_text_score and (Final Quality Low or ocr_agreement < agreement.low_below) -> No; R4 under min_tokens tokens, ink on the page, sharpness < image.sharpness_below or contrast < image.contrast_below -> No; R5 -> Yes. text_score = (2 x word_score + ocr_agreement) / 3; word_score = mean of dictionary share, shape share (and Azure's mean word confidence when Azure read the page).",
+  "min_tokens": 20,
+  "good_text_score": 0.60,
+  "poor_text_score": 0.30,
+  "not_visible_text_score": 0.35,
+  "not_visible_at": 0.90,
+  "match_below": 0.50,
+  "text_score_weights": {"word_score": 2, "ocr_agreement": 1},
+  "agreement": {"disagree_below": 0.30, "low_below": 0.30},
+  "image": {"enabled": true, "sharpness_below": 30, "contrast_below": 30, "score_full_at": 120, "height_px": 1600},
+  "confidence": {
+    "text_rules": {"floor": 0.70, "span": 0.29, "margin_range": 0.30},
+    "image_rule": {"floor": 0.55, "span": 0.25},
+    "fallback": {"floor": 0.50, "span": 0.20, "nothing_measured": 0.50},
+    "disagree_cap": 0.70,
+    "review_below": 0.70
+  },
+  "gibberish_below": 0.50,
+  "not_applicable_label": "Not Applicable",
+  "use_azure_word_conf": true,
+  "best_engine_order": ["azuredocintel", "docling", "tesseract"]
+}

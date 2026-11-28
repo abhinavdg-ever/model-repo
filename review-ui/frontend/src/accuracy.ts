@@ -260,7 +260,10 @@ function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
     // Is Readable (2026-11-28, user): the pipeline's is_readable, else the page-tag model's
     // visibility; against the ground truth's Yes / No.
     const high = page.isReadable ?? page.isVisible;
-    if (high == null) extra.visibility.na += 1;
+    // Readability v2 (2026-11-28): a blank page (R0, Not Applicable) or one the reviewer calls blank is not counted.
+    const blankTruth = /^\s*(yes|y|true|blank)/i.test(String(page.groundTruth?.blankPage ?? ""));
+    if (page.readabilityRule === "R0" || blankTruth) extra.visibility.na += 1;
+    else if (high == null) extra.visibility.na += 1;
     else {
       extra.visibility.scored += 1;
       if (high === (truth === "yes")) extra.visibility.match += 1;

@@ -437,6 +437,8 @@ CREATE TABLE page_ground_truth (
     tilt                    TEXT,
     mirrored                TEXT,
     is_visible              TEXT,
+    -- 2026-11-28 (user, Readability v2): the reviewer's Is Readable (Yes / No); is_visible is the fallback.
+    is_readable             TEXT,
     quality                 TEXT,
     printed_or_handwritten  TEXT,
     handwritten_pct         TEXT,
@@ -630,6 +632,12 @@ CREATE TABLE ocr_quality_results (
     -- Readability (2026-11-28, user): set by Final OCR 2's routing (modules/ocr/readability.py).
     -- NULL on rows routed before it: readers show is_visible.
     is_readable             BOOLEAN,
+    -- Readability v2 (2026-11-28, user; docs/specials/READABILITY_V2_LOGIC.md): the 0-1 score, how
+    -- sure the Yes / No is, the rule (R0-R5; R0 = Not Applicable, a blank page) and the review band.
+    readability_score       NUMERIC(5,4),
+    readability_confidence  NUMERIC(5,4),
+    readability_rule        VARCHAR(8),
+    readability_review_required BOOLEAN,
     handwritten_area_pct    NUMERIC(5,2) CHECK (handwritten_area_pct IS NULL OR
                             handwritten_area_pct BETWEEN 0 AND 100),
     -- Low quality (not on a blank page), uncertain type, or not visible.
@@ -1021,7 +1029,6 @@ CREATE TABLE imaging_final (
     printed_or_handwritten   VARCHAR(20),
     handwritten_area_pct     NUMERIC(5,2),
     is_visible               BOOLEAN,
-    is_readable              BOOLEAN,
     quality_tag              VARCHAR(10),
     orientation_angle        NUMERIC(6,2),
     tilt_angle               NUMERIC(6,2),
@@ -1063,6 +1070,9 @@ CREATE TABLE imaging_final (
     -- when any is.
     confidences              JSONB,
     review_fields            JSONB,
+    is_readable              BOOLEAN,
+    readability_confidence   NUMERIC(5,4),
+    readability_rule         VARCHAR(8),
     signature_present        BOOLEAN,
     seq                      INT,
     duplicate_of_page_id     BIGINT REFERENCES page_list(id) ON DELETE SET NULL,
@@ -1448,7 +1458,11 @@ SELECT
     jsonb_build_object('tier', pc.axes #>> '{leaf,agreement,tier}', 'leaf', pc.axes #>> '{leaf,leaf}',
                        'model_source', pc.axes #>> '{leaf,model_source}',
                        'model_top', pc.axes #> '{leaf,model_top}', 'keyword_top', pc.axes #> '{leaf,keyword_top}')
-                                                              AS classification_agreement
+                                                              AS classification_agreement,
+    -- Readability v2 (2026-11-28): the pipeline's Is Readable (true / false; NULL = older run or
+    -- Not Applicable) and its rule (R0 = blank page, Not Applicable: left out of accuracy).
+    to_jsonb(q) -> 'is_readable'                              AS algo_is_readable,
+    to_jsonb(f) ->> 'readability_rule'                        AS final_readability_rule
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

@@ -4,3 +4,125 @@
 
 ALTER TABLE ocr_quality_results ADD COLUMN IF NOT EXISTS is_readable BOOLEAN;
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS is_readable BOOLEAN;
+
+-- Readability v2 (2026-11-28, user; docs/specials/READABILITY_V2_LOGIC.md).
+ALTER TABLE ocr_quality_results ADD COLUMN IF NOT EXISTS readability_score NUMERIC(5,4);
+ALTER TABLE ocr_quality_results ADD COLUMN IF NOT EXISTS readability_confidence NUMERIC(5,4);
+ALTER TABLE ocr_quality_results ADD COLUMN IF NOT EXISTS readability_rule VARCHAR(8);
+ALTER TABLE ocr_quality_results ADD COLUMN IF NOT EXISTS readability_review_required BOOLEAN;
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS readability_confidence NUMERIC(5,4);
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS readability_rule VARCHAR(8);
+-- The reviewer's Yes / No moves to page_ground_truth.is_readable (is_visible read as a fallback).
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_readable TEXT;
+UPDATE page_ground_truth SET is_readable = is_visible WHERE is_readable IS NULL AND is_visible IS NOT NULL;
+
+-- The accuracy view gains algo_is_readable and final_readability_rule at its end.
+CREATE OR REPLACE VIEW v_accuracy_page AS
+SELECT
+    g.chart_name,
+    g.page_number,
+    g.source_page_id,
+    c.updated_at                                              AS chart_updated_at,
+    g.member_name,
+    g.member_dob,
+    g.member_id,
+    g.dos_from                                                AS gt_dos_from,
+    g.dos_to                                                  AS gt_dos_to,
+    g.encounter_type,
+    g.page_type                                               AS gt_page_type,
+    g.codeable                                                AS gt_codeable,
+    g.blank_page,
+    g.junk_page,
+    g.is_invoice,
+    g.page_sequence,
+    g.rotation,
+    g.is_visible,
+    g.rendering_provider,
+    g.provider_signature,
+    pl.page_name,
+    m.extracted_name,
+    m.extracted_dob,
+    m.extracted_member_id,
+    d.date_of_service_from,
+    d.date_of_service_to,
+    b.blank_junk_flag,
+    b.junk_subtype,
+    -- "Page Type (Sub-type)", the shape review-ui shows; a pre-taxonomy row
+    -- already holds that string in page_subtype.
+    (CASE WHEN pc.page_type IS NOT NULL AND pc.page_type <> pc.page_subtype
+          THEN pc.page_type || ' (' || pc.page_subtype || ')'
+          ELSE COALESCE(pc.page_subtype, pc.page_type) END)::VARCHAR(200) AS page_subtype,
+    pc.classification_category,
+    (
+        SELECT mm.external_member_id
+          FROM manifest_member_list mm
+         WHERE mm.record_id = g.chart_name
+         ORDER BY mm.id
+         LIMIT 1
+    )                                                         AS external_member_id,
+    (
+        EXISTS (SELECT 1 FROM member_extraction_results mx WHERE mx.chart_id = c.id)
+        OR EXISTS (SELECT 1 FROM member_verification_summary vx WHERE vx.chart_id = c.id)
+    )                                                         AS member_known,
+    EXISTS (SELECT 1 FROM dos_extraction_results dx WHERE dx.chart_id = c.id) AS dos_known,
+    EXISTS (SELECT 1 FROM blank_junk_classification bx WHERE bx.chart_id = c.id) AS junk_known,
+    EXISTS (SELECT 1 FROM page_classification px WHERE px.chart_id = c.id) AS codeable_known,
+    g.updated_at                                              AS ground_truth_updated_at,
+    -- Appended (a replaced view keeps its earlier columns in order): the
+    -- stored text orientation, and the Final values the accuracy view scores
+    -- ahead of the Extracted ones.
+    q.orientation_angle,
+    EXISTS (SELECT 1 FROM ocr_quality_results qx WHERE qx.chart_id = c.id) AS rotation_known,
+    f.page_type                                               AS final_page_type,
+    f.page_subtype                                            AS final_page_subtype,
+    f.classification_category                                 AS final_category,
+    f.dos_from                                                AS final_dos_from,
+    f.dos_to                                                  AS final_dos_to,
+    -- Provider Credentials ground truth (provider_signature is Yes / No).
+    g.provider_credentials                                    AS gt_provider_credentials,
+    -- The signature rows' provider and credentials, as review-ui shows them.
+    f.provider_name                                           AS final_provider_name,
+    to_jsonb(f) ->> 'provider_credentials'                    AS final_provider_credentials,
+    to_jsonb(f) -> 'signers'                                  AS final_signers,
+    to_jsonb(f) ->> 'provider_version'                        AS final_provider_version,
+    -- Provider Signature accuracy: did the pipeline find a signature ('true' / 'false';
+    -- NULL on a database whose imaging_final has no such column).
+    to_jsonb(f) ->> 'signature_present'                       AS final_signature_present,
+    -- Is Visible from the page-tag model (NULL = not measured), for Visibility Match %.
+    q.is_visible                                              AS algo_is_visible,
+    -- The reviewer's Is Duplicate (Yes / Partial / No), for Duplicate accuracy.
+    g.is_duplicate                                            AS gt_is_duplicate,
+    -- Each metric's Final confidence (2026-11-19): the page / chart confidence level.
+    to_jsonb(f) -> 'confidences'                              AS final_confidences,
+    -- Stage 1's measured confidences (orientation ...), 2026-11-19.
+    q.quality_detail -> 'confidences'                          AS measured_confidences,
+    -- The page classifier's model / keyword agreement (2026-11-24): its leaf, both rankings and
+    -- the tier, for the Confidence Analysis' Agreement view.
+    jsonb_build_object('tier', pc.axes #>> '{leaf,agreement,tier}', 'leaf', pc.axes #>> '{leaf,leaf}',
+                       'model_source', pc.axes #>> '{leaf,model_source}',
+                       'model_top', pc.axes #> '{leaf,model_top}', 'keyword_top', pc.axes #> '{leaf,keyword_top}')
+                                                              AS classification_agreement,
+    -- Readability v2 (2026-11-28): the pipeline's Is Readable (true / false; NULL = older run or
+    -- Not Applicable) and its rule (R0 = blank page, Not Applicable: left out of accuracy).
+    to_jsonb(q) -> 'is_readable'                              AS algo_is_readable,
+    to_jsonb(f) ->> 'readability_rule'                        AS final_readability_rule
+FROM page_ground_truth g
+LEFT JOIN chart_list c
+       ON c.chart_name = g.chart_name
+LEFT JOIN LATERAL (
+    SELECT p.id, p.page_name
+      FROM page_list p
+     WHERE p.chart_id = c.id
+       AND (
+            p.page_name = g.source_page_id
+         OR split_part(p.page_name, '.', 1) = g.page_number::text
+       )
+     ORDER BY (p.page_name IS NOT DISTINCT FROM g.source_page_id) DESC, p.id
+     LIMIT 1
+) pl ON TRUE
+LEFT JOIN member_extraction_results m ON m.page_id = pl.id
+LEFT JOIN dos_extraction_results d ON d.page_id = pl.id
+LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
+LEFT JOIN page_classification pc ON pc.page_id = pl.id
+LEFT JOIN ocr_quality_results q ON q.page_id = pl.id
+LEFT JOIN imaging_final f ON f.page_id = pl.id;

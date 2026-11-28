@@ -437,6 +437,20 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                     column = {"true": True, "false": False}.get(column.strip().lower())
                 if isinstance(column, bool):
                     fields["isReadable"] = column
+                # Readability v2 (2026-11-28): score, confidence, rule (R0 = Not Applicable), review.
+                v2 = more[2] if len(more) > 2 else None
+                if isinstance(v2, str):
+                    try:
+                        v2 = json.loads(v2)
+                    except ValueError:
+                        v2 = None
+                if isinstance(v2, dict) and v2.get("readability_rule"):
+                    fields["readabilityRule"] = v2.get("readability_rule")
+                    for key, name in (("readability_score", "readabilityScore"),
+                                      ("readability_confidence", "readabilityConfidence")):
+                        if isinstance(v2.get(key), (int, float, str)) and str(v2.get(key)).strip():
+                            fields[name] = float(v2[key])
+                    fields["readabilityReview"] = bool(v2.get("readability_review_required"))
                 if isinstance(measured, dict) and measured:
                     fields["measuredConfidences"] = {
                         k: float(v) for k, v in measured.items() if isinstance(v, (int, float))

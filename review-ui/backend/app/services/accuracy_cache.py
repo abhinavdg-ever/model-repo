@@ -172,7 +172,8 @@ SELECT chart_name, page_number, source_page_id,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
        gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
        final_provider_version, final_signature_present, algo_is_visible, gt_is_duplicate,
-       final_confidences, measured_confidences, classification_agreement
+       final_confidences, measured_confidences, classification_agreement,
+       to_jsonb(v_accuracy_page) -> 'algo_is_readable', to_jsonb(v_accuracy_page) ->> 'final_readability_rule'
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -359,8 +360,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         final_type, final_subtype, final_category, final_from, final_to,
         gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
         final_signed, algo_visible, gt_duplicate, final_confidences, measured_confidences,
-        classification_agreement,
-    ) = (tuple(extra) + (None,) * 18)[:18]
+        classification_agreement, algo_readable, readability_rule,
+    ) = (tuple(extra) + (None,) * 20)[:20]
     final_key = _text(final_category) or ""
     people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -385,6 +386,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         providerCredentials=provider_credentials or None,
         providerSignature=_signed(final_signed),
         isVisible=None if algo_visible is None else algo_visible in (True, "true", "t", "1"),
+        isReadable=None if algo_readable is None else algo_readable in (True, "true", "t", "1"),
+        readabilityRule=_text(readability_rule),
         finalConfidences=_confidences(final_confidences),
         measuredConfidences=_confidences(measured_confidences),
         classificationTier=agreement_tier(classification_agreement),

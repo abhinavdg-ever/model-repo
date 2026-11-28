@@ -29,6 +29,7 @@ from common.config import (
     STAGE_WORKERS,
     page_image_path,
 )
+from common.config import page_image_path
 from common.db import (
     connect,
     get_ocr_texts,
@@ -541,9 +542,16 @@ def _store_route(conn: Any, page_id: int, row: dict[str, Any], detail: dict[str,
         is_visible=None if visible is None else bool(visible), final_quality=final,
         match_rate=final_match_rate(decision),
         tesseract_gibberish=(decision.get("tesseract_gibberish") or {}).get("gibberish"))
+    # Readability v2 decides only with READABILITY_LOGIC=v2 (shadow: recorded in the routing).
+    extra: dict[str, Any] = {}
+    v2 = decision.get("readability_v2") or {}
+    if decision.get("readability_logic") == "v2" and "rule" in v2:
+        decision["is_readable"], decision["readability_why"] = v2["is_readable"], v2["reason"]
+        extra = {"readability_score": v2.get("score"), "readability_confidence": v2.get("confidence"),
+                 "readability_rule": v2.get("rule"), "readability_review_required": v2.get("review")}
     detail["routing"] = {**{k: v for k, v in decision.items()}, "review_required_before": before}
     set_quality_tag(conn, page_id=page_id, quality_tag=final, quality_detail=detail,
-                    review_required=new_review, is_readable=decision["is_readable"])
+                    review_required=new_review, is_readable=decision["is_readable"], readability=extra)
 
 
 def _routing_csv(chart_name: str, pages: list[dict[str, Any]], decisions: dict[int, dict[str, Any]],
@@ -708,11 +716,34 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             texts = {"docling": get_ocr_texts(conn, chart_id, "docling"),
                      "tesseract": get_ocr_texts(conn, chart_id, "tesseract")}
             quality = get_quality_map(conn, chart_id)
+            from modules.ocr import readability as readability_mod
+            from modules.ocr.routing import final_match_rate as _final_match_rate
+
+            read_mode = readability_mod.readability_logic()
+            names = {p["id"]: p["page_name"] for p in ctx.pages}
             for page_id, decision in list(decisions.items()):
                 azure = _docling_content(stored.get(page_id) or "")
                 docling = _docling_content(texts["docling"].get(page_id) or "")
                 decision = after_docintel(decision, [texts["tesseract"].get(page_id), docling, azure])
                 decision["final_ocr"] = final_ocr(decision, bool(azure.strip()), bool(docling.strip()))
+                # Readability v2 (2026-11-28, user; docs/specials/READABILITY_V2_LOGIC.md): the profile
+                # and R1-R5 on the best text (R0 blank applied in imaging_final), in shadow / v2.
+                if read_mode in ("v2", "shadow"):
+                    q = quality.get(page_id) or {}
+                    detail_q = _detail(q) if q else {}
+                    try:
+                        prof = readability_mod.profile(
+                            texts={"azuredocintel": azure, "docling": docling,
+                                   "tesseract": texts["tesseract"].get(page_id)},
+                            azure_raw=stored.get(page_id), is_visible=q.get("is_visible"),
+                            visibility_conf=(detail_q.get("confidences") or {}).get("visibility"),
+                            final_quality=decision.get("final_quality"), match_rate=_final_match_rate(decision),
+                            handwritten_pct=q.get("handwritten_area_pct"),
+                            image_path=page_image_path(ctx.chart_name, names.get(page_id, "")) if page_id in names else None)
+                        decision["readability_v2"] = {**readability_mod.decide_v2(prof), "profile": prof}
+                    except Exception as exc:  # noqa: BLE001 - readability must never stop the stage
+                        decision["readability_v2"] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+                    decision["readability_logic"] = read_mode
                 decisions[page_id] = decision
                 row = quality.get(page_id)
                 if row is not None:

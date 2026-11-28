@@ -336,6 +336,12 @@ class ImagingPageResult(BaseModel):
     # Readability (2026-11-28, user; was Visibility): is_readable from the routing (core-pipeline
     # modules/ocr/readability.py), and why not. None on pages routed before it existed.
     isReadable: bool | None = None
+    # Readability v2 (2026-11-28): the rule (R0 = blank page, Not Applicable), the 0-1 score, how
+    # sure the Yes / No is, and the review band.
+    readabilityRule: str | None = None
+    readabilityScore: float | None = None
+    readabilityConfidence: float | None = None
+    readabilityReview: bool | None = None
     readabilityWhy: str | None = None
     pageQualityConfidence: float | None = None
     dosFrom: str | None = None

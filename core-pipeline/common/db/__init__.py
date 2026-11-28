@@ -883,9 +883,12 @@ def set_quality_tag(
     quality_detail: dict[str, Any],
     review_required: Optional[bool],
     is_readable: Optional[bool] = None,
+    readability: Optional[dict[str, Any]] = None,
 ) -> None:
     """Re-grade one page after stage 1 (the Docling / Tesseract overlap check). ``is_readable``
-    (2026-11-28, user): written when the column exists (migrations/2026-11-28.sql)."""
+    (2026-11-28, user): written when the column exists (migrations/2026-11-28.sql); ``readability``
+    (Readability v2): readability_score / _confidence / _rule / _review_required, each when its
+    column exists."""
     import json
 
     conn.execute(
@@ -899,6 +902,12 @@ def set_quality_tag(
     )
     if is_readable is not None and _has_column(conn, "ocr_quality_results", "is_readable"):
         conn.execute("UPDATE ocr_quality_results SET is_readable = %s WHERE page_id = %s", (is_readable, page_id))
+    for column, value in (readability or {}).items():
+        if column in READABILITY_COLUMNS and _has_column(conn, "ocr_quality_results", column):
+            conn.execute(f"UPDATE ocr_quality_results SET {column} = %s WHERE page_id = %s", (value, page_id))
+
+
+READABILITY_COLUMNS = ("readability_score", "readability_confidence", "readability_rule", "readability_review_required")
 
 
 _COLUMNS_PRESENT: dict[tuple[str, str], bool] = {}
@@ -1608,7 +1617,6 @@ IMAGING_FINAL_COLUMNS = (
     "printed_or_handwritten",
     "handwritten_area_pct",
     "is_visible",
-    "is_readable",
     "quality_tag",
     "orientation_angle",
     "tilt_angle",
@@ -1642,6 +1650,11 @@ IMAGING_FINAL_COLUMNS = (
     # and the values below the review line.
     "confidences",
     "review_fields",
+    # 2026-11-28 (user, Readability v2): appended at the end so the client columns keep their
+    # places; the Final CSV takes is_readable and readability_confidence (not the rule).
+    "is_readable",
+    "readability_confidence",
+    "readability_rule",
 )
 
 

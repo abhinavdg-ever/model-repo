@@ -4,6 +4,10 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * Readability v2 (2026-11-28, migrations/2026-11-28.sql): ocr_quality_results.readability_score /
+   readability_confidence / readability_rule (R0-R5) / readability_review_required; imaging_final
+   is_readable, readability_confidence, readability_rule moved / added at the end; page_ground_truth.is_readable
+   (copied from is_visible).
  * is_readable (2026-11-28, migrations/2026-11-28.sql): ocr_quality_results.is_readable and
    imaging_final.is_readable (BOOLEAN) -- Readability (was Visibility), set by Final OCR 2's
    routing. NULL on older rows; review-ui shows is_visible (Visible / Not visible) for them.

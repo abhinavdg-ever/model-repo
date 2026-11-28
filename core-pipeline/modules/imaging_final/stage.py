@@ -95,7 +95,7 @@ def has_specialty(page_type: Optional[str], page_subtype: Optional[str] = None) 
 CONTENT_MARK = "duplicate_content_of_page_id:"
 DOS_NOTE = "blocked by date of service"
 
-FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
+FINAL_COLS = ["chart_name", "page_name", "page_number", *(c for c in IMAGING_FINAL_COLUMNS if c != "readability_rule")]
 
 # What a duplicate page takes from the page it duplicates. Every stage after
 # blank/junk skips duplicates, so these are empty on the duplicate itself. It
@@ -515,7 +515,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "handwritten_area_pct": _number(q.get("handwritten_area_pct")),
                 "is_visible": q.get("is_visible"),
                 # 2026-11-28 (user): Yes / No; NULL on a page routed before it (shown as visibility).
-                "is_readable": q.get("is_readable"),
+                # Readability v2: R0 -- a Blank page is Not Applicable (NULL, rule R0, the Blank
+                # verdict's confidence).
+                "is_readable": None if (flag == "blank" and q.get("readability_rule")) else q.get("is_readable"),
+                "readability_confidence": (
+                    _number((blank_junk.get(page_id) or {}).get("confidence"))
+                    if (flag == "blank" and q.get("readability_rule")) else _number(q.get("readability_confidence"))),
+                "readability_rule": "R0" if (flag == "blank" and q.get("readability_rule")) else q.get("readability_rule"),
                 "quality_tag": q.get("quality_tag"),
                 "orientation_angle": _number(q.get("orientation_angle")),
                 "tilt_angle": _number(q.get("tilt_angle")),

@@ -455,6 +455,8 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
                 detail.get("confidences") if isinstance(detail, dict) else None,
                 detail.get("routing") if isinstance(detail, dict) else None,
                 q.get("is_readable"),
+                {k: q.get(k) for k in ("readability_rule", "readability_score", "readability_confidence",
+                                       "readability_review_required")},
             ))
         for d in chart.pages:
             name = chart.names[int(d["page_id"])]
