@@ -491,6 +491,10 @@ class TestStage:
             assert encounter["encounters_json"] == result["continuity_json"]
             staged = json.loads(Path(result["continuity_json"]).read_text(encoding="utf-8"))
             assert staged["pages"] and staged["documents"]
+            # 2026-11-28 (user): every pair of consecutive pages, its features and final decision.
+            (pair,) = staged["pairs"]
+            assert (pair["p1"], pair["p2"]) == ("1.jpg", "2.jpg") and pair["final_decision"] == "Same document"
+            assert isinstance(pair["features"], dict) and pair["rules"]["decision"] in ("Break", "Same document")
             (only,) = staged["encounters"]
             assert only["pages"] == ["1.jpg", "2.jpg"] and only["document"] == 1
             assert only["page_family"] == "Discharge Summary"

@@ -265,7 +265,47 @@ def _gap_view(gap: Optional[dict[str, Any]], edge: str) -> Any:
     }
 
 
-def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any) -> str:
+def _features(gap: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Every signal of one gap with its score (ending, opening and pair parts), strongest first."""
+    parts = {**((gap or {}).get("ending") or {}), **((gap or {}).get("opening") or {}), **((gap or {}).get("pair") or {})}
+    return {name: value for name, value in sorted(parts.items(), key=lambda kv: -abs(kv[1]))}
+
+
+def _pairs_view(inputs: list[PageInput], rows: list[dict[str, Any]],
+                model_pairs: Optional[dict[tuple[int, int], dict[str, Any]]]) -> list[dict[str, Any]]:
+    """2026-11-28 (user): one entry per pair of consecutive pages -- p1, p2, the features (each
+    signal and its points), the rules' score and decision, the clue model's P(break) and clues
+    (when it ran; it compares content pages, so its pair may skip junk pages between), and the
+    final decision."""
+    out: list[dict[str, Any]] = []
+    model_by_first = {a: (b, d) for (a, b), d in (model_pairs or {}).items()}
+    for (item, row), (nxt, nrow) in zip(zip(inputs, rows), zip(inputs[1:], rows[1:])):
+        gap = row["signals"]["after"] or {}
+        same = row["document_seq"] is not None and row["document_seq"] == nrow["document_seq"]
+        entry: dict[str, Any] = {
+            "p1": item.page_name, "p2": nxt.page_name,
+            "p1_kind": item.kind, "p2_kind": nxt.kind,
+            "features": _features(gap),
+            "evidence": gap.get("evidence") or {},
+            "rules": {"score": gap.get("score"), "level": gap.get("level"),
+                      "decision": "Break" if gap.get("decision") == "break" else "Same document" if gap else None,
+                      "final_pass": gap.get("final_pass")},
+            "model": None,
+            "final_decision": "Same document" if same else "Break",
+            "decided_by": nrow.get("decided_by"),
+        }
+        found = model_by_first.get(item.page_id)
+        if found is not None:
+            other, d = found
+            entry["model"] = {"compared_with": next((i.page_name for i in inputs if i.page_id == other), None),
+                              "p_break": d.get("p_break"), "decision": "Break" if d.get("break") else "Same document",
+                              "decided_by": d.get("decided_by"), "clues": d.get("evidence")}
+        out.append(entry)
+    return out
+
+
+def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any,
+                  model_pairs: Optional[dict[tuple[int, int], dict[str, Any]]] = None) -> str:
     """``continuity.json``: the documents, then each page's gap before (prev_to_this), gap
     after (this_to_next) and final result, in words. Every signal of every gap goes to
     ``continuity_detail.json`` beside it."""
@@ -340,6 +380,8 @@ def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str,
         "written_at": written_at,
         "documents": list(documents.values()),
         "pages": pages,
+        # 2026-11-28 (user): every pair of consecutive pages -- features, rules / model, final.
+        "pairs": _pairs_view(inputs, rows, model_pairs),
     }
     detail = {
         "version": 1,
@@ -592,11 +634,14 @@ def _continuity_ml_run(chart_name: str, inputs: list[PageInput], rows: list[dict
                              "model": "break" if d["break"] else "joined", "p_break": d["p_break"],
                              "decided_by": d["decided_by"], "evidence": d["evidence"]})
     summary = {"mode": CONTINUITY_MODE, "ran": True, "points": len(pairs), "disagreements": len(disagree),
-               "model_breaks": sum(d["break"] for d in decisions)}
+               "model_breaks": sum(d["break"] for d in decisions),
+               # For continuity.json's pairs; popped before the summary is stored.
+               "_pairs": pairs}
     try:
         path = staging_dir(chart_name) / SHADOW_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"version": 1, "chart": chart_name, **summary,
+        path.write_text(json.dumps({"version": 1, "chart": chart_name,
+                                    **{k: v for k, v in summary.items() if k != "_pairs"},
                                     "model": ml_model.status(), "disagreements": disagree}, indent=1), encoding="utf-8")
     except OSError as exc:
         logger.warning("continuity chart=%s shadow file not written: %s", chart_name, exc)
@@ -720,7 +765,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         rows = _unjunk_inside_notes(chart_id, ctx.chart_name, inputs, rows, bj, rules, own_texts)
         # 2026-11-22 (Brief 3): the continuity clue model beside the rules (CONTINUITY_MODE).
         rows, ml_summary = _continuity_ml(ctx.chart_name, inputs, rows, rules, classification)
-        scores_file = _write_scores(ctx.chart_name, inputs, rows, rules)
+        model_pairs = ml_summary.pop("_pairs", None)
+        scores_file = _write_scores(ctx.chart_name, inputs, rows, rules, model_pairs)
 
         csv_rows: list[dict[str, Any]] = []
         documents = junk_segments = 0
