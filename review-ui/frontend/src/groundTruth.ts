@@ -391,6 +391,9 @@ function ourPath(pageType: string | null | undefined, pageSubtype: string | null
   // The pipeline's Invoice page (Invoice / Invoice (Invoice Page)) is our Administrative >
   // Billing & Invoices (2026-11-16, user: a GT Invoice label on it is a full match).
   if (acceptKey(family) === "invoice") return ["administrative", "billinginvoices"];
+  // The pipeline's Signature Page / Signature Log (2026-11-28, user) is our Progress Note >
+  // Signature: a GT "Signature page" label on it is a full match.
+  if (acceptKey(family) === "signaturepage") return ["progressnote", "signature"];
   // An L2 whose own name has brackets ("Endoscopy (EGD)", "Summary of Care (C-CDA)") is one
   // level; so is an L2 named like its L1 (Problem List > Problem List shows as "Problem List").
   const l2s = (PAGE_L2[PAGE_L1_CHOICES.find((name) => acceptKey(name) === acceptKey(family)) ?? ""] ?? []).map(acceptKey);

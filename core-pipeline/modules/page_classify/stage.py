@@ -267,8 +267,8 @@ def _invoice_row(confidence: Any) -> dict[str, Any]:
 
 
 def _signature_log_row(confidence: Any) -> dict[str, Any]:
-    """A filled Signature Log blank / junk kept (SIGLOG, 2026-11-28, user): Progress Note /
-    Signature, non_codeable."""
+    """A filled Signature Log blank / junk kept (SIGLOG, 2026-11-28, user): Signature Page /
+    Signature Log, non_codeable."""
     return {
         "page_type": SIGNATURE_LOG_PAGE_TYPE,
         "page_subtype": SIGNATURE_LOG_PAGE_SUBTYPE,

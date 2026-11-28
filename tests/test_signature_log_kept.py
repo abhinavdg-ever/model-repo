@@ -1,5 +1,5 @@
 """2026-11-28 (user): a page headed "Signature Log" with Medium / High handwriting (>= 20%) is not
-junk: Main, Page Type Progress Note / Signature (ground truth "Signature page"), Non-Codable."""
+junk: Main, Page Type Signature Page / Signature Log (scored against ground truth "Signature page"), Non-Codable."""
 from __future__ import annotations
 
 import modules.blank_junk.stage  # noqa: F401  — puts the blank_junk lib on sys.path
@@ -63,5 +63,17 @@ def test_page_classification_row_matches_the_ground_truth_signature_page():
     from modules.page_classify import stage as page_classify
 
     row = page_classify._signature_log_row(0.9)
-    assert (row["page_type"], row["page_subtype"]) == ("Progress Note", "Signature")
+    assert (row["page_type"], row["page_subtype"]) == ("Signature Page", "Signature Log")
     assert row["classification_category"] == "non_codeable" and row["decided_by"] == "signature_log"
+
+
+def test_accuracy_scores_it_a_full_match_for_ground_truth_signature_page():
+    import sys
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parents[1] / "review-ui" / "backend"
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+    from app.services.excel_compare import page_type_canon
+
+    assert page_type_canon.verdict("Signature page", "Signature Page", "Signature Log") == "match"

@@ -40,12 +40,13 @@ INVOICE_PAGE_TYPE = "Invoice"
 INVOICE_PAGE_SUBTYPE = "Invoice Page"
 INVOICE_DECIDED_BY = "invoice_page"
 # 2026-11-28 (user): a page headed "Signature Log" with Medium or High handwriting (>= 20%,
-# the review UI's Medium band) is not junk: Main, Page Type Progress Note / Signature
-# (the ground truth's "Signature page"), Non-Codable. Blank / junk writes SIGNATURE_LOG_MARK in
+# the review UI's Medium band) is not junk: Main, Page Type Signature Page / Signature Log
+# (2026-11-28, user; Accuracy scores it as Progress Note > Signature, the ground truth's
+# "Signature page"), Non-Codable. Blank / junk writes SIGNATURE_LOG_MARK in
 # its reason; page_classify and imaging_final read it.
 SIGNATURE_LOG_MARK = "signature_log_kept"
-SIGNATURE_LOG_PAGE_TYPE = "Progress Note"
-SIGNATURE_LOG_PAGE_SUBTYPE = "Signature"
+SIGNATURE_LOG_PAGE_TYPE = "Signature Page"
+SIGNATURE_LOG_PAGE_SUBTYPE = "Signature Log"
 SIGNATURE_LOG_DECIDED_BY = "signature_log"
 SIGNATURE_LOG_MIN_HW_PCT = 20.0
 

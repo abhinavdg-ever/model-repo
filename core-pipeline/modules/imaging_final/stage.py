@@ -481,7 +481,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                                   needs_review=False)
             signature_log = kind.get("decided_by") == SIGNATURE_LOG_DECIDED_BY
             if signature_log:
-                # 2026-11-28 (user): a filled Signature Log stays Progress Note / Signature in any
+                # 2026-11-28 (user): a filled Signature Log stays Signature Page / Signature Log in any
                 # document, Non-Codable, with no specialty.
                 verdict = replace(verdict, page_type=SIGNATURE_LOG_PAGE_TYPE, page_subtype=SIGNATURE_LOG_PAGE_SUBTYPE,
                                   codability="Non-Codable", source="page", continuation_rule="signature_log",

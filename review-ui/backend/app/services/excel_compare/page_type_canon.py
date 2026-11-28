@@ -48,6 +48,10 @@ def our_path(page_type: str, page_subtype: str) -> list[str]:
     if accept_key(family) == "invoice":
         # The pipeline's Invoice page is our Administrative > Billing & Invoices.
         return ["administrative", "billinginvoices"]
+    if accept_key(family) == "signaturepage":
+        # The pipeline's Signature Page / Signature Log (2026-11-28, user) is our Progress Note >
+        # Signature: a GT "Signature page" label on it is a full match.
+        return ["progressnote", "signature"]
     _, l2 = _taxonomy()
     l2s = l2.get(accept_key(family), [])
     if not sub:

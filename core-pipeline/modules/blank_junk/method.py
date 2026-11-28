@@ -883,7 +883,7 @@ def decide(inputs: PageInputs) -> Verdict:
                      conf.score(0.5, "degraded"), confidence=conf.backup())
 
     # ---- pass 2, first (2026-11-28, user): a filled Signature Log (its header, Medium / High
-    # handwriting) is Main, Page Type Progress Note / Signature, before any junk rule or the model.
+    # handwriting) is Main, Page Type Signature Page / Signature Log, before any junk rule or the model.
     if pass2:
         log = signature_log_kept(inputs)
         if log:
