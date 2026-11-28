@@ -627,6 +627,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "section_headers": item.get("section_headers") or [],
                     "languages": item.get("languages") or [],
                     "features": item.get("features") or [],
+                    # 2026-11-28 (user): True only when Azure analysed the page. An empty row
+                    # (Azure not configured, no image) is owed Doc Intel on a skip_ocr re-run.
+                    "sent": bool(item.get("sent")),
                 }
                 upsert_ocr_result(
                     conn,

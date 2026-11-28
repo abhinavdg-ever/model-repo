@@ -589,11 +589,30 @@ def reopen_final1_for_hq_pages(chart_id: int, chart_name: str) -> list[int]:
     return page_ids
 
 
+def final2_done(raw: Any) -> bool:
+    """Azure really read the page: its text is not empty, or the row says Azure analysed it
+    (``sent``, a page Azure found empty). 2026-11-28 (user): an empty JSON wrapper -- written when
+    Azure was not configured or the page image was missing -- is not done (it counted as done
+    before, so a skip_ocr re-run never sent the page)."""
+    from apps.worker.stages._support import unwrap_ocr_content
+
+    text = str(raw or "").strip()
+    if not text:
+        return False
+    if unwrap_ocr_content(text).strip():
+        return True
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return False
+    return isinstance(parsed, dict) and bool(parsed.get("sent"))
+
+
 def final2_pages_to_fill(stored: dict[int, Any], page_ids: list[int], settled: set[int]) -> list[int]:
-    """Pages a skip_ocr re-run still owes Final OCR 2: no Azure text stored, and not settled by
-    pass 1 now. High-quality printed pages are included -- the stage re-grades them and skips
-    the ones still High (2026-11-06, user)."""
-    return [pid for pid in page_ids if pid not in settled and not str(stored.get(pid) or "").strip()]
+    """Pages a skip_ocr re-run still owes Final OCR 2: Azure has not read them (final2_done), and
+    not settled by pass 1 now. High-quality printed pages are included -- the stage re-grades
+    them and skips the ones still High (2026-11-06, user)."""
+    return [pid for pid in page_ids if pid not in settled and not final2_done(stored.get(pid))]
 
 
 def reopen_final2_missing(chart_id: int) -> list[int]:
