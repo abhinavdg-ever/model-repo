@@ -98,6 +98,9 @@ class Canon:
     # Families whose encounter is always one setting (2026-10-25, user: Discharge Summary
     # and Operative Note are always Inpatient), whatever the pages say.
     family_settings: dict[str, str] = field(default_factory=dict)
+    # 2026-11-28 (user): a document with a discharge-related page is this setting on every page.
+    discharge_setting: str = ""
+    discharge_words: tuple[str, ...] = ()
     # The vote (2026-10-23): a page with no setting evidence votes its family's default
     # (Progress Note -> outpatient_f2f, Discharge Summary -> inpatient); the encounter's
     # first page counts first_page_weight times.
@@ -241,6 +244,9 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
             str(f).strip().casefold() for f in (raw.get("applies_to") or {}).get("families") or []
         ),
         not_applicable=na_setting,
+        discharge_setting=str(((raw.get("applies_to") or {}).get("discharge_related") or {}).get("setting") or ""),
+        discharge_words=tuple(str(w).casefold() for w in
+                              (((raw.get("applies_to") or {}).get("discharge_related") or {}).get("words") or [])),
         family_settings={
             str(f).strip().casefold(): str(v)
             for f, v in ((raw.get("applies_to") or {}).get("always") or {}).items()
@@ -599,6 +605,24 @@ def family_decision(family: str, first: dict[str, Any], canon: Canon) -> Optiona
     return None
 
 
+def discharge_decision(visit: list[dict[str, Any]], canon: Canon) -> Optional[Decision]:
+    """2026-11-28 (user): a document with a discharge-related page -- its page type, sub-type or
+    family names discharge (Discharge Summary, Discharge Instructions, Depart / Discharge Note)
+    -- is Inpatient on every page, before every other rule. None otherwise."""
+    if not canon.discharge_setting or not canon.discharge_words:
+        return None
+    for page in visit:
+        names = [str(page.get(k) or "") for k in ("page_family", "page_type_name", "document_family")]
+        names += [str(n) for n in page.get("page_names") or ()]
+        hit = next((n for n in names if any(w in n.casefold() for w in canon.discharge_words)), None)
+        if hit:
+            label = canon.labels.get(canon.discharge_setting, canon.discharge_setting)
+            return Decision(canon.discharge_setting, "discharge_page", conf.backup(), False, hit,
+                            reason=f"page {page.get('page_number') or page.get('page_name')} is {hit}: "
+                                   f"a discharge-related document is {label}")
+    return None
+
+
 def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
     """The encounter's first page decides when it has evidence of its own (a tier 1 page
     type, a tier 2 phrase, or the encounter model; 2026-10-25, user). None when it does
@@ -689,7 +713,8 @@ def classify_pages(
         family = encounter_family(visit)
         votes = [page_vote(page, canon) for page in visit]
         decision = (
-            family_decision(family, first, canon)
+            discharge_decision(visit, canon)
+            or family_decision(family, first, canon)
             or first_page_decision(votes, canon)
             or tally(votes, canon)
         )

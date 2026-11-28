@@ -494,9 +494,8 @@ class TestStage:
             (only,) = staged["encounters"]
             assert only["pages"] == ["1.jpg", "2.jpg"] and only["document"] == 1
             assert only["page_family"] == "Discharge Summary"
-            # A Discharge Summary carries no encounter type (2026-11-02, user: only
-            # Progress, Procedure and Operative Notes do).
-            assert only["encounter_type"] == "not_applicable" and only["decided_by"] == "not_applicable"
+            # 2026-11-28 (user): a discharge-related document is Inpatient (was no encounter type).
+            assert only["encounter_type"] == "inpatient" and only["decided_by"] == "discharge_page"
 
             final = final_stage.run(cid, force=True)
             rows = {r["page_id"]: r for r in store.imaging_final.values()}

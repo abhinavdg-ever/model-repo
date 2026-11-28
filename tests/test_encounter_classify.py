@@ -206,9 +206,9 @@ def test_worked_example(canon):
     rows = {r["page_id"]: r for r in classify_pages(pages, entries=canon, visit_log=log)}
 
     a = rows[1]
-    # The first page has evidence of its own (hospital course): it decides the encounter.
+    # 2026-11-28 (user): a discharge-related page makes the document Inpatient before any vote.
     assert (a["encounter_type"], a["confidence"], a["decided_by"], a["matched_keyword"]) == (
-        "inpatient", 0.4, "first_page", "hospital course")  # keywords only, no model: backup
+        "inpatient", 0.4, "discharge_page", "Discharge Summary")
     assert rows[7]["encounter_type"] == "inpatient"
     assert "discharged home" in log[0]["negatives_fired"]
 
@@ -299,7 +299,8 @@ def test_progress_procedure_and_operative_notes_are_classified_the_rest_not(cano
     for family, text, expected in (("Progress Note", "telehealth visit", "outpatient_tele"),
                                    ("Procedure Note", "", "outpatient_f2f"),
                                    ("Operative Note", "", "inpatient"),
-                                   ("Discharge Summary", "hospital course", "not_applicable"),
+                                   # 2026-11-28 (user): discharge-related -> Inpatient.
+                                   ("Discharge Summary", "hospital course", "inpatient"),
                                    ("Problem List", "office visit", "not_applicable"),
                                    ("Progress Note", "", "outpatient_f2f")):
         rows = classify_pages([{**page(1, text), "page_family": family}], entries=canon)
@@ -522,7 +523,7 @@ def test_confidence_comes_from_the_evidence(canon):
                                {**page(3, "video visit"), "page_family": "Progress Note"}), entries=canon)[0]
     assert vote["confidence"] == 0.4
     # A family rule (here: encounter type does not apply to the family): a backup.
-    family = classify_pages(_doc({**page(1, "hospital course"), "page_family": "Discharge Summary"}), entries=canon)[0]
+    family = classify_pages(_doc({**page(1, "office visit"), "page_family": "Problem List"}), entries=canon)[0]
     assert family["decided_by"] in ("family", "not_applicable") and family["confidence"] == 0.4
 
 

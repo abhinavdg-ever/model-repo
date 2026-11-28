@@ -209,6 +209,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             names = page_result.names_of(kind)
             page_input["page_type_id"] = next((n for n in names if n in tier1), page_result.family_of(kind))
             page_input["page_type_name"] = page_input["page_type_id"]
+            # Every name of the page's type (family, L2, L3), for the discharge rule (2026-11-28).
+            page_input["page_names"] = list(names)
             # Encounter type applies only to some families (canon applies_to). A page
             # neither the model nor the canon was sure of (decided_by others) has no
             # family: it votes its own evidence, as an Unknown page did.

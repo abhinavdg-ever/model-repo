@@ -63,10 +63,17 @@ weight continuity reads for junk runs, so no decision changes. Thresholds live i
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
-from card_rules import detect as detect_card
+# card_rules / classify live beside this file and are imported by bare name (stage.py puts this
+# folder on sys.path); importing method first must work too.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from card_rules import detect as detect_card  # noqa: E402
 from classify import (
     CODE_BLANK,
     CODE_CARDS,

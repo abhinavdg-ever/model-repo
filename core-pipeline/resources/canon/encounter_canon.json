@@ -42,6 +42,11 @@
     "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available. 2026-10-25 (user): the encounter's document type decides first: a family in 'always' is that setting whatever its pages say (Discharge Summary, Operative Note -> Inpatient); a family not listed is Not Applicable for the whole encounter, even when one of its pages votes a setting. 2026-11-02 (user): encounter type matters only for Progress Notes (and the pages joined to them), Procedure Notes and Operative Notes; every other document (Problem List, Demographics, Discharge Summary, labs, orders...) is left blank (Final and review-ui show nothing).",
     "always": {
       "Operative Note": "inpatient"
+    },
+    "note_discharge": "2026-11-28 (user): a document with any discharge-related page (its page type, sub-type or family names discharge: Discharge Summary, Discharge Instructions, Depart / Discharge Note ...) is Inpatient on every page, before every other rule (the 2026-11-02 blank Discharge Summary included).",
+    "discharge_related": {
+      "setting": "inpatient",
+      "words": ["discharge"]
     }
   },
   "tier1_page_types": {
