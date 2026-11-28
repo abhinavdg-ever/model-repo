@@ -822,7 +822,7 @@ CHECK_NAMES = {
     "O4": "LLM judge",
 }
 PASS1_CHECKS = ("R1a", "R1b", "R1c", "R1d", "R1e", "R1f", "R2a", "R2b", "R2c", "R0")
-PASS2_COMMON = ("R1a", "R1b", "R1c", "R1e", "R1f", "R2a", "R2b", "R2c", "R3", "R4a", "R4b", "R4c", "R4d", "R4e")
+PASS2_COMMON = ("R1a", "R1b", "R1c", "R1d", "R1e", "R1f", "R2a", "R2b", "R2c", "R3", "R4a", "R4b", "R4c", "R4d", "R4e")
 PASS2_ROUTES = {"short": ("S",), "visual": ("V1", "V2"), "general": ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"),
                 "others": ("O1",)}
 PASS2_CHECKS = (PASS2_COMMON + PASS2_ROUTES["short"] + PASS2_ROUTES["visual"] + PASS2_ROUTES["general"]
@@ -984,10 +984,10 @@ def decide(inputs: PageInputs) -> Verdict:
     if not visual and chars == 0 and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
 
-    # ---- EB (2026-11-28, user): pass 1, a page with only one line at the top and / or one at the
-    # bottom (a running header, a page number) and nothing between -> Blank, final (pass 2 does not
-    # judge a page pass 1 settled). Two lines at an edge ("DME Orders / None recorded.") is not.
-    if not pass2:
+    # ---- R1d (2026-11-28, user): a page with only one line at the top and / or one at the bottom
+    # (a running header, a page number) and nothing between -> Blank. Pass 1 (settled there) and
+    # pass 2 (the pages pass 2 judges). Two lines at an edge ("DME Orders / None recorded.") is not.
+    if True:
         step("R1d")
         edge = edge_line_blank(inputs, text)
         if edge:

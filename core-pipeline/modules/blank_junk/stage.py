@@ -1629,6 +1629,10 @@ def _page_inputs(
             if len(lines) <= method.EDGE_BLANK_MAX_TEXT_LINES:
                 inputs.edge_lines = edge_text_lines(ctx.chart_name, page["page_name"])
         if pass_no == 2:
+            # R1d in pass 2 too (2026-11-28, user): a page of a few final-OCR lines is measured.
+            final_text = unwrap_ocr_content((final2 or {}).get(pid)) or unwrap_ocr_content((final1 or {}).get(pid))
+            if 0 < len([line for line in final_text.splitlines() if line.strip()]) <= method.EDGE_BLANK_MAX_TEXT_LINES:
+                inputs.edge_lines = edge_text_lines(ctx.chart_name, page["page_name"])
             inputs.provider_spot = spots.get(page["page_name"])
             inputs.headings = headings.get(page["page_name"], ())
             inputs.header_canon = header_canon.get(page["page_name"], ())

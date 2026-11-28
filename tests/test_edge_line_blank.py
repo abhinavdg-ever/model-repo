@@ -31,7 +31,8 @@ def test_not_blank_when():
     assert run({"top": 1, "bottom": 1, "body_ink": None}).rule != "R1d"      # not measured
     assert run(None).rule != "R1d"
     assert run({"top": 1, "bottom": 1, "body_ink": False}, text=HEADER + "\nJane Roe MD").rule != "R1d"
-    assert run({"top": 1, "bottom": 1, "body_ink": False}, pass_no=2).rule != "R1d"  # pass 1 only
+    # Pass 2 too (2026-11-28, user).
+    assert run({"top": 1, "bottom": 1, "body_ink": False}, pass_no=2).rule == "R1d"
 
 
 def test_settled_in_pass_1():
