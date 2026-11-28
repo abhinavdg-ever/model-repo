@@ -4,6 +4,9 @@ Newest first. Before 2026-11-07 the schema was two files: `v1.sql` (implemented)
 (proposals). Both are now `schema.sql`, Part 1 and Part 2. Older entries keep the old names.
 
 ```
+ * is_readable (2026-11-28, migrations/2026-11-28.sql): ocr_quality_results.is_readable and
+   imaging_final.is_readable (BOOLEAN) -- Readability (was Visibility), set by Final OCR 2's
+   routing. NULL on older rows; review-ui shows is_visible (Visible / Not visible) for them.
  * qa_ground_truth (2026-11-25, migrations/2026-11-25.sql): new Part 1 table, one row per
    (chart_name, page_number) of the QA Ground Truth files loaded in review-ui's Manual Review
    (upserted, latest load wins): the Manual Review fields, labels JSONB (the row as uploaded),

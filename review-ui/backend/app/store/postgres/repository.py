@@ -63,7 +63,9 @@ _OVERLAY_SQL: dict[str, str] = {
                                    q.document_type, q.is_visible,
                                    q.handwritten_area_pct,
                                    q.quality_detail -> 'confidences',
-                                   q.quality_detail -> 'routing'
+                                   q.quality_detail -> 'routing',
+                                   -- NULL on a database before migrations/2026-11-28.sql, not an error.
+                                   to_jsonb(q) -> 'is_readable'
                             FROM ocr_quality_results q
                             JOIN page_list p ON p.id = q.page_id
                             JOIN chart_list c ON c.id = q.chart_id

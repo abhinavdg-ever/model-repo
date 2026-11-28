@@ -627,6 +627,9 @@ CREATE TABLE ocr_quality_results (
                             ('printed','handwritten','form','visual','blank','uncertain')),
     handwritten_probability NUMERIC(5,4),
     is_visible              BOOLEAN,
+    -- Readability (2026-11-28, user): set by Final OCR 2's routing (modules/ocr/readability.py).
+    -- NULL on rows routed before it: readers show is_visible.
+    is_readable             BOOLEAN,
     handwritten_area_pct    NUMERIC(5,2) CHECK (handwritten_area_pct IS NULL OR
                             handwritten_area_pct BETWEEN 0 AND 100),
     -- Low quality (not on a blank page), uncertain type, or not visible.
@@ -1018,6 +1021,7 @@ CREATE TABLE imaging_final (
     printed_or_handwritten   VARCHAR(20),
     handwritten_area_pct     NUMERIC(5,2),
     is_visible               BOOLEAN,
+    is_readable              BOOLEAN,
     quality_tag              VARCHAR(10),
     orientation_angle        NUMERIC(6,2),
     tilt_angle               NUMERIC(6,2),

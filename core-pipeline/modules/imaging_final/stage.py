@@ -514,6 +514,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "printed_or_handwritten": q.get("printed_or_handwritten"),
                 "handwritten_area_pct": _number(q.get("handwritten_area_pct")),
                 "is_visible": q.get("is_visible"),
+                # 2026-11-28 (user): Yes / No; NULL on a page routed before it (shown as visibility).
+                "is_readable": q.get("is_readable"),
                 "quality_tag": q.get("quality_tag"),
                 "orientation_angle": _number(q.get("orientation_angle")),
                 "tilt_angle": _number(q.get("tilt_angle")),

@@ -798,7 +798,7 @@ def page_stats(inputs: PageInputs, text: str, words: int, chars: int, visual: bo
 
 
 # 2026-11-28 (user): the checks by ID, grouped and routed. Pass 1: R1 Blank, R2 Junk, R0. Pass 2:
-# Common (R1a-c, R3, R1e-f / R2 again on handwritten / Low pages, R4 hard junk), then ONE route --
+# Common (R1a-c, R1e-f / R2 again on handwritten / Low pages, R3 Signature Log, R4 hard junk), then ONE route --
 # Short (S1-S15), Visual (V1-V2) or General (G1-G8) -- and Others (O1-O4) where a route did not decide.
 CHECK_NAMES = {
     "R1a": "no ink", "R1b": "stage-1 blank, no text", "R1c": "no text", "R1d": "one line at the top / bottom",
@@ -822,7 +822,7 @@ CHECK_NAMES = {
     "O4": "LLM judge",
 }
 PASS1_CHECKS = ("R1a", "R1b", "R1c", "R1d", "R1e", "R1f", "R2a", "R2b", "R2c", "R0")
-PASS2_COMMON = ("R1a", "R1b", "R1c", "R3", "R1e", "R1f", "R2a", "R2b", "R2c", "R4a", "R4b", "R4c", "R4d", "R4e")
+PASS2_COMMON = ("R1a", "R1b", "R1c", "R1e", "R1f", "R2a", "R2b", "R2c", "R3", "R4a", "R4b", "R4c", "R4d", "R4e")
 PASS2_ROUTES = {"short": ("S",), "visual": ("V1", "V2"), "general": ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"),
                 "others": ("O1",)}
 PASS2_CHECKS = (PASS2_COMMON + PASS2_ROUTES["short"] + PASS2_ROUTES["visual"] + PASS2_ROUTES["general"]
@@ -984,18 +984,6 @@ def decide(inputs: PageInputs) -> Verdict:
     if not visual and chars == 0 and not provider:
         return ruled(CODE_BLANK, "R1", "R1 blank: no text", confidence=conf.measured())
 
-    # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
-    # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
-    # and the model. Pass 2 only (2026-11-28, user: not checked in pass 1).
-    log = None
-    if pass2:
-        step("R3")
-        log = signature_log_kept(inputs)
-    if log:
-        votes["signature_log"] = log
-        return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
-                     f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
-
     # ---- EB (2026-11-28, user): pass 1, a page with only one line at the top and / or one at the
     # bottom (a running header, a page number) and nothing between -> Blank, final (pass 2 does not
     # judge a page pass 1 settled). Two lines at an edge ("DME Orders / None recorded.") is not.
@@ -1039,6 +1027,18 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["deferred"] = True
         return ruled(CODE_MAIN, "P1", "pass 1: no rule fired -> Main for now, judged in pass 2 on the final OCR",
                      conf.score(0.5, "degraded"), confidence=conf.backup())
+
+    # ---- a filled Signature Log (2026-11-28, user): its header and Medium / High handwriting -> Main,
+    # Page Type Signature Page / Signature Log, on a visual page or any other, before every junk rule
+    # and the model. Pass 2 only (2026-11-28, user: not checked in pass 1).
+    log = None
+    if pass2:
+        step("R3")
+        log = signature_log_kept(inputs)
+    if log:
+        votes["signature_log"] = log
+        return ruled(CODE_MAIN, "SIGLOG", f"SIGLOG: {log}; {SIGNATURE_LOG_MARK} -> Main (Page Type "
+                     f"{SIGNATURE_LOG_PAGE_TYPE} / {SIGNATURE_LOG_PAGE_SUBTYPE})", 1.0)
 
     # ---- pass 2 (2026-11-23, user): a page headed "Financials" / "Financial Summary" is
     # Junk / Others, whatever else is on it.

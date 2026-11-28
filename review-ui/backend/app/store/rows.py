@@ -426,10 +426,17 @@ def page_imaging_fields(folder_id: str, rows: dict[str, list[tuple] | None]) -> 
                     rate = routing.get("overlap_3") if routing.get("overlap_3") is not None else routing.get("overlap")
                     if isinstance(rate, (int, float)):
                         fields["ocrMatchRate"] = float(rate)
-                    # 2026-11-28 (user): Readability (was Visibility), High / Low, and why.
-                    if routing.get("readability") in ("High", "Low"):
-                        fields["readability"] = routing["readability"]
+                    # 2026-11-28 (user): Readability (was Visibility): is_readable, and why not.
+                    if isinstance(routing.get("is_readable"), bool):
+                        fields["isReadable"] = routing["is_readable"]
                         fields["readabilityWhy"] = routing.get("readability_why") or ""
+                # The is_readable column (migrations/2026-11-28.sql) wins over the routing copy;
+                # NULL on an older run: the UI shows its visibility (Visible / Not visible).
+                column = more[1] if len(more) > 1 else None
+                if isinstance(column, str):
+                    column = {"true": True, "false": False}.get(column.strip().lower())
+                if isinstance(column, bool):
+                    fields["isReadable"] = column
                 if isinstance(measured, dict) and measured:
                     fields["measuredConfidences"] = {
                         k: float(v) for k, v in measured.items() if isinstance(v, (int, float))

@@ -382,14 +382,14 @@ function fmtHandwriting(
 // two-class model the page was classified but these were never measured.
 const NOT_MEASURED = "Not Available";
 
-/** Readability (2026-11-28, user; was Visibility): High / Low from the routing
- * (core-pipeline modules/ocr/readability.py); a page routed before it existed: the page-tag
- * model's visibility (visible = High). */
-function fmtReadability(page: Pick<ImagingPageResult, "readability" | "isVisible">, processed = true): string {
+/** Is Readable (2026-11-28, user; was Visibility): Yes / No from the is_readable column
+ * (core-pipeline modules/ocr/readability.py). A page of an older run has none: its page-tag
+ * visibility is shown as it was, Visible / Not visible (2026-11-28, user). */
+function fmtReadability(page: Pick<ImagingPageResult, "isReadable" | "isVisible">, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
-  if (page.readability === "High" || page.readability === "Low") return page.readability;
+  if (page.isReadable === true || page.isReadable === false) return page.isReadable ? "Yes" : "No";
   if (page.isVisible === null || page.isVisible === undefined) return NOT_MEASURED;
-  return page.isVisible ? "High" : "Low";
+  return page.isVisible ? "Visible" : "Not visible";
 }
 
 /** Handwritten share of the page as a band; the model's exact figure is
@@ -561,7 +561,7 @@ function pageTypeOf(page: ImagingPageResult): string | null {
   return type;
 }
 const YES_NO_CHOICES = ["Yes", "No"] as const;
-const VISIBILITY_CHOICES = ["High", "Low"] as const;
+const VISIBILITY_CHOICES = ["Yes", "No"] as const;
 // An empty ground-truth cell reads "Not Found"; typing it (or NA) clears the cell.
 const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found", "not available"]);
 const PLACEHOLDER_ENTRY = new Set(["yet to process"]);
@@ -724,12 +724,12 @@ function yesNo(value: string | null | undefined): "yes" | "no" | null {
   return null;
 }
 
-/** page_ground_truth.is_visible holds Yes / No; the cell offers Readability High / Low
- * (2026-11-28, user: was Visible / Not visible; Yes = High, No = Low). */
+/** page_ground_truth.is_visible holds Yes / No; the cell offers Is Readable Yes / No
+ * (2026-11-28, user: was Visible / Not visible). */
 function visibilityLabel(value: string | null | undefined): string {
   const side = yesNo(value);
-  if (side === "yes") return "High";
-  if (side === "no") return "Low";
+  if (side === "yes") return "Yes";
+  if (side === "no") return "No";
   return (value ?? "").trim();
 }
 
@@ -737,8 +737,8 @@ function visibilityStored(shown: string): string | null {
   const text = cleanGt(shown);
   if (!text) return null;
   const folded = text.toLowerCase();
-  if (folded === "high" || folded === "visible" || folded === "good visibility") return "Yes";
-  if (folded === "low" || folded === "not visible" || folded === "bad visibility") return "No";
+  if (folded === "yes" || folded === "high" || folded === "visible" || folded === "good visibility") return "Yes";
+  if (folded === "no" || folded === "low" || folded === "not visible" || folded === "bad visibility") return "No";
   return text;
 }
 
@@ -2545,7 +2545,7 @@ function PageDetails({
           }),
           sameValue(fmtReadability(page, sections.hw), fmtConfidence(page.measuredConfidences?.visibility, sections.hw), {
             id: "visibility",
-            label: "Readability",
+            label: "Is Readable",
             choices: VISIBILITY_CHOICES,
           }),
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtMeasurement(page.pageQualityConfidence, qualityKnown), {
@@ -2929,9 +2929,9 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
   for (const page of pages) {
     const quality = algorithmQuality(page.pageQualityConfidence);
     const reasons: string[] = [];
-    // 2026-11-28 (user): Readability Low (not visible, or Low quality + match < 50% + Tesseract
+    // 2026-11-28 (user): Is Readable No (not visible, or Low quality + match < 50% + Tesseract
     // gibberish) is listed too.
-    if (page.readability === "Low") reasons.push(`Readability Low${page.readabilityWhy ? ` (${page.readabilityWhy})` : ""}`);
+    if (page.isReadable === false) reasons.push(`Not readable${page.readabilityWhy ? ` (${page.readabilityWhy})` : ""}`);
     else if (page.isVisible === false) reasons.push("Not visible");
     const rate = page.ocrMatchRate;
     const finalLow = (page.pageQualityTag ?? "").trim().toLowerCase() === "low";
@@ -2946,12 +2946,12 @@ export function imageQualityRows(pages: ImagingPageResult[]): QualityRow[] {
 function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed: boolean }) {
   if (!processed) return <div className="ocr-empty">{YET_TO_PROCESS}</div>;
   if (rows.length === 0) {
-    return <div className="ocr-empty">No page has Readability Low or low quality.</div>;
+    return <div className="ocr-empty">No page is unreadable or low quality.</div>;
   }
   return (
     <div className="member-rejection">
       <p className="rejection-note">
-        Pages with Readability Low (not visible, or Page Quality Low with an OCR match rate under 50% and
+        Pages not readable (not visible, or Page Quality Low with an OCR match rate under 50% and
         Tesseract gibberish), or Low quality with an OCR match rate under 50% (three engines when Doc Intel
         read the page, else Docling vs Tesseract):{" "}
         <strong>{rows.length}</strong> ({pageList(rows.map((r) => r.page.pageNumber))}).
@@ -2962,7 +2962,7 @@ function ImageQualityTable({ rows, processed }: { rows: QualityRow[]; processed:
             <th scope="col">Page</th>
             <th scope="col">Printed / HW</th>
             <th scope="col">Page Quality</th>
-            <th scope="col">Readability</th>
+            <th scope="col">Is Readable</th>
             <th scope="col">Match rate</th>
             <th scope="col">Why</th>
           </tr>
@@ -3423,7 +3423,7 @@ function DocSummary({
             <th scope="col">Member ID</th>
             <th scope="col">Type (Printed/HW)</th>
             <th scope="col">Handwritten %</th>
-            <th scope="col">Readability</th>
+            <th scope="col">Is Readable</th>
             <th scope="col">Page Quality</th>
             <th scope="col" title="How far the text sits rotated counter-clockwise from upright, as scanned">Orient.</th>
             <th scope="col">Tilt</th>

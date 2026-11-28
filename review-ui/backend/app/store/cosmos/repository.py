@@ -454,6 +454,7 @@ class CosmosFolderRepository(BlobPageImages, FolderRepository):
                 q.get("document_type"), q.get("is_visible"), q.get("handwritten_area_pct"),
                 detail.get("confidences") if isinstance(detail, dict) else None,
                 detail.get("routing") if isinstance(detail, dict) else None,
+                q.get("is_readable"),
             ))
         for d in chart.pages:
             name = chart.names[int(d["page_id"])]

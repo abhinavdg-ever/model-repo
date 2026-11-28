@@ -882,8 +882,10 @@ def set_quality_tag(
     quality_tag: Optional[str],
     quality_detail: dict[str, Any],
     review_required: Optional[bool],
+    is_readable: Optional[bool] = None,
 ) -> None:
-    """Re-grade one page after stage 1 (the Docling / Tesseract overlap check)."""
+    """Re-grade one page after stage 1 (the Docling / Tesseract overlap check). ``is_readable``
+    (2026-11-28, user): written when the column exists (migrations/2026-11-28.sql)."""
     import json
 
     conn.execute(
@@ -895,6 +897,24 @@ def set_quality_tag(
         """,
         (quality_tag, json.dumps(quality_detail, default=str), review_required, page_id),
     )
+    if is_readable is not None and _has_column(conn, "ocr_quality_results", "is_readable"):
+        conn.execute("UPDATE ocr_quality_results SET is_readable = %s WHERE page_id = %s", (is_readable, page_id))
+
+
+_COLUMNS_PRESENT: dict[tuple[str, str], bool] = {}
+
+
+def _has_column(conn: Any, table: str, column: str) -> bool:
+    """Whether the table has the column (a database not migrated yet keeps working). Read once."""
+    key = (table, column)
+    if key not in _COLUMNS_PRESENT:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s "
+            "AND table_schema = current_schema()", (table, column)).fetchone()
+        _COLUMNS_PRESENT[key] = row is not None
+        if row is None:
+            logger.warning("%s.%s missing: not written until schema/migrations/2026-11-28.sql is applied", table, column)
+    return _COLUMNS_PRESENT[key]
 
 
 # Page decisions read document_type. Printed and visual pages are read as
@@ -1588,6 +1608,7 @@ IMAGING_FINAL_COLUMNS = (
     "printed_or_handwritten",
     "handwritten_area_pct",
     "is_visible",
+    "is_readable",
     "quality_tag",
     "orientation_angle",
     "tilt_angle",

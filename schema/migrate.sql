@@ -49,4 +49,6 @@ SET client_min_messages TO WARNING;
 \ir migrations/2026-11-24.sql
 \echo '2026-11-25  qa_ground_truth (Manual Review QA Ground Truth rows)'
 \ir migrations/2026-11-25.sql
+\echo '2026-11-28  is_readable on ocr_quality_results and imaging_final'
+\ir migrations/2026-11-28.sql
 \echo 'Done: the database matches schema/schema.sql.'

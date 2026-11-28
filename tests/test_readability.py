@@ -8,7 +8,7 @@ CORE = Path(__file__).resolve().parents[1] / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from modules.ocr.readability import gibberish, readability  # noqa: E402
+from modules.ocr.readability import gibberish, is_readable  # noqa: E402
 from modules.ocr.routing import route  # noqa: E402
 
 CLEAN = ("Patient seen today for follow up of hypertension and diabetes. Blood pressure is well controlled "
@@ -24,10 +24,10 @@ def test_gibberish_combines_dictionary_and_shape():
 
 
 def test_readability_low_needs_all_three_or_not_visible():
-    assert readability(is_visible=False, final_quality="high", match_rate=0.9, tesseract_gibberish=False)[0] == "Low"
-    assert readability(is_visible=True, final_quality="low", match_rate=0.3, tesseract_gibberish=True)[0] == "Low"
+    assert is_readable(is_visible=False, final_quality="high", match_rate=0.9, tesseract_gibberish=False)[0] is False
+    assert is_readable(is_visible=True, final_quality="low", match_rate=0.3, tesseract_gibberish=True)[0] is False
     for quality, rate, gib in (("medium", 0.3, True), ("low", 0.6, True), ("low", 0.3, False), ("low", None, True)):
-        assert readability(is_visible=True, final_quality=quality, match_rate=rate, tesseract_gibberish=gib)[0] == "High"
+        assert is_readable(is_visible=True, final_quality=quality, match_rate=rate, tesseract_gibberish=gib)[0] is True
 
 
 def test_route_carries_the_gibberish_measure():

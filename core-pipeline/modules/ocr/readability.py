@@ -1,6 +1,6 @@
-"""Readability (2026-11-28, user; was Visibility): High or Low per page.
+"""Readability (2026-11-28, user; was Visibility): ``is_readable`` Yes / No per page.
 
-Low when the page-tag model calls the page not visible, or when all three hold:
+No when the page-tag model calls the page not visible, or when all three hold:
 
 * Page Quality is Low (the routing's Final Quality);
 * the OCR match rate is under 50% (the three engines' when Doc Intel read the page, else
@@ -111,13 +111,13 @@ def gibberish(text: Optional[str]) -> dict[str, Any]:
     return out
 
 
-def readability(*, is_visible: Optional[bool], final_quality: Optional[str], match_rate: Optional[float],
-                tesseract_gibberish: Optional[bool]) -> tuple[str, str]:
-    """("High" | "Low", why)."""
+def is_readable(*, is_visible: Optional[bool], final_quality: Optional[str], match_rate: Optional[float],
+                tesseract_gibberish: Optional[bool]) -> tuple[bool, str]:
+    """(is_readable, why not)."""
     if is_visible is False:
-        return "Low", "not visible (page-tag model)"
+        return False, "not visible (page-tag model)"
     low = (final_quality or "").strip().lower() == "low"
     bad_match = match_rate is not None and float(match_rate) < MATCH_BELOW
     if low and bad_match and tesseract_gibberish:
-        return "Low", f"Page Quality Low, OCR match {float(match_rate):.0%}, Tesseract gibberish"
-    return "High", ""
+        return False, f"Page Quality Low, OCR match {float(match_rate):.0%}, Tesseract gibberish"
+    return True, ""

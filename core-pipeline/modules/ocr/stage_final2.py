@@ -533,17 +533,17 @@ def _store_route(conn: Any, page_id: int, row: dict[str, Any], detail: dict[str,
     detail.pop("ocr_overlap", None)
     # 2026-11-28 (user): Readability (was Visibility) -- High / Low, from visibility, the Final
     # Quality, the match rate and Tesseract's gibberish measure.
-    from modules.ocr.readability import readability
+    from modules.ocr.readability import is_readable
     from modules.ocr.routing import final_match_rate
 
     visible = row.get("is_visible")
-    decision["readability"], decision["readability_why"] = readability(
+    decision["is_readable"], decision["readability_why"] = is_readable(
         is_visible=None if visible is None else bool(visible), final_quality=final,
         match_rate=final_match_rate(decision),
         tesseract_gibberish=(decision.get("tesseract_gibberish") or {}).get("gibberish"))
     detail["routing"] = {**{k: v for k, v in decision.items()}, "review_required_before": before}
     set_quality_tag(conn, page_id=page_id, quality_tag=final, quality_detail=detail,
-                    review_required=new_review)
+                    review_required=new_review, is_readable=decision["is_readable"])
 
 
 def _routing_csv(chart_name: str, pages: list[dict[str, Any]], decisions: dict[int, dict[str, Any]],

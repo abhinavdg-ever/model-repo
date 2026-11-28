@@ -257,9 +257,9 @@ function algoInvoice(page: ImagingPageResult): boolean {
 function addExtra(extra: ExtraCounts, page: ImagingPageResult): void {
   const truth = yesNo(page.groundTruth?.isVisible);
   if (truth) {
-    // Readability (2026-11-28, user): the pipeline's High / Low, else the page-tag model's
-    // visibility (visible = High); the ground truth's Yes = High.
-    const high = page.readability === "High" ? true : page.readability === "Low" ? false : page.isVisible;
+    // Is Readable (2026-11-28, user): the pipeline's is_readable, else the page-tag model's
+    // visibility; against the ground truth's Yes / No.
+    const high = page.isReadable ?? page.isVisible;
     if (high == null) extra.visibility.na += 1;
     else {
       extra.visibility.scored += 1;

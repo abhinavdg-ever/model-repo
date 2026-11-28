@@ -29,7 +29,7 @@ const FIELD_LABELS: Record<string, string> = {
   is_invoice: "Blank or Junk",
   page_sequence: "Page Sequence",
   rotation: "Text Orientation",
-  is_visible: "Readability",
+  is_visible: "Is Readable",
   rendering_provider: "Provider Name",
   provider_signature: "Provider Signature",
   provider_credentials: "Provider Credentials",
